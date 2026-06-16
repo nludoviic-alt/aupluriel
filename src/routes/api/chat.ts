@@ -145,13 +145,15 @@ export const Route = createFileRoute("/api/chat")({
       // Tells the UI which providers have a server-side key configured, so the
       // chat is usable without each user supplying their own key.
       GET: async () => {
+        // Order = auto-select priority for users without a personal key.
+        // Free, reliable providers first.
         return new Response(
           JSON.stringify({
-            anthropic: !!process.env.ANTHROPIC_API_KEY,
-            openai: !!process.env.OPENAI_API_KEY,
-            google: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
             groq: !!process.env.GROQ_API_KEY,
             openrouter: !!process.env.OPENROUTER_API_KEY,
+            google: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+            anthropic: !!process.env.ANTHROPIC_API_KEY,
+            openai: !!process.env.OPENAI_API_KEY,
             lovable: !!process.env.LOVABLE_API_KEY,
           }),
           { headers: { "Content-Type": "application/json" } },
