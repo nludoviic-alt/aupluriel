@@ -84,7 +84,12 @@ export const Route = createFileRoute("/api/chat")({
               { status: 401, headers: { "Content-Type": "application/json" } },
             );
           }
-          const groq = createOpenAICompatible({ name: "groq", baseURL: "https://api.groq.com/openai/v1", apiKey: key });
+          const groq = createOpenAICompatible({
+            name: "groq",
+            baseURL: "https://api.groq.com/openai/v1",
+            apiKey: key,
+            headers: { Authorization: `Bearer ${key}` },
+          });
           model = groq(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
 
         } else if (provider === "openrouter") {
@@ -96,7 +101,12 @@ export const Route = createFileRoute("/api/chat")({
               { status: 401, headers: { "Content-Type": "application/json" } },
             );
           }
-          const openrouter = createOpenAICompatible({ name: "openrouter", baseURL: "https://openrouter.ai/api/v1", apiKey: key });
+          const openrouter = createOpenAICompatible({
+            name: "openrouter",
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKey: key,
+            headers: { Authorization: `Bearer ${key}` },
+          });
           model = openrouter(process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3-0324:free");
 
         } else if (provider === "lovable") {
