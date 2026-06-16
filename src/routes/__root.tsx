@@ -157,6 +157,19 @@ function RootComponent() {
     window.location.href = "/login";
   }, [authLoading, isPublicRoute, user]);
 
+  // Public auth pages (and the pre-redirect state for signed-out users) render
+  // full-screen without the app sidebar/header chrome.
+  if (isPublicRoute || !user) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <main className="min-h-screen w-full">
+          <Outlet />
+        </main>
+        <Toaster />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
