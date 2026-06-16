@@ -101,6 +101,12 @@ export const Route = createFileRoute("/api/chat")({
               { status: 401, headers: { "Content-Type": "application/json" } },
             );
           }
+          console.log(
+            "[chat] openrouter key present:", !!key,
+            "len:", key?.length,
+            "prefix:", key?.slice(0, 6),
+            "model:", process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3-0324:free",
+          );
           const openrouter = createOpenAICompatible({
             name: "openrouter",
             baseURL: "https://openrouter.ai/api/v1",
