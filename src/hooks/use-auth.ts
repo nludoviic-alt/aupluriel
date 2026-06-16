@@ -5,6 +5,9 @@ interface User {
   id: number;
   email: string;
   username: string;
+  email_verified?: number;
+  status?: string;
+  is_admin?: number;
   created_at: number;
 }
 

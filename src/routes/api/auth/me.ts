@@ -11,9 +11,19 @@ export const Route = createFileRoute("/api/auth/me")({
 
         const db = getDb();
         const user = db
-          .prepare("SELECT id, email, username, created_at FROM users WHERE id = ?")
+          .prepare(
+            "SELECT id, email, username, email_verified, status, is_admin, created_at FROM users WHERE id = ?",
+          )
           .get(auth.userId) as
-          | { id: number; email: string; username: string; created_at: number }
+          | {
+              id: number;
+              email: string;
+              username: string;
+              email_verified: number;
+              status: string;
+              is_admin: number;
+              created_at: number;
+            }
           | undefined;
 
         if (!user) return json({ error: "Utilisateur introuvable" }, 404);

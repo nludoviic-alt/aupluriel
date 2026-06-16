@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { User, Mail, Lock, Eye, EyeOff, KeyRound } from "lucide-react";
 import { LogoMark } from "@/components/logo";
@@ -13,8 +13,10 @@ export const Route = createFileRoute("/login")({
 });
 
 interface AuthResponse {
-  token: string;
-  user: { id: number; email: string; username: string };
+  token?: string;
+  user?: { id: number; email: string; username: string; is_admin?: number };
+  requiresVerification?: boolean;
+  message?: string;
 }
 
 function LoginPage() {
@@ -47,9 +49,11 @@ function LoginPage() {
         email: loginEmail,
         password: loginPassword,
       });
-      setToken(data.token);
-      toast.success(`Bienvenue, ${data.user.username} !`);
-      navigate({ to: "/" });
+      if (data.token && data.user) {
+        setToken(data.token);
+        toast.success(`Bienvenue, ${data.user.username} !`);
+        navigate({ to: "/" });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
@@ -67,13 +71,34 @@ function LoginPage() {
         password: regPassword,
         inviteCode: regInvite || undefined,
       });
-      setToken(data.token);
-      toast.success(`Compte créé ! Bienvenue, ${data.user.username} !`);
-      navigate({ to: "/" });
+      // Admin accounts log in immediately; everyone else must verify + await approval.
+      if (data.token && data.user) {
+        setToken(data.token);
+        toast.success(`Compte créé ! Bienvenue, ${data.user.username} !`);
+        navigate({ to: "/" });
+      } else {
+        toast.success(data.message ?? "Compte créé. Vérifie ta boîte mail pour l'activer.");
+        setTab("login");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur d'inscription");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!loginEmail) {
+      toast.error("Saisis ton email ci-dessus d'abord.");
+      return;
+    }
+    try {
+      const data = await api.post<{ message?: string }>("/api/auth/resend-verification", {
+        email: loginEmail,
+      });
+      toast.success(data.message ?? "Si un compte non vérifié existe, un email a été envoyé.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
     }
   }
 
@@ -161,6 +186,19 @@ function LoginPage() {
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Connexion…" : "Se connecter"}
               </Button>
+
+              <div className="flex items-center justify-between text-[11px]">
+                <Link to="/forgot-password" className="text-muted-foreground hover:text-foreground">
+                  Mot de passe oublié ?
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Renvoyer la vérification
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">

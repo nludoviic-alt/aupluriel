@@ -4,10 +4,12 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -144,6 +146,16 @@ function RootComponent() {
   const hasAlerts = activeAlerts.length > 0;
   usePriceAlerts();
   const deriv = useDerivSession();
+
+  // Auth gate: send signed-out visitors to the login page, except on public auth routes.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user, loading: authLoading } = useAuth();
+  const publicRoutes = ["/login", "/verify-email", "/forgot-password", "/reset-password"];
+  const isPublicRoute = publicRoutes.includes(pathname);
+  useEffect(() => {
+    if (authLoading || isPublicRoute || user) return;
+    window.location.href = "/login";
+  }, [authLoading, isPublicRoute, user]);
 
   return (
     <QueryClientProvider client={queryClient}>

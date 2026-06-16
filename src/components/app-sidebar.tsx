@@ -12,7 +12,10 @@ import {
   BriefcaseBusiness,
   BarChart3,
   Calculator,
+  ShieldCheck,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Sidebar,
   SidebarContent,
@@ -45,6 +48,7 @@ const items = [
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
+  const { user, logout } = useAuth();
 
   return (
     <Sidebar collapsible="icon">
@@ -74,11 +78,36 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              {user?.is_admin ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={isActive("/admin")} tooltip="Administration">
+                    <Link to="/admin" className="flex items-center gap-3">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Administration</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-3 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+        {user ? (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-border/60 bg-card/40 p-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-foreground">{user.username}</div>
+              <div className="truncate text-[11px]">{user.email}</div>
+            </div>
+            <button
+              onClick={logout}
+              title="Se déconnecter"
+              className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
         <div className="rounded-md border border-border/60 bg-card/40 p-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[color:var(--bull)] animate-pulse" />

@@ -85,5 +85,38 @@ function migrate(db: Database.Database) {
       confidence INTEGER NOT NULL,
       tf         TEXT    NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type       TEXT    NOT NULL,          -- 'verify' | 'reset'
+      token      TEXT    UNIQUE NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used       INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
+
+  // --- Additive column migrations on `users` (idempotent) ---
+  const userCols = new Set(
+    (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!userCols.has("email_verified")) {
+    db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!userCols.has("status")) {
+    // 'pending' | 'approved' | 'rejected' — gates login until an admin approves.
+    db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'");
+  }
+  if (!userCols.has("is_admin")) {
+    db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Promote the configured admin email if that account already exists.
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+  if (adminEmail) {
+    db.prepare(
+      "UPDATE users SET is_admin = 1, status = 'approved', email_verified = 1 WHERE email = ?",
+    ).run(adminEmail);
+  }
 }
