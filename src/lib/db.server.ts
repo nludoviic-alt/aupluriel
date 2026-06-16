@@ -1,0 +1,89 @@
+import Database from "better-sqlite3";
+import path from "path";
+
+const DB_PATH = process.env.DB_PATH ?? path.join(process.cwd(), "lio23.db");
+
+let _db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (_db) return _db;
+  _db = new Database(DB_PATH);
+  _db.pragma("journal_mode = WAL");
+  _db.pragma("foreign_keys = ON");
+  migrate(_db);
+  return _db;
+}
+
+function migrate(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      email       TEXT    UNIQUE NOT NULL,
+      username    TEXT    UNIQUE NOT NULL,
+      password_hash TEXT  NOT NULL,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      deriv_token   TEXT,
+      account_type  TEXT    DEFAULT 'demo',
+      ai_provider   TEXT    DEFAULT 'anthropic',
+      ai_api_key    TEXT,
+      risk_per_trade REAL   DEFAULT 2,
+      max_drawdown  REAL    DEFAULT 5
+    );
+
+    CREATE TABLE IF NOT EXISTS strategies (
+      id             TEXT    PRIMARY KEY,
+      user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name           TEXT    NOT NULL,
+      pair           TEXT    NOT NULL,
+      indicator      TEXT    NOT NULL,
+      buy_threshold  REAL    DEFAULT 30,
+      sell_threshold REAL    DEFAULT 70,
+      stop_loss      REAL    DEFAULT 2,
+      take_profit    REAL    DEFAULT 4,
+      enabled        INTEGER DEFAULT 1,
+      created_at     INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS alerts (
+      id         TEXT    PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type       TEXT    NOT NULL,
+      pair       TEXT    NOT NULL,
+      condition  TEXT    NOT NULL,
+      value      REAL    DEFAULT 0,
+      enabled    INTEGER DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS trades (
+      id           TEXT    PRIMARY KEY,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      time         INTEGER NOT NULL,
+      symbol       TEXT    NOT NULL,
+      direction    TEXT    NOT NULL,
+      stake        REAL    NOT NULL,
+      payout       REAL    DEFAULT 0,
+      status       TEXT    NOT NULL,
+      profit       REAL    DEFAULT 0,
+      confidence   INTEGER DEFAULT 0,
+      tf_agreement INTEGER DEFAULT 0,
+      contract_id  INTEGER,
+      closed_at    INTEGER,
+      created_at   INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS signal_history (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      time       INTEGER NOT NULL,
+      pair       TEXT    NOT NULL,
+      direction  TEXT    NOT NULL,
+      confidence INTEGER NOT NULL,
+      tf         TEXT    NOT NULL
+    );
+  `);
+}

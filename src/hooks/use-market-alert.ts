@@ -1,0 +1,149 @@
+import { useEffect, useRef, useState } from "react";
+import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
+import { generateSignal } from "@/lib/indicators";
+
+export interface MarketAlert {
+  symbol: string;
+  label: string;
+  direction: "BUY" | "SELL";
+  confidence: number;
+  agreement: number;
+  time: number;
+}
+
+const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
+const CHECK_INTERVAL_MS = 5 * 60_000; // every 5 minutes
+const ALERT_STORAGE_KEY = "lio23.last_alert_times";
+const MIN_CONFIDENCE = 75;
+const MIN_AGREEMENT = 3;
+
+function loadLastAlertTimes(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveLastAlertTimes(times: Record<string, number>) {
+  try {
+    localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(times));
+  } catch {}
+}
+
+async function requestNotificationPermission(): Promise<boolean> {
+  if (typeof window === "undefined" || !("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  const result = await Notification.requestPermission();
+  return result === "granted";
+}
+
+function sendBrowserNotification(alert: MarketAlert) {
+  if (typeof window === "undefined" || Notification.permission !== "granted") return;
+  const emoji = alert.direction === "BUY" ? "📈" : "📉";
+  const n = new Notification(`${emoji} LIO23 — Signal fort sur ${alert.label}`, {
+    body: `${alert.direction} · Confiance ${alert.confidence}% · ${alert.agreement}/4 TF · Marché favorable`,
+    icon: "/favicon.ico",
+    tag: `lio23-${alert.symbol}`, // replace previous for same symbol
+    requireInteraction: false,
+  });
+  // Auto-close after 8s
+  setTimeout(() => n.close(), 8000);
+}
+
+async function analyzeSymbol(
+  deriv: string,
+): Promise<{ direction: "BUY" | "SELL" | null; confidence: number; agreement: number }> {
+  const votes: string[] = [];
+  let totalConf = 0;
+
+  for (const tf of TIMEFRAMES) {
+    try {
+      const candles = await fetchCandles(deriv, GRANULARITY[tf], 250);
+      if (!candles.length) continue;
+      const sig = generateSignal(candles);
+      if (sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
+      votes.push(sig.direction);
+      totalConf += sig.confidence;
+    } catch {}
+  }
+
+  if (!votes.length) return { direction: null, confidence: 0, agreement: 0 };
+  const buys = votes.filter((v) => v === "BUY").length;
+  const sells = votes.filter((v) => v === "SELL").length;
+  const avgConf = totalConf / votes.length;
+
+  if (buys > sells) return { direction: "BUY", confidence: avgConf, agreement: buys };
+  if (sells > buys) return { direction: "SELL", confidence: avgConf, agreement: sells };
+  return { direction: null, confidence: avgConf, agreement: 0 };
+}
+
+export function useMarketAlert(enabled = true) {
+  const [activeAlerts, setActiveAlerts] = useState<MarketAlert[]>([]);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+  const lastAlertTimesRef = useRef<Record<string, number>>(loadLastAlertTimes());
+
+  // Read permission status
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
+  async function requestPermission() {
+    const granted = await requestNotificationPermission();
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
+    return granted;
+  }
+
+  async function checkSignals() {
+    const now = Date.now();
+    const newAlerts: MarketAlert[] = [];
+
+    for (const sym of SYMBOLS) {
+      try {
+        const result = await analyzeSymbol(sym.deriv);
+        if (!result.direction) continue;
+        if (result.confidence < MIN_CONFIDENCE) continue;
+        if (result.agreement < MIN_AGREEMENT) continue;
+
+        const alert: MarketAlert = {
+          symbol: sym.deriv,
+          label: sym.label,
+          direction: result.direction,
+          confidence: Math.round(result.confidence),
+          agreement: result.agreement,
+          time: now,
+        };
+        newAlerts.push(alert);
+
+        // Only send notification if we haven't alerted on this symbol in the last 30 min
+        const lastTime = lastAlertTimesRef.current[sym.deriv] ?? 0;
+        if (now - lastTime > 30 * 60_000) {
+          sendBrowserNotification(alert);
+          lastAlertTimesRef.current[sym.deriv] = now;
+          saveLastAlertTimes(lastAlertTimesRef.current);
+        }
+      } catch {}
+    }
+
+    setActiveAlerts(newAlerts);
+  }
+
+  useEffect(() => {
+    if (!enabled) {
+      setActiveAlerts([]);
+      return;
+    }
+
+    // Delay the first heavy scan so it doesn't compete with initial page render
+    const warmup = setTimeout(checkSignals, 8000);
+    const id = setInterval(checkSignals, CHECK_INTERVAL_MS);
+    return () => { clearTimeout(warmup); clearInterval(id); };
+  }, [enabled]);
+
+  return { activeAlerts, notifPermission, requestPermission };
+}
