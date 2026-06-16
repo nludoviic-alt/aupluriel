@@ -101,19 +101,14 @@ export const Route = createFileRoute("/api/chat")({
               { status: 401, headers: { "Content-Type": "application/json" } },
             );
           }
-          console.log(
-            "[chat] openrouter key present:", !!key,
-            "len:", key?.length,
-            "prefix:", key?.slice(0, 6),
-            "model:", process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3-0324:free",
-          );
           const openrouter = createOpenAICompatible({
             name: "openrouter",
             baseURL: "https://openrouter.ai/api/v1",
             apiKey: key,
             headers: { Authorization: `Bearer ${key}` },
           });
-          model = openrouter(process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3-0324:free");
+          // Free, conversational, non-DeepSeek default. Override via OPENROUTER_MODEL.
+          model = openrouter(process.env.OPENROUTER_MODEL ?? "meta-llama/llama-3.3-70b-instruct:free");
 
         } else if (provider === "lovable") {
           const key = clientKey ?? process.env.LOVABLE_API_KEY;

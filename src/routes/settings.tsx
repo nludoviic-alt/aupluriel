@@ -259,7 +259,7 @@ function SettingsPage() {
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
             <div className="flex flex-wrap gap-2">
               {([
-                { id: "openrouter", label: "OpenRouter — DeepSeek (gratuit)", desc: "openrouter.ai · modèles :free" },
+                { id: "openrouter", label: "OpenRouter — Llama 3.3 (gratuit)", desc: "openrouter.ai · modèles :free" },
                 { id: "google",     label: "Gemini (Google)", desc: "aistudio.google.com" },
                 { id: "anthropic",  label: "Claude (Anthropic)", desc: "console.anthropic.com" },
                 { id: "openai",     label: "GPT-4o-mini (OpenAI)", desc: "platform.openai.com" },

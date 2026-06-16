@@ -270,7 +270,7 @@ function AssistantPage() {
     : aiConfig.provider === "openai" ? "GPT-4o-mini · OpenAI"
     : aiConfig.provider === "google" ? "Gemini · Google"
     : aiConfig.provider === "groq" ? "Llama 3.3 70B · Groq (gratuit)"
-    : aiConfig.provider === "openrouter" ? "DeepSeek · OpenRouter (gratuit)"
+    : aiConfig.provider === "openrouter" ? "Llama 3.3 70B · OpenRouter (gratuit)"
     : "IA";
 
   return (
