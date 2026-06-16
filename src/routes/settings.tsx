@@ -259,7 +259,6 @@ function SettingsPage() {
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
             <div className="flex flex-wrap gap-2">
               {([
-                { id: "groq",       label: "Groq — Llama 3.3 (gratuit)", desc: "console.groq.com · sans CB, rapide" },
                 { id: "openrouter", label: "OpenRouter — DeepSeek (gratuit)", desc: "openrouter.ai · modèles :free" },
                 { id: "google",     label: "Gemini (Google)", desc: "aistudio.google.com" },
                 { id: "anthropic",  label: "Claude (Anthropic)", desc: "console.anthropic.com" },
