@@ -190,7 +190,20 @@ function AssistantPage() {
     });
   }, [aiConfig, serverProviders]);
 
-  const { messages, sendMessage, status } = useChat({ transport: transport.current });
+  const { messages, sendMessage, status } = useChat({
+    transport: transport.current,
+    onError: (e) => {
+      // Surface server-side errors (bad/missing key, model errors) instead of failing silently.
+      let msg = e?.message || "Le chat n'a pas pu répondre.";
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        /* not JSON — keep raw message */
+      }
+      toast.error(msg);
+    },
+  });
   const [input, setInput] = useState("");
   const [voiceReply, setVoiceReply] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
