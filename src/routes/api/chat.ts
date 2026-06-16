@@ -43,7 +43,9 @@ export const Route = createFileRoute("/api/chat")({
 
         const messages = body.messages as UIMessage[];
         const provider = body.provider ?? "anthropic";
-        const clientKey = body.apiKey?.trim();
+        // Empty string must fall back to the server key (?? doesn't catch ""),
+        // so a single server-side key can power the chat for everyone.
+        const clientKey = body.apiKey?.trim() || undefined;
 
         let model;
 
@@ -89,6 +91,19 @@ export const Route = createFileRoute("/api/chat")({
         });
 
         return result.toUIMessageStreamResponse({ originalMessages: messages });
+      },
+
+      // Tells the UI which providers have a server-side key configured, so the
+      // chat is usable without each user supplying their own key.
+      GET: async () => {
+        return new Response(
+          JSON.stringify({
+            anthropic: !!process.env.ANTHROPIC_API_KEY,
+            openai: !!process.env.OPENAI_API_KEY,
+            lovable: !!process.env.LOVABLE_API_KEY,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
       },
     },
   },

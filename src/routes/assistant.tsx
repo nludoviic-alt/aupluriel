@@ -158,9 +158,15 @@ function MarkdownText({ text }: { text: string }) {
 
 function AssistantPage() {
   const [aiConfig, setAiConfig] = useState({ apiKey: "", provider: "anthropic" });
+  const [serverProviders, setServerProviders] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setAiConfig(getAiConfig());
+    // Is a server-side key configured? If so the chat works without a personal key.
+    fetch("/api/chat")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => setServerProviders(d as Record<string, boolean>))
+      .catch(() => {});
   }, []);
 
   const transport = useRef(
@@ -213,7 +219,8 @@ function AssistantPage() {
   }, []);
 
   const busy = status === "submitted" || status === "streaming";
-  const hasKey = aiConfig.apiKey.length > 0;
+  // The chat is usable if the user set a personal key OR the server has one for this provider.
+  const hasKey = aiConfig.apiKey.length > 0 || !!serverProviders[aiConfig.provider];
 
   // Read assistant replies aloud when voice mode is on
   useEffect(() => {
