@@ -268,8 +268,10 @@ function AssistantPage() {
   const providerLabel =
     aiConfig.provider === "anthropic" ? "Claude · Anthropic"
     : aiConfig.provider === "openai" ? "GPT-4o-mini · OpenAI"
-    : aiConfig.provider === "google" ? "Gemini 2.0 Flash · Google (gratuit)"
-    : "Gemini · Google";
+    : aiConfig.provider === "google" ? "Gemini · Google"
+    : aiConfig.provider === "groq" ? "Llama 3.3 70B · Groq (gratuit)"
+    : aiConfig.provider === "openrouter" ? "DeepSeek · OpenRouter (gratuit)"
+    : "IA";
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden">

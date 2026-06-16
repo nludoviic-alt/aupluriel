@@ -3,6 +3,7 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 
 const SYSTEM_PROMPT = `Tu es Lio23, une IA de trading quantitative experte pour les marchés Crypto et Forex.
@@ -35,7 +36,7 @@ export const Route = createFileRoute("/api/chat")({
         const body = (await request.json()) as {
           messages?: unknown;
           apiKey?: string;
-          provider?: "anthropic" | "openai" | "google" | "lovable";
+          provider?: "anthropic" | "openai" | "google" | "groq" | "openrouter" | "lovable";
         };
 
         if (!Array.isArray(body.messages)) {
@@ -73,6 +74,30 @@ export const Route = createFileRoute("/api/chat")({
           const google = createGoogleGenerativeAI({ apiKey: key });
           // Override with the GEMINI_MODEL env var without redeploying.
           model = google(process.env.GEMINI_MODEL ?? "gemini-2.5-flash");
+
+        } else if (provider === "groq") {
+          // Groq — free, no credit card, very fast (Llama 3.3 70B).
+          const key = clientKey ?? process.env.GROQ_API_KEY;
+          if (!key) {
+            return new Response(
+              JSON.stringify({ error: "Clé API Groq manquante. Configure-la dans Paramètres → Assistant IA." }),
+              { status: 401, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          const groq = createOpenAICompatible({ name: "groq", baseURL: "https://api.groq.com/openai/v1", apiKey: key });
+          model = groq(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
+
+        } else if (provider === "openrouter") {
+          // OpenRouter — access many models incl. free DeepSeek (':free' suffix).
+          const key = clientKey ?? process.env.OPENROUTER_API_KEY;
+          if (!key) {
+            return new Response(
+              JSON.stringify({ error: "Clé API OpenRouter manquante. Configure-la dans Paramètres → Assistant IA." }),
+              { status: 401, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          const openrouter = createOpenAICompatible({ name: "openrouter", baseURL: "https://openrouter.ai/api/v1", apiKey: key });
+          model = openrouter(process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3-0324:free");
 
         } else if (provider === "lovable") {
           const key = clientKey ?? process.env.LOVABLE_API_KEY;
@@ -125,6 +150,8 @@ export const Route = createFileRoute("/api/chat")({
             anthropic: !!process.env.ANTHROPIC_API_KEY,
             openai: !!process.env.OPENAI_API_KEY,
             google: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+            groq: !!process.env.GROQ_API_KEY,
+            openrouter: !!process.env.OPENROUTER_API_KEY,
             lovable: !!process.env.LOVABLE_API_KEY,
           }),
           { headers: { "Content-Type": "application/json" } },

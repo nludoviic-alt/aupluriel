@@ -33,7 +33,7 @@ function SettingsPage() {
   const [info, setInfo] = useState<{ id?: string; balance?: number; currency?: string } | null>(null);
   const [aiKey, setAiKey] = useState("");
   const [showAiKey, setShowAiKey] = useState(false);
-  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google">("anthropic");
+  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google" | "groq" | "openrouter">("anthropic");
   const [coachSymbols, setCoachSymbols] = useState<string[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function SettingsPage() {
     setRisk(Number(localStorage.getItem(KEYS.riskPerTrade) ?? 2));
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
     setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
-    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "anthropic" | "openai" | "google") ?? "anthropic");
+    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "anthropic" | "openai" | "google" | "groq" | "openrouter") ?? "anthropic");
     setCoachSymbols(loadCoachSymbols());
     // Then hydrate from server
     api.get<Record<string, unknown>>("/api/settings").then((s) => {
@@ -52,7 +52,7 @@ function SettingsPage() {
       if (s.account_type) setAccount(s.account_type as "demo" | "live");
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
-      if (s.ai_provider) setAiProvider(s.ai_provider as "anthropic" | "openai" | "google");
+      if (s.ai_provider) setAiProvider(s.ai_provider as "anthropic" | "openai" | "google" | "groq" | "openrouter");
       if (s.ai_api_key) setAiKey(s.ai_api_key as string);
     }).catch(() => {});
   }, []);
@@ -259,9 +259,11 @@ function SettingsPage() {
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
             <div className="flex flex-wrap gap-2">
               {([
-                { id: "google",    label: "Gemini (Google) — gratuit", desc: "aistudio.google.com · sans CB" },
-                { id: "anthropic", label: "Claude (Anthropic)", desc: "Recommandé · console.anthropic.com" },
-                { id: "openai",    label: "GPT-4o-mini (OpenAI)", desc: "platform.openai.com" },
+                { id: "groq",       label: "Groq — Llama 3.3 (gratuit)", desc: "console.groq.com · sans CB, rapide" },
+                { id: "openrouter", label: "OpenRouter — DeepSeek (gratuit)", desc: "openrouter.ai · modèles :free" },
+                { id: "google",     label: "Gemini (Google)", desc: "aistudio.google.com" },
+                { id: "anthropic",  label: "Claude (Anthropic)", desc: "console.anthropic.com" },
+                { id: "openai",     label: "GPT-4o-mini (OpenAI)", desc: "platform.openai.com" },
               ] as const).map((p) => (
                 <button
                   key={p.id}
@@ -286,6 +288,16 @@ function SettingsPage() {
           <div>
             <span className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
               Clé API{" "}
+              {aiProvider === "groq" && (
+                <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                  → Obtenir une clé Groq (gratuite)
+                </a>
+              )}
+              {aiProvider === "openrouter" && (
+                <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                  → Obtenir une clé OpenRouter (gratuite)
+                </a>
+              )}
               {aiProvider === "google" && (
                 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
                   → Obtenir une clé Google (gratuite)
@@ -310,7 +322,9 @@ function SettingsPage() {
                 placeholder={
                   aiProvider === "anthropic" ? "sk-ant-api03-..."
                   : aiProvider === "openai" ? "sk-proj-..."
-                  : "AIza... (clé Google AI Studio)"
+                  : aiProvider === "groq" ? "gsk_..."
+                  : aiProvider === "openrouter" ? "sk-or-v1-..."
+                  : "AIza... ou AQ... (clé Google AI Studio)"
                 }
                 className="w-full rounded-md border border-border bg-background px-3 py-2 pr-10 text-sm font-mono"
               />
