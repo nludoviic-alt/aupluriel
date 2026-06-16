@@ -101,9 +101,19 @@ export const Route = createFileRoute("/api/chat")({
           model,
           system: SYSTEM_PROMPT,
           messages: await convertToModelMessages(messages),
+          onError: ({ error }) => {
+            console.error("[chat] stream error:", error);
+          },
         });
 
-        return result.toUIMessageStreamResponse({ originalMessages: messages });
+        return result.toUIMessageStreamResponse({
+          originalMessages: messages,
+          // Surface the real provider error (model/key/quota) instead of a generic message.
+          onError: (error) => {
+            console.error("[chat] response error:", error);
+            return error instanceof Error ? error.message : String(error);
+          },
+        });
       },
 
       // Tells the UI which providers have a server-side key configured, so the
