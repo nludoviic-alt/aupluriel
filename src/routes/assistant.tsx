@@ -176,13 +176,19 @@ function AssistantPage() {
     }),
   );
 
-  // Rebuild transport when config changes
+  // Rebuild transport when config or server-key availability changes.
+  // Without a personal key, auto-pick whichever provider has a server key.
   useEffect(() => {
     transport.current = new DefaultChatTransport({
       api: "/api/chat",
-      body: () => ({ apiKey: aiConfig.apiKey, provider: aiConfig.provider }),
+      body: () => {
+        const provider = aiConfig.apiKey
+          ? aiConfig.provider
+          : (Object.keys(serverProviders).find((p) => serverProviders[p]) ?? aiConfig.provider);
+        return { apiKey: aiConfig.apiKey, provider };
+      },
     });
-  }, [aiConfig]);
+  }, [aiConfig, serverProviders]);
 
   const { messages, sendMessage, status } = useChat({ transport: transport.current });
   const [input, setInput] = useState("");
@@ -249,6 +255,7 @@ function AssistantPage() {
   const providerLabel =
     aiConfig.provider === "anthropic" ? "Claude · Anthropic"
     : aiConfig.provider === "openai" ? "GPT-4o-mini · OpenAI"
+    : aiConfig.provider === "google" ? "Gemini 2.0 Flash · Google (gratuit)"
     : "Gemini · Google";
 
   return (

@@ -33,7 +33,7 @@ function SettingsPage() {
   const [info, setInfo] = useState<{ id?: string; balance?: number; currency?: string } | null>(null);
   const [aiKey, setAiKey] = useState("");
   const [showAiKey, setShowAiKey] = useState(false);
-  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "lovable">("anthropic");
+  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google">("anthropic");
   const [coachSymbols, setCoachSymbols] = useState<string[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function SettingsPage() {
     setRisk(Number(localStorage.getItem(KEYS.riskPerTrade) ?? 2));
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
     setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
-    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "anthropic" | "openai" | "lovable") ?? "anthropic");
+    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "anthropic" | "openai" | "google") ?? "anthropic");
     setCoachSymbols(loadCoachSymbols());
     // Then hydrate from server
     api.get<Record<string, unknown>>("/api/settings").then((s) => {
@@ -52,7 +52,7 @@ function SettingsPage() {
       if (s.account_type) setAccount(s.account_type as "demo" | "live");
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
-      if (s.ai_provider) setAiProvider(s.ai_provider as "anthropic" | "openai" | "lovable");
+      if (s.ai_provider) setAiProvider(s.ai_provider as "anthropic" | "openai" | "google");
       if (s.ai_api_key) setAiKey(s.ai_api_key as string);
     }).catch(() => {});
   }, []);
@@ -259,9 +259,9 @@ function SettingsPage() {
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
             <div className="flex flex-wrap gap-2">
               {([
-                { id: "anthropic", label: "Claude (Anthropic)", desc: "Recommandé · claude.ai/api" },
+                { id: "google",    label: "Gemini (Google) — gratuit", desc: "aistudio.google.com · sans CB" },
+                { id: "anthropic", label: "Claude (Anthropic)", desc: "Recommandé · console.anthropic.com" },
                 { id: "openai",    label: "GPT-4o-mini (OpenAI)", desc: "platform.openai.com" },
-                { id: "lovable",   label: "Gemini (Lovable)", desc: "Pour projets Lovable" },
               ] as const).map((p) => (
                 <button
                   key={p.id}
@@ -286,6 +286,11 @@ function SettingsPage() {
           <div>
             <span className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
               Clé API{" "}
+              {aiProvider === "google" && (
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                  → Obtenir une clé Google (gratuite)
+                </a>
+              )}
               {aiProvider === "anthropic" && (
                 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
                   → Obtenir une clé Anthropic
@@ -305,7 +310,7 @@ function SettingsPage() {
                 placeholder={
                   aiProvider === "anthropic" ? "sk-ant-api03-..."
                   : aiProvider === "openai" ? "sk-proj-..."
-                  : "Clé Lovable..."
+                  : "AIza... (clé Google AI Studio)"
                 }
                 className="w-full rounded-md border border-border bg-background px-3 py-2 pr-10 text-sm font-mono"
               />

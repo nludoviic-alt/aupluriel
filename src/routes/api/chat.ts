@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 
 const SYSTEM_PROMPT = `Tu es Lio23, une IA de trading quantitative experte pour les marchés Crypto et Forex.
@@ -34,7 +35,7 @@ export const Route = createFileRoute("/api/chat")({
         const body = (await request.json()) as {
           messages?: unknown;
           apiKey?: string;
-          provider?: "anthropic" | "openai" | "lovable";
+          provider?: "anthropic" | "openai" | "google" | "lovable";
         };
 
         if (!Array.isArray(body.messages)) {
@@ -59,6 +60,18 @@ export const Route = createFileRoute("/api/chat")({
           }
           const openai = createOpenAI({ apiKey: key });
           model = openai("gpt-4o-mini");
+
+        } else if (provider === "google") {
+          // Google Gemini — generous free tier via Google AI Studio.
+          const key = clientKey ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+          if (!key) {
+            return new Response(
+              JSON.stringify({ error: "Clé API Google manquante. Configure-la dans Paramètres → Assistant IA." }),
+              { status: 401, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          const google = createGoogleGenerativeAI({ apiKey: key });
+          model = google("gemini-2.0-flash");
 
         } else if (provider === "lovable") {
           const key = clientKey ?? process.env.LOVABLE_API_KEY;
@@ -100,6 +113,7 @@ export const Route = createFileRoute("/api/chat")({
           JSON.stringify({
             anthropic: !!process.env.ANTHROPIC_API_KEY,
             openai: !!process.env.OPENAI_API_KEY,
+            google: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
             lovable: !!process.env.LOVABLE_API_KEY,
           }),
           { headers: { "Content-Type": "application/json" } },
