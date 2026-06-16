@@ -1,0 +1,4 @@
+# Force a supported Node version. Nixpacks auto-detection picked nodejs_18,
+# which reached End-Of-Life and was removed from nixpkgs, breaking the build.
+[phases.setup]
+nixPkgs = ["nodejs_22", "bun"]
