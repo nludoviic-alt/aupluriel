@@ -71,7 +71,8 @@ export const Route = createFileRoute("/api/chat")({
             );
           }
           const google = createGoogleGenerativeAI({ apiKey: key });
-          model = google("gemini-2.0-flash");
+          // Override with the GEMINI_MODEL env var without redeploying.
+          model = google(process.env.GEMINI_MODEL ?? "gemini-2.5-flash");
 
         } else if (provider === "lovable") {
           const key = clientKey ?? process.env.LOVABLE_API_KEY;
