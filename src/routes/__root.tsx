@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
@@ -144,7 +144,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const { activeAlerts, notifPermission, requestPermission } = useMarketAlert(true);
-  const hasAlerts = activeAlerts.length > 0;
+  const hasAlerts = useMemo(() => activeAlerts.length > 0, [activeAlerts]);
   usePriceAlerts();
   const deriv = useDerivSession();
 

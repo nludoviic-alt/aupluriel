@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -100,15 +100,21 @@ function AutoTraderPage() {
     return () => clearInterval(id);
   }, []);
 
-  const pnl = todayPnl(logs);
-  const tradeCount = todayTradeCount(logs);
-  const wins = logs.filter((l) => l.status === "won").length;
-  const losses = logs.filter((l) => l.status === "lost").length;
-  const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-  const openTradeList = logs.filter((l) => l.status === "open");
+  // Memoize expensive calculations to prevent recalculation on every render
+  const stats = useMemo(() => {
+    const pnl = todayPnl(logs);
+    const tradeCount = todayTradeCount(logs);
+    const wins = logs.filter((l) => l.status === "won").length;
+    const losses = logs.filter((l) => l.status === "lost").length;
+    const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+    const openTradeList = logs.filter((l) => l.status === "open");
+    const consecutiveLosses = countConsecutiveLosses(logs);
+    const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(config.stakeUsd, logs) : config.stakeUsd;
+    return { pnl, tradeCount, wins, losses, winRate, openTradeList, consecutiveLosses, effectiveStake };
+  }, [logs, config.adaptiveStake, config.stakeUsd]);
+
+  const { pnl, tradeCount, wins, losses, winRate, openTradeList, consecutiveLosses, effectiveStake } = stats;
   const openTrades = openTradeList.length;
-  const consecutiveLosses = countConsecutiveLosses(logs);
-  const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(config.stakeUsd, logs) : config.stakeUsd;
   const inCooldown = Date.now() < cooldownUntil;
   const cooldownSecsLeft = inCooldown ? Math.ceil((cooldownUntil - Date.now()) / 1000) : 0;
 

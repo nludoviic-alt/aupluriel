@@ -376,17 +376,49 @@ export async function getProfitTable(limit = 50): Promise<ProfitRecord[]> {
 
 export function subscribeBalance(
   onUpdate: (balance: number, currency: string) => void,
+  throttleMs = 1000, // Throttle updates to prevent excessive re-renders
 ): () => void {
   let stopped = false;
+  let lastUpdate = 0;
+  let pendingBalance: number | null = null;
+  let pendingCurrency: string | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    if (pendingBalance !== null && pendingCurrency !== null) {
+      onUpdate(pendingBalance, pendingCurrency);
+      pendingBalance = null;
+      pendingCurrency = null;
+    }
+    timeoutId = null;
+  };
+
   const l: Listener = (msg) => {
     const b = (msg as { balance?: { balance: number; currency: string } }).balance;
-    if (b?.balance !== undefined) onUpdate(Number(b.balance), b.currency);
+    if (b?.balance === undefined) return;
+
+    const now = Date.now();
+    pendingBalance = Number(b.balance);
+    pendingCurrency = b.currency;
+
+    if (now - lastUpdate >= throttleMs) {
+      lastUpdate = now;
+      flush();
+    } else if (!timeoutId) {
+      timeoutId = setTimeout(() => {
+        lastUpdate = Date.now();
+        flush();
+      }, throttleMs - (now - lastUpdate));
+    }
   };
+
   listeners.add(l);
   derivRequest({ balance: 1, subscribe: 1 }).catch(() => {});
+
   return () => {
     if (stopped) return;
     stopped = true;
+    if (timeoutId) clearTimeout(timeoutId);
     listeners.delete(l);
     derivRequest({ forget_all: "balance" }).catch(() => {});
   };
