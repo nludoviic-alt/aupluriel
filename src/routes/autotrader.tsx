@@ -25,16 +25,20 @@ import {
   countConsecutiveLosses,
   currentActiveSessions,
   DEFAULT_CONFIG,
+  deleteCustomPreset,
   isInTradingSession,
+  loadCustomPresets,
   loadTradeLog,
   openPreviewTrade,
   PRUDENT_CONFIG,
   PRESETS,
+  saveCurrentAsPreset,
   SESSION_HOURS,
   startAutoTrader,
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
+  type CustomPreset,
   type PresetConfig,
   type RiskProfile,
   type TradingMode,
@@ -80,10 +84,17 @@ function AutoTraderPage() {
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
   const [riskStopReasons, setRiskStopReasons] = useState<string[]>([]);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [presetDesc, setPresetDesc] = useState("");
   const stopRef = useRef<(() => void) | null>(null);
   const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
+    // Load custom presets
+    setCustomPresets(loadCustomPresets());
+
     const loaded = loadConfig();
     // Pre-select a pair when arriving from the market coach (?pair=…)
     const pair = new URLSearchParams(window.location.search).get("pair");
@@ -461,10 +472,22 @@ function AutoTraderPage() {
 
         {/* Preset Selector */}
         <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
-          <label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">
-            🎯 Choisir un profil de trading
-          </label>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-xs uppercase tracking-wider text-muted-foreground">
+              🎯 Choisir un profil de trading
+            </label>
+            <button
+              onClick={() => setShowSavePreset(true)}
+              disabled={running}
+              className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-[color:var(--brand-cyan)]/20 text-[color:var(--brand-cyan)] hover:bg-[color:var(--brand-cyan)]/30 transition-colors disabled:opacity-50"
+            >
+              <Save className="h-3 w-3" />
+              Sauvegarder config actuelle
+            </button>
+          </div>
+
+          {/* Built-in Presets */}
+          <div className="grid gap-2 sm:grid-cols-3 mb-3">
             {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
               const preset = PRESETS[key];
               const isActive = config.minConfidence === preset.minConfidence &&
@@ -484,10 +507,10 @@ function AutoTraderPage() {
                     "relative rounded-lg border p-3 text-left transition-all",
                     isActive
                       ? key === "conservative"
-                        ? "border-yellow-500 bg-yellow-500/10"  // Jaune léger
+                        ? "border-yellow-500 bg-yellow-500/10"
                         : key === "moderate"
-                          ? "border-blue-500 bg-blue-500/10"    // Bleu léger
-                          : "border-green-500 bg-green-500/10"   // Vert léger
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-green-500 bg-green-500/10"
                       : "border-border bg-background hover:border-muted-foreground/50",
                     running && "opacity-50 cursor-not-allowed",
                   )}
@@ -517,8 +540,84 @@ function AutoTraderPage() {
               );
             })}
           </div>
+
+          {/* Custom Presets */}
+          {customPresets.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-border">
+              <label className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">
+                � Mes presets personnalisés ({customPresets.length})
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {customPresets.map((preset) => {
+                  const isActive = config.minConfidence === preset.minConfidence &&
+                                  config.minTfAgreement === preset.minTfAgreement;
+                  return (
+                    <div
+                      key={preset.id}
+                      className={cn(
+                        "relative rounded-lg border p-3 transition-all group",
+                        isActive
+                          ? "border-[color:var(--brand-cyan)] bg-[color:var(--brand-cyan)]/10"
+                          : "border-border bg-background hover:border-muted-foreground/50",
+                      )}
+                    >
+                      <button
+                        disabled={running}
+                        onClick={() => {
+                          const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...presetConfig } = preset;
+                          setConfig((prev) => ({ ...prev, ...presetConfig }));
+                          toast.success(`Preset "${preset.name}" appliqué`);
+                        }}
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{preset.emoji}</span>
+                          <span className="text-xs font-semibold truncate">{preset.name}</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground leading-tight">
+                          {preset.description.slice(0, 35)}...
+                        </p>
+                        {preset.performance && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[color:var(--bull)]/20 text-[color:var(--bull)]">
+                              {preset.performance.winRate.toFixed(1)}% win
+                            </span>
+                            <span className={cn(
+                              "text-[9px] px-1.5 py-0.5 rounded",
+                              preset.performance.totalProfit >= 0
+                                ? "bg-[color:var(--bull)]/20 text-[color:var(--bull)]"
+                                : "bg-[color:var(--bear)]/20 text-[color:var(--bear)]"
+                            )}>
+                              ${preset.performance.totalProfit.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          deleteCustomPreset(preset.id);
+                          setCustomPresets(loadCustomPresets());
+                          toast.success(`Preset "${preset.name}" supprimé`);
+                        }}
+                        className="absolute top-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-500 transition-all"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                      {isActive && (
+                        <div className="absolute top-1 right-1">
+                          <div className="h-2 w-2 rounded-full bg-[color:var(--brand-cyan)]" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <p className="mt-2 text-[10px] text-muted-foreground">
-            💡 Choisis selon ton capital et ton appétence au risque. Le mode conservateur recommande simulation, les autres demo obligatoire.
+            💡 Choisis selon ton capital et ton appétence au risque. Sauvegarde ta config personnalisée quand elle performe bien.
           </p>
         </div>
 

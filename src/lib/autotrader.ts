@@ -178,6 +178,79 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
   aggressive: AGGRESSIVE_PRESET,
 };
 
+/** Custom user preset with performance tracking */
+export interface CustomPreset extends PresetConfig {
+  id: string;
+  createdAt: number;
+  performance?: {
+    totalTrades: number;
+    winRate: number;
+    totalProfit: number;
+    lastUsed: number;
+  };
+}
+
+const CUSTOM_PRESETS_KEY = "lio23.custom_presets";
+
+/** Load custom presets from localStorage */
+export function loadCustomPresets(): CustomPreset[] {
+  try {
+    const data = localStorage.getItem(CUSTOM_PRESETS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Save custom presets to localStorage */
+export function saveCustomPresets(presets: CustomPreset[]) {
+  try {
+    localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets.slice(0, 10))); // Max 10 presets
+  } catch {}
+}
+
+/** Save current config as a custom preset */
+export function saveCurrentAsPreset(
+  config: AutoTraderConfig,
+  name: string,
+  description: string,
+  emoji: string = "💾"
+): CustomPreset {
+  const presets = loadCustomPresets();
+  const newPreset: CustomPreset = {
+    id: `custom_${Date.now()}`,
+    name,
+    description,
+    emoji,
+    recommendedCapital: "Personnalisé",
+    targetWinRate: "En cours de calcul...",
+    expectedTradesPerDay: String(config.maxTradesPerDay),
+    createdAt: Date.now(),
+    ...config,
+  };
+  saveCustomPresets([newPreset, ...presets]);
+  return newPreset;
+}
+
+/** Delete a custom preset */
+export function deleteCustomPreset(id: string) {
+  const presets = loadCustomPresets().filter((p) => p.id !== id);
+  saveCustomPresets(presets);
+}
+
+/** Update preset performance stats */
+export function updatePresetPerformance(
+  id: string,
+  stats: { totalTrades: number; winRate: number; totalProfit: number }
+) {
+  const presets = loadCustomPresets();
+  const idx = presets.findIndex((p) => p.id === id);
+  if (idx >= 0) {
+    presets[idx].performance = { ...stats, lastUsed: Date.now() };
+    saveCustomPresets(presets);
+  }
+}
+
 export interface TradeLog {
   id: string;
   time: number;
