@@ -1,4 +1,4 @@
-const TOKEN_KEY = "lio23.token";
+export const TOKEN_KEY = "lio23.token";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

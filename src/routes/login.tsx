@@ -1,12 +1,10 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Mail, Lock, Eye, EyeOff, KeyRound } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { api, setToken } from "@/lib/api";
-import { useAuth } from "@/hooks/use-auth";
-import { useEffect } from "react";
+import { api, setToken, TOKEN_KEY } from "@/lib/api";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Connexion — LIO23" }] }),
@@ -22,14 +20,22 @@ interface AuthResponse {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated (wait for auth check to complete)
+  // Only check auth once on mount, not continuously
   useEffect(() => {
-    if (!authLoading && user) navigate({ to: "/" });
-  }, [authLoading, user, navigate]);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      // Verify token is valid with a single check
+      api.get("/api/auth/me").then(() => {
+        navigate({ to: "/" });
+      }).catch(() => {
+        // Invalid token, stay on login
+        localStorage.removeItem(TOKEN_KEY);
+      });
+    }
+  }, [navigate]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -156,7 +162,11 @@ function LoginPage() {
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="vous@exemple.com"
                     required
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="email"
+                    inputMode="email"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 md:text-sm"
                   />
                 </div>
               </div>
@@ -173,7 +183,8 @@ function LoginPage() {
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-9 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    autoComplete="current-password"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-9 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 md:text-sm"
                   />
                   <button
                     type="button"
@@ -216,7 +227,11 @@ function LoginPage() {
                     onChange={(e) => setRegEmail(e.target.value)}
                     placeholder="vous@exemple.com"
                     required
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="email"
+                    inputMode="email"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 md:text-sm"
                   />
                 </div>
               </div>
@@ -237,7 +252,10 @@ function LoginPage() {
                     maxLength={30}
                     pattern="[a-zA-Z0-9_\-]+"
                     title="Lettres, chiffres, _ ou -"
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="username"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 md:text-sm"
                   />
                 </div>
               </div>
@@ -255,7 +273,8 @@ function LoginPage() {
                     placeholder="6 caractères minimum"
                     required
                     minLength={6}
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-9 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    autoComplete="new-password"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-9 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 md:text-sm"
                   />
                   <button
                     type="button"
