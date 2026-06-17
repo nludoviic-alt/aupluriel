@@ -128,16 +128,20 @@ function AutoTraderPage() {
   const stats = useMemo(() => {
     const pnl = todayPnl(logs);
     const tradeCount = todayTradeCount(logs);
+    const closedLogs = logs.filter((l) => l.status === "won" || l.status === "lost");
     const wins = logs.filter((l) => l.status === "won").length;
     const losses = logs.filter((l) => l.status === "lost").length;
+    const errors = logs.filter((l) => l.status === "error").length;
     const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+    const totalWon = closedLogs.filter((l) => l.status === "won").reduce((s, l) => s + l.profit, 0);
+    const totalLost = closedLogs.filter((l) => l.status === "lost").reduce((s, l) => s + l.profit, 0);
     const openTradeList = logs.filter((l) => l.status === "open");
     const consecutiveLosses = countConsecutiveLosses(logs);
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(config.stakeUsd, logs) : config.stakeUsd;
-    return { pnl, tradeCount, wins, losses, winRate, openTradeList, consecutiveLosses, effectiveStake };
+    return { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake };
   }, [logs, config.adaptiveStake, config.stakeUsd]);
 
-  const { pnl, tradeCount, wins, losses, winRate, openTradeList, consecutiveLosses, effectiveStake } = stats;
+  const { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake } = stats;
   const openTrades = openTradeList.length;
   const inCooldown = Date.now() < cooldownUntil;
   const cooldownSecsLeft = inCooldown ? Math.ceil((cooldownUntil - Date.now()) / 1000) : 0;
@@ -496,21 +500,38 @@ function AutoTraderPage() {
         </div>
       )}
 
+      {/* Mode simulation notice */}
+      {config.mode === "simulation" && (
+        <div className="rounded-xl border border-muted/50 bg-muted/10 px-4 py-3 text-xs text-muted-foreground flex gap-2 items-start">
+          <span className="text-lg leading-none">ℹ️</span>
+          <span>
+            <strong className="text-foreground">Mode simulation</strong> — Aucun vrai trade n'est envoyé à Deriv.
+            Le solde de $10 000 est ton compte Deriv demo, il ne change pas en simulation.
+            Le vrai suivi de tes résultats est dans <strong className="text-foreground">Fonds disponibles</strong> ci-dessous.
+          </span>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
           label="Fonds disponibles"
           value={`$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
           tone={cumulativePnl >= 0 ? "bull" : "bear"}
-          sub={`Capital: $${config.initialCapital} ${cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}`}
+          sub={`Départ $${config.initialCapital} · cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
         />
         <Kpi
           label="P&L Aujourd'hui"
           value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
           tone={pnl >= 0 ? "bull" : "bear"}
-          sub={`${tradeCount} trade${tradeCount > 1 ? "s" : ""} · ${wins}W / ${losses}L`}
+          sub={`+$${totalWon.toFixed(2)} gagné / -$${Math.abs(totalLost).toFixed(2)} perdu`}
         />
-        <Kpi label="Win Rate" value={`${winRate.toFixed(0)}%`} tone="cyan" sub={`${wins}W / ${losses}L · total`} />
+        <Kpi
+          label="Win Rate"
+          value={`${winRate.toFixed(0)}%`}
+          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : "bear"}
+          sub={`${wins}✓ ${losses}✗ ${errors > 0 ? `${errors}⚠ erreurs` : ""}`}
+        />
         <Kpi
           label="Limite journalière"
           value={`$${Math.abs(pnl).toFixed(0)} / $${config.maxDailyLossUsd}`}
@@ -1097,51 +1118,68 @@ function AutoTraderPage() {
                   <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="px-4 py-2.5 text-left">Heure</th>
-                      <th className="px-4 py-2.5 text-left">Paire</th>
+                      <th className="px-4 py-2.5 text-left">Paire / Info</th>
                       <th className="px-4 py-2.5 text-center">Direction</th>
                       <th className="px-4 py-2.5 text-right">Mise</th>
                       <th className="px-4 py-2.5 text-right">Conf.</th>
-                      <th className="px-4 py-2.5 text-right">TF</th>
                       <th className="px-4 py-2.5 text-right">P&L</th>
                       <th className="px-4 py-2.5 text-center">Statut</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.map((t) => (
-                      <tr key={t.id} className="border-t border-border/40">
-                        <td className="px-4 py-2 text-xs text-muted-foreground">
+                      <tr key={t.id} className={cn(
+                        "border-t border-border/40",
+                        t.status === "error" && "bg-[color:var(--bear)]/5",
+                      )}>
+                        <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
                           {new Date(t.time).toLocaleTimeString()}
                         </td>
-                        <td className="px-4 py-2 font-medium text-xs">
-                          {t.status === "cooldown" || t.status === "risk-stop"
-                            ? <span className="text-muted-foreground italic">{t.note}</span>
-                            : SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                        <td className="px-4 py-2 text-xs max-w-[180px]">
+                          {t.status === "cooldown" || t.status === "risk-stop" ? (
+                            <span className="text-muted-foreground italic">{t.note}</span>
+                          ) : t.status === "error" ? (
+                            <span className="text-[color:var(--bear)]" title={t.note}>
+                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                              {t.note && <span className="block text-[10px] opacity-80 truncate">{t.note}</span>}
+                            </span>
+                          ) : (
+                            <span className="font-medium">
+                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                              {t.note && <span className="block text-[10px] text-muted-foreground">{t.note}</span>}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-center">
-                          <span className={cn(
-                            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold",
-                            t.direction === "CALL"
-                              ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-                              : "bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
-                          )}>
-                            {t.direction === "CALL"
-                              ? <TrendingUp className="h-3 w-3" />
-                              : <TrendingDown className="h-3 w-3" />}
-                            {t.direction}
-                          </span>
+                          {t.status !== "cooldown" && t.status !== "risk-stop" && (
+                            <span className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold",
+                              t.direction === "CALL"
+                                ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
+                                : "bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
+                            )}>
+                              {t.direction === "CALL"
+                                ? <TrendingUp className="h-3 w-3" />
+                                : <TrendingDown className="h-3 w-3" />}
+                              {t.direction}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-2 text-right">${t.stake}</td>
-                        <td className="px-4 py-2 text-right text-xs">{t.confidence}%</td>
-                        <td className="px-4 py-2 text-right text-xs">{t.tfAgreement}/4</td>
+                        <td className="px-4 py-2 text-right text-xs">${t.stake > 0 ? t.stake.toFixed(2) : "—"}</td>
+                        <td className="px-4 py-2 text-right text-xs">
+                          {t.confidence > 0 ? `${t.confidence}%` : "—"}
+                        </td>
                         <td className={cn(
-                          "px-4 py-2 text-right font-semibold",
+                          "px-4 py-2 text-right font-semibold text-sm",
                           t.profit > 0
                             ? "text-[color:var(--bull)]"
                             : t.profit < 0
                               ? "text-[color:var(--bear)]"
                               : "text-muted-foreground",
                         )}>
-                          {t.profit !== 0 ? `${t.profit > 0 ? "+" : ""}$${t.profit.toFixed(2)}` : "—"}
+                          {t.status === "won" && `+$${t.profit.toFixed(2)}`}
+                          {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
+                          {(t.status !== "won" && t.status !== "lost") && "—"}
                         </td>
                         <td className="px-4 py-2 text-center">
                           <StatusBadge status={t.status} />
