@@ -79,6 +79,105 @@ export const PRUDENT_CONFIG: Partial<AutoTraderConfig> = {
   stopOnRisk: true,        // hard-stop the engine on danger
 };
 
+/** Optimized presets for different risk profiles */
+export type RiskProfile = "conservative" | "moderate" | "aggressive";
+
+export interface PresetConfig extends Partial<AutoTraderConfig> {
+  name: string;
+  description: string;
+  emoji: string;
+  recommendedCapital: string;
+  targetWinRate: string;
+  expectedTradesPerDay: string;
+}
+
+/** 
+ * CONSERVATIVE - Safety first, steady small wins
+ * Best for: Beginners, small accounts (<$500), risk-averse traders
+ */
+export const CONSERVATIVE_PRESET: PresetConfig = {
+  name: "Conservateur",
+  description: "Sécurité maximale. Petits gains réguliers, pertes minimisées.",
+  emoji: "🛡️",
+  recommendedCapital: "$200-500",
+  targetWinRate: "65-70%",
+  expectedTradesPerDay: "2-4",
+  mode: "simulation",        // Start safe, switch to live when comfortable
+  stakeUsd: 2,               // 0.4-1% of capital
+  durationMinutes: 15,       // Avoid 1min noise
+  minConfidence: 85,         // Only highest quality signals
+  minTfAgreement: 4,         // All 4 TFs must align
+  maxDailyLossUsd: 10,       // 2-5% max daily risk
+  maxTradesPerDay: 4,
+  maxConsecutiveLosses: 2,   // Stop early on bad days
+  maxVolatilityPct: 2,        // Avoid all volatile markets
+  symbols: ["cryBTCUSD", "frxEURUSD"],  // Most liquid pairs
+  tradingSessions: ["london", "newyork"],
+  adaptiveStake: true,
+  premiumOnly: true,          // Grade A only
+  stopOnRisk: true,
+};
+
+/**
+ * MODERATE - Balanced risk/reward
+ * Best for: Intermediate traders, medium accounts ($500-2000)
+ */
+export const MODERATE_PRESET: PresetConfig = {
+  name: "Modéré",
+  description: "Équilibre optimal entre sécurité et rendement.",
+  emoji: "⚖️",
+  recommendedCapital: "$500-2000",
+  targetWinRate: "60-65%",
+  expectedTradesPerDay: "4-8",
+  mode: "demo",              // Test in demo first
+  stakeUsd: 5,               // 0.25-1% of capital
+  durationMinutes: 10,         // Medium frequency
+  minConfidence: 78,           // Standard threshold
+  minTfAgreement: 3,           // 3 of 4 TFs align
+  maxDailyLossUsd: 20,         // 1-4% daily risk
+  maxTradesPerDay: 8,
+  maxConsecutiveLosses: 3,
+  maxVolatilityPct: 3,
+  symbols: ["cryBTCUSD", "frxEURUSD", "cryETHUSD"],
+  tradingSessions: ["london", "newyork"],
+  adaptiveStake: true,
+  premiumOnly: false,          // Allow good signals too
+  stopOnRisk: true,
+};
+
+/**
+ * AGGRESSIVE - Maximum trades, higher risk
+ * Best for: Experienced traders, large accounts (>$2000), active monitoring
+ */
+export const AGGRESSIVE_PRESET: PresetConfig = {
+  name: "Aggressif",
+  description: "Plus de trades, plus de risque, potentiel élevé. Surveillance active requise.",
+  emoji: "🚀",
+  recommendedCapital: "$2000+",
+  targetWinRate: "55-60%",
+  expectedTradesPerDay: "8-15",
+  mode: "demo",                // Mandatory demo first
+  stakeUsd: 10,                // 0.5% of capital
+  durationMinutes: 5,           // Quick scalping
+  minConfidence: 70,            // Accept more signals
+  minTfAgreement: 2,            // 2 of 4 TFs align
+  maxDailyLossUsd: 50,          // 2.5% daily risk
+  maxTradesPerDay: 15,
+  maxConsecutiveLosses: 5,      // Allow more room
+  maxVolatilityPct: 5,          // Trade volatile markets
+  symbols: ["cryBTCUSD", "cryETHUSD", "frxEURUSD", "frxGBPUSD", "cryLTCUSD"],
+  tradingSessions: ["asia", "london", "newyork"],  // All sessions
+  adaptiveStake: true,
+  premiumOnly: false,
+  stopOnRisk: true,
+};
+
+export const PRESETS: Record<RiskProfile, PresetConfig> = {
+  conservative: CONSERVATIVE_PRESET,
+  moderate: MODERATE_PRESET,
+  aggressive: AGGRESSIVE_PRESET,
+};
+
 export interface TradeLog {
   id: string;
   time: number;

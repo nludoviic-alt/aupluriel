@@ -29,11 +29,14 @@ import {
   loadTradeLog,
   openPreviewTrade,
   PRUDENT_CONFIG,
+  PRESETS,
   SESSION_HOURS,
   startAutoTrader,
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
+  type PresetConfig,
+  type RiskProfile,
   type TradingMode,
   type TradingSession,
   type TradeLog,
@@ -452,7 +455,68 @@ function AutoTraderPage() {
 
       {/* Config */}
       <div className="glass-panel rounded-xl p-5">
-        <h2 className="text-base font-semibold mb-4">Configuration</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold">Configuration</h2>
+        </div>
+
+        {/* Preset Selector */}
+        <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
+          <label className="mb-3 block text-xs uppercase tracking-wider text-muted-foreground">
+            🎯 Choisir un profil de trading
+          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
+              const preset = PRESETS[key];
+              const isActive = config.minConfidence === preset.minConfidence &&
+                              config.minTfAgreement === preset.minTfAgreement;
+              return (
+                <button
+                  key={key}
+                  disabled={running}
+                  onClick={() => {
+                    const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...presetConfig } = preset;
+                    setConfig((prev) => ({ ...prev, ...presetConfig }));
+                    toast.success(`Profil ${preset.name} appliqué`, {
+                      description: `${preset.description} Capital recommandé: ${preset.recommendedCapital}`,
+                    });
+                  }}
+                  className={cn(
+                    "relative rounded-lg border p-3 text-left transition-all",
+                    isActive
+                      ? key === "conservative"
+                        ? "border-[color:var(--bull)] bg-[color:var(--bull)]/10"
+                        : key === "moderate"
+                          ? "border-[color:var(--brand-cyan)] bg-[color:var(--brand-cyan)]/10"
+                          : "border-[color:var(--brand-violet)] bg-[color:var(--brand-violet)]/10"
+                      : "border-border bg-background hover:border-muted-foreground/50",
+                    running && "opacity-50 cursor-not-allowed",
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{preset.emoji}</span>
+                    <span className="text-xs font-semibold">{preset.name}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    {preset.description.slice(0, 40)}...
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">{preset.recommendedCapital}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">{preset.targetWinRate}</span>
+                  </div>
+                  {isActive && (
+                    <div className="absolute top-1 right-1">
+                      <div className="h-2 w-2 rounded-full bg-[color:var(--bull)]" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            💡 Choisis selon ton capital et ton appétence au risque. Le mode conservateur recommande simulation, les autres demo obligatoire.
+          </p>
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Mode */}
           <div>
