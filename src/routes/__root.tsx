@@ -143,10 +143,6 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { activeAlerts, notifPermission, requestPermission } = useMarketAlert(true);
-  const hasAlerts = useMemo(() => activeAlerts.length > 0, [activeAlerts]);
-  usePriceAlerts();
-  const deriv = useDerivSession();
 
   // Auth gate: send signed-out visitors to the login page, except on public auth routes.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -157,6 +153,12 @@ function RootComponent() {
     if (authLoading || isPublicRoute || user) return;
     window.location.href = "/login";
   }, [authLoading, isPublicRoute, user]);
+
+  // Only run heavy hooks on authenticated routes to avoid blocking mobile UI
+  const { activeAlerts, notifPermission, requestPermission } = useMarketAlert(!isPublicRoute && !!user);
+  const hasAlerts = useMemo(() => activeAlerts.length > 0, [activeAlerts]);
+  usePriceAlerts(!isPublicRoute && !!user);
+  const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
   // full-screen without the app sidebar/header chrome.

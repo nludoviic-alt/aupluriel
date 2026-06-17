@@ -52,11 +52,11 @@ function derivSymbol(pair: string): string {
   return SYMBOLS.find((s) => s.label === pair)?.deriv ?? "";
 }
 
-export function usePriceAlerts() {
+export function usePriceAlerts(enabled = true) {
   const firedRef = useRef<Record<string, number>>(loadFired());
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !enabled) return;
 
     // Subscribe to ticks for each unique pair in enabled price alerts
     const alerts = loadAlerts().filter((a) => a.enabled && a.type === "price");

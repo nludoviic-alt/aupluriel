@@ -83,7 +83,7 @@ function initSession() {
     });
 }
 
-export function useDerivSession(): DerivSession {
+export function useDerivSession(enabled = true): DerivSession {
   const [state, setLocal] = useState<DerivSession>(_state);
 
   useEffect(() => {
@@ -93,9 +93,9 @@ export function useDerivSession(): DerivSession {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !enabled) return;
     initSession();
-  }, []);
+  }, [enabled]);
 
   return state;
 }
