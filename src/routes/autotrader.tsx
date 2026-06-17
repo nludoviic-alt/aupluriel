@@ -568,9 +568,20 @@ function AutoTraderPage() {
               max={100}
               step={1}
               disabled={running}
-              onCommit={(next) => {
-                patchConfig("stakeUsd", next);
-                return true;
+              onCommit={async (next) => {
+                const confirmed = await confirm({
+                  title: config.mode === "live" ? "⚠️ Modifier la mise ?" : "Modifier la mise ?",
+                  description: config.mode === "live"
+                    ? `Tu vas passer de $${config.stakeUsd} à $${next} par trade. En mode LIVE, cela affecte directement ton argent réel.`
+                    : `Changer la mise de $${config.stakeUsd} à $${next} par trade.`,
+                  confirmLabel: "Confirmer",
+                  danger: config.mode === "live",
+                });
+                if (confirmed) {
+                  patchConfig("stakeUsd", next);
+                  toast.success(`Mise mise à jour: $${next}`);
+                }
+                return confirmed;
               }}
             />
           </Field>
@@ -624,16 +635,27 @@ function AutoTraderPage() {
             </div>
           </Field>
 
-          {/* Max daily loss — editable even while running, no confirmation */}
+          {/* Max daily loss */}
           <Field label="Perte max journalière ($)">
             <AmountInput
               value={config.maxDailyLossUsd}
               min={5}
               max={500}
               step={5}
-              onCommit={(next) => {
-                patchConfig("maxDailyLossUsd", next);
-                return true;
+              onCommit={async (next) => {
+                const confirmed = await confirm({
+                  title: config.mode === "live" ? "⚠️ Modifier la limite de perte ?" : "Modifier la limite de perte ?",
+                  description: config.mode === "live"
+                    ? `Tu vas changer la limite de $${config.maxDailyLossUsd} à $${next}. En mode LIVE, c'est le maximum que tu peux perdre aujourd'hui.`
+                    : `Changer la limite journalière de $${config.maxDailyLossUsd} à $${next}.`,
+                  confirmLabel: "Confirmer",
+                  danger: config.mode === "live",
+                });
+                if (confirmed) {
+                  patchConfig("maxDailyLossUsd", next);
+                  toast.success(`Limite journalière mise à jour: $${next}`);
+                }
+                return confirmed;
               }}
             />
             <p className="mt-0.5 text-xs text-muted-foreground">Modifiable en temps réel, même bot actif</p>
