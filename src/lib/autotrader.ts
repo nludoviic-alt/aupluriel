@@ -33,6 +33,7 @@ export interface AutoTraderConfig {
   maxDailyLossUsd: number;
   maxTradesPerDay: number;
   symbols: string[];
+  initialCapital: number;          // starting capital for virtual P&L tracking
   // --- Risk protection ---
   maxConsecutiveLosses: number;   // hard-stop engine after N consecutive losses
   cooldownMinutes: number;        // (legacy) kept for compatibility
@@ -53,6 +54,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
   symbols: ["cryBTCUSD", "frxEURUSD"],
+  initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
   tradingSessions: ["london", "newyork"],
@@ -367,6 +369,29 @@ export function countConsecutiveLosses(logs: TradeLog[]): number {
   return count;
 }
 
+// ─── Cumulative P&L (persists forever, never resets) ─────────────────────────
+
+const CUMULATIVE_PNL_KEY = "lio23.cumulative_pnl";
+
+export function loadCumulativePnl(): number {
+  try { return Number(JSON.parse(localStorage.getItem(CUMULATIVE_PNL_KEY) ?? "0")) || 0; }
+  catch { return 0; }
+}
+
+export function saveCumulativePnl(amount: number) {
+  try { localStorage.setItem(CUMULATIVE_PNL_KEY, JSON.stringify(amount)); } catch {}
+}
+
+export function addToCumulativePnl(profit: number): number {
+  const next = loadCumulativePnl() + profit;
+  saveCumulativePnl(next);
+  return next;
+}
+
+export function resetCumulativePnl() {
+  saveCumulativePnl(0);
+}
+
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
 const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
@@ -523,6 +548,24 @@ async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
+export function allTimePnl(logs: TradeLog[]): number {
+  return logs
+    .filter((l) => l.status === "won" || l.status === "lost")
+    .reduce((sum, l) => sum + l.profit, 0);
+}
+
+/** Dismiss a preview trade: mark it closed and remove from active display. */
+export function dismissTrade(id: string): TradeLog[] {
+  const logs = loadTradeLog();
+  const idx = logs.findIndex((l) => l.id === id);
+  if (idx >= 0 && (logs[idx].status === "open" || logs[idx].status === "pending")) {
+    logs[idx] = { ...logs[idx], status: "lost", profit: 0, closedAt: Date.now(), note: "Fermé manuellement" };
+    saveTradeLog(logs);
+    logsCache = logs;
+  }
+  return logs;
+}
+
 export function todayPnl(logs: TradeLog[]): number {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -552,9 +595,15 @@ export function startAutoTrader(
 
   function emit(log: TradeLog, meta?: { cooldownUntil?: number }) {
     const idx = logs.findIndex((l) => l.id === log.id);
+    const prev = idx >= 0 ? logs[idx] : null;
     if (idx >= 0) logs[idx] = log;
     else logs.unshift(log);
     saveTradeLog(logs);
+    // Update cumulative P&L only when trade first reaches a terminal state
+    if ((log.status === "won" || log.status === "lost") &&
+        prev && prev.status !== "won" && prev.status !== "lost") {
+      addToCumulativePnl(log.profit);
+    }
     onEvent(log, meta);
   }
 

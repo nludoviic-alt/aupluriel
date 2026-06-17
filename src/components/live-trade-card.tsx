@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { TrendingDown, TrendingUp, Clock } from "lucide-react";
+import { TrendingDown, TrendingUp, Clock, X } from "lucide-react";
 import { useDerivTicks } from "@/hooks/use-deriv";
 import { SYMBOLS } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ function symbolLabel(deriv: string) {
 }
 
 /** Live sparkline + entry line + running win/loss state for an open trade. */
-export function LiveTradeCard({ trade }: { trade: LiveTradeLike }) {
+export function LiveTradeCard({ trade, onDismiss }: { trade: LiveTradeLike; onDismiss?: () => void }) {
   const { series, last } = useDerivTicks(trade.symbol, 80);
   const [secsLeft, setSecsLeft] = useState(0);
 
@@ -63,7 +63,16 @@ export function LiveTradeCard({ trade }: { trade: LiveTradeLike }) {
   const lineColor = winning ? "var(--bull)" : "var(--bear)";
 
   return (
-    <div className="glass-panel rounded-2xl p-4">
+    <div className="glass-panel rounded-2xl p-4 relative">
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          className="absolute top-2 right-2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors z-10"
+          title="Fermer cette carte"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground">{symbolLabel(trade.symbol)}</span>
@@ -80,7 +89,7 @@ export function LiveTradeCard({ trade }: { trade: LiveTradeLike }) {
           </span>
         </div>
         {trade.expiry && (
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className={cn("flex items-center gap-1 text-xs text-muted-foreground", onDismiss && "mr-5")}>
             <Clock className="h-3 w-3" />
             {Math.floor(secsLeft / 60)}m {String(secsLeft % 60).padStart(2, "0")}s
           </span>

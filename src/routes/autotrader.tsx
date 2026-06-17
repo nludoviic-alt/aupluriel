@@ -23,12 +23,15 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SYMBOLS } from "@/lib/deriv";
 import {
+  addToCumulativePnl,
   computeAdaptiveStake,
   countConsecutiveLosses,
   currentActiveSessions,
   DEFAULT_CONFIG,
   deleteCustomPreset,
+  dismissTrade,
   isInTradingSession,
+  loadCumulativePnl,
   loadCustomPresets,
   loadTradeLogCached,
   openPreviewTrade,
@@ -93,6 +96,7 @@ function AutoTraderPage() {
   const lastPendingToastRef = useRef<number>(0);
   const [presetDesc, setPresetDesc] = useState("");
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
+  const [cumulativePnl, setCumulativePnl] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
   const { confirmState, confirm } = useConfirm();
 
@@ -111,6 +115,7 @@ function AutoTraderPage() {
     }
     setConfig(loaded);
     setLogs(loadTradeLogCached());
+    setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
     setDisclaimerAccepted(accepted);
     // Update active sessions every minute
@@ -154,8 +159,14 @@ function AutoTraderPage() {
       // Add new (keep max 50)
       return [log, ...prev].slice(0, 50);
     });
-    if (log.status === "won") toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
-    if (log.status === "lost") toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
+    if (log.status === "won") {
+      toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
+      setCumulativePnl(loadCumulativePnl());
+    }
+    if (log.status === "lost") {
+      toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
+      setCumulativePnl(loadCumulativePnl());
+    }
     if (log.status === "error") toast.error(`⚠️ Erreur sur ${log.symbol}`);
     if (log.status === "pending") {
       // Throttle pending toasts - max 1 per 5 seconds to prevent spam
@@ -488,18 +499,18 @@ function AutoTraderPage() {
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
+          label="Fonds disponibles"
+          value={`$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
+          tone={cumulativePnl >= 0 ? "bull" : "bear"}
+          sub={`Capital: $${config.initialCapital} ${cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}`}
+        />
+        <Kpi
           label="P&L Aujourd'hui"
           value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
           tone={pnl >= 0 ? "bull" : "bear"}
-          sub={`${tradeCount} trades`}
+          sub={`${tradeCount} trade${tradeCount > 1 ? "s" : ""} · ${wins}W / ${losses}L`}
         />
-        <Kpi label="Win Rate" value={`${winRate.toFixed(0)}%`} tone="cyan" sub={`${wins}W / ${losses}L`} />
-        <Kpi
-          label="Pertes consécutives"
-          value={`${consecutiveLosses} / ${config.maxConsecutiveLosses}`}
-          tone={consecutiveLosses >= config.maxConsecutiveLosses - 1 ? "bear" : consecutiveLosses > 0 ? "violet" : "default"}
-          sub={inCooldown ? "cooldown en cours" : "avant cooldown"}
-        />
+        <Kpi label="Win Rate" value={`${winRate.toFixed(0)}%`} tone="cyan" sub={`${wins}W / ${losses}L · total`} />
         <Kpi
           label="Limite journalière"
           value={`$${Math.abs(pnl).toFixed(0)} / $${config.maxDailyLossUsd}`}
@@ -517,7 +528,15 @@ function AutoTraderPage() {
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {openTradeList.map((t) => (
-              <LiveTradeCard key={t.id} trade={t} />
+              <LiveTradeCard
+                key={t.id}
+                trade={t}
+                onDismiss={() => {
+                  const updated = dismissTrade(t.id);
+                  setLogs([...updated]);
+                  toast.info(`Carte fermée — ${t.symbol}`);
+                }}
+              />
             ))}
           </div>
         </div>
@@ -683,6 +702,54 @@ function AutoTraderPage() {
           <p className="mt-2 text-[10px] text-muted-foreground">
             💡 Choisis selon ton capital et ton appétence au risque. Sauvegarde ta config personnalisée quand elle performe bien.
           </p>
+        </div>
+
+        {/* Capital initial */}
+        <div className="mb-4 rounded-xl border border-[color:var(--brand-cyan)]/20 bg-[color:var(--brand-cyan)]/5 p-4 flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs uppercase tracking-wider text-muted-foreground mb-1">
+              Capital de départ ($)
+            </label>
+            <AmountInput
+              value={config.initialCapital}
+              min={10}
+              max={100000}
+              step={10}
+              disabled={running}
+              onCommit={async (next) => {
+                patchConfig("initialCapital", next);
+                return true;
+              }}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Base pour calculer tes fonds disponibles. Tous tes gains/pertes s'y ajoutent automatiquement.
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground mb-1">Gains cumulés (tout temps)</div>
+            <div className={cn("text-lg font-bold", cumulativePnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+              {cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}
+            </div>
+            <button
+              onClick={async () => {
+                const ok = await confirm({
+                  title: "Réinitialiser les gains cumulés ?",
+                  description: "Le compteur de gains/pertes accumulés sera remis à zéro. Cette action est irréversible.",
+                  confirmLabel: "Réinitialiser",
+                  danger: true,
+                });
+                if (ok) {
+                  const { resetCumulativePnl } = await import("@/lib/autotrader");
+                  resetCumulativePnl();
+                  setCumulativePnl(0);
+                  toast.success("Gains cumulés réinitialisés");
+                }
+              }}
+              className="mt-1 text-xs text-muted-foreground hover:text-[color:var(--bear)] transition-colors"
+            >
+              Remettre à zéro
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
