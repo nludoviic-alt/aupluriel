@@ -43,6 +43,7 @@ import {
   type CustomPreset,
   type PresetConfig,
   type RiskProfile,
+  type ScanResult,
   type TradingMode,
   type TradingSession,
   type TradeLog,
@@ -91,6 +92,7 @@ function AutoTraderPage() {
   const [presetName, setPresetName] = useState("");
   const lastPendingToastRef = useRef<number>(0);
   const [presetDesc, setPresetDesc] = useState("");
+  const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const { confirmState, confirm } = useConfirm();
 
@@ -215,7 +217,7 @@ function AutoTraderPage() {
       if (stratSymbols.length) {
         toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
       }
-      stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop);
+      stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan));
       setRunning(true);
       toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
     }
@@ -241,7 +243,7 @@ function AutoTraderPage() {
       Notification.requestPermission();
     }
     setRiskStopReasons([]);
-    stopRef.current = startAutoTrader(config, handleEvent, handleRiskStop);
+    stopRef.current = startAutoTrader(config, handleEvent, handleRiskStop, (scan) => setLastScan(scan));
     setRunning(true);
     toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
   }
@@ -445,6 +447,44 @@ function AutoTraderPage() {
         )}
       </div>
 
+      {/* Scan diagnostic — only when running */}
+      {running && lastScan && (
+        <div className="rounded-xl border border-border bg-muted/20 p-4 text-xs">
+          <div className="flex items-center gap-2 mb-2">
+            <Bot className="h-3.5 w-3.5 text-[color:var(--brand-cyan)]" />
+            <span className="font-semibold text-[color:var(--brand-cyan)]">Dernière analyse</span>
+            <span className="text-muted-foreground ml-auto">
+              {new Date(lastScan.time).toLocaleTimeString()}
+            </span>
+          </div>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {lastScan.results.map((r, i) => {
+              const label = SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol;
+              const { text, cls } = (() => {
+                switch (r.action) {
+                  case "traded":       return { text: `✅ Trade déclenché (${r.direction} · ${r.confidence?.toFixed(0)}% · ${r.agreement}/4 TF)`, cls: "text-[color:var(--bull)]" };
+                  case "open-trade":   return { text: "⏳ Position déjà ouverte", cls: "text-muted-foreground" };
+                  case "session-closed": return { text: "🕐 Hors session de trading", cls: "text-muted-foreground" };
+                  case "no-signal":    return { text: `⬜ Pas de signal clair (conf. ${r.confidence?.toFixed(0)}%)`, cls: "text-muted-foreground" };
+                  case "low-confidence": return { text: `📉 Confiance insuffisante: ${r.confidence?.toFixed(0)}% < ${config.minConfidence}% requis`, cls: "text-amber-400" };
+                  case "low-agreement":  return { text: `📊 Accord TF insuffisant: ${r.agreement}/4 < ${config.minTfAgreement} requis`, cls: "text-amber-400" };
+                  case "not-premium":  return { text: "🔒 Signal non PREMIUM (désactive l'option pour trader plus)", cls: "text-amber-400" };
+                  case "volatility":   return { text: "⚡ Volatilité trop élevée", cls: "text-[color:var(--bear)]" };
+                  case "daily-limit":  return { text: "🛑 Limite journalière atteinte", cls: "text-[color:var(--bear)]" };
+                  default:             return { text: r.action, cls: "text-muted-foreground" };
+                }
+              })();
+              return (
+                <div key={i} className="flex gap-2">
+                  <span className="font-medium text-foreground shrink-0">{label}</span>
+                  <span className={cls}>{text}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
@@ -517,9 +557,12 @@ function AutoTraderPage() {
                   disabled={running}
                   onClick={() => {
                     const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...presetConfig } = preset;
-                    setConfig((prev) => ({ ...prev, ...presetConfig }));
+                    // Preserve user's financial settings (stake & daily loss)
+                    const next = { ...config, ...presetConfig, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
+                    setConfig(next);
+                    saveConfig(next);
                     toast.success(`Profil ${preset.name} appliqué`, {
-                      description: `${preset.description} Capital recommandé: ${preset.recommendedCapital}`,
+                      description: `${preset.description} · Mise conservée: $${config.stakeUsd}`,
                     });
                   }}
                   className={cn(
@@ -584,8 +627,10 @@ function AutoTraderPage() {
                         disabled={running}
                         onClick={() => {
                           const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...presetConfig } = preset;
-                          setConfig((prev) => ({ ...prev, ...presetConfig }));
-                          toast.success(`Preset "${preset.name}" appliqué`);
+                          const next = { ...config, ...presetConfig, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
+                          setConfig(next);
+                          saveConfig(next);
+                          toast.success(`Preset "${preset.name}" appliqué · Mise conservée: $${config.stakeUsd}`);
                         }}
                         className="w-full text-left"
                       >

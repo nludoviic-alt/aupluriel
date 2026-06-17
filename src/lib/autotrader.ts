@@ -48,8 +48,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "simulation",
   stakeUsd: 5,
   durationMinutes: 15,
-  minConfidence: 78,
-  minTfAgreement: 3,
+  minConfidence: 70,
+  minTfAgreement: 2,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
   symbols: ["cryBTCUSD", "frxEURUSD"],
@@ -57,7 +57,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   cooldownMinutes: 30,
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
-  premiumOnly: true,
+  premiumOnly: false,
   stopOnRisk: true,
   maxVolatilityPct: 4,
 };
@@ -272,6 +272,21 @@ export interface TradeLog {
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
 export type RiskStopHandler = (reasons: string[]) => void;
+
+export interface ScanSymbolResult {
+  symbol: string;
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit";
+  direction?: "CALL" | "PUT" | null;
+  confidence?: number;
+  agreement?: number;
+}
+
+export interface ScanResult {
+  time: number;
+  results: ScanSymbolResult[];
+}
+
+export type ScanResultHandler = (result: ScanResult) => void;
 
 // ─── Risk notification ─────────────────────────────────────────────────────────
 
@@ -528,6 +543,7 @@ export function startAutoTrader(
   config: AutoTraderConfig,
   onEvent: TradeEventHandler,
   onRiskStop?: RiskStopHandler,
+  onScanResult?: ScanResultHandler,
 ): () => void {
   let stopped = false;
   const logs = loadTradeLog();
@@ -570,17 +586,16 @@ export function startAutoTrader(
 
     const pnl = todayPnl(logs);
     const count = todayTradeCount(logs);
+    const scanResults: ScanSymbolResult[] = [];
 
     // ── RISK STOP CONDITIONS (immediate full stop) ──────────────
     if (config.stopOnRisk) {
       const reasons: string[] = [];
 
-      // 1. Daily loss limit reached
       if (pnl <= -Math.abs(config.maxDailyLossUsd)) {
         reasons.push(`Perte journalière atteinte : $${Math.abs(pnl).toFixed(2)} / $${config.maxDailyLossUsd}`);
       }
 
-      // 2. Consecutive losses
       const consecutive = countConsecutiveLosses(logs);
       if (consecutive >= config.maxConsecutiveLosses) {
         reasons.push(`${consecutive} pertes consécutives (max ${config.maxConsecutiveLosses})`);
@@ -591,12 +606,16 @@ export function startAutoTrader(
         return;
       }
     } else {
-      // Soft circuit-breakers (no hard stop)
       if (pnl <= -Math.abs(config.maxDailyLossUsd)) return;
     }
 
-    // Max trades/day (soft — just stop opening new ones)
-    if (count >= config.maxTradesPerDay) return;
+    if (count >= config.maxTradesPerDay) {
+      for (const symbol of config.symbols) {
+        scanResults.push({ symbol, action: "daily-limit" });
+      }
+      onScanResult?.({ time: Date.now(), results: scanResults });
+      return;
+    }
 
     // Adaptive stake
     const effectiveStake = config.adaptiveStake
@@ -605,10 +624,16 @@ export function startAutoTrader(
 
     for (const symbol of config.symbols) {
       if (stopped) break;
-      if (activeSymbols.has(symbol)) continue;
 
-      // Session filter — skip silently outside allowed sessions
-      if (!isInTradingSession(config.tradingSessions, symbol)) continue;
+      if (activeSymbols.has(symbol)) {
+        scanResults.push({ symbol, action: "open-trade" });
+        continue;
+      }
+
+      if (!isInTradingSession(config.tradingSessions, symbol)) {
+        scanResults.push({ symbol, action: "session-closed" });
+        continue;
+      }
 
       const analysis = await analyzeSymbol(symbol);
 
@@ -622,11 +647,26 @@ export function startAutoTrader(
       }
 
       // ── FAVORABLE-ONLY FILTERS ────────────────────────────────
-      if (!analysis.direction) continue;
-      if (analysis.confidence < config.minConfidence) continue;
-      if (analysis.agreement < config.minTfAgreement) continue;
-      // Only trade PREMIUM positions when enabled
-      if (config.premiumOnly && analysis.premiumCount < 1) continue;
+      if (!analysis.direction) {
+        scanResults.push({ symbol, action: "no-signal", confidence: analysis.confidence });
+        continue;
+      }
+      if (analysis.confidence < config.minConfidence) {
+        scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+        continue;
+      }
+      if (analysis.agreement < config.minTfAgreement) {
+        scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+        continue;
+      }
+      if (config.premiumOnly && analysis.premiumCount < 1) {
+        scanResults.push({ symbol, action: "not-premium", direction: analysis.direction, confidence: analysis.confidence });
+        continue;
+      }
+
+      // Signal qualifies — will trade
+      scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+      onScanResult?.({ time: Date.now(), results: scanResults });
 
       const stakeLabel = effectiveStake < config.stakeUsd
         ? ` (réduite: $${effectiveStake.toFixed(2)})`
@@ -746,10 +786,12 @@ export function startAutoTrader(
         }
       }
     }
+
+    onScanResult?.({ time: Date.now(), results: scanResults });
   }
 
   tick();
-  interval = setInterval(tick, 60_000); // Scan every 60s (was 5min)
+  interval = setInterval(tick, 30_000); // Scan every 30s
 
   return () => {
     stopped = true;
