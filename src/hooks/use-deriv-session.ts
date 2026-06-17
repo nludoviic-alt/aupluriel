@@ -4,7 +4,7 @@
  * tous les appelants reçoivent les mises à jour.
  */
 import { useEffect, useState } from "react";
-import { setDerivSession, subscribeBalance } from "@/lib/deriv";
+import { setDerivSession, subscribeBalance, getBalance } from "@/lib/deriv";
 import { api } from "@/lib/api";
 
 export interface DerivSession {
@@ -39,6 +39,13 @@ function dispatch(update: Partial<DerivSession> | ((s: DerivSession) => DerivSes
   for (const l of _listeners) l(_state);
 }
 
+function startBalanceSubscription() {
+  _balanceUnsub?.();
+  _balanceUnsub = subscribeBalance((bal, cur) => {
+    dispatch({ balance: bal, currency: cur });
+  });
+}
+
 function initSession() {
   if (_initStarted) return;
   _initStarted = true;
@@ -58,7 +65,7 @@ function initSession() {
     .then((res) => {
       if (res.error || !res.wsUrl) {
         dispatch({ connecting: false, error: res.error ?? "Réponse invalide" });
-        _initStarted = false; // allow retry
+        _initStarted = false;
         return;
       }
       setDerivSession(res.wsUrl);
@@ -71,16 +78,32 @@ function initSession() {
         connecting: false,
         error: null,
       });
-      // Subscribe to live balance updates
-      _balanceUnsub?.();
-      _balanceUnsub = subscribeBalance((bal, cur) => {
-        dispatch({ balance: bal, currency: cur });
-      });
+      startBalanceSubscription();
     })
     .catch((e: Error) => {
       dispatch({ connecting: false, error: e.message ?? "Connexion Deriv échouée" });
-      _initStarted = false; // allow retry
+      _initStarted = false;
     });
+}
+
+/** Refresh balance from Deriv WS immediately (call after a trade settles). */
+export async function refreshDerivBalance(): Promise<void> {
+  if (!_state.connected) return;
+  try {
+    const bal = await getBalance();
+    if (bal) dispatch({ balance: bal.balance, currency: bal.currency });
+  } catch {
+    // silent — balance will be updated by the subscription on next tick
+  }
+}
+
+/** Force a full session re-init (use when OTP URL expired and WS is unauthenticated). */
+export function reinitDerivSession(): void {
+  _initStarted = false;
+  _balanceUnsub?.();
+  _balanceUnsub = null;
+  dispatch({ ..._initial });
+  initSession();
 }
 
 export function useDerivSession(enabled = true): DerivSession {

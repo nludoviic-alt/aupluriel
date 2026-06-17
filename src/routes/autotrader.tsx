@@ -58,6 +58,7 @@ import { AmountInput } from "@/components/amount-input";
 import { VOICE_ACTION_EVENT } from "@/components/voice-control";
 import { activeStrategySymbols } from "@/lib/strategies";
 import { LiveTradeCard } from "@/components/live-trade-card";
+import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
 
 export const Route = createFileRoute("/autotrader")({
   head: () => ({ meta: [{ title: "Auto-Trader — LIO23" }] }),
@@ -99,6 +100,7 @@ function AutoTraderPage() {
   const [cumulativePnl, setCumulativePnl] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
   const { confirmState, confirm } = useConfirm();
+  const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
 
   useEffect(() => {
     // Load custom presets
@@ -166,10 +168,12 @@ function AutoTraderPage() {
     if (log.status === "won") {
       toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
       setCumulativePnl(loadCumulativePnl());
+      if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
     if (log.status === "lost") {
       toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
       setCumulativePnl(loadCumulativePnl());
+      if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
     if (log.status === "error") toast.error(`⚠️ Erreur sur ${log.symbol}`);
     if (log.status === "pending") {
@@ -184,7 +188,7 @@ function AutoTraderPage() {
       setCooldownUntil(meta?.cooldownUntil ?? 0);
       toast.warning(`⏸ Cooldown activé — ${log.note}`);
     }
-  }, []);
+  }, [config.mode]);
 
   const handleRiskStop = useCallback((reasons: string[]) => {
     setRunning(false);
@@ -207,6 +211,15 @@ function AutoTraderPage() {
       }
       if ((config.mode === "demo" || config.mode === "live") && !localStorage.getItem("lio23.deriv_token")) {
         toast.error("Configure un token API Deriv dans Paramètres d'abord (requis pour demo et live)");
+        return;
+      }
+      if ((config.mode === "demo" || config.mode === "live") && !derivSession.connected) {
+        if (derivSession.connecting) {
+          toast.info("Connexion Deriv en cours, réessaie dans quelques secondes…");
+        } else {
+          toast.error("Session Deriv non connectée — clique 'Reconnecter' dans le panneau de configuration");
+          reinitDerivSession();
+        }
         return;
       }
       // Confirm ONLY when real money is at stake (LIVE mode)
@@ -516,9 +529,21 @@ function AutoTraderPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
           label="Fonds disponibles"
-          value={`$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
-          tone={cumulativePnl >= 0 ? "bull" : "bear"}
-          sub={`Départ $${config.initialCapital} · cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
+          value={
+            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+              ? `$${derivSession.balance.toFixed(2)}`
+              : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`
+          }
+          tone={
+            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+              ? "bull"
+              : cumulativePnl >= 0 ? "bull" : "bear"
+          }
+          sub={
+            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+              ? `Solde Deriv ${config.mode === "demo" ? "demo" : "réel"} · ${derivSession.currency}`
+              : `Départ $${config.initialCapital} · cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`
+          }
         />
         <Kpi
           label="P&L Aujourd'hui"
@@ -803,8 +828,28 @@ function AutoTraderPage() {
             {config.mode === "simulation" && (
               <p className="mt-1 text-xs text-muted-foreground">Simulation locale — pas de vrais trades</p>
             )}
-            {config.mode === "demo" && (
-              <p className="mt-1 text-xs text-[color:var(--bull)]">✅ Compte demo Deriv — trades réels avec faux argent</p>
+            {config.mode === "demo" && !derivSession.connected && !derivSession.connecting && (
+              <div className="mt-2 flex items-center gap-2 rounded-md bg-[color:var(--bear)]/10 px-3 py-1.5 text-xs text-[color:var(--bear)]">
+                <span>⚠️ Session Deriv déconnectée — les trades DEMO échoueront</span>
+                <button
+                  onClick={() => reinitDerivSession()}
+                  className="ml-auto shrink-0 rounded px-2 py-0.5 font-semibold underline hover:no-underline"
+                >
+                  Reconnecter
+                </button>
+              </div>
+            )}
+            {config.mode === "demo" && derivSession.connecting && (
+              <p className="mt-1 text-xs text-muted-foreground">🔄 Connexion Deriv en cours…</p>
+            )}
+            {config.mode === "demo" && derivSession.connected && (
+              <p className="mt-1 text-xs text-[color:var(--bull)]">
+                ✅ Compte demo Deriv connecté
+                {derivSession.balance !== null && ` — Solde: $${derivSession.balance.toFixed(2)}`}
+              </p>
+            )}
+            {config.mode === "demo" && derivSession.error && (
+              <p className="mt-1 text-xs text-[color:var(--bear)]">⚠️ {derivSession.error}</p>
             )}
             {config.mode === "live" && (
               <p className="mt-1 text-xs text-[color:var(--bear)]">⚠️ Argent réel — sois très prudent</p>
