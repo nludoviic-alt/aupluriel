@@ -484,10 +484,10 @@ function AutoTraderPage() {
                     "relative rounded-lg border p-3 text-left transition-all",
                     isActive
                       ? key === "conservative"
-                        ? "border-[color:var(--bull)] bg-[color:var(--bull)]/10"
+                        ? "border-yellow-500 bg-yellow-500/10"  // Jaune léger
                         : key === "moderate"
-                          ? "border-[color:var(--brand-cyan)] bg-[color:var(--brand-cyan)]/10"
-                          : "border-[color:var(--brand-violet)] bg-[color:var(--brand-violet)]/10"
+                          ? "border-blue-500 bg-blue-500/10"    // Bleu léger
+                          : "border-green-500 bg-green-500/10"   // Vert léger
                       : "border-border bg-background hover:border-muted-foreground/50",
                     running && "opacity-50 cursor-not-allowed",
                   )}
@@ -505,7 +505,12 @@ function AutoTraderPage() {
                   </div>
                   {isActive && (
                     <div className="absolute top-1 right-1">
-                      <div className="h-2 w-2 rounded-full bg-[color:var(--bull)]" />
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        key === "conservative" ? "bg-yellow-500" :
+                        key === "moderate" ? "bg-blue-500" :
+                        "bg-green-500"
+                      )} />
                     </div>
                   )}
                 </button>
