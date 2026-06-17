@@ -27,6 +27,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { LogoMark } from "@/components/logo";
 
@@ -39,7 +40,7 @@ const items = [
   { title: "Journal", url: "/journal", icon: BarChart3 },
   { title: "Marchés", url: "/markets", icon: CandlestickChart },
   { title: "Stratégies", url: "/strategies", icon: Workflow },
-  { title: "Assistant Lio23", url: "/assistant", icon: Bot },
+  { title: "Talk to Lio23", url: "/assistant", icon: Bot },
   { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator },
   { title: "Alertes", url: "/alerts", icon: Bell },
   { title: "Paramètres", url: "/settings", icon: Settings },
@@ -49,6 +50,11 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const { user, logout } = useAuth();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  function handleNavClick() {
+    if (isMobile) setOpenMobile(false);
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -71,7 +77,7 @@ export function AppSidebar() {
               {items.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                    <Link to={item.url} className="flex items-center gap-3">
+                    <Link to={item.url} className="flex items-center gap-3" onClick={handleNavClick}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -81,7 +87,7 @@ export function AppSidebar() {
               {user?.is_admin ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={isActive("/admin")} tooltip="Administration">
-                    <Link to="/admin" className="flex items-center gap-3">
+                    <Link to="/admin" className="flex items-center gap-3" onClick={handleNavClick}>
                       <ShieldCheck className="h-4 w-4" />
                       <span>Administration</span>
                     </Link>

@@ -16,7 +16,7 @@ const AI_PROVIDER_STORAGE = "lio23.ai_provider";
 function getAiConfig(): { apiKey: string; provider: string } {
   return {
     apiKey: localStorage.getItem(AI_KEY_STORAGE) ?? "",
-    provider: localStorage.getItem(AI_PROVIDER_STORAGE) ?? "anthropic",
+    provider: localStorage.getItem(AI_PROVIDER_STORAGE) ?? "groq",
   };
 }
 
@@ -157,11 +157,29 @@ function MarkdownText({ text }: { text: string }) {
 }
 
 function AssistantPage() {
-  const [aiConfig, setAiConfig] = useState({ apiKey: "", provider: "anthropic" });
+  const [aiConfig, setAiConfig] = useState({ apiKey: "", provider: "groq" });
   const [serverProviders, setServerProviders] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    setAiConfig(getAiConfig());
+    // Load from localStorage immediately
+    const local = getAiConfig();
+    setAiConfig(local);
+    // Then hydrate from DB (survives localStorage clears)
+    fetch("/api/settings", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("lio23.token") ?? ""}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((s: Record<string, unknown>) => {
+        const key = (s.ai_api_key as string | undefined)?.trim() || local.apiKey;
+        const provider = (s.ai_provider as string | undefined) || local.provider;
+        if (key || provider !== local.provider) {
+          const merged = { apiKey: key, provider };
+          setAiConfig(merged);
+          localStorage.setItem(AI_KEY_STORAGE, merged.apiKey);
+          localStorage.setItem(AI_PROVIDER_STORAGE, merged.provider);
+        }
+      })
+      .catch(() => {});
     // Is a server-side key configured? If so the chat works without a personal key.
     fetch("/api/chat")
       .then((r) => (r.ok ? r.json() : {}))
@@ -169,26 +187,24 @@ function AssistantPage() {
       .catch(() => {});
   }, []);
 
+  const aiConfigRef = useRef(aiConfig);
+  const serverProvidersRef = useRef(serverProviders);
+  useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
+  useEffect(() => { serverProvidersRef.current = serverProviders; }, [serverProviders]);
+
   const transport = useRef(
     new DefaultChatTransport({
       api: "/api/chat",
-      body: () => ({ apiKey: aiConfig.apiKey, provider: aiConfig.provider }),
+      body: () => {
+        const cfg = aiConfigRef.current;
+        const srv = serverProvidersRef.current;
+        const provider = cfg.apiKey
+          ? cfg.provider
+          : (Object.keys(srv).find((p) => srv[p]) ?? cfg.provider);
+        return { apiKey: cfg.apiKey, provider };
+      },
     }),
   );
-
-  // Rebuild transport when config or server-key availability changes.
-  // Without a personal key, auto-pick whichever provider has a server key.
-  useEffect(() => {
-    transport.current = new DefaultChatTransport({
-      api: "/api/chat",
-      body: () => {
-        const provider = aiConfig.apiKey
-          ? aiConfig.provider
-          : (Object.keys(serverProviders).find((p) => serverProviders[p]) ?? aiConfig.provider);
-        return { apiKey: aiConfig.apiKey, provider };
-      },
-    });
-  }, [aiConfig, serverProviders]);
 
   const { messages, sendMessage, status } = useChat({
     transport: transport.current,
@@ -210,14 +226,13 @@ function AssistantPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastSpokenRef = useRef<string>("");
 
-  // Speech-to-text: dictate into the input, auto-send on final result
+  // Speech-to-text via Web Speech API
   const { listening, supported: micSupported, toggle: toggleMic } = useSpeech({
-    lang: "fr-FR",
+    lang: navigator.language || "fr-FR",
+    continuous: true,
     onInterim: (t) => setInput(t),
-    onFinal: (t) => {
-      setInput("");
-      submit(t);
-    },
+    onFinal: (t) => setInput(t),
+    onError: (err) => toast.error(err),
   });
 
   useEffect(() => {
@@ -289,9 +304,9 @@ function AssistantPage() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-bold tracking-tight">Assistant Lio23</h1>
+          <h1 className="text-base font-bold tracking-tight">Talk to Lio23</h1>
           <p className="text-xs text-muted-foreground truncate">
-            {hasKey ? providerLabel : "⚠️ Clé API non configurée — configure dans Paramètres"}
+            {hasKey ? "Analyse, signaux, stratégies — pose ta question" : "⚠️ Clé API non configurée — configure dans Paramètres"}
           </p>
         </div>
 
@@ -449,7 +464,7 @@ function AssistantPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
             }}
-            placeholder={listening ? "🎤 Parlez maintenant…" : "Pose une question… (Entrée pour envoyer)"}
+            placeholder={listening ? "🎤 Dictez… cliquez sur le micro pour arrêter" : "Pose une question… (Entrée pour envoyer)"}
             rows={1}
             className="max-h-36 min-h-[28px] flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
             style={{ lineHeight: "1.6" }}

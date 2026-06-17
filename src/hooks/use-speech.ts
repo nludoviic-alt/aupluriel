@@ -43,6 +43,8 @@ interface UseSpeechOptions {
   onFinal?: (transcript: string) => void;
   /** Called continuously with the live (interim) transcript. */
   onInterim?: (transcript: string) => void;
+  /** Called when a recognition error occurs. */
+  onError?: (error: string) => void;
 }
 
 export function useSpeech({
@@ -50,15 +52,18 @@ export function useSpeech({
   continuous = false,
   onFinal,
   onInterim,
+  onError,
 }: UseSpeechOptions = {}) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
+  const onErrorRef = useRef(onError);
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
+  onErrorRef.current = onError;
 
   useEffect(() => {
     const Ctor = getRecognitionCtor();
@@ -85,7 +90,12 @@ export function useSpeech({
       if (final) onFinalRef.current?.(final.trim());
     };
 
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      setListening(false);
+      if (e.error === "no-speech") return;
+      onErrorRef.current?.(e.error);
+      console.error("[speech] error:", e.error);
+    };
     rec.onend = () => setListening(false);
     rec.onstart = () => setListening(true);
 

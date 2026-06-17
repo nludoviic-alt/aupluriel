@@ -13,16 +13,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  authorize,
   getOpenPositions,
   getProfitTable,
   sellContractNow,
-  subscribeBalance,
   subscribeContract,
   SYMBOLS,
   type OpenPosition,
   type ProfitRecord,
 } from "@/lib/deriv";
+import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { LiveTradeCard } from "@/components/live-trade-card";
@@ -33,33 +32,12 @@ export const Route = createFileRoute("/portfolio")({
 });
 
 function useDerivAuth() {
-  const [ready, setReady] = useState(false);
-  const [currency, setCurrency] = useState("USD");
-  const [balance, setBalance] = useState<number | null>(null);
-
-  useEffect(() => {
-    const token = localStorage.getItem("lio23.deriv_token");
-    if (!token) return;
-    authorize(token)
-      .then((res) => {
-        const cur = res.authorize?.currency ?? "USD";
-        setCurrency(cur);
-        setBalance(res.authorize?.balance ?? null);
-        setReady(true);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!ready) return;
-    const unsub = subscribeBalance((bal, cur) => {
-      setBalance(bal);
-      setCurrency(cur);
-    });
-    return unsub;
-  }, [ready]);
-
-  return { ready, balance, currency };
+  const session = useDerivSession();
+  return {
+    ready: session.connected,
+    balance: session.balance,
+    currency: session.currency,
+  };
 }
 
 function usePortfolio() {

@@ -28,7 +28,7 @@ function migrate(db: Database.Database) {
       user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       deriv_token   TEXT,
       account_type  TEXT    DEFAULT 'demo',
-      ai_provider   TEXT    DEFAULT 'anthropic',
+      ai_provider   TEXT    DEFAULT 'groq',
       ai_api_key    TEXT,
       risk_per_trade REAL   DEFAULT 2,
       max_drawdown  REAL    DEFAULT 5

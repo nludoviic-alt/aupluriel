@@ -6,7 +6,8 @@ import { PriceChart } from "@/components/price-chart";
 import { SignalCard, type SignalItem } from "@/components/signal-card";
 import { useDerivCandles, useDerivTicks } from "@/hooks/use-deriv";
 import { generateSignal } from "@/lib/indicators";
-import { authorize, getBalance, getProfitTable, subscribeBalance, GRANULARITY, SYMBOLS } from "@/lib/deriv";
+import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
+import { useDerivSession } from "@/hooks/use-deriv-session";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,25 +25,9 @@ export const Route = createFileRoute("/")({
 });
 
 function useDerivBalance() {
-  const [balance, setBalance] = useState<{ amount: number; currency: string } | null>(null);
-  useEffect(() => {
-    const token = localStorage.getItem("lio23.deriv_token");
-    if (!token) return;
-    authorize(token)
-      .then(() => getBalance())
-      .then((b) => {
-        if (b) setBalance({ amount: b.balance, currency: b.currency });
-      })
-      .catch(() => {});
-  }, []);
-  // Live balance updates
-  useEffect(() => {
-    const token = localStorage.getItem("lio23.deriv_token");
-    if (!token) return;
-    const unsub = subscribeBalance((bal, cur) => setBalance({ amount: bal, currency: cur }));
-    return unsub;
-  }, []);
-  return balance;
+  const session = useDerivSession();
+  if (!session.connected || session.balance === null) return null;
+  return { amount: session.balance, currency: session.currency };
 }
 
 function useRealStats() {

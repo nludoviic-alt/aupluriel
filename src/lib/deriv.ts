@@ -1,8 +1,17 @@
 // Browser-side Deriv WebSocket client.
-// Public ticks/candles work without auth; token only required for balance/orders.
+// Public ticks/candles use the v3 public endpoint; authenticated ops use a v1 OTP URL set via setDerivSession().
 
 export const DERIV_APP_ID = 1089;
 export const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+
+let derivSessionUrl: string | null = null;
+
+/** Call after fetching /api/deriv-session to wire up the authenticated WS. */
+export function setDerivSession(wsUrl: string): void {
+  derivSessionUrl = wsUrl;
+  if (sharedSocket) { sharedSocket.close(); sharedSocket = null; }
+  connecting = null;
+}
 
 export interface DerivCandle {
   epoch: number;
@@ -48,7 +57,7 @@ function getSocket(): Promise<WebSocket> {
   if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) return Promise.resolve(sharedSocket);
   if (connecting) return connecting;
   connecting = new Promise((resolve, reject) => {
-    const ws = new WebSocket(DERIV_WS_URL);
+    const ws = new WebSocket(derivSessionUrl ?? DERIV_WS_URL);
     ws.onopen = () => {
       sharedSocket = ws;
       connecting = null;
@@ -141,12 +150,6 @@ export async function fetchCandles(
   return res.candles ?? [];
 }
 
-/** Authorize with API token (stored client-side only in localStorage). */
-export async function authorize(token: string) {
-  return derivRequest<{ authorize?: { loginid?: string; balance?: number; currency?: string } }>({
-    authorize: token,
-  });
-}
 
 export async function getBalance(): Promise<{ balance: number; currency: string } | null> {
   try {

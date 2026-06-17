@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, LogOut, MessageCircle, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { authorize, getBalance, SYMBOLS } from "@/lib/deriv";
+import { SYMBOLS } from "@/lib/deriv";
 import { toast } from "sonner";
 import { api, clearToken } from "@/lib/api";
 import { loadCoachSymbols, saveCoachSymbols } from "@/lib/coach";
@@ -33,7 +33,7 @@ function SettingsPage() {
   const [info, setInfo] = useState<{ id?: string; balance?: number; currency?: string } | null>(null);
   const [aiKey, setAiKey] = useState("");
   const [showAiKey, setShowAiKey] = useState(false);
-  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google" | "groq" | "openrouter">("anthropic");
+  const [aiProvider, setAiProvider] = useState<"google" | "groq" | "openrouter">("groq");
   const [coachSymbols, setCoachSymbols] = useState<string[]>([]);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function SettingsPage() {
     setRisk(Number(localStorage.getItem(KEYS.riskPerTrade) ?? 2));
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
     setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
-    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "anthropic" | "openai" | "google" | "groq" | "openrouter") ?? "anthropic");
+    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "google" | "groq" | "openrouter") ?? "groq");
     setCoachSymbols(loadCoachSymbols());
     // Then hydrate from server
     api.get<Record<string, unknown>>("/api/settings").then((s) => {
@@ -52,7 +52,7 @@ function SettingsPage() {
       if (s.account_type) setAccount(s.account_type as "demo" | "live");
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
-      if (s.ai_provider) setAiProvider(s.ai_provider as "anthropic" | "openai" | "google" | "groq" | "openrouter");
+      if (s.ai_provider) setAiProvider(s.ai_provider as "google" | "groq" | "openrouter");
       if (s.ai_api_key) setAiKey(s.ai_api_key as string);
     }).catch(() => {});
   }, []);
@@ -78,16 +78,18 @@ function SettingsPage() {
     }
     setLoading(true);
     try {
-      const res = await authorize(token);
-      const bal = await getBalance();
-      setInfo({
-        id: res.authorize?.loginid,
-        balance: bal?.balance,
-        currency: bal?.currency,
-      });
-      saveLocal();
-      await api.put("/api/settings", { deriv_token: token, account_type: account }).catch(() => {});
-      toast.success(`Connecté: ${res.authorize?.loginid}`);
+      await saveLocal();
+      const res = await api.post<{
+        wsUrl?: string;
+        loginId?: string;
+        balance?: number;
+        currency?: string;
+        accountType?: string;
+        error?: string;
+      }>("/api/deriv-session", { token, account_type: account });
+      if (res.error || !res.wsUrl) throw new Error(res.error ?? "Connexion échouée");
+      setInfo({ id: res.loginId, balance: res.balance, currency: res.currency });
+      toast.success(`Connecté: ${res.loginId} (${res.accountType})`);
     } catch (e) {
       toast.error(`Échec: ${(e as Error).message}`);
       setInfo(null);
@@ -259,10 +261,9 @@ function SettingsPage() {
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
             <div className="flex flex-wrap gap-2">
               {([
+                { id: "groq",       label: "Groq — Llama 3.3 (gratuit)", desc: "console.groq.com · très rapide" },
                 { id: "openrouter", label: "OpenRouter — Llama 3.3 (gratuit)", desc: "openrouter.ai · modèles :free" },
                 { id: "google",     label: "Gemini (Google)", desc: "aistudio.google.com" },
-                { id: "anthropic",  label: "Claude (Anthropic)", desc: "console.anthropic.com" },
-                { id: "openai",     label: "GPT-4o-mini (OpenAI)", desc: "platform.openai.com" },
               ] as const).map((p) => (
                 <button
                   key={p.id}
@@ -302,16 +303,6 @@ function SettingsPage() {
                   → Obtenir une clé Google (gratuite)
                 </a>
               )}
-              {aiProvider === "anthropic" && (
-                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
-                  → Obtenir une clé Anthropic
-                </a>
-              )}
-              {aiProvider === "openai" && (
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
-                  → Obtenir une clé OpenAI
-                </a>
-              )}
             </span>
             <div className="relative">
               <input
@@ -319,9 +310,7 @@ function SettingsPage() {
                 value={aiKey}
                 onChange={(e) => setAiKey(e.target.value)}
                 placeholder={
-                  aiProvider === "anthropic" ? "sk-ant-api03-..."
-                  : aiProvider === "openai" ? "sk-proj-..."
-                  : aiProvider === "groq" ? "gsk_..."
+                  aiProvider === "groq" ? "gsk_..."
                   : aiProvider === "openrouter" ? "sk-or-v1-..."
                   : "AIza... ou AQ... (clé Google AI Studio)"
                 }

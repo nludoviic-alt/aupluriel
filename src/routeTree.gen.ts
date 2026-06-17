@@ -26,9 +26,11 @@ import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
+import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
@@ -125,6 +127,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTranscribeRoute = ApiTranscribeRouteImport.update({
+  id: '/api/transcribe',
+  path: '/api/transcribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTradesRoute = ApiTradesRouteImport.update({
   id: '/api/trades',
   path: '/api/trades',
@@ -138,6 +145,11 @@ const ApiStrategiesRoute = ApiStrategiesRouteImport.update({
 const ApiSettingsRoute = ApiSettingsRouteImport.update({
   id: '/api/settings',
   path: '/api/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
+  id: '/api/deriv-session',
+  path: '/api/deriv-session',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
@@ -212,9 +224,11 @@ export interface FileRoutesByFullPath {
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -244,9 +258,11 @@ export interface FileRoutesByTo {
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -277,9 +293,11 @@ export interface FileRoutesById {
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -311,9 +329,11 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/api/alerts'
     | '/api/chat'
+    | '/api/deriv-session'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
+    | '/api/transcribe'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -343,9 +363,11 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/api/alerts'
     | '/api/chat'
+    | '/api/deriv-session'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
+    | '/api/transcribe'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -375,9 +397,11 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/api/alerts'
     | '/api/chat'
+    | '/api/deriv-session'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
+    | '/api/transcribe'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -408,9 +432,11 @@ export interface RootRouteChildren {
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
+  ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
@@ -542,6 +568,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/transcribe': {
+      id: '/api/transcribe'
+      path: '/api/transcribe'
+      fullPath: '/api/transcribe'
+      preLoaderRoute: typeof ApiTranscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/trades': {
       id: '/api/trades'
       path: '/api/trades'
@@ -561,6 +594,13 @@ declare module '@tanstack/react-router' {
       path: '/api/settings'
       fullPath: '/api/settings'
       preLoaderRoute: typeof ApiSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/deriv-session': {
+      id: '/api/deriv-session'
+      path: '/api/deriv-session'
+      fullPath: '/api/deriv-session'
+      preLoaderRoute: typeof ApiDerivSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
@@ -656,9 +696,11 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,
+  ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,

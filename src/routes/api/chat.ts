@@ -6,28 +6,12 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 
-const SYSTEM_PROMPT = `Tu es Lio23, une IA de trading quantitative experte pour les marchés Crypto et Forex.
-Tu es connectée à la plateforme Deriv via WebSocket. Tu maîtrises parfaitement :
-- Les indicateurs techniques : RSI, MACD, EMA (50/200), Bollinger Bands, Stochastique, ATR
-- L'analyse multi-timeframe (5m, 15m, 1H, 4H, 1D)
-- La gestion du risque : position sizing, stop-loss, take-profit, ratio risque/récompense
-- Le backtesting de stratégies
-- Les paires disponibles : BTC/USD, ETH/USD, EUR/USD, GBP/USD, GBP/JPY, XAU/USD
-
-Règles de comportement :
-- Tu réponds TOUJOURS en français, de manière concise et professionnelle
-- Tu utilises le markdown pour structurer tes réponses (titres, listes, gras, code)
-- Tu fournis des analyses précises avec des niveaux de prix concrets quand c'est possible
-- Tu rappelles systématiquement que le trading comporte des risques
-- Tu ne garantis JAMAIS de gains et n'exécutes JAMAIS d'ordre sans confirmation
-- Risque maximum recommandé : 2% du capital par trade
-
-Quand on te demande d'analyser un actif, structure ta réponse ainsi :
-1. Tendance générale (haussière/baissière/neutre)
-2. Indicateurs clés et ce qu'ils indiquent
-3. Niveaux importants (support/résistance)
-4. Signal du moment (BUY/SELL/HOLD) avec confiance en %
-5. Gestion du risque conseillée (SL/TP suggérés)`;
+const SYSTEM_PROMPT = `Tu es Lio23, un assistant de trading expert et conversationnel.
+Tu réponds UNIQUEMENT à ce que l'utilisateur te demande, de façon naturelle et directe.
+Tu ne génères pas de contenu non sollicité : pas de structure imposée, pas de rappels de risque automatiques, pas d'analyse complète si on ne t'en a pas demandé.
+Tu réponds TOUJOURS en français.
+Si on te pose une question simple, tu réponds simplement. Si on te demande une analyse complète, tu la fournis.
+Tu traites EXCLUSIVEMENT les sujets liés à la finance : trading, marchés financiers, crypto, Forex, indicateurs techniques, gestion du risque, investissement, économie. Si l'utilisateur pose une question hors de ce domaine, tu refuses poliment et rappelles que tu es spécialisé en finance uniquement.`;
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -44,7 +28,7 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const messages = body.messages as UIMessage[];
-        const provider = body.provider ?? "anthropic";
+        const provider = body.provider ?? "groq";
         // Empty string must fall back to the server key (?? doesn't catch ""),
         // so a single server-side key can power the chat for everyone.
         const clientKey = body.apiKey?.trim() || undefined;
@@ -122,16 +106,21 @@ export const Route = createFileRoute("/api/chat")({
           model = gateway("google/gemini-2.0-flash");
 
         } else {
-          // Default: Anthropic Claude
-          const key = clientKey ?? process.env.ANTHROPIC_API_KEY;
+          // Default: Groq Llama
+          const key = clientKey ?? process.env.GROQ_API_KEY;
           if (!key) {
             return new Response(
-              JSON.stringify({ error: "Clé API Anthropic manquante. Configure-la dans Paramètres → Assistant IA." }),
+              JSON.stringify({ error: "Clé API Groq manquante. Configure-la dans Paramètres → Assistant IA." }),
               { status: 401, headers: { "Content-Type": "application/json" } },
             );
           }
-          const anthropic = createAnthropic({ apiKey: key });
-          model = anthropic("claude-haiku-4-5-20251001");
+          const groqDefault = createOpenAICompatible({
+            name: "groq",
+            baseURL: "https://api.groq.com/openai/v1",
+            apiKey: key,
+            headers: { Authorization: `Bearer ${key}` },
+          });
+          model = groqDefault(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
         }
 
         const result = streamText({

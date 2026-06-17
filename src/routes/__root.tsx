@@ -20,6 +20,7 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { Bell, Loader2 } from "lucide-react";
+import { LogoMark } from "@/components/logo";
 import { VoiceControl } from "@/components/voice-control";
 import { MarketCoach } from "@/components/market-coach";
 import { cn } from "@/lib/utils";
@@ -132,7 +133,7 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body className="dark">
+      <body className="dark" suppressHydrationWarning>
         {children}
         <Scripts />
       </body>
@@ -178,9 +179,14 @@ function RootComponent() {
           <div className="flex-1 flex flex-col min-w-0">
             <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/60 bg-background/60 px-4 backdrop-blur-xl">
               <SidebarTrigger />
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-semibold tracking-tight text-foreground">LIO23</span>
-                <span className="hidden sm:inline text-muted-foreground">— Quant AI for Crypto & Forex</span>
+              <div className="flex items-center gap-2">
+                <LogoMark className="h-9 w-9 sm:hidden shrink-0" />
+                <div className="flex flex-col leading-none sm:hidden">
+                  <span className="text-base font-extrabold tracking-tight brand-gradient-text">LIO23</span>
+                  <span className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">Quant Trading AI</span>
+                </div>
+                <span className="hidden sm:inline text-sm font-semibold tracking-tight text-foreground">LIO23</span>
+                <span className="hidden sm:inline text-sm text-muted-foreground">— Quant AI for Crypto & Forex</span>
               </div>
               <div className="ml-auto flex items-center gap-2 text-xs">
                 <VoiceControl />
