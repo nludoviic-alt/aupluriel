@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { ChevronDown, ChevronUp, Play } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, Play, Wifi, WifiOff } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -11,14 +11,14 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/kpi-card";
-import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
+import { fetchCandles, GRANULARITY, SYMBOLS, getBalance } from "@/lib/deriv";
+import { cn } from "@/lib/utils";
 import {
   backtestBollinger,
   backtestEmaCross,
   backtestRsiMacd,
   type BacktestResult,
 } from "@/lib/indicators";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/backtest")({
@@ -41,6 +41,25 @@ function BacktestPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [showTrades, setShowTrades] = useState(false);
+  const [derivConnected, setDerivConnected] = useState<boolean | null>(null);
+
+  // Check Deriv connection on mount
+  useEffect(() => {
+    async function checkConnection() {
+      try {
+        const balance = await getBalance();
+        setDerivConnected(balance !== null);
+      } catch {
+        setDerivConnected(false);
+      }
+    }
+    checkConnection();
+    // Retry connection check every 10 seconds if disconnected
+    const interval = setInterval(() => {
+      if (derivConnected === false) checkConnection();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [derivConnected]);
 
   async function run() {
     setLoading(true);
@@ -54,7 +73,15 @@ function BacktestPage() {
       setShowTrades(false);
       toast.success(`Backtest terminé · ${r.trades} trades`);
     } catch (e) {
-      toast.error(`Erreur Deriv: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      if (msg.includes("WebSocket not connected") || msg.includes("Failed to fetch")) {
+        toast.error("Erreur de connexion à Deriv", {
+          description: "Le WebSocket n'est pas connecté. Attendez quelques secondes et réessayez.",
+        });
+        setDerivConnected(false);
+      } else {
+        toast.error(`Erreur Deriv: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -62,11 +89,36 @@ function BacktestPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Backtest</h1>
-        <p className="text-sm text-muted-foreground">
-          Teste une stratégie sur les données historiques Deriv.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Backtest</h1>
+          <p className="text-sm text-muted-foreground">
+            Teste une stratégie sur les données historiques Deriv.
+          </p>
+        </div>
+        <div className={cn(
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
+          derivConnected === null && "bg-muted text-muted-foreground",
+          derivConnected === true && "bg-green-500/10 text-green-600",
+          derivConnected === false && "bg-red-500/10 text-red-600"
+        )}>
+          {derivConnected === null ? (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-pulse" />
+              Connexion...
+            </>
+          ) : derivConnected ? (
+            <>
+              <Wifi className="h-3.5 w-3.5" />
+              Deriv connecté
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3.5 w-3.5" />
+              Déconnecté
+            </>
+          )}
+        </div>
       </div>
 
       <div className="glass-panel rounded-xl p-4">

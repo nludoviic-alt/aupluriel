@@ -138,17 +138,47 @@ export async function fetchCandles(
   symbol: string,
   granularity: number,
   count = 200,
+  maxRetries = 2,
 ): Promise<DerivCandle[]> {
-  const res = await derivRequest<{
-    candles?: DerivCandle[];
-  }>({
-    ticks_history: symbol,
-    style: "candles",
-    granularity,
-    count,
-    end: "latest",
-  });
-  return res.candles ?? [];
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Ensure socket is connected before making request
+      const ws = await getSocket();
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("WebSocket not connected");
+      }
+
+      const res = await derivRequest<{
+        candles?: DerivCandle[];
+      }>({
+        ticks_history: symbol,
+        style: "candles",
+        granularity,
+        count,
+        end: "latest",
+      });
+
+      if (!res.candles || res.candles.length === 0) {
+        throw new Error("No candles returned from Deriv");
+      }
+
+      return res.candles;
+    } catch (e) {
+      lastError = e as Error;
+      if (attempt < maxRetries) {
+        // Wait before retrying (exponential backoff)
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        // Reset socket to force reconnection
+        if (sharedSocket?.readyState !== WebSocket.OPEN) {
+          sharedSocket = null;
+        }
+      }
+    }
+  }
+
+  throw new Error(`Failed to fetch candles after ${maxRetries + 1} attempts: ${lastError?.message}`);
 }
 
 
