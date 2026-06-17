@@ -28,7 +28,7 @@ import {
   deleteCustomPreset,
   isInTradingSession,
   loadCustomPresets,
-  loadTradeLog,
+  loadTradeLogCached,
   openPreviewTrade,
   PRUDENT_CONFIG,
   PRESETS,
@@ -87,6 +87,7 @@ function AutoTraderPage() {
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetName, setPresetName] = useState("");
+  const lastPendingToastRef = useRef<number>(0);
   const [presetDesc, setPresetDesc] = useState("");
   const stopRef = useRef<(() => void) | null>(null);
   const { confirmState, confirm } = useConfirm();
@@ -105,7 +106,7 @@ function AutoTraderPage() {
       toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
     }
     setConfig(loaded);
-    setLogs(loadTradeLog());
+    setLogs(loadTradeLogCached());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
     setDisclaimerAccepted(accepted);
     // Update active sessions every minute
@@ -139,11 +140,27 @@ function AutoTraderPage() {
   }
 
   const handleEvent = useCallback((log: TradeLog, meta?: { cooldownUntil?: number }) => {
-    setLogs(loadTradeLog());
+    // Optimized: append to existing state instead of reloading all logs
+    setLogs((prev) => {
+      const exists = prev.find((l) => l.id === log.id);
+      if (exists) {
+        // Update existing
+        return prev.map((l) => (l.id === log.id ? log : l));
+      }
+      // Add new (keep max 50)
+      return [log, ...prev].slice(0, 50);
+    });
     if (log.status === "won") toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
     if (log.status === "lost") toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
     if (log.status === "error") toast.error(`⚠️ Erreur sur ${log.symbol}`);
-    if (log.status === "pending") toast.info(`🎯 Position favorable détectée — ${log.symbol} ${log.direction}`);
+    if (log.status === "pending") {
+      // Throttle pending toasts - max 1 per 5 seconds to prevent spam
+      const now = Date.now();
+      if (now - lastPendingToastRef.current > 5000) {
+        lastPendingToastRef.current = now;
+        toast.info(`🎯 ${log.symbol} ${log.direction} — Trade détecté`);
+      }
+    }
     if (log.status === "cooldown") {
       setCooldownUntil(meta?.cooldownUntil ?? 0);
       toast.warning(`⏸ Cooldown activé — ${log.note}`);
@@ -153,7 +170,7 @@ function AutoTraderPage() {
   const handleRiskStop = useCallback((reasons: string[]) => {
     setRunning(false);
     setRiskStopReasons(reasons);
-    setLogs(loadTradeLog());
+    setLogs(loadTradeLogCached());
     toast.error(`🛑 Auto-trader ARRÊTÉ — ${reasons[0]}`, { duration: 10000 });
   }, []);
 

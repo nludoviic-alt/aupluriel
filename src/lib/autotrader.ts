@@ -365,10 +365,28 @@ export function loadTradeLog(): TradeLog[] {
   }
 }
 
+/** In-memory cache to avoid repeated localStorage parsing */
+let logsCache: TradeLog[] | null = null;
+
 function saveTradeLog(logs: TradeLog[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs.slice(0, 100)));
+    // Keep only last 50 logs for performance
+    const trimmed = logs.slice(0, 50);
+    logsCache = trimmed;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {}
+}
+
+/** Load logs with caching - much faster than parsing every time */
+export function loadTradeLogCached(): TradeLog[] {
+  if (logsCache) return logsCache;
+  logsCache = loadTradeLog();
+  return logsCache;
+}
+
+/** Clear cache when needed (e.g., after manual deletion) */
+export function clearTradeLogCache() {
+  logsCache = null;
 }
 
 /**
