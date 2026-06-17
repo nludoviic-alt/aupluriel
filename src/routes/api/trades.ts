@@ -2,6 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getUserFromRequest } from "@/lib/auth.server";
 
+// Helper to create JSON response
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export const Route = createFileRoute("/api/trades")({
   server: {
     handlers: {
@@ -71,10 +79,3 @@ export const Route = createFileRoute("/api/trades")({
     },
   },
 });
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}

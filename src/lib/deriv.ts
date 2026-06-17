@@ -48,6 +48,7 @@ export const GRANULARITY: Record<string, number> = {
 
 let sharedSocket: WebSocket | null = null;
 let connecting: Promise<WebSocket> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reqId = 0;
 type Listener = (msg: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
@@ -56,6 +57,29 @@ const listeners = new Set<Listener>();
 function nextId(): number {
   reqId = (reqId + 1) % 9000000000; // wrap around at 9 billion to stay within safe int
   return reqId;
+}
+
+/** Start heartbeat to keep connection alive on mobile networks */
+function startHeartbeat(ws: WebSocket) {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      // Send ping every 30s to keep connection alive on mobile
+      try {
+        ws.send(JSON.stringify({ ping: 1 }));
+      } catch {
+        /* ignore */
+      }
+    }
+  }, 30000);
+}
+
+/** Stop heartbeat */
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
 }
 
 function getSocket(): Promise<WebSocket> {
@@ -67,6 +91,7 @@ function getSocket(): Promise<WebSocket> {
     ws.onopen = () => {
       sharedSocket = ws;
       connecting = null;
+      startHeartbeat(ws);
       resolve(ws);
     };
     ws.onerror = (e) => {
@@ -75,6 +100,7 @@ function getSocket(): Promise<WebSocket> {
     };
     ws.onclose = () => {
       sharedSocket = null;
+      stopHeartbeat();
     };
     ws.onmessage = (evt) => {
       try {
@@ -86,6 +112,57 @@ function getSocket(): Promise<WebSocket> {
     };
   });
   return connecting;
+}
+
+/** Mobile connection manager - handles network changes and tab visibility */
+let mobileReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function handleMobileReconnect() {
+  // Clear any pending reconnect
+  if (mobileReconnectTimer) {
+    clearTimeout(mobileReconnectTimer);
+    mobileReconnectTimer = null;
+  }
+  
+  // If socket is closed or closing, reset and schedule reconnect
+  if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
+    sharedSocket = null;
+    stopHeartbeat();
+    
+    // Exponential backoff for mobile: 1s, 2s, 4s, max 8s
+    const delay = Math.min(1000 * Math.pow(2, (reconnectAttempts++)), 8000);
+    mobileReconnectTimer = setTimeout(() => {
+      // Trigger a new connection attempt
+      getSocket().catch(() => {});
+    }, delay);
+  }
+}
+
+let reconnectAttempts = 0;
+
+// Handle mobile network changes
+if (typeof window !== "undefined") {
+  // Network online/offline events (mobile specific)
+  window.addEventListener("online", () => {
+    reconnectAttempts = 0;
+    handleMobileReconnect();
+  });
+  
+  window.addEventListener("offline", () => {
+    sharedSocket = null;
+    stopHeartbeat();
+  });
+  
+  // Handle tab visibility changes (mobile browsers suspend tabs)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      // Tab became active - check connection
+      reconnectAttempts = 0;
+      if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
+        handleMobileReconnect();
+      }
+    }
+  });
 }
 
 export async function derivRequest<T = Record<string, unknown>>(
