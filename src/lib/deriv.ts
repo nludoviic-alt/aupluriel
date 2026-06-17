@@ -140,23 +140,22 @@ function handleMobileReconnect() {
 
 let reconnectAttempts = 0;
 
-// Handle mobile network changes
-if (typeof window !== "undefined") {
-  // Network online/offline events (mobile specific)
+// Guard: register window listeners only once (HMR can re-execute module code)
+if (typeof window !== "undefined" && !(window as unknown as Record<string, boolean>).__lio23_deriv_listeners__) {
+  (window as unknown as Record<string, boolean>).__lio23_deriv_listeners__ = true;
+
   window.addEventListener("online", () => {
     reconnectAttempts = 0;
     handleMobileReconnect();
   });
-  
+
   window.addEventListener("offline", () => {
     sharedSocket = null;
     stopHeartbeat();
   });
-  
-  // Handle tab visibility changes (mobile browsers suspend tabs)
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      // Tab became active - check connection
       reconnectAttempts = 0;
       if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
         handleMobileReconnect();

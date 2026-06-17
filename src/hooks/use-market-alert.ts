@@ -12,7 +12,7 @@ export interface MarketAlert {
 }
 
 const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
-const CHECK_INTERVAL_MS = 5 * 60_000; // every 5 minutes
+const CHECK_INTERVAL_MS = 15 * 60_000; // every 15 minutes
 const ALERT_STORAGE_KEY = "lio23.last_alert_times";
 const MIN_CONFIDENCE = 75;
 const MIN_AGREEMENT = 3;

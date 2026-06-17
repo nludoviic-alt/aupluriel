@@ -8,7 +8,7 @@ import {
   type CoachTone,
 } from "@/lib/coach";
 
-const REFRESH_MS = 2 * 60_000; // re-analyse the market every 2 minutes
+const REFRESH_MS = 10 * 60_000; // re-analyse the market every 10 minutes
 const WARMUP_MS = 4000; // let the page render before the first heavy scan
 const MAX_MESSAGES = 4;
 const HOLD_FALLBACK_MS = 15 * 60_000; // default lock if no contract duration set

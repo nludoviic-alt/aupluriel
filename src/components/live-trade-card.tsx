@@ -30,7 +30,7 @@ export function LiveTradeCard({ trade }: { trade: LiveTradeLike }) {
     if (!trade.expiry) return;
     const tick = () => setSecsLeft(Math.max(0, Math.ceil((trade.expiry! - Date.now()) / 1000)));
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, 5000);
     return () => clearInterval(id);
   }, [trade.expiry]);
 

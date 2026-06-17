@@ -62,12 +62,16 @@ export function usePriceAlerts(enabled = true) {
     const alerts = loadAlerts().filter((a) => a.enabled && a.type === "price");
     const pairs = [...new Set(alerts.map((a) => derivSymbol(a.pair)).filter(Boolean))];
 
+    // Cache alerts per pair to avoid parsing localStorage on every WebSocket tick
+    const alertsByPair = new Map<string, typeof alerts>();
+    for (const pair of pairs) {
+      alertsByPair.set(pair, alerts.filter((a) => derivSymbol(a.pair) === pair));
+    }
+
     const unsubs = pairs.map((deriv) =>
       subscribeTicks(deriv, (tick) => {
         const now = Date.now();
-        const currentAlerts = loadAlerts().filter(
-          (a) => a.enabled && a.type === "price" && derivSymbol(a.pair) === deriv,
-        );
+        const currentAlerts = alertsByPair.get(deriv) ?? [];
 
         for (const alert of currentAlerts) {
           const lastFired = firedRef.current[alert.id] ?? 0;

@@ -791,7 +791,7 @@ export function startAutoTrader(
   }
 
   tick();
-  interval = setInterval(tick, 30_000); // Scan every 30s
+  interval = setInterval(tick, 60_000); // Scan every 60s
 
   return () => {
     stopped = true;
