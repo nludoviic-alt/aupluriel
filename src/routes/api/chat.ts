@@ -123,23 +123,31 @@ export const Route = createFileRoute("/api/chat")({
           model = groqDefault(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
         }
 
-        const result = streamText({
-          model,
-          system: SYSTEM_PROMPT,
-          messages: await convertToModelMessages(messages),
-          onError: ({ error }) => {
-            console.error("[chat] stream error:", error);
-          },
-        });
+        try {
+          const result = streamText({
+            model,
+            system: SYSTEM_PROMPT,
+            messages: await convertToModelMessages(messages),
+            onError: ({ error }) => {
+              console.error("[chat] stream error:", error);
+            },
+          });
 
-        return result.toUIMessageStreamResponse({
-          originalMessages: messages,
-          // Surface the real provider error (model/key/quota) instead of a generic message.
-          onError: (error) => {
-            console.error("[chat] response error:", error);
-            return error instanceof Error ? error.message : String(error);
-          },
-        });
+          return result.toUIMessageStreamResponse({
+            originalMessages: messages,
+            onError: (error) => {
+              console.error("[chat] response error:", error);
+              return error instanceof Error ? error.message : String(error);
+            },
+          });
+        } catch (e) {
+          console.error("[chat] fatal:", e);
+          const msg = e instanceof Error ? e.message : String(e);
+          return new Response(JSON.stringify({ error: msg }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       },
 
       // Tells the UI which providers have a server-side key configured, so the
