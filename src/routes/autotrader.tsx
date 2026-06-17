@@ -34,6 +34,7 @@ import {
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
+  type TradingMode,
   type TradingSession,
   type TradeLog,
 } from "@/lib/autotrader";
@@ -148,8 +149,8 @@ function AutoTraderPage() {
         setShowDisclaimer(true);
         return;
       }
-      if (config.mode === "live" && !localStorage.getItem("lio23.deriv_token")) {
-        toast.error("Configure un token API Deriv dans Paramètres d'abord");
+      if ((config.mode === "demo" || config.mode === "live") && !localStorage.getItem("lio23.deriv_token")) {
+        toast.error("Configure un token API Deriv dans Paramètres d'abord (requis pour demo et live)");
         return;
       }
       // Confirm ONLY when real money is at stake (LIVE mode)
@@ -259,25 +260,27 @@ function AutoTraderPage() {
             <Activity className="h-4 w-4" />
             Aperçu live
           </Button>
-          {/* Quick DEMO/LIVE switch — always accessible from the header */}
-          <div className="inline-flex rounded-md border border-border p-0.5" title={running ? "Arrête le bot pour changer de mode" : "Bascule entre compte démo et argent réel"}>
-            {(["demo", "live"] as const).map((m) => (
+          {/* Quick mode switch — simulation / demo / live */}
+          <div className="inline-flex rounded-md border border-border p-0.5" title={running ? "Arrête le bot pour changer de mode" : "Simulation locale, compte demo Deriv, ou argent réel"}>
+            {(["simulation", "demo", "live"] as TradingMode[]).map((m) => (
               <button
                 key={m}
                 disabled={running}
                 onClick={() => patchConfig("mode", m)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-xs font-semibold uppercase tracking-wider transition-colors",
+                  "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors",
                   config.mode === m
-                    ? m === "demo"
-                      ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)]"
-                      : "bg-[color:var(--bear)]/15 text-[color:var(--bear)]"
+                    ? m === "simulation"
+                      ? "bg-muted text-foreground"
+                      : m === "demo"
+                        ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)]"
+                        : "bg-[color:var(--bear)]/15 text-[color:var(--bear)]"
                     : "text-muted-foreground hover:text-foreground",
                   running && "opacity-50 cursor-not-allowed",
                 )}
               >
                 {m === "live" && <AlertTriangle className="mr-1 inline h-3 w-3" />}
-                {m}
+                {m === "simulation" ? "simu" : m}
               </button>
             ))}
           </div>
@@ -287,7 +290,9 @@ function AutoTraderPage() {
               running
                 ? config.mode === "live"
                   ? "text-[color:var(--bear)] animate-ping" // LIVE: blinking red
-                  : "text-[color:var(--bull)] animate-pulse" // DEMO: pulsing green
+                  : config.mode === "demo"
+                    ? "text-[color:var(--bull)] animate-pulse" // DEMO: pulsing green
+                    : "text-muted-foreground animate-pulse" // SIMULATION: gray pulse
                 : "text-muted-foreground"
             )} />
             <span className={cn(
@@ -295,10 +300,18 @@ function AutoTraderPage() {
               running
                 ? config.mode === "live"
                   ? "text-[color:var(--bear)] animate-pulse" // LIVE: blinking text
-                  : "text-[color:var(--bull)]"
+                  : config.mode === "demo"
+                    ? "text-[color:var(--bull)]" // DEMO: green
+                    : "text-muted-foreground" // SIMULATION: gray
                 : "text-muted-foreground"
             )}>
-              {running ? (config.mode === "live" ? "LIVE ⚠️" : "EN COURS") : "ARRÊTÉ"}
+              {running
+                ? config.mode === "live"
+                  ? "LIVE ⚠️"
+                  : config.mode === "demo"
+                    ? "DEMO ✅"
+                    : "SIMULATION"
+                : "ARRÊTÉ"}
             </span>
           </div>
           <Button
@@ -438,27 +451,35 @@ function AutoTraderPage() {
           {/* Mode */}
           <div>
             <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">Mode</label>
-            <div className="flex gap-2">
-              {(["demo", "live"] as const).map((m) => (
+            <div className="flex gap-1">
+              {(["simulation", "demo", "live"] as TradingMode[]).map((m) => (
                 <button
                   key={m}
                   disabled={running}
                   onClick={() => patchConfig("mode", m)}
                   className={cn(
-                    "flex-1 rounded-md border py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors",
+                    "flex-1 rounded-md border py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors",
                     config.mode === m
-                      ? m === "demo"
-                        ? "border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-                        : "border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
+                      ? m === "simulation"
+                        ? "border-muted bg-muted text-foreground"
+                        : m === "demo"
+                          ? "border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
+                          : "border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
                       : "border-border text-muted-foreground hover:text-foreground",
                     running && "opacity-50 cursor-not-allowed",
                   )}
                 >
                   {m === "live" && <AlertTriangle className="inline h-3 w-3 mr-1" />}
-                  {m}
+                  {m === "simulation" ? "simu" : m}
                 </button>
               ))}
             </div>
+            {config.mode === "simulation" && (
+              <p className="mt-1 text-xs text-muted-foreground">Simulation locale — pas de vrais trades</p>
+            )}
+            {config.mode === "demo" && (
+              <p className="mt-1 text-xs text-[color:var(--bull)]">✅ Compte demo Deriv — trades réels avec faux argent</p>
+            )}
             {config.mode === "live" && (
               <p className="mt-1 text-xs text-[color:var(--bear)]">⚠️ Argent réel — sois très prudent</p>
             )}

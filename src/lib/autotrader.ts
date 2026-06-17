@@ -21,9 +21,11 @@ async function checkDerivConnection(): Promise<boolean> {
 
 export type TradingSession = "asia" | "london" | "newyork";
 
+export type TradingMode = "simulation" | "demo" | "live";
+
 export interface AutoTraderConfig {
   enabled: boolean;
-  mode: "demo" | "live";
+  mode: TradingMode; // simulation = local, demo = Deriv demo account, live = Deriv real money
   stakeUsd: number;
   durationMinutes: number;
   minConfidence: number;
@@ -43,7 +45,7 @@ export interface AutoTraderConfig {
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
   enabled: false,
-  mode: "demo",
+  mode: "simulation",
   stakeUsd: 5,
   durationMinutes: 15,
   minConfidence: 78,
@@ -66,7 +68,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
  * watched symbols) are intentionally preserved so we never guess their size.
  */
 export const PRUDENT_CONFIG: Partial<AutoTraderConfig> = {
-  mode: "demo",            // safest: test before risking real money
+  mode: "simulation",      // safest: local simulation first
   minConfidence: 82,       // very selective
   minTfAgreement: 4,       // all timeframes must agree
   maxTradesPerDay: 5,      // limit exposure
@@ -471,7 +473,8 @@ export function startAutoTrader(
         Math.round(analysis.confidence),
       );
 
-      if (config.mode === "demo") {
+      if (config.mode === "simulation") {
+        // Local simulation - no real trades
         activeSymbols.add(symbol);
         emit({ ...pendingLog, status: "open" });
 
@@ -496,7 +499,7 @@ export function startAutoTrader(
         }, config.durationMinutes * 60_000);
 
       } else {
-        // LIVE mode: verify Deriv connection first
+        // Real Deriv account (demo or live): verify connection first
         const connected = await checkDerivConnection();
         if (!connected) {
           emit({ ...pendingLog, status: "error", profit: 0, note: "Connexion Deriv non disponible" });
