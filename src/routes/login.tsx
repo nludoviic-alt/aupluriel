@@ -4,7 +4,8 @@ import { User, Mail, Lock, Eye, EyeOff, KeyRound } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { api, setToken, getToken } from "@/lib/api";
+import { api, setToken } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 
 export const Route = createFileRoute("/login")({
@@ -21,13 +22,14 @@ interface AuthResponse {
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (wait for auth check to complete)
   useEffect(() => {
-    if (getToken()) navigate({ to: "/" });
-  }, [navigate]);
+    if (!authLoading && user) navigate({ to: "/" });
+  }, [authLoading, user, navigate]);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");

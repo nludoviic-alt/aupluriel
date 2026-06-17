@@ -48,9 +48,15 @@ export const GRANULARITY: Record<string, number> = {
 
 let sharedSocket: WebSocket | null = null;
 let connecting: Promise<WebSocket> | null = null;
-let reqId = 1;
+let reqId = 0;
 type Listener = (msg: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
+
+/** Generate unique request ID (monotonically increasing with wraparound) */
+function nextId(): number {
+  reqId = (reqId + 1) % 9000000000; // wrap around at 9 billion to stay within safe int
+  return reqId;
+}
 
 function getSocket(): Promise<WebSocket> {
   if (typeof window === "undefined") return Promise.reject(new Error("no window"));
@@ -80,11 +86,6 @@ function getSocket(): Promise<WebSocket> {
     };
   });
   return connecting;
-}
-
-function nextId() {
-  reqId += 1;
-  return reqId;
 }
 
 export async function derivRequest<T = Record<string, unknown>>(

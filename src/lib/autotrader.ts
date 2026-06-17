@@ -1,8 +1,23 @@
 // Auto-trading engine — all logic runs client-side.
 // Only executes trades when strict signal quality thresholds are met.
 
-import { fetchCandles, proposalContract, buyContract, subscribeContract, GRANULARITY } from "./deriv";
+import { fetchCandles, proposalContract, buyContract, subscribeContract, GRANULARITY, getBalance } from "./deriv";
 import { generateSignal, atr } from "./indicators";
+
+let derivConnected = false;
+
+/** Check if Deriv WebSocket session is active and authenticated */
+async function checkDerivConnection(): Promise<boolean> {
+  if (derivConnected) return true;
+  try {
+    const balance = await getBalance();
+    derivConnected = balance !== null;
+    return derivConnected;
+  } catch {
+    derivConnected = false;
+    return false;
+  }
+}
 
 export type TradingSession = "asia" | "london" | "newyork";
 
@@ -481,6 +496,13 @@ export function startAutoTrader(
         }, config.durationMinutes * 60_000);
 
       } else {
+        // LIVE mode: verify Deriv connection first
+        const connected = await checkDerivConnection();
+        if (!connected) {
+          emit({ ...pendingLog, status: "error", profit: 0, note: "Connexion Deriv non disponible" });
+          continue;
+        }
+
         try {
           activeSymbols.add(symbol);
           const proposal = await proposalContract({
@@ -489,7 +511,22 @@ export function startAutoTrader(
             contractType: analysis.direction,
             durationMinutes: config.durationMinutes,
           });
-          const bought = await buyContract(proposal.id, proposal.askPrice * 1.05);
+
+          // Retry logic for buyContract (Deriv sometimes requires multiple attempts)
+          let bought: { contractId: number; buyPrice: number; payout: number; startTime: number } | null = null;
+          let attempts = 0;
+          const maxAttempts = 3;
+          while (attempts < maxAttempts && !bought) {
+            try {
+              attempts++;
+              bought = await buyContract(proposal.id, proposal.askPrice * 1.05);
+            } catch (e) {
+              if (attempts >= maxAttempts) throw e;
+              await new Promise((r) => setTimeout(r, 500)); // wait 500ms before retry
+            }
+          }
+          if (!bought) throw new Error("Failed to buy contract after retries");
+
           const openLog: TradeLog = {
             ...pendingLog,
             status: "open",
@@ -511,7 +548,7 @@ export function startAutoTrader(
             } as TradeLog);
           });
         } catch (e) {
-          emit({ ...pendingLog, status: "error", profit: 0 });
+          emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
           activeSymbols.delete(symbol);
         }
       }
@@ -519,7 +556,7 @@ export function startAutoTrader(
   }
 
   tick();
-  interval = setInterval(tick, 5 * 60_000);
+  interval = setInterval(tick, 60_000); // Scan every 60s (was 5min)
 
   return () => {
     stopped = true;

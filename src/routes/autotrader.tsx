@@ -282,9 +282,23 @@ function AutoTraderPage() {
             ))}
           </div>
           <div className="flex items-center gap-2 text-xs rounded-md border border-border px-3 py-1.5">
-            <CircleDot className={cn("h-3.5 w-3.5", running ? "text-[color:var(--bull)] animate-pulse" : "text-muted-foreground")} />
-            <span className={running ? "text-[color:var(--bull)] font-semibold" : "text-muted-foreground"}>
-              {running ? "EN COURS" : "ARRÊTÉ"}
+            <CircleDot className={cn(
+              "h-3.5 w-3.5",
+              running
+                ? config.mode === "live"
+                  ? "text-[color:var(--bear)] animate-ping" // LIVE: blinking red
+                  : "text-[color:var(--bull)] animate-pulse" // DEMO: pulsing green
+                : "text-muted-foreground"
+            )} />
+            <span className={cn(
+              "font-semibold",
+              running
+                ? config.mode === "live"
+                  ? "text-[color:var(--bear)] animate-pulse" // LIVE: blinking text
+                  : "text-[color:var(--bull)]"
+                : "text-muted-foreground"
+            )}>
+              {running ? (config.mode === "live" ? "LIVE ⚠️" : "EN COURS") : "ARRÊTÉ"}
             </span>
           </div>
           <Button
