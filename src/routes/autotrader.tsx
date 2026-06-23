@@ -1,17 +1,18 @@
+import { KpiCard } from "@/components/kpi-card";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  CircleDot,
   Clock,
+  FlaskConical,
   Globe,
   Power,
   Save,
+  Settings2,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -19,17 +20,71 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+
+function playWinSound() {
+  try {
+    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx() as AudioContext;
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    
+    // Notes : C5, E5, G5, C6 (Arpège ascendant avec un carillon métallique scintillant)
+    const notes = [
+      { freq: 523.25, delay: 0, dur: 0.4 },   // C5
+      { freq: 659.25, delay: 0.08, dur: 0.4 }, // E5
+      { freq: 783.99, delay: 0.16, dur: 0.4 }, // G5
+      { freq: 1046.50, delay: 0.24, dur: 0.6 }, // C6
+    ];
+    
+    notes.forEach(({ freq, delay, dur }) => {
+      // 1. Oscillateur principal sinusoïdal pour un son pur
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      
+      // 2. Oscillateur secondaire triangulaire (une octave plus haut, gain très faible pour l'attaque "clochette/pièce")
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = "triangle";
+      osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + delay);
+      
+      const t = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      
+      gain2.gain.setValueAtTime(0, t);
+      gain2.gain.linearRampToValueAtTime(0.04, t + 0.005);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15); // décroissance ultra rapide pour l'attaque métallique
+      
+      osc.start(t);
+      osc.stop(t + dur + 0.1);
+      
+      osc2.start(t);
+      osc2.stop(t + dur + 0.1);
+    });
+  } catch {}
+}
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SYMBOLS } from "@/lib/deriv";
 import {
   addToCumulativePnl,
   computeAdaptiveStake,
+  CORRELATION_GROUPS,
   countConsecutiveLosses,
   currentActiveSessions,
   DEFAULT_CONFIG,
   deleteCustomPreset,
   dismissTrade,
+  forceDemoTrade,
   isInTradingSession,
   loadCumulativePnl,
   loadCustomPresets,
@@ -37,6 +92,7 @@ import {
   openPreviewTrade,
   PRUDENT_CONFIG,
   PRESETS,
+  SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
   startAutoTrader,
@@ -51,6 +107,8 @@ import {
   type TradingSession,
   type TradeLog,
 } from "@/lib/autotrader";
+import { fetchCandles, GRANULARITY } from "@/lib/deriv";
+import { backtestSignal, type BacktestSignalResult } from "@/lib/indicators";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
@@ -58,10 +116,11 @@ import { AmountInput } from "@/components/amount-input";
 import { VOICE_ACTION_EVENT } from "@/components/voice-control";
 import { activeStrategySymbols } from "@/lib/strategies";
 import { LiveTradeCard } from "@/components/live-trade-card";
+import { BotDashboard } from "@/components/bot-dashboard";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
 
 export const Route = createFileRoute("/autotrader")({
-  head: () => ({ meta: [{ title: "Auto-Trader — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Auto-Trader — Vertex" }] }),
   component: AutoTraderPage,
 });
 
@@ -98,9 +157,24 @@ function AutoTraderPage() {
   const [presetDesc, setPresetDesc] = useState("");
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const [cumulativePnl, setCumulativePnl] = useState(0);
+  const [forcingTrade, setForcingTrade] = useState(false);
+  const [forceSymbol, setForceSymbol] = useState("");
+  const [forceDir, setForceDir] = useState<"CALL" | "PUT">("CALL");
+  const [draftDuration, setDraftDuration] = useState(DEFAULT_CONFIG.durationMinutes);
+  const [draftMaxTrades, setDraftMaxTrades] = useState(DEFAULT_CONFIG.maxTradesPerDay);
+  const [showSaveParams, setShowSaveParams] = useState(false);
+  const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
+  const [showConfig, setShowConfig] = useState(false);
+  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "backtest">("profiles");
+  const [backtestRunning, setBacktestRunning] = useState(false);
+  const [backtestResults, setBacktestResults] = useState<Record<string, BacktestSignalResult & { symbol: string }>>({});
   const stopRef = useRef<(() => void) | null>(null);
+  const balanceRef = useRef<number | undefined>(undefined);
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
+
+  // Keep balanceRef in sync with the live Deriv balance
+  useEffect(() => { balanceRef.current = derivSession.balance ?? undefined; }, [derivSession.balance]);
 
   useEffect(() => {
     // Load custom presets
@@ -116,6 +190,9 @@ function AutoTraderPage() {
       toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
     }
     setConfig(loaded);
+    setDraftDuration(loaded.durationMinutes);
+    setDraftMaxTrades(loaded.maxTradesPerDay);
+    setForceSymbol(loaded.symbols[0] ?? "cryBTCUSD");
     setLogs(loadTradeLogCached());
     setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
@@ -145,8 +222,6 @@ function AutoTraderPage() {
 
   const { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake } = stats;
   const openTrades = openTradeList.length;
-  const inCooldown = Date.now() < cooldownUntil;
-  const cooldownSecsLeft = inCooldown ? Math.ceil((cooldownUntil - Date.now()) / 1000) : 0;
 
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
@@ -166,7 +241,16 @@ function AutoTraderPage() {
       return [log, ...prev].slice(0, 50);
     });
     if (log.status === "won") {
+      playWinSound();
       toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
+      
+      // Notification de bureau native (HTML5 API) pour alerter en tâche de fond
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`🎯 LIO23 : Trade GAGNANT ! (+ $${log.profit.toFixed(2)})`, {
+          body: `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
+        });
+      }
+      
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
@@ -245,11 +329,12 @@ function AutoTraderPage() {
       if (stratSymbols.length) {
         toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
       }
-      stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan));
+      stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan), () => balanceRef.current);
       setRunning(true);
       toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
     }
   }
+
 
   // Voice commands: start/stop the bot from anywhere
   useEffect(() => {
@@ -263,6 +348,30 @@ function AutoTraderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, config, disclaimerAccepted]);
 
+  async function runBacktest() {
+    setBacktestRunning(true);
+    setBacktestResults({});
+    const results: Record<string, BacktestSignalResult & { symbol: string }> = {};
+    const durationCandles = config.durationMinutes <= 5 ? 1 : config.durationMinutes <= 15 ? 1 : 2;
+    for (const sym of config.symbols) {
+      try {
+        const candles = await fetchCandles(sym, GRANULARITY["15m"], 600);
+        const result = backtestSignal(candles, {
+          minConfidence: config.minConfidence,
+          durationCandles,
+          stakeUsd: config.stakeUsd,
+        });
+        results[sym] = { ...result, symbol: sym };
+      } catch {
+        // skip failed symbols silently
+      }
+    }
+    setBacktestResults(results);
+    setBacktestRunning(false);
+    const total = Object.values(results).reduce((s, r) => s + r.trades, 0);
+    toast.success(`Backtest terminé — ${total} trades simulés sur ${config.symbols.length} paires`);
+  }
+
   function acceptDisclaimer() {
     localStorage.setItem("lio23.disclaimer_accepted", "1");
     setDisclaimerAccepted(true);
@@ -271,1042 +380,1110 @@ function AutoTraderPage() {
       Notification.requestPermission();
     }
     setRiskStopReasons([]);
-    stopRef.current = startAutoTrader(config, handleEvent, handleRiskStop, (scan) => setLastScan(scan));
+    const stratSymbols = activeStrategySymbols();
+    const mergedSymbols = [...new Set([...config.symbols, ...stratSymbols])];
+    const effectiveConfig = mergedSymbols.length > config.symbols.length
+      ? { ...config, symbols: mergedSymbols }
+      : config;
+    if (stratSymbols.length) toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
+    stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan), () => balanceRef.current);
     setRunning(true);
     toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
   }
 
+  // ── derived helpers ─────────────────────────────────────────────────────────
+  // Power button: always green when running, gold on hover when stopped
+  const modeGlow = running
+    ? "shadow-[0_0_56px_rgba(34,197,94,0.45)]"
+    : "shadow-[0_0_32px_rgba(255,215,0,0.18)] hover:shadow-[0_0_60px_rgba(255,215,0,0.35)]";
+
+  const modeRing = running
+    ? "ring-2 ring-up/60"
+    : "ring-1 ring-primary/30 hover:ring-primary/60";
+
+  const modeIcon = running ? "text-up" : "text-primary";
+
+  const modeBg = running
+    ? "bg-up/12"
+    : "bg-primary/10 hover:bg-primary/18";
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Zap className="h-5 w-5 text-[color:var(--brand-cyan)]" />
-            Auto-Trader
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Exécute des trades automatiquement quand les conditions du marché sont favorables.
-          </p>
+    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15">
+            <Zap className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight leading-none">Auto-Trader</h1>
+            <p className="text-sm text-muted-foreground mt-1">Algorithme multi-indicateurs · 4 timeframes · Patterns japonais</p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            disabled={running}
-            onClick={() => {
-              const next = { ...config, ...PRUDENT_CONFIG };
-              setConfig(next);
-              saveConfig(next);
-              toast.success(
-                "🛡️ Mode Prudent activé — DEMO, signaux premium, 4/4 TF, confiance ≥82%, max 5 trades/jour. Ta mise et tes paires sont conservées.",
-                { duration: 7000 },
-              );
-            }}
-            className="gap-2 text-xs border-[color:var(--bull)]/40 text-[color:var(--bull)] hover:bg-[color:var(--bull)]/10"
-            title="Applique un preset de réglages sécurisés en un clic"
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Mode Prudent
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={running}
+            onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
+              setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
+              toast.success("🛡️ Mode Prudent activé", { description: "DEMO · PREMIUM · 4/4 TF · confiance ≥82% · max 5 trades/jour" }); }}
+            className="gap-2 text-sm border-up/40 text-up hover:bg-up/10 h-9 px-4">
+            <ShieldCheck className="h-4 w-4" /> Mode Prudent
           </Button>
-          <Button
-            variant="outline"
+          <Button variant="outline" size="sm"
             disabled={config.symbols.every((s) => openTradeList.some((t) => t.symbol === s))}
             onClick={async () => {
-              // One position per symbol — pick the first watched pair without an open trade
               const openSymbols = new Set(openTradeList.map((t) => t.symbol));
               const sym = config.symbols.find((s) => !openSymbols.has(s));
-              if (!sym) {
-                toast.error("Toutes les paires surveillées ont déjà une position ouverte.");
-                return;
-              }
-              const label = SYMBOLS.find((x) => x.deriv === sym)?.label ?? sym;
-              toast.info(`🎬 Aperçu — position sur ${label}…`);
+              if (!sym) { toast.error("Toutes les paires ont déjà une position ouverte."); return; }
+              toast.info(`🎬 Aperçu — ${SYMBOLS.find((x) => x.deriv === sym)?.label ?? sym}…`);
               await openPreviewTrade(sym, config.durationMinutes, config.stakeUsd, handleEvent);
             }}
-            className="gap-2 text-xs"
-            title="Ouvre une position démo (1 par paire) pour voir le visuel live"
-          >
-            <Activity className="h-4 w-4" />
-            Aperçu live
-          </Button>
-          {/* Quick mode switch — simulation / demo / live */}
-          <div className="inline-flex rounded-md border border-border p-0.5" title={running ? "Arrête le bot pour changer de mode" : "Simulation locale, compte demo Deriv, ou argent réel"}>
-            {(["simulation", "demo", "live"] as TradingMode[]).map((m) => (
-              <button
-                key={m}
-                disabled={running}
-                onClick={() => patchConfig("mode", m)}
-                className={cn(
-                  "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors",
-                  config.mode === m
-                    ? m === "simulation"
-                      ? "bg-muted text-foreground"
-                      : m === "demo"
-                        ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)]"
-                        : "bg-[color:var(--bear)]/15 text-[color:var(--bear)]"
-                    : "text-muted-foreground hover:text-foreground",
-                  running && "opacity-50 cursor-not-allowed",
-                )}
-              >
-                {m === "live" && <AlertTriangle className="mr-1 inline h-3 w-3" />}
-                {m === "simulation" ? "simu" : m}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 text-xs rounded-md border border-border px-3 py-1.5">
-            <CircleDot className={cn(
-              "h-3.5 w-3.5",
-              running
-                ? config.mode === "live"
-                  ? "text-[color:var(--bear)] animate-ping" // LIVE: blinking red
-                  : config.mode === "demo"
-                    ? "text-[color:var(--bull)] animate-pulse" // DEMO: pulsing green
-                    : "text-muted-foreground animate-pulse" // SIMULATION: gray pulse
-                : "text-muted-foreground"
-            )} />
-            <span className={cn(
-              "font-semibold",
-              running
-                ? config.mode === "live"
-                  ? "text-[color:var(--bear)] animate-pulse" // LIVE: blinking text
-                  : config.mode === "demo"
-                    ? "text-[color:var(--bull)]" // DEMO: green
-                    : "text-muted-foreground" // SIMULATION: gray
-                : "text-muted-foreground"
-            )}>
-              {running
-                ? config.mode === "live"
-                  ? "LIVE ⚠️"
-                  : config.mode === "demo"
-                    ? "DEMO ✅"
-                    : "SIMULATION"
-                : "ARRÊTÉ"}
-            </span>
-          </div>
-          <Button
-            onClick={toggleEngine}
-            className={cn(
-              "font-semibold gap-2",
-              running
-                ? "bg-[color:var(--bear)]/20 text-[color:var(--bear)] border border-[color:var(--bear)]/30 hover:bg-[color:var(--bear)]/30"
-                : "bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] hover:opacity-90",
-            )}
-          >
-            <Power className="h-4 w-4" />
-            {running ? "Arrêter" : "Démarrer"}
+            className="gap-2 text-sm h-9 px-4">
+            <Activity className="h-4 w-4" /> Aperçu live
           </Button>
         </div>
       </div>
 
-      {/* Warning banner */}
-      <div className="rounded-xl border border-[color:var(--bear)]/30 bg-[color:var(--bear)]/5 p-4 flex gap-3">
-        <ShieldAlert className="h-5 w-5 shrink-0 text-[color:var(--bear)] mt-0.5" />
-        <div className="text-sm">
-          <div className="font-semibold text-[color:var(--bear)]">Avertissement de risque</div>
-          <p className="mt-0.5 text-muted-foreground leading-relaxed">
-            Aucun algorithme ne gagne à 100%. Les signaux ont ~62% de win rate historique — les 38% restants
-            seront des pertes. Le circuit-breaker arrête automatiquement le bot si la perte journalière dépasse
-            ton seuil. <strong className="text-foreground">Commence toujours en mode DEMO.</strong>
-          </p>
-        </div>
-      </div>
-
-      {/* Risk-stop banner */}
+      {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (
-        <div className="rounded-xl border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 p-4 flex gap-3">
-          <ShieldAlert className="h-5 w-5 shrink-0 text-[color:var(--bear)] mt-0.5" />
-          <div className="text-sm flex-1">
-            <div className="font-bold text-[color:var(--bear)]">🛑 Auto-trader arrêté — risque détecté</div>
-            <ul className="mt-1.5 space-y-1">
-              {riskStopReasons.map((r, i) => (
-                <li key={i} className="flex gap-1.5 text-foreground">
-                  <span className="text-[color:var(--bear)]">•</span>
-                  {r}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Vérifie les conditions du marché avant de relancer le bot.
-            </p>
+        <div className="rounded-xl border border-down/40 bg-down/8 p-5 flex gap-4">
+          <ShieldAlert className="h-6 w-6 shrink-0 text-down mt-0.5" />
+          <div className="flex-1">
+            <div className="text-sm font-bold uppercase tracking-wide text-down mb-2">🛑 Bot arrêté — risque détecté</div>
+            {riskStopReasons.map((r, i) => <div key={i} className="text-sm text-foreground">• {r}</div>)}
+            <p className="mt-2 text-xs text-muted-foreground">Vérifie les conditions avant de relancer.</p>
+          </div>
+          <button onClick={() => setRiskStopReasons([])} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
+        </div>
+      )}
+      {config.mode === "simulation" && derivSession.connected && !running && (
+        <div className="rounded-xl border border-up/30 bg-up/6 p-4 flex items-center gap-4">
+          <span className="text-2xl shrink-0">🎮</span>
+          <div className="flex-1">
+            <span className="text-sm font-semibold text-up">Deriv est connecté</span>
+            <span className="text-sm text-muted-foreground ml-2">— passe en mode Demo pour envoyer de vraies positions (argent de test)</span>
           </div>
           <button
-            onClick={() => setRiskStopReasons([])}
-            className="text-muted-foreground hover:text-foreground text-xs shrink-0"
-          >
-            Ignorer
+            onClick={() => { patchConfig("mode", "demo"); toast.success("Mode Demo activé — trades réels sur compte démo Deriv"); }}
+            className="shrink-0 rounded-lg bg-up/20 px-4 py-2 text-sm font-semibold text-up hover:bg-up/30 transition-colors">
+            Passer en Demo
           </button>
         </div>
       )}
 
-      {/* Cooldown banner */}
-      {inCooldown && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-3 text-sm text-amber-400">
-          <Clock className="h-4 w-4 shrink-0" />
-          <span>
-            <strong>Cooldown actif</strong> — {consecutiveLosses} pertes consécutives.
-            Reprise dans <strong>{Math.floor(cooldownSecsLeft / 60)}m {cooldownSecsLeft % 60}s</strong>.
-          </span>
-        </div>
-      )}
+      <CooldownBanner cooldownUntil={cooldownUntil} consecutiveLosses={consecutiveLosses} />
 
-      {/* Session status */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-muted-foreground">Sessions actives :</span>
-        {(["asia", "london", "newyork"] as TradingSession[]).map((s) => {
-          const isActive = activeSessions.includes(s);
-          const inConfig = config.tradingSessions.includes(s);
-          return (
-            <span key={s} className={cn(
-              "rounded-md px-2 py-0.5 font-medium",
-              isActive && inConfig ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)]"
-              : isActive ? "bg-muted/30 text-muted-foreground"
-              : "bg-muted/20 text-muted-foreground/50"
-            )}>
-              {SESSION_HOURS[s].label}
-              {isActive ? " ●" : " ○"}
-            </span>
-          );
-        })}
-        {config.adaptiveStake && effectiveStake < config.stakeUsd && (
-          <span className="rounded-md bg-amber-500/10 text-amber-400 px-2 py-0.5 font-medium">
-            Mise réduite: ${effectiveStake.toFixed(2)}
-          </span>
-        )}
-      </div>
-
-      {/* Scan diagnostic — only when running */}
-      {running && lastScan && (
-        <div className="rounded-xl border border-border bg-muted/20 p-4 text-xs">
-          <div className="flex items-center gap-2 mb-2">
-            <Bot className="h-3.5 w-3.5 text-[color:var(--brand-cyan)]" />
-            <span className="font-semibold text-[color:var(--brand-cyan)]">Dernière analyse</span>
-            <span className="text-muted-foreground ml-auto">
-              {new Date(lastScan.time).toLocaleTimeString()}
-            </span>
-          </div>
-          <div className="grid gap-1 sm:grid-cols-2">
-            {lastScan.results.map((r, i) => {
-              const label = SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol;
-              const { text, cls } = (() => {
-                switch (r.action) {
-                  case "traded":       return { text: `✅ Trade déclenché (${r.direction} · ${r.confidence?.toFixed(0)}% · ${r.agreement}/4 TF)`, cls: "text-[color:var(--bull)]" };
-                  case "open-trade":   return { text: "⏳ Position déjà ouverte", cls: "text-muted-foreground" };
-                  case "session-closed": return { text: "🕐 Hors session de trading", cls: "text-muted-foreground" };
-                  case "no-signal":    return { text: `⬜ Pas de signal clair (conf. ${r.confidence?.toFixed(0)}%)`, cls: "text-muted-foreground" };
-                  case "low-confidence": return { text: `📉 Confiance insuffisante: ${r.confidence?.toFixed(0)}% < ${config.minConfidence}% requis`, cls: "text-amber-400" };
-                  case "low-agreement":  return { text: `📊 Accord TF insuffisant: ${r.agreement}/4 < ${config.minTfAgreement} requis`, cls: "text-amber-400" };
-                  case "not-premium":  return { text: "🔒 Signal non PREMIUM (désactive l'option pour trader plus)", cls: "text-amber-400" };
-                  case "volatility":   return { text: "⚡ Volatilité trop élevée", cls: "text-[color:var(--bear)]" };
-                  case "daily-limit":  return { text: "🛑 Limite journalière atteinte", cls: "text-[color:var(--bear)]" };
-                  default:             return { text: r.action, cls: "text-muted-foreground" };
-                }
-              })();
-              return (
-                <div key={i} className="flex gap-2">
-                  <span className="font-medium text-foreground shrink-0">{label}</span>
-                  <span className={cls}>{text}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Mode simulation notice */}
-      {config.mode === "simulation" && (
-        <div className="rounded-xl border border-muted/50 bg-muted/10 px-4 py-3 text-xs text-muted-foreground flex gap-2 items-start">
-          <span className="text-lg leading-none">ℹ️</span>
-          <span>
-            <strong className="text-foreground">Mode simulation</strong> — Aucun vrai trade n'est envoyé à Deriv.
-            Le solde de $10 000 est ton compte Deriv demo, il ne change pas en simulation.
-            Le vrai suivi de tes résultats est dans <strong className="text-foreground">Fonds disponibles</strong> ci-dessous.
-          </span>
-        </div>
-      )}
-
-      {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi
+      {/* ── KPI strip — pleine largeur ── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard
           label="Fonds disponibles"
-          value={
-            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-              ? `$${derivSession.balance.toFixed(2)}`
-              : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`
-          }
-          tone={
-            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-              ? "bull"
-              : cumulativePnl >= 0 ? "bull" : "bear"
-          }
-          sub={
-            (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-              ? `Solde Deriv ${config.mode === "demo" ? "demo" : "réel"} · ${derivSession.currency}`
-              : `Départ $${config.initialCapital} · cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`
-          }
+          value={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+            ? `$${derivSession.balance.toFixed(2)}`
+            : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
+          tone={cumulativePnl >= 0 ? "bull" : "bear"}
+          delta={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+            ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
+            : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
         />
-        <Kpi
+        <KpiCard
           label="P&L Aujourd'hui"
           value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
           tone={pnl >= 0 ? "bull" : "bear"}
-          sub={`+$${totalWon.toFixed(2)} gagné / -$${Math.abs(totalLost).toFixed(2)} perdu`}
+          delta={`Gains $${totalWon.toFixed(2)} · Pertes $${Math.abs(totalLost).toFixed(2)}`}
         />
-        <Kpi
+        <KpiCard
           label="Win Rate"
-          value={`${winRate.toFixed(0)}%`}
-          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : "bear"}
-          sub={`${wins}✓ ${losses}✗ ${errors > 0 ? `${errors}⚠ erreurs` : ""}`}
+          value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
+          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
+          delta={`${wins} gagnés · ${losses} perdus · ${tradeCount} total`}
         />
-        <Kpi
-          label="Limite journalière"
-          value={`$${Math.abs(pnl).toFixed(0)} / $${config.maxDailyLossUsd}`}
-          tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : "default"}
-          sub="circuit-breaker"
+        <KpiCard
+          label="Limite de perte"
+          value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
+          tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
+          delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} utilisés / $${config.maxDailyLossUsd} max`}
         />
       </div>
 
-      {/* Live open positions — visual movement */}
-      {openTradeList.length > 0 && (
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[color:var(--brand-cyan)] animate-pulse" />
-            <h2 className="text-base font-semibold">Positions en direct ({openTradeList.length})</h2>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {openTradeList.map((t) => (
-              <LiveTradeCard
-                key={t.id}
-                trade={t}
-                onDismiss={() => {
-                  const updated = dismissTrade(t.id);
-                  setLogs([...updated]);
-                  toast.info(`Carte fermée — ${t.symbol}`);
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Main 2-col layout ── */}
+      <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
 
-      {/* Config */}
-      <div className="glass-panel rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold">Configuration</h2>
-        </div>
+        {/* ── LEFT: Control panel ── */}
+        <div className="space-y-4">
 
-        {/* Preset Selector */}
-        <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">
-              🎯 Choisir un profil de trading
-            </label>
-            <button
-              onClick={() => setShowSavePreset(true)}
-              disabled={running}
-              className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-[color:var(--brand-cyan)]/20 text-[color:var(--brand-cyan)] hover:bg-[color:var(--brand-cyan)]/30 transition-colors disabled:opacity-50"
-            >
-              <Save className="h-3 w-3" />
-              Sauvegarder config actuelle
-            </button>
-          </div>
+          {/* Bloc contrôle principal */}
+          <div className="glass-panel rounded-2xl overflow-hidden">
 
-          {/* Built-in Presets */}
-          <div className="grid gap-2 sm:grid-cols-3 mb-3">
-            {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
-              const preset = PRESETS[key];
-              const isActive = config.minConfidence === preset.minConfidence &&
-                              config.minTfAgreement === preset.minTfAgreement;
-              return (
-                <button
-                  key={key}
-                  disabled={running}
-                  onClick={() => {
-                    const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...presetConfig } = preset;
-                    // Preserve user's financial settings (stake & daily loss)
-                    const next = { ...config, ...presetConfig, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
-                    setConfig(next);
-                    saveConfig(next);
-                    toast.success(`Profil ${preset.name} appliqué`, {
-                      description: `${preset.description} · Mise conservée: $${config.stakeUsd}`,
-                    });
-                  }}
-                  className={cn(
-                    "relative rounded-lg border p-3 text-left transition-all",
-                    isActive
-                      ? key === "conservative"
-                        ? "border-yellow-500 bg-yellow-500/10"
-                        : key === "moderate"
-                          ? "border-blue-500 bg-blue-500/10"
-                          : "border-green-500 bg-green-500/10"
-                      : "border-border bg-background hover:border-muted-foreground/50",
-                    running && "opacity-50 cursor-not-allowed",
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{preset.emoji}</span>
-                    <span className="text-xs font-semibold">{preset.name}</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground leading-tight">
-                    {preset.description.slice(0, 40)}...
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">{preset.recommendedCapital}</span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">{preset.targetWinRate}</span>
-                  </div>
-                  {isActive && (
-                    <div className="absolute top-1 right-1">
-                      <div className={cn(
-                        "h-2 w-2 rounded-full",
-                        key === "conservative" ? "bg-yellow-500" :
-                        key === "moderate" ? "bg-blue-500" :
-                        "bg-green-500"
-                      )} />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Custom Presets */}
-          {customPresets.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-border">
-              <label className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">
-                � Mes presets personnalisés ({customPresets.length})
-              </label>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {customPresets.map((preset) => {
-                  const isActive = config.minConfidence === preset.minConfidence &&
-                                  config.minTfAgreement === preset.minTfAgreement;
-                  return (
-                    <div
-                      key={preset.id}
-                      className={cn(
-                        "relative rounded-lg border p-3 transition-all group",
-                        isActive
-                          ? "border-[color:var(--brand-cyan)] bg-[color:var(--brand-cyan)]/10"
-                          : "border-border bg-background hover:border-muted-foreground/50",
-                      )}
-                    >
-                      <button
-                        disabled={running}
-                        onClick={() => {
-                          const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...presetConfig } = preset;
-                          const next = { ...config, ...presetConfig, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
-                          setConfig(next);
-                          saveConfig(next);
-                          toast.success(`Preset "${preset.name}" appliqué · Mise conservée: $${config.stakeUsd}`);
-                        }}
-                        className="w-full text-left"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg">{preset.emoji}</span>
-                          <span className="text-xs font-semibold truncate">{preset.name}</span>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground leading-tight">
-                          {preset.description.slice(0, 35)}...
-                        </p>
-                        {preset.performance && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[color:var(--bull)]/20 text-[color:var(--bull)]">
-                              {preset.performance.winRate.toFixed(1)}% win
-                            </span>
-                            <span className={cn(
-                              "text-[9px] px-1.5 py-0.5 rounded",
-                              preset.performance.totalProfit >= 0
-                                ? "bg-[color:var(--bull)]/20 text-[color:var(--bull)]"
-                                : "bg-[color:var(--bear)]/20 text-[color:var(--bear)]"
-                            )}>
-                              ${preset.performance.totalProfit.toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          deleteCustomPreset(preset.id);
-                          setCustomPresets(loadCustomPresets());
-                          toast.success(`Preset "${preset.name}" supprimé`);
-                        }}
-                        className="absolute top-1 right-1 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-500 transition-all"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                      {isActive && (
-                        <div className="absolute top-1 right-1">
-                          <div className="h-2 w-2 rounded-full bg-[color:var(--brand-cyan)]" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <p className="mt-2 text-[10px] text-muted-foreground">
-            💡 Choisis selon ton capital et ton appétence au risque. Sauvegarde ta config personnalisée quand elle performe bien.
-          </p>
-        </div>
-
-        {/* Capital initial */}
-        <div className="mb-4 rounded-xl border border-[color:var(--brand-cyan)]/20 bg-[color:var(--brand-cyan)]/5 p-4 flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs uppercase tracking-wider text-muted-foreground mb-1">
-              Capital de départ ($)
-            </label>
-            <AmountInput
-              value={config.initialCapital}
-              min={10}
-              max={100000}
-              step={10}
-              disabled={running}
-              onCommit={async (next) => {
-                patchConfig("initialCapital", next);
-                return true;
-              }}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Base pour calculer tes fonds disponibles. Tous tes gains/pertes s'y ajoutent automatiquement.
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground mb-1">Gains cumulés (tout temps)</div>
-            <div className={cn("text-lg font-bold", cumulativePnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
-              {cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}
-            </div>
-            <button
-              onClick={async () => {
-                const ok = await confirm({
-                  title: "Réinitialiser les gains cumulés ?",
-                  description: "Le compteur de gains/pertes accumulés sera remis à zéro. Cette action est irréversible.",
-                  confirmLabel: "Réinitialiser",
-                  danger: true,
-                });
-                if (ok) {
-                  const { resetCumulativePnl } = await import("@/lib/autotrader");
-                  resetCumulativePnl();
-                  setCumulativePnl(0);
-                  toast.success("Gains cumulés réinitialisés");
-                }
-              }}
-              className="mt-1 text-xs text-muted-foreground hover:text-[color:var(--bear)] transition-colors"
-            >
-              Remettre à zéro
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Mode */}
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">Mode</label>
-            <div className="flex gap-1">
-              {(["simulation", "demo", "live"] as TradingMode[]).map((m) => (
-                <button
-                  key={m}
-                  disabled={running}
-                  onClick={() => patchConfig("mode", m)}
-                  className={cn(
-                    "flex-1 rounded-md border py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors",
-                    config.mode === m
-                      ? m === "simulation"
-                        ? "border-muted bg-muted text-foreground"
-                        : m === "demo"
-                          ? "border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-                          : "border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                    running && "opacity-50 cursor-not-allowed",
-                  )}
-                >
-                  {m === "live" && <AlertTriangle className="inline h-3 w-3 mr-1" />}
-                  {m === "simulation" ? "simu" : m}
-                </button>
-              ))}
-            </div>
-            {config.mode === "simulation" && (
-              <p className="mt-1 text-xs text-muted-foreground">Simulation locale — pas de vrais trades</p>
-            )}
-            {config.mode === "demo" && !derivSession.connected && !derivSession.connecting && (
-              <div className="mt-2 flex items-center gap-2 rounded-md bg-[color:var(--bear)]/10 px-3 py-1.5 text-xs text-[color:var(--bear)]">
-                <span>⚠️ Session Deriv déconnectée — les trades DEMO échoueront</span>
-                <button
-                  onClick={() => reinitDerivSession()}
-                  className="ml-auto shrink-0 rounded px-2 py-0.5 font-semibold underline hover:no-underline"
-                >
-                  Reconnecter
-                </button>
-              </div>
-            )}
-            {config.mode === "demo" && derivSession.connecting && (
-              <p className="mt-1 text-xs text-muted-foreground">🔄 Connexion Deriv en cours…</p>
-            )}
-            {config.mode === "demo" && derivSession.connected && (
-              <p className="mt-1 text-xs text-[color:var(--bull)]">
-                ✅ Compte demo Deriv connecté
-                {derivSession.balance !== null && ` — Solde: $${derivSession.balance.toFixed(2)}`}
-              </p>
-            )}
-            {config.mode === "demo" && derivSession.error && (
-              <p className="mt-1 text-xs text-[color:var(--bear)]">⚠️ {derivSession.error}</p>
-            )}
-            {config.mode === "live" && (
-              <p className="mt-1 text-xs text-[color:var(--bear)]">⚠️ Argent réel — sois très prudent</p>
-            )}
-          </div>
-
-          {/* Stake */}
-          <Field label="Mise par trade ($)">
-            <AmountInput
-              value={config.stakeUsd}
-              min={1}
-              max={100}
-              step={1}
-              disabled={running}
-              onCommit={async (next) => {
-                const confirmed = await confirm({
-                  title: config.mode === "live" ? "⚠️ Modifier la mise ?" : "Modifier la mise ?",
-                  description: config.mode === "live"
-                    ? `Tu vas passer de $${config.stakeUsd} à $${next} par trade. En mode LIVE, cela affecte directement ton argent réel.`
-                    : `Changer la mise de $${config.stakeUsd} à $${next} par trade.`,
-                  confirmLabel: "Confirmer",
-                  danger: config.mode === "live",
-                });
-                if (confirmed) {
-                  patchConfig("stakeUsd", next);
-                  toast.success(`Mise mise à jour: $${next}`);
-                }
-                return confirmed;
-              }}
-            />
-          </Field>
-
-          {/* Duration */}
-          <Field label="Durée contrat (minutes)">
-            <select
-              value={config.durationMinutes}
-              disabled={running}
-              onChange={(e) => patchConfig("durationMinutes", Number(e.target.value))}
-              className="cfg-input"
-            >
-              <option value={5}>5 min</option>
-              <option value={15}>15 min</option>
-              <option value={30}>30 min</option>
-              <option value={60}>1 heure</option>
-            </select>
-          </Field>
-
-          {/* Min confidence */}
-          <Field label={`Confiance minimum (${config.minConfidence}%)`}>
-            <input
-              type="range"
-              min={55}
-              max={95}
-              step={5}
-              value={config.minConfidence}
-              disabled={running}
-              onChange={(e) => patchConfig("minConfidence", Number(e.target.value))}
-              className="w-full accent-[color:var(--brand-cyan)]"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
-              <span>55% (+ trades)</span><span>95% (rare)</span>
-            </div>
-          </Field>
-
-          {/* TF agreement */}
-          <Field label={`Accord timeframes (${config.minTfAgreement}/4 minimum)`}>
-            <input
-              type="range"
-              min={1}
-              max={4}
-              step={1}
-              value={config.minTfAgreement}
-              disabled={running}
-              onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))}
-              className="w-full accent-[color:var(--brand-cyan)]"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
-              <span>1 (+ trades)</span><span>4 (très sélectif)</span>
-            </div>
-          </Field>
-
-          {/* Max daily loss */}
-          <Field label="Perte max journalière ($)">
-            <AmountInput
-              value={config.maxDailyLossUsd}
-              min={5}
-              max={500}
-              step={5}
-              onCommit={async (next) => {
-                const confirmed = await confirm({
-                  title: config.mode === "live" ? "⚠️ Modifier la limite de perte ?" : "Modifier la limite de perte ?",
-                  description: config.mode === "live"
-                    ? `Tu vas changer la limite de $${config.maxDailyLossUsd} à $${next}. En mode LIVE, c'est le maximum que tu peux perdre aujourd'hui.`
-                    : `Changer la limite journalière de $${config.maxDailyLossUsd} à $${next}.`,
-                  confirmLabel: "Confirmer",
-                  danger: config.mode === "live",
-                });
-                if (confirmed) {
-                  patchConfig("maxDailyLossUsd", next);
-                  toast.success(`Limite journalière mise à jour: $${next}`);
-                }
-                return confirmed;
-              }}
-            />
-            <p className="mt-0.5 text-xs text-muted-foreground">Modifiable en temps réel, même bot actif</p>
-          </Field>
-
-          {/* Max trades — editable even while running, no confirmation */}
-          <Field label="Trades max par jour">
-            <AmountInput
-              value={config.maxTradesPerDay}
-              min={1}
-              max={50}
-              step={1}
-              onCommit={(next) => {
-                patchConfig("maxTradesPerDay", next);
-                return true;
-              }}
-            />
-            <p className="mt-0.5 text-xs text-muted-foreground">Modifiable en temps réel, même bot actif</p>
-          </Field>
-
-          {/* Symbols */}
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-              Paires surveillées
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {SYMBOLS.map((s) => {
-                const active = config.symbols.includes(s.deriv);
+            {/* Mode selector — 3 colonnes égales */}
+            <div className="grid grid-cols-3 border-b border-border/40">
+              {(["simulation", "demo", "live"] as TradingMode[]).map((m) => {
+                const isSelected = config.mode === m;
                 return (
-                  <button
-                    key={s.deriv}
-                    disabled={running}
-                    onClick={() => {
-                      const next = active
-                        ? config.symbols.filter((x) => x !== s.deriv)
-                        : [...config.symbols, s.deriv];
-                      if (next.length === 0) return;
-                      patchConfig("symbols", next);
-                    }}
+                  <button key={m} disabled={running} onClick={() => patchConfig("mode", m)}
                     className={cn(
-                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                      active
-                        ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]"
-                        : "border-border text-muted-foreground hover:text-foreground",
-                      running && "opacity-50 cursor-not-allowed",
+                      "flex flex-col items-center gap-1.5 py-4 text-center transition-all duration-200 border-r last:border-r-0 border-border/40",
+                      isSelected
+                        ? m === "live" ? "bg-down/10 text-down" : m === "demo" ? "bg-up/10 text-up" : "bg-muted/30 text-foreground"
+                        : "text-muted-foreground hover:bg-muted/10 hover:text-foreground",
+                      running && "opacity-40 cursor-not-allowed pointer-events-none",
+                    )}>
+                    <span className="text-xl leading-none">{m === "simulation" ? "🧪" : m === "demo" ? "🎮" : "⚡"}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider leading-none">
+                      {m === "simulation" ? "Simu" : m === "demo" ? "Démo" : "Live"}
+                    </span>
+                    {isSelected && (
+                      <span className={cn("h-0.5 w-8 rounded-full", m === "live" ? "bg-down" : m === "demo" ? "bg-up" : "bg-muted-foreground")} />
                     )}
-                  >
-                    {s.label}
                   </button>
                 );
               })}
             </div>
-          </div>
-        </div>
 
-        {/* Risk protection section */}
-        <div className="mt-5 pt-5 border-t border-border/40">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-[color:var(--brand-cyan)]" />
-            Protections anti-perte
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Consecutive losses */}
-            <Field label="Pertes consécutives max">
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={1}
-                value={config.maxConsecutiveLosses}
-                disabled={running}
-                onChange={(e) => patchConfig("maxConsecutiveLosses", Number(e.target.value))}
-                className="cfg-input"
-              />
-              <p className="mt-0.5 text-xs text-muted-foreground">Arrêt immédiat après N pertes d'affilée</p>
-            </Field>
-
-            {/* Max volatility */}
-            <Field label="Volatilité max (ATR %)">
-              <select
-                value={config.maxVolatilityPct}
-                disabled={running}
-                onChange={(e) => patchConfig("maxVolatilityPct", Number(e.target.value))}
-                className="cfg-input"
-              >
-                <option value={2}>2% (prudent)</option>
-                <option value={3}>3%</option>
-                <option value={4}>4% (équilibré)</option>
-                <option value={6}>6% (agressif)</option>
-              </select>
-              <p className="mt-0.5 text-xs text-muted-foreground">Arrêt si le marché devient trop volatil</p>
-            </Field>
-
-            {/* Premium only */}
-            <Field label="Positions PREMIUM uniquement">
-              <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                <span className="text-sm text-muted-foreground">
-                  {config.premiumOnly ? "Activé" : "Désactivé"}
-                </span>
-                <Switch
-                  checked={config.premiumOnly}
-                  disabled={running}
-                  onCheckedChange={(v) => patchConfig("premiumOnly", v)}
-                />
+            {/* Power button + statuts */}
+            <div className="p-6 flex flex-col items-center gap-5">
+              <div className="relative w-32 h-32">
+                {running && <span className="absolute inset-0 rounded-full animate-ping bg-up opacity-20" />}
+                <button onClick={toggleEngine}
+                  className={cn("relative w-full h-full rounded-full flex items-center justify-center transition-all duration-300 group", modeBg, modeRing, modeGlow)}>
+                  <Power className={cn("h-12 w-12 transition-transform duration-200 group-hover:scale-110", modeIcon)} />
+                </button>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Ne trade que les signaux les plus favorables (grade PREMIUM)
-              </p>
-            </Field>
 
-            {/* Stop on risk */}
-            <Field label="Arrêt immédiat sur risque">
-              <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                <span className="text-sm text-muted-foreground">
-                  {config.stopOnRisk ? "Activé" : "Désactivé"}
-                </span>
-                <Switch
-                  checked={config.stopOnRisk}
-                  disabled={running}
-                  onCheckedChange={(v) => patchConfig("stopOnRisk", v)}
-                />
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Stoppe tout + notification dès qu'un danger est détecté
-              </p>
-            </Field>
-
-            {/* Adaptive stake */}
-            <Field label="Mise adaptative (Kelly)">
-              <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-                <span className="text-sm text-muted-foreground">
-                  {config.adaptiveStake ? "Activée" : "Désactivée"}
-                </span>
-                <Switch
-                  checked={config.adaptiveStake}
-                  disabled={running}
-                  onCheckedChange={(v) => patchConfig("adaptiveStake", v)}
-                />
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Réduit la mise si win rate &lt; 55% (jusqu'à -75%)
-              </p>
-            </Field>
-
-            {/* Trading sessions */}
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
-                Sessions de trading autorisées
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {(["asia", "london", "newyork"] as TradingSession[]).map((s) => {
-                  const active = config.tradingSessions.includes(s);
-                  const isOpen = activeSessions.includes(s);
-                  return (
-                    <button
-                      key={s}
-                      disabled={running}
-                      onClick={() => {
-                        const next = active
-                          ? config.tradingSessions.filter((x) => x !== s)
-                          : [...config.tradingSessions, s];
-                        if (next.length === 0) return;
-                        patchConfig("tradingSessions", next);
-                      }}
-                      className={cn(
-                        "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors text-left",
-                        active
-                          ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]"
-                          : "border-border text-muted-foreground hover:text-foreground",
-                        running && "opacity-50 cursor-not-allowed",
-                      )}
-                    >
-                      <div>{SESSION_HOURS[s].label}</div>
-                      <div className="text-xs opacity-70">
-                        {SESSION_HOURS[s].open}h–{SESSION_HOURS[s].close}h UTC
-                        {isOpen ? " · Ouvert" : ""}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Les cryptos (BTC, ETH) ignorent ce filtre — elles tradent 24h/24.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Trade log */}
-      <div className="glass-panel rounded-xl overflow-hidden">
-        <button
-          className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold hover:bg-muted/10 transition-colors"
-          onClick={() => setShowLogs((v) => !v)}
-        >
-          <span>Journal des trades ({logs.length})</span>
-          {showLogs ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
-
-        {showLogs && (
-          <div>
-            {logs.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Aucun trade — démarre le bot pour commencer.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2.5 text-left">Heure</th>
-                      <th className="px-4 py-2.5 text-left">Paire / Info</th>
-                      <th className="px-4 py-2.5 text-center">Direction</th>
-                      <th className="px-4 py-2.5 text-right">Mise</th>
-                      <th className="px-4 py-2.5 text-right">Conf.</th>
-                      <th className="px-4 py-2.5 text-right">P&L</th>
-                      <th className="px-4 py-2.5 text-center">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {logs.map((t) => (
-                      <tr key={t.id} className={cn(
-                        "border-t border-border/40",
-                        t.status === "error" && "bg-[color:var(--bear)]/5",
-                      )}>
-                        <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(t.time).toLocaleTimeString()}
-                        </td>
-                        <td className="px-4 py-2 text-xs max-w-[180px]">
-                          {t.status === "cooldown" || t.status === "risk-stop" ? (
-                            <span className="text-muted-foreground italic">{t.note}</span>
-                          ) : t.status === "error" ? (
-                            <span className="text-[color:var(--bear)]" title={t.note}>
-                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                              {t.note && <span className="block text-[10px] opacity-80 truncate">{t.note}</span>}
-                            </span>
-                          ) : (
-                            <span className="font-medium">
-                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                              {t.note && <span className="block text-[10px] text-muted-foreground">{t.note}</span>}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-center">
-                          {t.status !== "cooldown" && t.status !== "risk-stop" && (
-                            <span className={cn(
-                              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold",
-                              t.direction === "CALL"
-                                ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-                                : "bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
-                            )}>
-                              {t.direction === "CALL"
-                                ? <TrendingUp className="h-3 w-3" />
-                                : <TrendingDown className="h-3 w-3" />}
-                              {t.direction}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-right text-xs">${t.stake > 0 ? t.stake.toFixed(2) : "—"}</td>
-                        <td className="px-4 py-2 text-right text-xs">
-                          {t.confidence > 0 ? `${t.confidence}%` : "—"}
-                        </td>
-                        <td className={cn(
-                          "px-4 py-2 text-right font-semibold text-sm",
-                          t.profit > 0
-                            ? "text-[color:var(--bull)]"
-                            : t.profit < 0
-                              ? "text-[color:var(--bear)]"
-                              : "text-muted-foreground",
-                        )}>
-                          {t.status === "won" && `+$${t.profit.toFixed(2)}`}
-                          {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
-                          {(t.status !== "won" && t.status !== "lost") && "—"}
-                        </td>
-                        <td className="px-4 py-2 text-center">
-                          <StatusBadge status={t.status} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {logs.length > 0 && (
-                  <div className="flex justify-end px-4 py-2">
-                    <button
-                      onClick={async () => {
-                        const ok = await confirm({
-                          title: "Effacer le journal ?",
-                          description: "Tout l'historique des trades sera supprimé définitivement.",
-                          confirmLabel: "Effacer",
-                          danger: true,
-                        });
-                        if (!ok) return;
-                        localStorage.removeItem("lio23.autotrader_log");
-                        setLogs([]);
-                      }}
-                      className="text-xs text-muted-foreground hover:text-[color:var(--bear)] transition-colors"
-                    >
-                      Effacer le journal
-                    </button>
+              {/* Statuts */}
+              <div className="w-full space-y-2">
+                <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Statut</span>
+                  <span className={cn("text-sm font-bold", running ? "text-up" : "text-muted-foreground")}>
+                    {running ? "● Actif" : "○ Arrêté"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mode</span>
+                  <span className={cn("text-sm font-bold",
+                    config.mode === "live" ? "text-down" : config.mode === "demo" ? "text-up" : "text-muted-foreground")}>
+                    {config.mode === "simulation" ? "🧪 Simulation" : config.mode === "demo" ? "🎮 Démo" : "⚡ Live Réel"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Paires</span>
+                  <span className="text-sm font-bold text-foreground">{config.symbols.length} surveillées</span>
+                </div>
+                {config.mode !== "simulation" && (
+                  <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Deriv</span>
+                    <span className={cn("text-sm font-bold flex items-center gap-2",
+                      derivSession.connected ? "text-up" : derivSession.connecting ? "text-amber-400" : "text-down")}>
+                      <span className={cn("h-2 w-2 rounded-full",
+                        derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
+                      {derivSession.connected
+                        ? derivSession.balance !== null ? `$${derivSession.balance.toFixed(2)}` : "Connecté"
+                        : derivSession.connecting ? "Connexion…"
+                        : <button onClick={reinitDerivSession} className="underline">Reconnecter</button>}
+                    </span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          </div>
+
+          {/* Force Trade panel — toujours visible en mode demo/live pour éviter les clignotements de l'interface */}
+          {(config.mode === "demo" || config.mode === "live") && (
+            <div className={cn("glass-panel rounded-xl px-4 py-3 border border-amber-500/20 transition-all duration-300",
+              !derivSession.connected && "opacity-60")}>
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="h-3 w-3 text-amber-400" />
+                  <span className="text-[10px] uppercase tracking-widest text-amber-400 font-semibold">Test pipeline Deriv</span>
+                </div>
+                {!derivSession.connected && (
+                  <span className="text-[9px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-medium animate-pulse">Déconnecté</span>
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
+                Ouvre un vrai trade immédiatement, sans vérification de signal. Vérifie que la connexion Deriv fonctionne de bout en bout.
+              </p>
+              <div className="space-y-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    value={forceSymbol}
+                    disabled={!derivSession.connected || forcingTrade}
+                    onChange={(e) => setForceSymbol(e.target.value)}
+                    className="w-full sm:flex-1 h-9 rounded-lg border border-border bg-background px-2 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    {config.symbols.map((s) => (
+                      <option key={s} value={s}>{SYMBOLS.find((x) => x.deriv === s)?.label ?? s}</option>
+                    ))}
+                  </select>
+                  <div className="flex rounded-lg border border-border overflow-hidden h-9 w-full sm:w-auto shrink-0">
+                    {(["CALL", "PUT"] as const).map((d) => (
+                      <button key={d}
+                        disabled={!derivSession.connected || forcingTrade}
+                        onClick={() => setForceDir(d)}
+                        className={cn("flex-1 sm:flex-none sm:px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                          forceDir === d
+                            ? d === "CALL" ? "bg-up/20 text-up" : "bg-down/20 text-down"
+                            : "text-muted-foreground hover:text-foreground")}>
+                        {d === "CALL" ? "▲ CALL" : "▼ PUT"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!derivSession.connected || forcingTrade}
+                  onClick={async () => {
+                    if (!forceSymbol) return;
+                    setForcingTrade(true);
+                    const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
+                    toast.info(`🚀 Trade forcé en cours — ${label} ${forceDir}…`);
+                    try {
+                      await forceDemoTrade(forceSymbol, forceDir, config.stakeUsd, config.durationMinutes, (log) => {
+                        handleEvent(log);
+                        if (log.status === "open") toast.success(`✅ Contrat ouvert — ${label} ${forceDir} · ID ${log.contractId}`);
+                      });
+                    } catch (e) {
+                      toast.error(`Échec: ${(e as Error).message}`);
+                    } finally {
+                      setForcingTrade(false);
+                    }
+                  }}
+                  className="w-full gap-1.5 text-xs h-8 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed">
+                  {forcingTrade
+                    ? <><Activity className="h-3.5 w-3.5 animate-pulse" /> Envoi en cours…</>
+                    : !derivSession.connected
+                    ? <><Zap className="h-3.5 w-3.5" /> Connexion Deriv requise</>
+                    : <><Zap className="h-3.5 w-3.5" /> Forcer un trade (${config.stakeUsd})</>}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Sessions marchés */}
+          <div className="glass-panel rounded-xl px-4 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sessions marchés</span>
+            </div>
+            <div className="space-y-2">
+              {(["asia", "london", "newyork"] as TradingSession[]).map((s) => {
+                const isActive = activeSessions.includes(s);
+                const inCfg = config.tradingSessions.includes(s);
+                return (
+                  <div key={s} className="flex items-center justify-between rounded-lg bg-muted/10 px-4 py-2.5">
+                    <span className="text-sm text-muted-foreground font-medium">{SESSION_HOURS[s].label}</span>
+                    <span className={cn("text-xs font-bold",
+                      isActive && inCfg ? "text-up" : isActive ? "text-muted-foreground" : "text-muted-foreground/40")}>
+                      {isActive && inCfg ? "● Ouverte & active" : isActive ? "● Ouverte" : "○ Fermée"}
+                    </span>
+                  </div>
+                );
+              })}
+              {config.adaptiveStake && effectiveStake < config.stakeUsd && (
+                <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-4 py-2.5">
+                  <span className="text-sm text-amber-400 font-semibold">Mise Kelly réduite</span>
+                  <span className="text-sm font-bold text-amber-400">${effectiveStake.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT: Dashboard + positions ── */}
+        <div className="space-y-5 min-w-0">
+          <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+
+          {openTradeList.length > 0 ? (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="h-2.5 w-2.5 rounded-full bg-up animate-pulse" />
+                <h2 className="text-sm font-bold uppercase tracking-wider text-up">Positions en direct ({openTradeList.length})</h2>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {openTradeList.map((t) => (
+                  <LiveTradeCard key={t.id} trade={t}
+                    onDismiss={() => { setLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
+                ))}
+              </div>
+            </div>
+          ) : running ? (
+            <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-5 text-center min-h-[200px]">
+              <div className="relative">
+                <div className="h-14 w-14 rounded-full border-2 border-up/30 border-t-up animate-spin" />
+                <Activity className="absolute inset-0 m-auto h-6 w-6 text-up" />
+              </div>
+              <div>
+                <div className="text-base font-semibold text-foreground">En attente de signal</div>
+                <div className="text-sm text-muted-foreground mt-1.5">
+                  <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center min-h-[200px]">
+              <Power className="h-10 w-10 text-muted-foreground/20" />
+              <div className="text-sm text-muted-foreground">Lance le bot pour voir les positions en direct</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Config panel (collapsible + tabbed) ── */}
+      <div className="glass-panel rounded-2xl overflow-hidden">
+        <button
+          className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
+          onClick={() => setShowConfig((v) => !v)}
+        >
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Configuration</span>
+            {running && <span className="text-[10px] text-muted-foreground bg-muted/30 rounded-md px-2 py-0.5">Arrête le bot pour modifier</span>}
+          </div>
+          {showConfig ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showConfig && (
+          <div className="border-t border-border/40">
+            {/* Tab nav */}
+            <div className="flex flex-col gap-3 border-b border-border/40 px-5 pt-3 pb-3 sm:flex-row sm:items-center sm:gap-2 sm:pt-2 sm:pb-0">
+              <div className="flex overflow-x-auto scrollbar-none gap-1 -mb-px">
+                {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["backtest","Backtest"]] as const).map(([t, label]) => (
+                  <button key={t} onClick={() => setConfigTab(t)}
+                    className={cn("px-4 py-3 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2",
+                      configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="sm:ml-auto pb-1 sm:pb-2 self-center w-full sm:w-auto">
+                <button onClick={() => setShowSavePreset(true)} disabled={running}
+                  className="flex items-center justify-center gap-1.5 text-xs px-3 py-2.5 w-full sm:w-auto rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40 font-bold sm:text-[10px] sm:px-2 sm:py-1 sm:font-semibold">
+                  <Save className="h-4 w-4 sm:h-3 sm:w-3" /> Sauvegarder config
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5">
+              {/* TAB: Profils */}
+              {configTab === "profiles" && (
+                <div className="space-y-4">
+                  {/* Test rapide — bouton dédié pour tester le pipeline en démo */}
+                  <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-base">🧪</span>
+                        <span className="text-sm font-bold">Mode Test Démo</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Seuils très bas (confiance ≥60%, 2/4 TF) pour tester le pipeline Deriv. Utilise uniquement en démo.
+                      </p>
+                    </div>
+                    <button disabled={running}
+                      onClick={() => {
+                        const next = { ...config, mode: "demo" as TradingMode, minConfidence: 60, minTfAgreement: 2, maxTradesPerDay: 20, premiumOnly: false, stopOnRisk: false, maxConsecutiveLosses: 10 };
+                        setConfig(next); saveConfig(next);
+                        setDraftMaxTrades(20);
+                        toast.success("🧪 Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
+                      }}
+                      className={cn("w-full sm:w-auto shrink-0 rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 py-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/25 transition-all sm:py-2 sm:font-semibold",
+                        running && "opacity-40 cursor-not-allowed")}>
+                      Appliquer
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
+                      const preset = PRESETS[key];
+                      const isActive = config.minConfidence === preset.minConfidence && config.minTfAgreement === preset.minTfAgreement
+                        && config.premiumOnly === preset.premiumOnly && config.maxTradesPerDay === preset.maxTradesPerDay
+                        && config.maxConsecutiveLosses === preset.maxConsecutiveLosses;
+                      return (
+                        <button key={key} disabled={running}
+                          onClick={() => {
+                            const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...pc } = preset;
+                            const next = { ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
+                            setConfig(next); saveConfig(next);
+                            setDraftDuration(next.durationMinutes);
+                            setDraftMaxTrades(next.maxTradesPerDay);
+                            toast.success(`${preset.emoji} Profil ${preset.name} appliqué`, { description: `Mise conservée: $${config.stakeUsd}` });
+                          }}
+                          className={cn("relative rounded-xl border p-4 text-left transition-all",
+                            isActive ? key === "conservative" ? "border-yellow-500/60 bg-yellow-500/8"
+                              : key === "moderate" ? "border-blue-500/60 bg-blue-500/8" : "border-green-500/60 bg-green-500/8"
+                              : "border-border bg-muted/10 hover:border-muted-foreground/40 hover:bg-muted/20",
+                            running && "opacity-40 cursor-not-allowed")}>
+                          <div className="text-xl mb-2">{preset.emoji}</div>
+                          <div className="text-sm font-bold mb-1">{preset.name}</div>
+                          <p className="text-xs text-muted-foreground leading-snug mb-3">{preset.description}</p>
+                          <div className="flex flex-wrap gap-1">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.recommendedCapital}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.targetWinRate}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.expectedTradesPerDay}/j</span>
+                          </div>
+                          {isActive && <div className={cn("absolute top-2 right-2 h-2 w-2 rounded-full",
+                            key === "conservative" ? "bg-yellow-500" : key === "moderate" ? "bg-blue-500" : "bg-green-500")} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {customPresets.length > 0 && (
+                    <div className="pt-3 border-t border-border/40">
+                      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Mes presets</div>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {customPresets.map((preset) => {
+                          const isActive = config.minConfidence === preset.minConfidence && config.minTfAgreement === preset.minTfAgreement
+                            && config.premiumOnly === preset.premiumOnly && config.maxTradesPerDay === preset.maxTradesPerDay
+                            && config.maxConsecutiveLosses === preset.maxConsecutiveLosses;
+                          return (
+                            <div key={preset.id} className={cn("relative rounded-xl border p-3 transition-all group",
+                              isActive ? "border-primary/60 bg-primary/8" : "border-border bg-muted/10 hover:border-muted-foreground/40")}>
+                              <button disabled={running} className="w-full text-left"
+                                onClick={() => {
+                                  const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...pc } = preset;
+                                  setConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd });
+                                  saveConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd });
+                                  toast.success(`Preset "${preset.name}" appliqué`);
+                                }}>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span>{preset.emoji}</span>
+                                  <span className="text-xs font-semibold truncate">{preset.name}</span>
+                                </div>
+                                {preset.performance && (
+                                  <div className="flex gap-1 mt-1">
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-up/20 text-up">{preset.performance.winRate.toFixed(0)}% win</span>
+                                    <span className={cn("text-[9px] px-1.5 py-0.5 rounded", preset.performance.totalProfit >= 0 ? "bg-up/20 text-up" : "bg-down/20 text-down")}>
+                                      ${preset.performance.totalProfit.toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                              </button>
+                              <button onClick={() => { deleteCustomPreset(preset.id); setCustomPresets(loadCustomPresets()); toast.success(`"${preset.name}" supprimé`); }}
+                                className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-down/20 text-down transition-all">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                              {isActive && <div className="absolute top-2 left-2 h-1.5 w-1.5 rounded-full bg-primary" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: Paramètres */}
+              {configTab === "params" && (
+                <div className="space-y-5">
+                  {/* Capital */}
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                    <div className="flex-1 w-full">
+                      <Field label="Capital de départ ($)">
+                        <AmountInput value={config.initialCapital} min={10} max={100000} step={10} disabled={running}
+                          onCommit={async (v) => { patchConfig("initialCapital", v); return true; }} />
+                      </Field>
+                      <p className="mt-1.5 text-xs text-muted-foreground">Base de calcul des fonds disponibles.</p>
+                    </div>
+                    <div className="text-left sm:text-right w-full sm:w-auto pt-3 border-t border-border/40 sm:pt-0 sm:border-t-0">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Gains cumulés</div>
+                      <div className={cn("font-mono-tabular text-2xl font-bold", cumulativePnl >= 0 ? "text-up" : "text-down")}>
+                        {cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}
+                      </div>
+                      <button onClick={async () => {
+                        const ok = await confirm({ title: "Réinitialiser les gains cumulés ?", description: "Cette action est irréversible.", confirmLabel: "Réinitialiser", danger: true });
+                        if (ok) { const { resetCumulativePnl } = await import("@/lib/autotrader"); resetCumulativePnl(); setCumulativePnl(0); toast.success("Gains cumulés réinitialisés"); }
+                      }} className="text-xs text-muted-foreground/80 hover:text-down transition-colors mt-1.5 underline decoration-dashed">Remettre à zéro</button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {/* Stake mode toggle */}
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Mode de mise</label>
+                      <div className="flex rounded-xl border border-border overflow-hidden w-fit">
+                        {(["fixed", "percent"] as const).map((m) => (
+                          <button key={m} disabled={running} onClick={() => patchConfig("stakeMode", m)}
+                            className={cn("px-4 py-2 text-xs font-semibold transition-colors",
+                              config.stakeMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
+                              running && "opacity-40 cursor-not-allowed")}>
+                            {m === "fixed" ? "$ Fixe" : "% Capital"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Field label={config.stakeMode === "percent" ? `Mise par trade (${config.stakePercent}% du capital)` : "Mise par trade ($)"}>
+                      {config.stakeMode === "fixed" ? (
+                        <AmountInput value={config.stakeUsd} min={1} max={100} step={1} disabled={running}
+                          onCommit={async (v) => {
+                            const ok = await confirm({ title: "Modifier la mise ?", description: `$${config.stakeUsd} → $${v} par trade${config.mode === "live" ? " (argent réel)" : ""}`, confirmLabel: "Confirmer", danger: config.mode === "live" });
+                            if (ok) { patchConfig("stakeUsd", v); toast.success(`Mise: $${v}`); }
+                            return ok;
+                          }} />
+                      ) : (
+                        <div>
+                          <input type="range" min={0.5} max={5} step={0.5} value={config.stakePercent} disabled={running}
+                            onChange={(e) => patchConfig("stakePercent", Number(e.target.value))} className="w-full accent-primary" />
+                          <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                            <span>0.5%</span>
+                            {derivSession.balance !== null && (
+                              <span className="text-primary font-semibold">≈ ${((derivSession.balance * config.stakePercent) / 100).toFixed(2)}</span>
+                            )}
+                            <span>5%</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-1">Recommandé : 1–2% du capital par trade</p>
+                        </div>
+                      )}
+                    </Field>
+                    <Field label={`Durée contrat${draftDuration !== config.durationMinutes ? " ●" : ""}`}>
+                      <select
+                        value={draftDuration}
+                        disabled={running}
+                        onChange={(e) => setDraftDuration(Number(e.target.value))}
+                        className={cn("cfg-input transition-colors", draftDuration !== config.durationMinutes && "border-amber-500/60 ring-1 ring-amber-500/30")}
+                      >
+                        <option value={5}>5 min</option>
+                        <option value={15}>15 min</option>
+                        <option value={30}>30 min</option>
+                        <option value={60}>1 heure</option>
+                      </select>
+                      {draftDuration !== config.durationMinutes && (
+                        <span className="text-[10px] text-amber-400 mt-1 block">
+                          Actuellement sauvegardé : {config.durationMinutes} min
+                        </span>
+                      )}
+                    </Field>
+                    <Field label={`Trades max / jour${draftMaxTrades !== config.maxTradesPerDay ? " ●" : ""}`}>
+                      <div className={cn(draftMaxTrades !== config.maxTradesPerDay && "ring-1 ring-amber-500/30 rounded-lg")}>
+                        <AmountInput
+                          value={draftMaxTrades}
+                          min={1}
+                          max={50}
+                          step={1}
+                          onCommit={(v) => { setDraftMaxTrades(v); return true; }}
+                        />
+                      </div>
+                      {draftMaxTrades !== config.maxTradesPerDay && (
+                        <span className="text-[10px] text-amber-400 mt-1 block">
+                          Actuellement sauvegardé : {config.maxTradesPerDay}
+                        </span>
+                      )}
+                    </Field>
+                    <Field label={`Confiance min (${config.minConfidence}%)`}>
+                      <input type="range" min={55} max={95} step={5} value={config.minConfidence} disabled={running}
+                        onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
+                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
+                    </Field>
+                    <Field label={`Accord TF min (${config.minTfAgreement}/4)`}>
+                      <input type="range" min={1} max={4} step={1} value={config.minTfAgreement} disabled={running}
+                        onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
+                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
+                    </Field>
+                    <div className="sm:col-span-2 lg:col-span-1">
+                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Paires surveillées</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SYMBOLS.map((s) => {
+                          const active = config.symbols.includes(s.deriv);
+                          return (
+                            <button key={s.deriv} disabled={running}
+                              onClick={() => { const next = active ? config.symbols.filter((x) => x !== s.deriv) : [...config.symbols, s.deriv]; if (next.length > 0) patchConfig("symbols", next); }}
+                              className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                                active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground",
+                                running && "opacity-40 cursor-not-allowed")}>
+                              {s.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Unsaved params banner */}
+                  {(draftDuration !== config.durationMinutes || draftMaxTrades !== config.maxTradesPerDay) && (
+                    <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3">
+                      <div className="text-xs">
+                        <span className="font-semibold text-amber-300">Modifications non sauvegardées</span>
+                        <span className="text-muted-foreground ml-2">
+                          {draftDuration !== config.durationMinutes && `Durée : ${draftDuration} min`}
+                          {draftDuration !== config.durationMinutes && draftMaxTrades !== config.maxTradesPerDay && " · "}
+                          {draftMaxTrades !== config.maxTradesPerDay && `Max trades : ${draftMaxTrades}/jour`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => { setDraftDuration(config.durationMinutes); setDraftMaxTrades(config.maxTradesPerDay); }}
+                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1">
+                          Annuler
+                        </button>
+                        <button
+                          onClick={() => setShowSaveParams(true)}
+                          className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30 transition-colors">
+                          <Save className="h-3 w-3" /> Sauvegarder
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: Risque & Sessions */}
+              {configTab === "risk" && (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label="Perte max / jour ($)">
+                    <AmountInput value={config.maxDailyLossUsd} min={5} max={500} step={5}
+                      onCommit={async (v) => {
+                        const ok = await confirm({ title: "Modifier la limite ?", description: `$${config.maxDailyLossUsd} → $${v}${config.mode === "live" ? " (argent réel)" : ""}`, confirmLabel: "Confirmer", danger: config.mode === "live" });
+                        if (ok) { patchConfig("maxDailyLossUsd", v); toast.success(`Limite: $${v}`); }
+                        return ok;
+                      }} />
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Modifiable même bot actif</p>
+                  </Field>
+                  <Field label={`Gain cible / jour ($${config.maxDailyProfitUsd === 0 ? " — off" : config.maxDailyProfitUsd})`}>
+                    <AmountInput value={config.maxDailyProfitUsd} min={0} max={1000} step={5}
+                      onCommit={(v) => { patchConfig("maxDailyProfitUsd", v); toast.success(v === 0 ? "Gain cible désactivé" : `Objectif: $${v}`); return true; }} />
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">0 = désactivé</p>
+                  </Field>
+                  <Field label="Pertes consécutives max">
+                    <input type="number" min={1} max={10} value={config.maxConsecutiveLosses} disabled={running}
+                      onChange={(e) => patchConfig("maxConsecutiveLosses", Number(e.target.value))} className="cfg-input" />
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Arrêt / cooldown après N pertes</p>
+                  </Field>
+                  <Field label="Volatilité max (ATR%)">
+                    <select value={config.maxVolatilityPct} disabled={running} onChange={(e) => patchConfig("maxVolatilityPct", Number(e.target.value))} className="cfg-input">
+                      <option value={2}>2% — prudent</option><option value={3}>3%</option>
+                      <option value={4}>4% — équilibré</option><option value={6}>6% — agressif</option>
+                    </select>
+                  </Field>
+                  {([
+                    ["premiumOnly","Signaux PREMIUM uniquement","Ne trade que les meilleurs signaux"],
+                    ["stopOnRisk","Arrêt immédiat sur risque","Hard-stop + notification"],
+                    ["adaptiveStake","Mise Kelly adaptative","Réduit la mise quand win rate < 55%"],
+                  ] as const).map(([key, label, desc]) => (
+                    <Field key={key} label={label}>
+                      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                        <span className="text-xs text-muted-foreground">{config[key] ? "Activé" : "Désactivé"}</span>
+                        <Switch checked={config[key] as boolean} disabled={running} onCheckedChange={(v) => patchConfig(key, v)} />
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{desc}</p>
+                    </Field>
+                  ))}
+                  <Field label={`Trailing stop — drawdown ($${config.trailingStopUsd === 0 ? " off" : config.trailingStopUsd})`}>
+                    <AmountInput value={config.trailingStopUsd} min={0} max={500} step={5}
+                      onCommit={(v) => { patchConfig("trailingStopUsd", v); toast.success(v === 0 ? "Trailing stop désactivé" : `Trailing stop: $${v} sous le pic`); return true; }} />
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Arrêt si le P&amp;L recule de ce montant depuis son pic. 0 = désactivé</p>
+                  </Field>
+                  <Field label="Bloquer les paires corrélées">
+                    <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                      <span className="text-xs text-muted-foreground">{config.blockCorrelated ? "Activé" : "Désactivé"}</span>
+                      <Switch checked={config.blockCorrelated} disabled={running} onCheckedChange={(v) => { patchConfig("blockCorrelated", v); toast.success(v ? "Corrélation activée — une paire par groupe" : "Corrélation désactivée"); }} />
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Évite d&apos;ouvrir deux paires corrélées en même temps.{" "}
+                      {CORRELATION_GROUPS.map((g, i) => <span key={i} className="opacity-60">{g.map(s => s.replace(/^(frx|cry)/, "")).join("+")} </span>)}
+                    </p>
+                  </Field>
+                  <Field label={`Buffer ouverture/clôture session (${config.sessionEdgeMinutes} min)`}>
+                    <input type="range" min={0} max={60} step={15} value={config.sessionEdgeMinutes} disabled={running}
+                      onChange={(e) => patchConfig("sessionEdgeMinutes", Number(e.target.value))} className="w-full accent-primary" />
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 min</span></div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Évite les faux breakouts à l'ouverture/clôture des sessions Forex</p>
+                  </Field>
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Sessions autorisées</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["asia","london","newyork"] as TradingSession[]).map((s) => {
+                        const active = config.tradingSessions.includes(s);
+                        const isOpen = activeSessions.includes(s);
+                        return (
+                          <button key={s} disabled={running}
+                            onClick={() => { const next = active ? config.tradingSessions.filter((x) => x !== s) : [...config.tradingSessions, s]; if (next.length > 0) patchConfig("tradingSessions", next); }}
+                            className={cn("rounded-xl border px-4 py-2 text-xs font-medium transition-colors text-left",
+                              active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground",
+                              running && "opacity-40 cursor-not-allowed")}>
+                            <div className="font-semibold">{SESSION_HOURS[s].label} {isOpen ? "●" : ""}</div>
+                            <div className="text-[10px] opacity-60">{SESSION_HOURS[s].open}h–{SESSION_HOURS[s].close}h UTC</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">BTC/ETH ignorent ce filtre — 24h/24.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: Backtest */}
+              {configTab === "backtest" && (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground leading-relaxed max-w-lg">
+                        Simule le moteur de signal exact sur <strong>600 bougies 15m</strong> réelles par paire configurée.
+                        Chaque signal qualifié est évalué sur la bougie suivante — même logique que le bot en live.
+                      </p>
+                      <p className="text-xs text-muted-foreground/60 mt-1.5">
+                        Seuil d'équilibre options binaires (payout 85%) : <strong className="text-amber-400">54.1% win rate minimum</strong>
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={runBacktest} disabled={backtestRunning}
+                      className="w-full sm:w-auto shrink-0 gap-2 h-11 sm:h-9 text-sm sm:text-xs font-bold sm:font-semibold">
+                      <FlaskConical className={cn("h-4 w-4 sm:h-3.5 sm:w-3.5", backtestRunning && "animate-pulse")} />
+                      {backtestRunning ? "Analyse…" : "Lancer le backtest"}
+                    </Button>
+                  </div>
+
+                  {backtestRunning && (
+                    <div className="space-y-2">
+                      {config.symbols.map((sym) => (
+                        <div key={sym} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
+                      ))}
+                    </div>
+                  )}
+
+                  {Object.keys(backtestResults).length > 0 && !backtestRunning && (() => {
+                    const allResults = Object.values(backtestResults);
+                    const totalTrades = allResults.reduce((s, r) => s + r.trades, 0);
+                    const totalWins = allResults.reduce((s, r) => s + r.wins, 0);
+                    const globalWinRate = totalTrades > 0 ? totalWins / totalTrades : 0;
+                    const totalPnl = allResults.reduce((s, r) => s + r.pnl, 0);
+                    const breakEven = allResults[0]?.breakEvenWinRate ?? 0.541;
+                    const edge = globalWinRate - breakEven;
+                    return (
+                      <div className="space-y-3">
+                        <div className={cn("rounded-xl border p-4 flex flex-wrap gap-4 items-center",
+                          globalWinRate >= breakEven ? "border-up/30 bg-up/5" : "border-down/30 bg-down/5")}>
+                          <div className="flex-1 min-w-[120px]">
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Win Rate global</div>
+                            <div className={cn("text-2xl font-bold font-mono-tabular mt-0.5",
+                              globalWinRate >= breakEven ? "text-up" : "text-down")}>
+                              {(globalWinRate * 100).toFixed(1)}%
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">seuil rentabilité : {(breakEven * 100).toFixed(1)}%</div>
+                          </div>
+                          <div className="flex-1 min-w-[100px]">
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">P&L simulé</div>
+                            <div className={cn("text-xl font-bold font-mono-tabular mt-0.5",
+                              totalPnl >= 0 ? "text-up" : "text-down")}>
+                              {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">mise ${config.stakeUsd}/trade</div>
+                          </div>
+                          <div className="flex-1 min-w-[100px]">
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Edge théorique</div>
+                            <div className={cn("text-xl font-bold font-mono-tabular mt-0.5",
+                              edge >= 0 ? "text-up" : "text-down")}>
+                              {edge >= 0 ? "+" : ""}{(edge * 100).toFixed(1)}%
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">{totalTrades} trades analysés</div>
+                          </div>
+                          <div className={cn("rounded-lg px-3 py-2 text-xs font-bold text-center",
+                            globalWinRate >= breakEven + 0.05 ? "bg-up/20 text-up"
+                            : globalWinRate >= breakEven ? "bg-amber-500/20 text-amber-400"
+                            : "bg-down/20 text-down")}>
+                            {globalWinRate >= breakEven + 0.05 ? "✓ Edge positif"
+                              : globalWinRate >= breakEven ? "⚠ Limite rentable"
+                              : "✗ Edge négatif"}
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-border/40">
+                          <table className="w-full text-xs">
+                            <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
+                              <tr>
+                                <th className="px-4 py-2.5 text-left">Paire</th>
+                                <th className="px-4 py-2.5 text-right">Trades</th>
+                                <th className="px-4 py-2.5 text-right">Win Rate</th>
+                                <th className="px-4 py-2.5 text-right">P&L sim.</th>
+                                <th className="px-4 py-2.5 text-right">Conf. moy.</th>
+                                <th className="px-4 py-2.5 text-center">Verdict</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {allResults.map((r) => {
+                                const wr = r.winRate;
+                                const be = r.breakEvenWinRate;
+                                const label = SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol;
+                                return (
+                                  <tr key={r.symbol} className="border-t border-border/30 hover:bg-muted/5">
+                                    <td className="px-4 py-2.5 font-medium">{label}</td>
+                                    <td className="px-4 py-2.5 text-right text-muted-foreground">{r.trades}</td>
+                                    <td className={cn("px-4 py-2.5 text-right font-bold",
+                                      wr >= be ? "text-up" : "text-down")}>
+                                      {r.trades > 0 ? `${(wr * 100).toFixed(1)}%` : "—"}
+                                    </td>
+                                    <td className={cn("px-4 py-2.5 text-right font-bold",
+                                      r.pnl >= 0 ? "text-up" : "text-down")}>
+                                      {r.trades > 0 ? `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}` : "—"}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right text-muted-foreground">
+                                      {r.trades > 0 ? `${r.avgConfidence}%` : "—"}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-center">
+                                      {r.trades === 0 ? (
+                                        <span className="text-[10px] text-muted-foreground">Pas de signal</span>
+                                      ) : wr >= be + 0.05 ? (
+                                        <span className="text-[10px] font-bold text-up bg-up/10 px-2 py-0.5 rounded">Edge +</span>
+                                      ) : wr >= be ? (
+                                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">Limite</span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold text-down bg-down/10 px-2 py-0.5 rounded">Edge −</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/60">
+                          Backtest sur 1 TF (15m) uniquement. Le bot live utilise 4 TF simultanés — plus sélectif, win rate réel potentiellement différent. Ne constitue pas une garantie de performance future.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {Object.keys(backtestResults).length === 0 && !backtestRunning && (
+                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                      <FlaskConical className="h-8 w-8 text-muted-foreground/20" />
+                      <p className="text-xs text-muted-foreground">Lance le backtest pour voir si le signal a un edge statistique sur les paires configurées.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Disclaimer modal */}
-      {showDisclaimer && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="glass-panel w-full max-w-md rounded-xl p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-lg bg-[color:var(--bear)]/10 text-[color:var(--bear)]">
-                <ShieldAlert className="h-5 w-5" />
+      {/* ── Trade Journal ── */}
+      <div className="glass-panel rounded-2xl overflow-hidden">
+        <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
+          onClick={() => setShowLogs((v) => !v)}>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">Journal</span>
+            <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">{logs.length} trades</span>
+            {wins > 0 && <span className="text-[10px] bg-up/15 text-up rounded-md px-2 py-0.5">{wins} gagnés</span>}
+            {losses > 0 && <span className="text-[10px] bg-down/15 text-down rounded-md px-2 py-0.5">{losses} perdus</span>}
+          </div>
+          {showLogs ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showLogs && (
+          <div className="border-t border-border/40">
+            {logs.length > 0 && (
+              <div className="flex gap-1 px-5 pt-3 pb-1 flex-wrap">
+                {(["all","won","lost","open","error"] as const).map((f) => {
+                  const count = f === "all" ? logs.length : logs.filter((l) => l.status === f).length;
+                  return (
+                    <button key={f} onClick={() => setLogFilter(f)}
+                      className={cn("rounded-lg px-3 py-1 text-[10px] font-semibold transition-colors",
+                        logFilter === f
+                          ? f === "won" ? "bg-up/20 text-up" : f === "lost" ? "bg-down/20 text-down"
+                            : f === "open" ? "bg-[color:var(--brand-cyan)]/20 text-[color:var(--brand-cyan)]" : "bg-muted/50 text-foreground"
+                          : "text-muted-foreground hover:text-foreground")}>
+                      {f === "all" ? "Tous" : f === "won" ? "Gagnés" : f === "lost" ? "Perdus" : f === "open" ? "Ouverts" : "Erreurs"} ({count})
+                    </button>
+                  );
+                })}
               </div>
-              <h2 className="text-lg font-bold">Confirmation requise</h2>
+            )}
+            {(() => {
+              const fl = logFilter === "all" ? logs : logs.filter((l) => l.status === logFilter);
+              return fl.length === 0 ? (
+                <div className="px-5 py-10 text-center text-xs text-muted-foreground">
+                  {logFilter === "all" ? "Aucun trade — démarre le bot." : `Aucun trade "${logFilter}".`}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="px-5 py-2.5 text-left">Heure</th>
+                        <th className="px-5 py-2.5 text-left">Paire</th>
+                        <th className="px-4 py-2.5 text-center">Dir.</th>
+                        <th className="px-4 py-2.5 text-right">Mise</th>
+                        <th className="px-4 py-2.5 text-right">Conf.</th>
+                        <th className="px-4 py-2.5 text-right">P&L</th>
+                        <th className="px-4 py-2.5 text-center">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fl.map((t) => (
+                        <tr key={t.id} className={cn("border-t border-border/30 hover:bg-muted/5 transition-colors",
+                          t.status === "won" && "bg-up/3", t.status === "lost" && "bg-down/3")}>
+                          <td className="px-5 py-2.5 text-muted-foreground whitespace-nowrap">{new Date(t.time).toLocaleTimeString()}</td>
+                          <td className="px-5 py-2.5 max-w-[160px]">
+                            {t.status === "cooldown" || t.status === "risk-stop"
+                              ? <span className="text-muted-foreground italic text-[10px]">{t.note}</span>
+                              : <span className={cn("font-medium", t.status === "error" && "text-down")}>
+                                  {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                                  {t.note && <span className="block text-[10px] text-muted-foreground truncate">{t.note}</span>}
+                                </span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            {t.status !== "cooldown" && t.status !== "risk-stop" && (
+                              <span className={cn("inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold",
+                                t.direction === "CALL" ? "bg-up/10 text-up" : "bg-down/10 text-down")}>
+                                {t.direction === "CALL" ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                                {t.direction}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-muted-foreground">{t.stake > 0 ? `$${t.stake.toFixed(2)}` : "—"}</td>
+                          <td className="px-4 py-2.5 text-right text-muted-foreground">{t.confidence > 0 ? `${t.confidence}%` : "—"}</td>
+                          <td className={cn("px-4 py-2.5 text-right font-bold",
+                            t.profit > 0 ? "text-up" : t.profit < 0 ? "text-down" : "text-muted-foreground")}>
+                            {t.status === "won" && `+$${t.profit.toFixed(2)}`}
+                            {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
+                            {t.status !== "won" && t.status !== "lost" && "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-center"><StatusBadge status={t.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="flex justify-end px-5 py-2.5 border-t border-border/30">
+                    <button onClick={async () => {
+                      const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
+                      if (!ok) return;
+                      localStorage.removeItem("lio23.autotrader_log");
+                      setLogs([]);
+                    }} className="text-[10px] text-muted-foreground hover:text-down transition-colors">
+                      Effacer le journal
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* ── Disclaimer modal ── */}
+      {/* ── Save params popup ── */}
+      {showSaveParams && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-md p-4">
+          <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-amber-500/10 text-amber-400">
+                <Save className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold">Sauvegarder les paramètres</h2>
+                <p className="text-[11px] text-muted-foreground">Ces valeurs remplaceront la configuration actuelle.</p>
+              </div>
             </div>
-            <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
-              <p>Avant d'activer le trading automatique, tu dois comprendre et accepter :</p>
-              <ul className="space-y-2">
-                {[
-                  "Aucun algorithme ne garantit des gains — des pertes sont inévitables.",
-                  "Les signaux sont basés sur des indicateurs techniques passés, pas sur le futur.",
-                  "Le circuit-breaker limite les pertes mais ne les élimine pas.",
-                  "En mode LIVE, du vrai argent est engagé à chaque trade.",
-                  "LIO23 est un outil d'analyse, pas un conseiller financier agréé.",
-                ].map((t, i) => (
-                  <li key={i} className="flex gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[color:var(--bear)]" />
-                    {t}
-                  </li>
-                ))}
-              </ul>
-              <p className="font-semibold text-foreground">
-                En cliquant "J'accepte", tu confirmes avoir lu et compris ces risques.
-              </p>
+
+            <div className="space-y-2">
+              {draftDuration !== config.durationMinutes && (
+                <div className="flex items-center justify-between rounded-xl bg-muted/20 px-4 py-3 text-xs">
+                  <span className="text-muted-foreground font-medium">Durée de contrat</span>
+                  <div className="flex items-center gap-2">
+                    <span className="line-through text-muted-foreground/40">{config.durationMinutes} min</span>
+                    <span className="text-amber-300 font-bold">→ {draftDuration} min</span>
+                  </div>
+                </div>
+              )}
+              {draftMaxTrades !== config.maxTradesPerDay && (
+                <div className="flex items-center justify-between rounded-xl bg-muted/20 px-4 py-3 text-xs">
+                  <span className="text-muted-foreground font-medium">Trades max / jour</span>
+                  <div className="flex items-center gap-2">
+                    <span className="line-through text-muted-foreground/40">{config.maxTradesPerDay} trades</span>
+                    <span className="text-amber-300 font-bold">→ {draftMaxTrades} trades</span>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowDisclaimer(false)}>
+
+            {running && (
+              <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[11px] text-amber-400 flex gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                Bot actif — les nouvelles valeurs seront effectives dès le prochain scan.
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowSaveParams(false)}>
                 Annuler
               </Button>
-              <Button
-                className="flex-1 bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold"
-                onClick={acceptDisclaimer}
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                J'accepte — Démarrer
+              <Button className="flex-1 bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/30"
+                onClick={() => {
+                  if (draftDuration !== config.durationMinutes) patchConfig("durationMinutes", draftDuration);
+                  if (draftMaxTrades !== config.maxTradesPerDay) patchConfig("maxTradesPerDay", draftMaxTrades);
+                  setShowSaveParams(false);
+                  toast.success("Paramètres sauvegardés", {
+                    description: [
+                      draftDuration !== config.durationMinutes ? `Durée : ${draftDuration} min` : null,
+                      draftMaxTrades !== config.maxTradesPerDay ? `Max trades : ${draftMaxTrades}/jour` : null,
+                    ].filter(Boolean).join(" · "),
+                  });
+                }}>
+                <Save className="mr-2 h-4 w-4" /> Confirmer
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      <style>{`.cfg-input { width:100%; border-radius:6px; border:1px solid var(--border); background:var(--background); padding:8px 12px; font-size:14px; color:var(--foreground); }`}</style>
+      {showDisclaimer && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-md p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-down/10 text-down"><ShieldAlert className="h-5 w-5" /></div>
+              <h2 className="text-sm font-bold">Avant de commencer</h2>
+            </div>
+            <ul className="space-y-2.5 text-xs text-muted-foreground">
+              {["Aucun algorithme ne garantit des gains — des pertes sont inévitables.",
+                "Les signaux sont basés sur des indicateurs passés, pas sur le futur.",
+                "Le circuit-breaker limite les pertes mais ne les élimine pas.",
+                "En mode LIVE, du vrai argent est engagé à chaque trade.",
+                "Vertex est un outil d'analyse, pas un conseiller financier agréé."
+              ].map((t, i) => (
+                <li key={i} className="flex gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-down" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs font-semibold text-foreground">En acceptant, tu confirmes avoir lu et compris ces risques.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowDisclaimer(false)}>Annuler</Button>
+              <Button className="flex-1 bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-background font-semibold" onClick={acceptDisclaimer}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> J'accepte — Démarrer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* ── Save preset modal ── */}
+      {showSavePreset && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-md p-4">
+          <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl">
+            <h2 className="text-sm font-bold">Sauvegarder cette configuration</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Nom</label>
+                <input value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Mon preset agressif…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Description</label>
+                <input value={presetDesc} onChange={(e) => setPresetDesc(e.target.value)} placeholder="Fonctionne bien sur BTC le matin…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setShowSavePreset(false); setPresetName(""); setPresetDesc(""); }}>Annuler</Button>
+              <Button className="flex-1" disabled={!presetName.trim()} onClick={() => {
+                saveCurrentAsPreset(config, presetName.trim(), presetDesc.trim() || presetName.trim());
+                setCustomPresets(loadCustomPresets());
+                setShowSavePreset(false); setPresetName(""); setPresetDesc("");
+                toast.success(`Preset "${presetName}" sauvegardé`);
+              }}>
+                <Save className="mr-2 h-4 w-4" /> Sauvegarder
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`.cfg-input{width:100%;border-radius:8px;border:1px solid var(--border);background:var(--background);padding:8px 12px;font-size:13px;color:var(--foreground)}`}</style>
       <ConfirmDialog state={confirmState} />
     </div>
   );
@@ -1339,8 +1516,8 @@ function Kpi({ label, value, tone, sub }: { label: string; value: string; tone: 
     : "text-foreground";
   return (
     <div className="glass-panel rounded-xl p-4">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-2 text-2xl font-bold tracking-tight", cls)}>{value}</div>
+      <div className="text-xs text-muted-foreground uppercase tracking-widest font-medium">{label}</div>
+      <div className={cn("mt-2 font-mono-tabular text-2xl font-bold leading-none", cls)}>{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
@@ -1349,8 +1526,73 @@ function Kpi({ label, value, tone, sub }: { label: string; value: string; tone: 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-xs text-muted-foreground uppercase tracking-widest font-medium">{label}</span>
       {children}
     </label>
   );
+}
+
+function CooldownBanner({
+  cooldownUntil,
+  consecutiveLosses,
+}: {
+  cooldownUntil: number;
+  consecutiveLosses: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  const inCooldown = now < cooldownUntil;
+  if (!inCooldown) return null;
+
+  const secsLeft = Math.ceil((cooldownUntil - now) / 1000);
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 flex items-center gap-4">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15">
+        <Clock className="h-5 w-5 text-amber-400" />
+      </div>
+      <div>
+        <span className="text-sm font-semibold text-amber-300">Cooldown actif</span>
+        <span className="text-sm text-amber-400/80 ml-2">
+          {consecutiveLosses} pertes consécutives — reprise dans{" "}
+        </span>
+        <span className="text-sm font-bold text-amber-300">
+          {Math.floor(secsLeft / 60)}m {String(secsLeft % 60).padStart(2, "0")}s
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ScanCountdown({
+  lastScan,
+  SCAN_INTERVAL_MS,
+  config,
+}: {
+  lastScan: { time: number } | null;
+  SCAN_INTERVAL_MS: number;
+  config: { minConfidence: number; minTfAgreement: number };
+}) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!lastScan) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [lastScan]);
+
+  if (!lastScan) {
+    return "Première analyse en cours…";
+  }
+
+  const secsLeft = Math.max(0, Math.ceil((lastScan.time + SCAN_INTERVAL_MS - now) / 1000));
+  return secsLeft > 0
+    ? `Prochain scan dans ${secsLeft}s · confiance min ${config.minConfidence}% · ${config.minTfAgreement}/4 TF`
+    : "Scan en cours…";
 }

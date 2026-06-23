@@ -140,11 +140,11 @@ export default function PortfolioPage() {
   const noToken = !localStorage.getItem("lio23.deriv_token");
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Portfolio</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Portfolio</h1>
+          <p className="text-xs text-muted-foreground">
             Positions ouvertes et P&L en temps réel via Deriv.
           </p>
         </div>
@@ -245,7 +245,7 @@ export default function PortfolioPage() {
         <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between">
           <h2 className="text-sm font-semibold">
             Positions ouvertes{" "}
-            <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+            <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
               {positions.length}
             </span>
           </h2>
@@ -253,8 +253,8 @@ export default function PortfolioPage() {
             <span className="text-xs text-muted-foreground animate-pulse">Connexion Deriv…</span>
           )}
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
+        <table className="w-full">
+          <thead className="bg-muted/20 text-xs font-semibold text-muted-foreground">
             <tr>
               <th className="px-4 py-2.5 text-left">Actif</th>
               <th className="px-4 py-2.5 text-left">Direction</th>
@@ -268,15 +268,15 @@ export default function PortfolioPage() {
           <tbody>
             {positions.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-[11px] text-muted-foreground">
                   {ready ? "Aucune position ouverte" : noToken ? "Token requis" : "Chargement…"}
                 </td>
               </tr>
             )}
             {positions.map((p) => (
               <tr key={p.contractId} className="border-t border-border/40 hover:bg-muted/10 transition-colors">
-                <td className="px-4 py-3 font-medium">{symbolLabel(p.symbol)}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 font-medium text-xs">{symbolLabel(p.symbol)}</td>
+                <td className="px-4 py-3 text-xs">
                   <span
                     className={cn(
                       "rounded-md px-2 py-0.5 text-xs font-semibold",
@@ -288,20 +288,20 @@ export default function PortfolioPage() {
                     {p.contractType === "CALL" ? "▲ CALL" : "▼ PUT"}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right font-mono">{p.buyPrice.toFixed(2)}</td>
-                <td className="px-4 py-3 text-right font-mono text-muted-foreground">
+                <td className="px-4 py-3 text-right font-mono text-xs">{p.buyPrice.toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-mono text-muted-foreground text-xs">
                   {p.currentSpot > 0 ? p.currentSpot.toFixed(p.symbol.startsWith("frx") ? 5 : 2) : "—"}
                 </td>
                 <td
                   className={cn(
-                    "px-4 py-3 text-right font-mono font-semibold",
+                    "px-4 py-3 text-right font-mono font-semibold text-xs",
                     p.profit >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]",
                   )}
                 >
                   {p.profit >= 0 ? "+" : ""}
                   {p.profit.toFixed(2)}
                 </td>
-                <td className="px-4 py-3 text-right text-muted-foreground text-xs">
+                <td className="px-4 py-3 text-right text-muted-foreground text-[10px]">
                   <span className="flex items-center justify-end gap-1">
                     <Clock className="h-3 w-3" />
                     <TimeLeft expiry={p.dateExpiry} />
@@ -351,15 +351,15 @@ export default function PortfolioPage() {
           <tbody>
             {profits.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-[11px] text-muted-foreground">
                   {ready ? "Aucun trade récent" : noToken ? "Token requis" : "Chargement…"}
                 </td>
               </tr>
             )}
             {profits.slice(0, 20).map((t) => (
               <tr key={t.contractId} className="border-t border-border/40 hover:bg-muted/10 transition-colors">
-                <td className="px-4 py-2.5 font-medium">{symbolLabel(t.symbol)}</td>
-                <td className="px-4 py-2.5">
+                <td className="px-4 py-2.5 font-medium text-xs">{symbolLabel(t.symbol)}</td>
+                <td className="px-4 py-2.5 text-xs">
                   <span
                     className={cn(
                       "rounded-md px-2 py-0.5 text-xs font-semibold",
@@ -371,15 +371,15 @@ export default function PortfolioPage() {
                     {t.contractType}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
+                <td className="px-4 py-2.5 text-right font-mono text-muted-foreground text-xs">
                   {t.buyPrice.toFixed(2)}
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
+                <td className="px-4 py-2.5 text-right font-mono text-muted-foreground text-xs">
                   {t.sellPrice.toFixed(2)}
                 </td>
                 <td
                   className={cn(
-                    "px-4 py-2.5 text-right font-mono font-semibold",
+                    "px-4 py-2.5 text-right font-mono font-semibold text-xs",
                     t.profit >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]",
                   )}
                 >
@@ -423,10 +423,10 @@ function KpiBox({
   return (
     <div className={cn("rounded-xl border p-4", colors)}>
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider opacity-70">{label}</span>
+        <span className="text-xs text-muted-foreground uppercase tracking-widest font-medium">{label}</span>
         <span className="opacity-60">{icon}</span>
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
+      <div className="mt-2 font-mono-tabular text-2xl font-bold leading-none">{value}</div>
     </div>
   );
 }

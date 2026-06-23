@@ -30,6 +30,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { LogoMark } from "@/components/logo";
+import { cn } from "@/lib/utils";
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -40,7 +41,6 @@ const items = [
   { title: "Journal", url: "/journal", icon: BarChart3 },
   { title: "Marchés", url: "/markets", icon: CandlestickChart },
   { title: "Stratégies", url: "/strategies", icon: Workflow },
-  { title: "Talk to Lio23", url: "/assistant", icon: Bot },
   { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator },
   { title: "Alertes", url: "/alerts", icon: Bell },
   { title: "Paramètres", url: "/settings", icon: Settings },
@@ -52,19 +52,25 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
+  // Mobile nav is handled by MobileMenu — sidebar is desktop-only
+  if (isMobile) return null;
+
   function handleNavClick() {
     if (isMobile) setOpenMobile(false);
   }
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
-        <Link to="/" className="flex items-center gap-2.5">
-          <LogoMark className="h-9 w-9 shrink-0" />
-          <div className="leading-tight group-data-[collapsible=icon]:hidden">
-            <div className="text-base font-extrabold tracking-tight brand-gradient-text">LIO23</div>
-            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Quant Trading AI
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader className="p-4 border-b border-white/[0.04]">
+        <Link to="/" className="flex items-center gap-3.5 py-1">
+          <div className="relative">
+            <LogoMark className="h-11 w-11 shrink-0" />
+            <div className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
+          </div>
+          <div className="leading-none group-data-[collapsible=icon]:hidden">
+            <div className="text-xl font-black tracking-tight leading-none brand-gradient-text">Vertex</div>
+            <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground mt-1.5 font-bold">
+              Quant Trading
             </div>
           </div>
         </Link>
@@ -74,26 +80,42 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                    <Link to={item.url} className="flex items-center gap-3" onClick={handleNavClick}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              {user?.is_admin ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={isActive("/admin")} tooltip="Administration">
-                    <Link to="/admin" className="flex items-center gap-3" onClick={handleNavClick}>
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>Administration</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
+              {items.map((item) => {
+                const active = isActive(item.url);
+                return (
+                  <SidebarMenuItem key={item.url} className="relative">
+                    {active && (
+                      <span className="pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full bg-[color:var(--brand-violet)]" />
+                    )}
+                    <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
+                      <Link
+                        to={item.url}
+                        onClick={handleNavClick}
+                        className="flex items-center gap-3 text-sm pl-3"
+                      >
+                        <item.icon className={cn("h-4 w-4 shrink-0", active && "text-[color:var(--brand-violet)]")} />
+                        <span className={active ? "text-foreground font-semibold" : ""}>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+              {user?.is_admin && (() => {
+                const active = isActive("/admin");
+                return (
+                  <SidebarMenuItem className="relative">
+                    {active && (
+                      <span className="pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full bg-[color:var(--brand-amber)]" />
+                    )}
+                    <SidebarMenuButton asChild isActive={active} tooltip="Administration">
+                      <Link to="/admin" className="flex items-center gap-3 pl-3" onClick={handleNavClick}>
+                        <ShieldCheck className={cn("h-4 w-4 shrink-0", active && "text-[color:var(--brand-amber)]")} />
+                        <span className={active ? "text-foreground font-semibold" : ""}>Administration</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })()}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -116,7 +138,7 @@ export function AppSidebar() {
         ) : null}
         <div className="rounded-md border border-border/60 bg-card/40 p-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[color:var(--bull)] animate-pulse" />
+            <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
             <span className="font-medium text-foreground">Compte DÉMO</span>
           </div>
           <p className="mt-1 leading-snug">

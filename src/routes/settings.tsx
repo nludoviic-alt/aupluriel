@@ -12,7 +12,7 @@ const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({ meta: [{ title: "Paramètres — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Paramètres — Vertex" }] }),
   component: SettingsPage,
 });
 
@@ -99,17 +99,17 @@ function SettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
-      <div className="flex items-end justify-between gap-3">
+    <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Paramètres</h1>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Paramètres</h1>
           <p className="text-sm text-muted-foreground">Connexion Deriv et gestion du risque.</p>
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={() => { clearToken(); window.location.href = "/login"; }}
-          className="text-[color:var(--bear)] border-[color:var(--bear)]/30 hover:bg-[color:var(--bear)]/10"
+          className="text-[color:var(--bear)] border-[color:var(--bear)]/30 hover:bg-[color:var(--bear)]/10 h-10 text-sm sm:h-9"
         >
           <LogOut className="mr-1.5 h-4 w-4" /> Déconnexion
         </Button>
@@ -117,16 +117,16 @@ function SettingsPage() {
 
       <div className="glass-panel rounded-xl p-5">
         <div className="flex items-start gap-3">
-          <KeyRound className="mt-0.5 h-5 w-5 text-[color:var(--brand-cyan)]" />
+          <KeyRound className="mt-1 h-5 w-5 text-[color:var(--brand-cyan)] shrink-0" />
           <div className="flex-1">
-            <h2 className="text-base font-semibold">Token API Deriv</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <h2 className="text-sm font-bold uppercase tracking-wide">Token API Deriv</h2>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
               Créé sur{" "}
               <a
                 href="https://app.deriv.com/account/api-token"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[color:var(--brand-cyan)] hover:underline"
+                className="text-[color:var(--brand-cyan)] hover:underline font-semibold"
               >
                 app.deriv.com → API token
               </a>
@@ -135,54 +135,56 @@ function SettingsPage() {
           </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-4">
           <div className="relative">
             <input
               type={show ? "text" : "password"}
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="ex: a1b2c3d4..."
-              className="w-full rounded-md border border-border bg-background px-3 py-2 pr-10 text-sm font-mono"
+              className="w-full rounded-md border border-border bg-background px-3 py-3 pr-10 text-sm font-mono sm:py-2"
             />
             <button
               type="button"
               onClick={() => setShow((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">Compte:</span>
-            {(["demo", "live"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setAccount(t)}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  account === t
-                    ? t === "demo"
-                      ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)] border border-[color:var(--bull)]/30"
-                      : "bg-[color:var(--bear)]/15 text-[color:var(--bear)] border border-[color:var(--bear)]/30"
-                    : "border border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Compte:</span>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+              {(["demo", "live"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setAccount(t)}
+                  className={`rounded-lg px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all sm:py-1.5 ${
+                    account === t
+                      ? t === "demo"
+                        ? "bg-[color:var(--bull)]/15 text-[color:var(--bull)] border border-[color:var(--bull)]/35 shadow-sm"
+                        : "bg-[color:var(--bear)]/15 text-[color:var(--bear)] border border-[color:var(--bear)]/35 shadow-sm"
+                      : "border border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
             {account === "live" && (
-              <span className="text-xs text-[color:var(--bear)] flex items-center gap-1">
-                <ShieldAlert className="h-3.5 w-3.5" /> Argent réel — sois prudent.
+              <span className="text-xs text-[color:var(--bear)] flex items-center gap-1.5 font-medium mt-1 sm:mt-0">
+                <ShieldAlert className="h-4 w-4 shrink-0" /> Argent réel — sois prudent.
               </span>
             )}
           </div>
 
-          <div className="flex gap-2">
-            <Button onClick={testConnection} disabled={loading} className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold">
+          <div className="grid grid-cols-1 gap-3 sm:flex sm:gap-2">
+            <Button onClick={testConnection} disabled={loading} className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold h-11 text-sm sm:h-9">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               Tester & enregistrer
             </Button>
-            <Button variant="outline" onClick={saveLocal}>
+            <Button variant="outline" onClick={saveLocal} className="h-11 text-sm sm:h-9">
               Enregistrer
             </Button>
           </div>
@@ -202,11 +204,11 @@ function SettingsPage() {
       </div>
 
       <div className="glass-panel rounded-xl p-5">
-        <h2 className="text-base font-semibold">Gestion du risque</h2>
-        <p className="text-xs text-muted-foreground">Appliqué automatiquement à tous les signaux et ordres.</p>
+        <h2 className="text-sm font-bold uppercase tracking-wide">Gestion du risque</h2>
+        <p className="text-xs text-muted-foreground leading-relaxed mt-1">Appliqué automatiquement à tous les signaux et ordres.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">
               Risque par trade (%) — max recommandé: 2
             </span>
             <input
@@ -216,11 +218,11 @@ function SettingsPage() {
               step={0.1}
               value={risk}
               onChange={(e) => setRisk(Number(e.target.value))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-3 text-sm sm:py-2"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">
               Max drawdown journalier (%)
             </span>
             <input
@@ -229,15 +231,15 @@ function SettingsPage() {
               max={50}
               value={maxDd}
               onChange={(e) => setMaxDd(Number(e.target.value))}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-3 text-sm sm:py-2"
             />
           </label>
         </div>
-        <Button onClick={saveLocal} variant="outline" className="mt-4">
+        <Button onClick={saveLocal} variant="outline" className="mt-4 w-full h-11 text-sm sm:w-auto sm:h-9">
           Enregistrer
         </Button>
         {risk > 2 && (
-          <div className="mt-3 rounded-md border border-[color:var(--bear)]/30 bg-[color:var(--bear)]/5 p-2 text-xs text-[color:var(--bear)]">
+          <div className="mt-3 rounded-lg border border-[color:var(--bear)]/30 bg-[color:var(--bear)]/5 p-3 text-xs text-[color:var(--bear)] font-medium leading-relaxed">
             ⚠️ Risque par trade supérieur à 2% — non recommandé.
           </div>
         )}
@@ -246,10 +248,10 @@ function SettingsPage() {
       {/* AI Provider */}
       <div className="glass-panel rounded-xl p-5">
         <div className="flex items-start gap-3">
-          <Bot className="mt-0.5 h-5 w-5 text-[color:var(--brand-cyan)]" />
+          <Bot className="mt-1 h-5 w-5 text-[color:var(--brand-cyan)] shrink-0" />
           <div className="flex-1">
-            <h2 className="text-base font-semibold">Assistant IA</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <h2 className="text-sm font-bold uppercase tracking-wide">Assistant IA</h2>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
               Choisis ton fournisseur IA et entre ta clé API. Elle est stockée localement.
             </p>
           </div>
@@ -258,8 +260,8 @@ function SettingsPage() {
         <div className="mt-4 space-y-4">
           {/* Provider selector */}
           <div>
-            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground">Fournisseur</span>
-            <div className="flex flex-wrap gap-2">
+            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">Fournisseur</span>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-2">
               {([
                 { id: "groq",       label: "Groq — Llama 3.3 (gratuit)", desc: "console.groq.com · très rapide" },
                 { id: "openrouter", label: "OpenRouter — Llama 3.3 (gratuit)", desc: "openrouter.ai · modèles :free" },
@@ -271,14 +273,14 @@ function SettingsPage() {
                     setAiProvider(p.id);
                     localStorage.setItem(AI_PROVIDER_STORAGE, p.id);
                   }}
-                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                  className={`rounded-lg border px-4 py-3.5 text-left text-xs transition-all sm:px-3 sm:py-2 ${
                     aiProvider === p.id
-                      ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]"
+                      ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)] font-semibold"
                       : "border-border text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <div className="font-semibold">{p.label}</div>
-                  <div className="text-xs opacity-70">{p.desc}</div>
+                  <div className="font-bold">{p.label}</div>
+                  <div className="text-xs opacity-70 mt-1 leading-normal">{p.desc}</div>
                 </button>
               ))}
             </div>
@@ -286,20 +288,20 @@ function SettingsPage() {
 
           {/* API Key input */}
           <div>
-            <span className="mb-1.5 block text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">
               Clé API{" "}
               {aiProvider === "groq" && (
-                <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case font-bold">
                   → Obtenir une clé Groq (gratuite)
                 </a>
               )}
               {aiProvider === "openrouter" && (
-                <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case font-bold">
                   → Obtenir une clé OpenRouter (gratuite)
                 </a>
               )}
               {aiProvider === "google" && (
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case">
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-[color:var(--brand-cyan)] hover:underline normal-case font-bold">
                   → Obtenir une clé Google (gratuite)
                 </a>
               )}
@@ -314,12 +316,12 @@ function SettingsPage() {
                   : aiProvider === "openrouter" ? "sk-or-v1-..."
                   : "AIza... ou AQ... (clé Google AI Studio)"
                 }
-                className="w-full rounded-md border border-border bg-background px-3 py-2 pr-10 text-sm font-mono"
+                className="w-full rounded-md border border-border bg-background px-3 py-3 pr-10 text-sm font-mono sm:py-2"
               />
               <button
                 type="button"
                 onClick={() => setShowAiKey((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -333,15 +335,15 @@ function SettingsPage() {
               await api.put("/api/settings", { ai_api_key: aiKey, ai_provider: aiProvider }).catch(() => {});
               toast.success("Clé API IA enregistrée ✓");
             }}
-            className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold"
+            className="w-full bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold h-11 text-sm sm:w-auto sm:h-9"
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
             Enregistrer la clé IA
           </Button>
 
           {aiKey && (
-            <p className="text-xs text-[color:var(--bull)] flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Clé configurée — l'assistant IA est actif.
+            <p className="text-xs text-[color:var(--bull)] flex items-center gap-2 font-medium">
+              <CheckCircle2 className="h-4 w-4 shrink-0" /> Clé configurée — l'assistant IA est actif.
             </p>
           )}
         </div>
@@ -350,10 +352,10 @@ function SettingsPage() {
       {/* Market coach — watched pairs */}
       <div className="glass-panel rounded-xl p-5">
         <div className="flex items-start gap-3">
-          <MessageCircle className="mt-0.5 h-5 w-5 text-[color:var(--brand-cyan)]" />
+          <MessageCircle className="mt-1 h-5 w-5 text-[color:var(--brand-cyan)] shrink-0" />
           <div className="flex-1">
-            <h2 className="text-base font-semibold">Coach marché</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <h2 className="text-sm font-bold uppercase tracking-wide">Coach marché</h2>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
               Choisis les paires que le coach surveille pour ses bulles de conseils en temps réel.
             </p>
           </div>
@@ -377,7 +379,7 @@ function SettingsPage() {
                   saveCoachSymbols(next);
                 }}
                 className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-md border px-3 py-2 text-xs font-semibold transition-colors sm:px-2.5 sm:py-1 sm:font-medium",
                   active
                     ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]"
                     : "border-border text-muted-foreground hover:text-foreground",
@@ -388,13 +390,13 @@ function SettingsPage() {
             );
           })}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-2.5 text-xs text-muted-foreground leading-relaxed">
           Les changements sont appliqués immédiatement au coach.
         </p>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Avertissement: LIO23 est un outil d'analyse. Le trading de Crypto et Forex comporte un risque
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Avertissement: Vertex est un outil d'analyse. Le trading de Crypto et Forex comporte un risque
         de perte en capital. Les performances passées ne préjugent pas des performances futures.
       </p>
     </div>

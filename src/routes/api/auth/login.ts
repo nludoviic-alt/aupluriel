@@ -67,6 +67,12 @@ export const Route = createFileRoute("/api/auth/login")({
               403,
             );
           }
+          if (user.status === "suspended") {
+            return json(
+              { error: "Ton accès a été révoqué. Contacte un administrateur.", code: "suspended" },
+              403,
+            );
+          }
         }
 
         const token = await createToken(user.id, user.email);

@@ -1,14 +1,24 @@
 // Browser-side Deriv WebSocket client.
-// Public ticks/candles use the v3 public endpoint; authenticated ops use a v1 OTP URL set via setDerivSession().
+// Uses v3 standard WS endpoint with explicit authorize message for trading.
 
 export const DERIV_APP_ID = 1089;
 export const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 
 let derivSessionUrl: string | null = null;
+let derivAuthToken: string | null = null;
+let derivTargetAccount: string | null = null;
+let _disconnectCallback: (() => void) | null = null;
+
+/** Register a callback fired whenever the authenticated WS session closes unexpectedly. */
+export function onDerivDisconnect(cb: (() => void) | null): void {
+  _disconnectCallback = cb;
+}
 
 /** Call after fetching /api/deriv-session to wire up the authenticated WS. */
-export function setDerivSession(wsUrl: string): void {
+export function setDerivSession(wsUrl: string, authToken?: string, targetAccount?: string): void {
   derivSessionUrl = wsUrl;
+  derivAuthToken = authToken ?? null;
+  derivTargetAccount = targetAccount ?? null;
   if (sharedSocket) { sharedSocket.close(); sharedSocket = null; }
   connecting = null;
 }
@@ -50,8 +60,31 @@ let sharedSocket: WebSocket | null = null;
 let connecting: Promise<WebSocket> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reqId = 0;
+
 type Listener = (msg: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
+
+// Architecture auto-cicatrisante pour Deriv
+interface PendingRequest {
+  resolve: (value: any) => void;
+  reject: (reason: any) => void;
+}
+const pendingRequests = new Map<number, PendingRequest>();
+
+interface ActiveTickSubscription {
+  symbol: string;
+  onTick: (tick: DerivTick) => void;
+  listener: Listener;
+}
+const activeTickSubscriptions = new Set<ActiveTickSubscription>();
+
+/** Re-souscrire automatiquement tous les graphiques et indicateurs actifs au rétablissement de la connexion WS */
+function resubscribeAllActive() {
+  for (const sub of activeTickSubscriptions) {
+    listeners.add(sub.listener);
+    derivRequest({ ticks: sub.symbol, subscribe: 1 }).catch(() => {});
+  }
+}
 
 /** Generate unique request ID (monotonically increasing with wraparound) */
 function nextId(): number {
@@ -88,12 +121,10 @@ function getSocket(): Promise<WebSocket> {
   if (connecting) return connecting;
   connecting = new Promise((resolve, reject) => {
     const ws = new WebSocket(derivSessionUrl ?? DERIV_WS_URL);
-    ws.onopen = () => {
-      sharedSocket = ws;
-      connecting = null;
-      startHeartbeat(ws);
-      resolve(ws);
-    };
+    // Prevents the disconnect callback from firing when WE close the socket (auth/switch failure)
+    // vs an unexpected network drop that should trigger reconnection.
+    let expectedClose = false;
+
     ws.onerror = (e) => {
       connecting = null;
       reject(e);
@@ -101,6 +132,15 @@ function getSocket(): Promise<WebSocket> {
     ws.onclose = () => {
       sharedSocket = null;
       stopHeartbeat();
+
+      for (const [, req] of pendingRequests.entries()) {
+        req.reject(new Error("Connection closed"));
+      }
+      pendingRequests.clear();
+      listeners.clear();
+
+      // Only trigger reconnect for unexpected drops, not our own auth/switch failures
+      if (!expectedClose && derivSessionUrl) _disconnectCallback?.();
     };
     ws.onmessage = (evt) => {
       try {
@@ -109,6 +149,70 @@ function getSocket(): Promise<WebSocket> {
       } catch {
         /* ignore */
       }
+    };
+
+    ws.onopen = () => {
+      if (!derivAuthToken) {
+        sharedSocket = ws;
+        connecting = null;
+        startHeartbeat(ws);
+        resubscribeAllActive();
+        resolve(ws);
+        return;
+      }
+
+      const authId = nextId();
+      const onAuth = (msg: Record<string, unknown>) => {
+        if (msg.req_id !== authId) return;
+        listeners.delete(onAuth);
+
+        if (msg.error) {
+          connecting = null;
+          expectedClose = true;
+          ws.close();
+          reject(new Error(String((msg.error as { message?: string }).message ?? "Authorize failed")));
+          return;
+        }
+
+        const authorizedId = (msg as { authorize?: { loginid?: string } }).authorize?.loginid;
+        const needSwitch = derivTargetAccount && authorizedId !== derivTargetAccount;
+
+        if (!needSwitch) {
+          sharedSocket = ws;
+          connecting = null;
+          startHeartbeat(ws);
+          resubscribeAllActive();
+          resolve(ws);
+          return;
+        }
+
+        const switchId = nextId();
+        const onSwitch = (m: Record<string, unknown>) => {
+          if (m.req_id !== switchId) return;
+          listeners.delete(onSwitch);
+
+          if (m.error) {
+            // Switch failed — fall back to the already-authorized account rather than
+            // closing and looping. This handles API tokens that can't switch accounts.
+            connecting = null;
+            sharedSocket = ws;
+            startHeartbeat(ws);
+            resubscribeAllActive();
+            resolve(ws);
+            return;
+          }
+
+          sharedSocket = ws;
+          connecting = null;
+          startHeartbeat(ws);
+          resubscribeAllActive();
+          resolve(ws);
+        };
+        listeners.add(onSwitch);
+        ws.send(JSON.stringify({ account_switch: derivTargetAccount, req_id: switchId }));
+      };
+      listeners.add(onAuth);
+      ws.send(JSON.stringify({ authorize: derivAuthToken, req_id: authId }));
     };
   });
   return connecting;
@@ -173,12 +277,20 @@ export async function derivRequest<T = Record<string, unknown>>(
     const l: Listener = (msg) => {
       if (msg.req_id === id) {
         listeners.delete(l);
+        pendingRequests.delete(id);
         if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
         else resolve(msg as T);
       }
     };
     listeners.add(l);
-    ws.send(JSON.stringify({ ...payload, req_id: id }));
+    pendingRequests.set(id, { resolve, reject });
+    try {
+      ws.send(JSON.stringify({ ...payload, req_id: id }));
+    } catch (err) {
+      listeners.delete(l);
+      pendingRequests.delete(id);
+      reject(err);
+    }
   });
 }
 
@@ -197,7 +309,11 @@ export function subscribeTicks(
       onTick({ epoch: t.epoch, quote: Number(t.quote), symbol: t.symbol });
     }
   };
+  
+  const subObj: ActiveTickSubscription = { symbol, onTick, listener: l };
+  activeTickSubscriptions.add(subObj);
   listeners.add(l);
+  
   derivRequest({ ticks: symbol, subscribe: 1 }).catch(() => {
     /* ignore */
   });
@@ -205,6 +321,7 @@ export function subscribeTicks(
   return () => {
     if (stopped) return;
     stopped = true;
+    activeTickSubscriptions.delete(subObj);
     listeners.delete(l);
     if (subId) derivRequest({ forget: subId }).catch(() => {});
   };
@@ -499,9 +616,13 @@ export function subscribeBalance(
     timeoutId = null;
   };
 
+  const targetLoginId = derivTargetAccount; // capture at subscription time for filtering
+
   const l: Listener = (msg) => {
-    const b = (msg as { balance?: { balance: number; currency: string } }).balance;
+    const b = (msg as { balance?: { balance: number; currency: string; loginid?: string } }).balance;
     if (b?.balance === undefined) return;
+    // Ignore balance events for other accounts (e.g. during account_switch)
+    if (targetLoginId && b.loginid && b.loginid !== targetLoginId) return;
 
     const now = Date.now();
     pendingBalance = Number(b.balance);
@@ -518,8 +639,14 @@ export function subscribeBalance(
     }
   };
 
-  listeners.add(l);
-  derivRequest({ balance: 1, subscribe: 1 }).catch(() => {});
+  // Wait for socket to be fully ready (auth + switch complete) before registering the listener.
+  // Without this, intermediate balance events emitted by Deriv during auth/switch are caught,
+  // causing the balance to flicker between the old and new account values.
+  getSocket().then(() => {
+    if (stopped) return;
+    listeners.add(l);
+    derivRequest({ balance: 1, subscribe: 1 }).catch(() => {});
+  }).catch(() => {});
 
   return () => {
     if (stopped) return;

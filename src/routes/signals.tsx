@@ -80,12 +80,12 @@ function SignalsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Signaux IA</h1>
-          <p className="text-sm text-muted-foreground">
-            Générés en direct par les règles RSI + MACD + EMA sur les données Deriv.
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Signaux IA</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Générés en direct · RSI + MACD + EMA + multi-timeframe
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -14,7 +14,6 @@ export const VOICE_ROUTES: VoiceRoute[] = [
   { to: "/backtest", keywords: ["backtest", "back test", "test historique"], label: "Backtest" },
   { to: "/markets", keywords: ["marché", "marchés", "marche", "graphique", "graphiques", "cours"], label: "Marchés" },
   { to: "/strategies", keywords: ["stratégie", "stratégies", "strategie", "strategies"], label: "Stratégies" },
-  { to: "/assistant", keywords: ["assistant", "chat", "discussion", "parler"], label: "Assistant" },
   { to: "/alerts", keywords: ["alerte", "alertes", "notification", "notifications"], label: "Alertes" },
   { to: "/settings", keywords: ["paramètre", "paramètres", "réglage", "réglages", "configuration", "settings"], label: "Paramètres" },
 ];

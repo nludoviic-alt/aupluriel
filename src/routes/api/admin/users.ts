@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
-import { requireAdmin } from "@/lib/auth.server";
+import { requireAdmin, generateAuthToken } from "@/lib/auth.server";
+import { sendEmail, resetEmail, getAppUrl } from "@/lib/email.server";
+
+const RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
 export const Route = createFileRoute("/api/admin/users")({
   server: {
@@ -26,7 +29,7 @@ export const Route = createFileRoute("/api/admin/users")({
 
         const { userId, action } = (await request.json()) as {
           userId?: number;
-          action?: "approve" | "reject" | "delete";
+          action?: "approve" | "reject" | "revoke" | "delete" | "reset-password";
         };
         if (!userId || !action) return json({ error: "userId et action requis." }, 400);
 
@@ -53,10 +56,27 @@ export const Route = createFileRoute("/api/admin/users")({
           case "reject":
             db.prepare("UPDATE users SET status = 'rejected' WHERE id = ?").run(userId);
             break;
+          case "revoke":
+            db.prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(userId);
+            break;
           case "delete":
             // user_settings / auth_tokens cascade via ON DELETE CASCADE.
             db.prepare("DELETE FROM users WHERE id = ?").run(userId);
             break;
+          case "reset-password": {
+            const targetUser = db
+              .prepare("SELECT id, email FROM users WHERE id = ?")
+              .get(userId) as { id: number; email: string } | undefined;
+            if (!targetUser) return json({ error: "Utilisateur introuvable." }, 404);
+            const token = generateAuthToken();
+            db.prepare(
+              "INSERT INTO auth_tokens (user_id, type, token, expires_at) VALUES (?, 'reset', ?, ?)",
+            ).run(targetUser.id, token, Date.now() + RESET_TTL_MS);
+            const link = `${getAppUrl()}/reset-password?token=${token}`;
+            const { subject, html } = resetEmail(link);
+            await sendEmail({ to: targetUser.email, subject, html });
+            return json({ ok: true });
+          }
           default:
             return json({ error: "Action inconnue." }, 400);
         }

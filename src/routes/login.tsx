@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api, setToken, TOKEN_KEY } from "@/lib/api";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Connexion — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Connexion — Vertex" }] }),
   component: LoginPage,
 });
 
@@ -117,7 +117,7 @@ function LoginPage() {
         <div className="flex flex-col items-center gap-3 mb-8">
           <LogoMark className="h-16 w-16" />
           <div className="text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">LIO23</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">Vertex</h1>
             <p className="text-sm text-muted-foreground">Quant Trading AI — Crypto & Forex</p>
           </div>
         </div>

@@ -72,42 +72,42 @@ function StrategiesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-end justify-between gap-3">
+    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Stratégies</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Stratégies</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Crée tes propres règles — connectées en temps réel à l'Auto-Trader.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row sm:items-center sm:gap-2.5">
           {activeCount > 0 && (
-            <Link to="/autotrader">
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--bull)]/30 bg-[color:var(--bull)]/10 px-2.5 py-1 text-xs font-medium text-[color:var(--bull)]">
-                <Zap className="h-3 w-3" />
+            <Link to="/autotrader" className="w-full sm:w-auto">
+              <span className="flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--bull)]/30 bg-[color:var(--bull)]/10 px-3 py-2.5 text-xs font-semibold text-[color:var(--bull)] sm:py-1.5 sm:px-2.5">
+                <Zap className="h-4 w-4" />
                 {activeCount} stratégie{activeCount > 1 ? "s" : ""} active{activeCount > 1 ? "s" : ""} · Auto-Trader
               </span>
             </Link>
           )}
+          <Button
+            onClick={() =>
+              setEditing({
+                id: `s${Date.now()}`,
+                name: "Nouvelle stratégie",
+                pair: "BTC/USD",
+                indicator: "RSI",
+                buyThreshold: 30,
+                sellThreshold: 70,
+                stopLoss: 2,
+                takeProfit: 4,
+                enabled: true,
+              })
+            }
+            className="w-full sm:w-auto bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold h-11 text-sm sm:h-9"
+          >
+            <Plus className="mr-2 h-4.5 w-4.5" /> Nouvelle
+          </Button>
         </div>
-        <Button
-          onClick={() =>
-            setEditing({
-              id: `s${Date.now()}`,
-              name: "Nouvelle stratégie",
-              pair: "BTC/USD",
-              indicator: "RSI",
-              buyThreshold: 30,
-              sellThreshold: 70,
-              stopLoss: 2,
-              takeProfit: 4,
-              enabled: true,
-            })
-          }
-          className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold"
-        >
-          <Plus className="mr-2 h-4 w-4" /> Nouvelle
-        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -140,12 +140,12 @@ function StrategiesPage() {
                 </span>
               )}
             </div>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditing(s)}>
+            <div className="mt-4 flex justify-end gap-2.5">
+              <Button variant="outline" size="sm" onClick={() => setEditing(s)} className="h-10 px-4 text-xs sm:h-8 sm:px-3">
                 Éditer
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => remove(s.id)} className="text-[color:var(--bear)] hover:text-[color:var(--bear)]">
-                <Trash2 className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={() => remove(s.id)} className="text-[color:var(--bear)] hover:text-[color:var(--bear)] h-10 w-10 sm:h-8 sm:w-8 p-0 flex items-center justify-center border border-border sm:border-0 sm:bg-transparent bg-muted/5 rounded-lg">
+                <Trash2 className="h-4.5 w-4.5" />
               </Button>
             </div>
           </div>
@@ -173,9 +173,9 @@ function StrategyEditor({
   }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm p-4">
-      <div className="glass-panel w-full max-w-lg rounded-xl p-5">
-        <h3 className="text-lg font-semibold">{strategy.name === "Nouvelle stratégie" ? "Créer une stratégie" : "Éditer la stratégie"}</h3>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="glass-panel w-full max-w-lg rounded-xl p-5 shadow-2xl">
+        <h3 className="text-lg font-bold">{strategy.name === "Nouvelle stratégie" ? "Créer une stratégie" : "Éditer la stratégie"}</h3>
+        <div className="mt-4 grid gap-3.5 grid-cols-1 sm:grid-cols-2">
           <Field label="Nom">
             <input className="input" value={s.name} onChange={(e) => patch("name", e.target.value)} />
           </Field>
@@ -194,7 +194,7 @@ function StrategyEditor({
               <option value="BB">Bollinger</option>
             </select>
           </Field>
-          <div />
+          <div className="hidden sm:block" />
           <Field label="BUY (seuil)">
             <input type="number" className="input" value={s.buyThreshold} onChange={(e) => patch("buyThreshold", Number(e.target.value))} />
           </Field>
@@ -208,19 +208,19 @@ function StrategyEditor({
             <input type="number" className="input" value={s.takeProfit} onChange={(e) => patch("takeProfit", Number(e.target.value))} />
           </Field>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel}>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:justify-end sm:gap-2">
+          <Button variant="outline" onClick={onCancel} className="h-11 text-sm sm:h-9">
             Annuler
           </Button>
           <Button
             onClick={() => onSave(s)}
-            className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold"
+            className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold h-11 text-sm sm:h-9"
           >
             Enregistrer
           </Button>
         </div>
       </div>
-      <style>{`.input { width:100%; border-radius:6px; border:1px solid var(--border); background: var(--background); padding: 8px 12px; font-size: 14px; color: var(--foreground); }`}</style>
+      <style>{`.input { width:100%; border-radius:8px; border:1px solid var(--border); background: var(--background); padding: 12px 14px; font-size: 14px; color: var(--foreground); } @media (min-width: 640px) { .input { padding: 8px 12px; } }`}</style>
     </div>
   );
 }

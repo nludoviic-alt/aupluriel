@@ -4,7 +4,7 @@
  * tous les appelants reçoivent les mises à jour.
  */
 import { useEffect, useState } from "react";
-import { setDerivSession, subscribeBalance, getBalance } from "@/lib/deriv";
+import { setDerivSession, subscribeBalance, getBalance, onDerivDisconnect } from "@/lib/deriv";
 import { api } from "@/lib/api";
 
 export interface DerivSession {
@@ -33,6 +33,7 @@ let _state: DerivSession = { ..._initial };
 const _listeners = new Set<(s: DerivSession) => void>();
 let _initStarted = false;
 let _balanceUnsub: (() => void) | null = null;
+let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 function dispatch(update: Partial<DerivSession> | ((s: DerivSession) => DerivSession)) {
   _state = typeof update === "function" ? update(_state) : { ..._state, ...update };
@@ -56,6 +57,7 @@ function initSession() {
   api
     .post<{
       wsUrl?: string;
+      authToken?: string;
       loginId?: string;
       balance?: number;
       currency?: string;
@@ -68,7 +70,7 @@ function initSession() {
         _initStarted = false;
         return;
       }
-      setDerivSession(res.wsUrl);
+      setDerivSession(res.wsUrl, res.authToken, res.loginId);
       dispatch({
         connected: true,
         loginId: res.loginId ?? "",
@@ -79,6 +81,18 @@ function initSession() {
         error: null,
       });
       startBalanceSubscription();
+      // Auto-reconnect when the WS session drops unexpectedly
+      onDerivDisconnect(() => {
+        if (_reconnectTimer) return; // already scheduled
+        _balanceUnsub?.();
+        _balanceUnsub = null;
+        _initStarted = false;
+        dispatch({ connected: false, balance: null, connecting: false, error: "Session expirée — reconnexion…" });
+        _reconnectTimer = setTimeout(() => {
+          _reconnectTimer = null;
+          initSession();
+        }, 4000);
+      });
     })
     .catch((e: Error) => {
       dispatch({ connecting: false, error: e.message ?? "Connexion Deriv échouée" });
@@ -99,9 +113,11 @@ export async function refreshDerivBalance(): Promise<void> {
 
 /** Force a full session re-init (use when OTP URL expired and WS is unauthenticated). */
 export function reinitDerivSession(): void {
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   _initStarted = false;
   _balanceUnsub?.();
   _balanceUnsub = null;
+  onDerivDisconnect(null); // clear stale callback before reinit
   dispatch({ ..._initial });
   initSession();
 }

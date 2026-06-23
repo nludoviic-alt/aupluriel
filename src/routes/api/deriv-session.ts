@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db.server";
 import { getUserFromRequest } from "@/lib/auth.server";
 
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
+const DERIV_WS_V3 = "wss://ws.binaryws.com/websockets/v3?app_id=1089&l=EN&brand=deriv";
 
 interface DerivAccount {
   account_id: string;
@@ -14,6 +15,7 @@ interface DerivAccount {
 
 interface DerivSessionResponse {
   wsUrl: string;
+  authToken: string;
   loginId: string;
   balance: number;
   currency: string;
@@ -49,7 +51,7 @@ export const Route = createFileRoute("/api/deriv-session")({
           "Content-Type": "application/json",
         };
 
-        // Step 1 — list accounts
+        // Fetch account list to verify token and get account info
         const accRes = await fetch(`${TRADING_V1}/accounts`, { headers });
         if (!accRes.ok) {
           const text = await accRes.text();
@@ -58,7 +60,7 @@ export const Route = createFileRoute("/api/deriv-session")({
         const accData = (await accRes.json()) as { data: DerivAccount[] };
         const accounts = accData.data ?? [];
 
-        // Pick account matching preferred type (demo → "demo", live → "real")
+        // Pick account matching preferred type
         const wantedType = preferredType === "live" ? "real" : "demo";
         const chosen =
           accounts.find((a) => a.account_type === wantedType && a.status === "active") ??
@@ -66,21 +68,10 @@ export const Route = createFileRoute("/api/deriv-session")({
 
         if (!chosen) return json({ error: "Aucun compte actif trouvé" }, 400);
 
-        // Step 2 — get authenticated WS URL
-        const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, {
-          method: "POST",
-          headers,
-          body: "{}",
-        });
-        if (!otpRes.ok) {
-          return json({ error: `OTP échoué (${otpRes.status})` }, 502);
-        }
-        const otpData = (await otpRes.json()) as { data: { url: string } };
-        const wsUrl = otpData.data?.url;
-        if (!wsUrl) return json({ error: "URL WS manquante dans la réponse OTP" }, 502);
-
+        // Use standard Deriv v3 WebSocket — client will authorize with the API token
         const response: DerivSessionResponse = {
-          wsUrl,
+          wsUrl: DERIV_WS_V3,
+          authToken: token,
           loginId: chosen.account_id,
           balance: parseFloat(chosen.balance),
           currency: chosen.currency,

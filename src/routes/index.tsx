@@ -1,24 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowUpRight, Bot, BriefcaseBusiness, CalendarClock, Radar, Wallet, Zap } from "lucide-react";
+import {
+  Activity, ArrowUpRight, Bot, BriefcaseBusiness,
+  Radar, Wallet, Zap, TrendingUp, TrendingDown,
+  BarChart2, Sparkles, Trophy, ChevronRight,
+} from "lucide-react";
 import { PriceChart } from "@/components/price-chart";
 import { SignalCard, type SignalItem } from "@/components/signal-card";
 import { useDerivCandles, useDerivTicks } from "@/hooks/use-deriv";
 import { generateSignal } from "@/lib/indicators";
 import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — LIO23" },
-      { name: "description", content: "Dashboard de trading LIO23 avec données Deriv en temps réel." },
-      { property: "og:title", content: "Dashboard — LIO23" },
-      { property: "og:description", content: "Portfolio, signaux IA et marchés en temps réel." },
+      { title: "Dashboard — Vertex" },
+      { name: "description", content: "Dashboard de trading Vertex avec données Deriv en temps réel." },
     ],
   }),
   component: Dashboard,
@@ -57,7 +58,6 @@ function Dashboard() {
   const [marketFilter, setMarketFilter] = useState<"all" | "crypto" | "forex">("all");
   const { series, last, status } = useDerivTicks(chartSymbol.deriv, 180);
 
-  // Filter pairs by market: "forex" also includes commodities (gold)
   const visibleSymbols = SYMBOLS.filter((s) =>
     marketFilter === "all" ? true : marketFilter === "crypto" ? s.market === "crypto" : s.market !== "crypto",
   );
@@ -71,26 +71,13 @@ function Dashboard() {
       setChartSymbol(list[0]);
     }
   }
+
   const derivBalance = useDerivBalance();
   const { winRate, todayPnl, tradeCount } = useRealStats();
   const { user } = useAuth();
-  const firstName = user?.username ?? "trader";
-
   const liveSignals = useLiveSignals();
+  const isForex = chartSymbol.market === "forex";
 
-  const equity = useMemo(() => {
-    let v = 10000;
-    const out: { t: number; price: number }[] = [];
-    const now = Date.now();
-    for (let i = 0; i < 60; i++) {
-      v *= 1 + (Math.random() - 0.45) * 0.012;
-      out.push({ t: now - (60 - i) * 60_000, price: v });
-    }
-    return out;
-  }, []);
-  const portfolio = equity[equity.length - 1]?.price ?? 10000;
-
-  // 24h change from first to last tick
   const priceChange = useMemo(() => {
     if (series.length < 2) return null;
     const first = series[0].price;
@@ -98,282 +85,343 @@ function Dashboard() {
     return ((lp - first) / first) * 100;
   }, [series]);
 
-  const isForex = chartSymbol.market === "forex";
   const balanceDisplay = derivBalance
-    ? `${derivBalance.currency} ${derivBalance.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : `$${portfolio.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    ? derivBalance.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
+
   const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonne nuit";
+
+  // Avatar initials
+  const initials = user?.username
+    ? user.username.slice(0, 2).toUpperCase()
+    : "LI";
 
   return (
-    <div className="p-6 space-y-5">
-      {/* ── Top stats strip (Voltrex-style) ───────────────────────── */}
-      <div className="glass-panel rounded-2xl px-5 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
-                  Bonjour, <span className="text-[color:var(--brand-cyan)]">{firstName}</span>
-                </h1>
-                <span className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wider",
-                  status === "live"
-                    ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-                    : "bg-muted/40 text-muted-foreground",
-                )}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", status === "live" ? "bg-[color:var(--bull)] animate-pulse" : "bg-muted-foreground")} />
-                  {status === "live" ? "Live" : status === "connecting" ? "…" : "Off"}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">Crypto & Forex · via Deriv</p>
+    <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
+
+      {/* ── HERO USER CARD ── */}
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[oklch(0.17_0.038_255)]">
+        {/* Ambient glows */}
+        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full opacity-20"
+          style={{ background: "radial-gradient(circle, oklch(0.70 0.24 290) 0%, transparent 70%)" }} />
+        <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full opacity-10"
+          style={{ background: "radial-gradient(circle, oklch(0.88 0.20 195) 0%, transparent 70%)" }} />
+
+        <div className="relative flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6">
+          {/* Left: avatar + info */}
+          <div className="flex items-center gap-4">
+            <div
+              className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-black text-white shadow-lg"
+              style={{ background: "linear-gradient(135deg, oklch(0.70 0.24 290), oklch(0.88 0.20 195))" }}
+            >
+              {initials}
+              <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-[oklch(0.17_0.038_255)] bg-[color:var(--up)]" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-            <Metric
-              label={derivBalance ? `Balance (${derivBalance.currency})` : "Portfolio (démo)"}
-              value={balanceDisplay}
-              tone="cyan"
-            />
-            <Metric
-              label="Win Rate"
-              value={winRate !== null ? `${winRate.toFixed(1)}%` : "—"}
-              sub={tradeCount !== null ? `${tradeCount} trades` : undefined}
-              tone="bull"
-            />
-            <Metric
-              label="P&L aujourd'hui"
-              value={todayPnl !== null ? `${todayPnl >= 0 ? "+" : ""}${todayPnl.toFixed(2)}` : "—"}
-              tone={todayPnl === null ? "default" : todayPnl >= 0 ? "bull" : "bear"}
-            />
-            <Metric
-              label={`${chartSymbol.label} (24h)`}
-              value={last ? last.toFixed(isForex ? 5 : 2) : "—"}
-              sub={priceChange !== null ? `${priceChange >= 0 ? "+" : ""}${priceChange.toFixed(2)}%` : undefined}
-              subTone={priceChange !== null ? (priceChange >= 0 ? "bull" : "bear") : "default"}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Status / session bar (epoch-style) ─────────────────────── */}
-      <div className="glass-panel flex flex-wrap items-center gap-4 rounded-xl px-5 py-3">
-        <div className="flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-[color:var(--brand-violet)]/15 text-[color:var(--brand-violet)]">
-            <CalendarClock className="h-4 w-4" />
-          </div>
-          <div className="leading-tight">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Session</div>
-            <div className="text-sm font-semibold text-foreground">Marché en direct</div>
-          </div>
-        </div>
-        <div className="hidden text-xs text-muted-foreground sm:block">
-          {now.toLocaleDateString("fr-FR")} · {now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <div className="hidden h-1.5 w-40 overflow-hidden rounded-full bg-muted/40 md:block">
-            <div className="h-full w-2/3 rounded-full bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)]" />
-          </div>
-          <span className="text-xs text-muted-foreground">Deriv WS · app_id 1089</span>
-        </div>
-      </div>
-
-      {/* ── Main: chart (2/3) + action panel (1/3) ─────────────────── */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="glass-panel rounded-2xl p-5 lg:col-span-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-tight text-foreground">{chartSymbol.label}</h2>
-                {priceChange !== null && (
-                  <span className={cn("text-xs font-semibold", priceChange >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
-                    {priceChange >= 0 ? "▲" : "▼"} {Math.abs(priceChange).toFixed(2)}%
+              <p className="text-sm text-muted-foreground">{greeting},</p>
+              <h1 className="text-2xl font-black tracking-tight text-foreground leading-tight">
+                {user?.username ?? "Trader"}
+              </h1>
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--brand-violet)]/40 bg-[color:var(--brand-violet)]/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[color:var(--brand-violet)]">
+                  Deriv {derivBalance ? "connecté" : "démo"}
+                </span>
+                {status === "live" && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground/60">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--up)] animate-pulse inline-block" />
+                    En direct
                   </span>
                 )}
               </div>
-              <div className="mt-0.5 text-2xl font-bold tracking-tight text-foreground">
-                {last ? last.toFixed(isForex ? 5 : 2) : "—"}
+            </div>
+          </div>
+
+          {/* CTA buttons — pleine largeur sur mobile, inline sur sm+ */}
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2">
+            <Link
+              to="/autotrader"
+              className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:opacity-90 hover:scale-[1.02] sm:py-2.5"
+              style={{ background: "linear-gradient(135deg, oklch(0.70 0.24 290), oklch(0.60 0.28 290))" }}
+            >
+              <Zap className="h-4 w-4" />
+              <span className="hidden xs:inline">Auto-Trader</span>
+              <span className="xs:hidden">Bot</span>
+            </Link>
+            <Link
+              to="/signals"
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-white/[0.08] sm:py-2.5"
+            >
+              <Radar className="h-4 w-4 text-[color:var(--brand-cyan)]" />
+              Signaux
+            </Link>
+            <Link
+              to="/portfolio"
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-white/[0.08] sm:py-2.5"
+            >
+              <BriefcaseBusiness className="h-4 w-4 text-muted-foreground" />
+              Portfolio
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 4 KPI CARDS ── */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <KpiCard
+          label="Balance"
+          value={balanceDisplay ? `${derivBalance?.currency} ${balanceDisplay}` : "—"}
+          delta={derivBalance ? "Compte Deriv connecté" : "Mode simulation"}
+          icon={<Wallet className="h-5 w-5" />}
+          tone="violet"
+        />
+        <KpiCard
+          label="Win Rate"
+          value={winRate !== null ? `${winRate.toFixed(1)}%` : "—"}
+          delta={tradeCount !== null ? `Sur ${tradeCount} trades` : "Pas encore de données"}
+          icon={<Trophy className="h-5 w-5" />}
+          tone={winRate !== null ? (winRate >= 54.1 ? "bull" : "bear") : "default"}
+        />
+        <KpiCard
+          label="P&L Aujourd'hui"
+          value={todayPnl !== null ? `${todayPnl >= 0 ? "+" : ""}$${todayPnl.toFixed(2)}` : "—"}
+          delta={todayPnl !== null ? (todayPnl >= 0 ? "Journée positive" : "Journée négative") : "Aucun trade aujourd'hui"}
+          icon={todayPnl !== null && todayPnl >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+          tone={todayPnl !== null ? (todayPnl >= 0 ? "bull" : "bear") : "default"}
+        />
+        <KpiCard
+          label="Signaux actifs"
+          value={liveSignals.filter(s => s.direction !== "HOLD").length || "—"}
+          delta="BTC · ETH · EUR/USD"
+          icon={<BarChart2 className="h-5 w-5" />}
+          tone="cyan"
+        />
+      </div>
+
+      {/* ── CHART + SESSIONS ── */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+
+        {/* Chart */}
+        <div className="glass-panel rounded-2xl overflow-hidden">
+          <div className="flex flex-col gap-3 p-4 pb-0 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3 sm:p-5 sm:pb-0">
+            <div className="flex items-center gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">{chartSymbol.label}</div>
+                <div className="font-mono-tabular text-3xl font-black text-foreground leading-none">
+                  {last ? last.toFixed(isForex ? 5 : 2) : "—"}
+                </div>
+              </div>
+              {priceChange !== null && (
+                <span className={cn(
+                  "inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-bold border mt-1 self-start",
+                  priceChange >= 0
+                    ? "text-[color:var(--up)] bg-[color:var(--up)]/10 border-[color:var(--up)]/20"
+                    : "text-[color:var(--down)] bg-[color:var(--down)]/10 border-[color:var(--down)]/20",
+                )}>
+                  {priceChange >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {priceChange >= 0 ? "+" : ""}{priceChange.toFixed(2)}%
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="inline-flex rounded-xl border border-border/60 bg-muted/15 p-0.5">
+                {(["all", "crypto", "forex"] as const).map((f) => (
+                  <button key={f} onClick={() => selectMarket(f)}
+                    className={cn(
+                      "rounded-lg px-3 py-2 text-xs font-semibold transition-all capitalize sm:py-1.5",
+                      marketFilter === f
+                        ? "bg-[color:var(--brand-violet)]/20 text-[color:var(--brand-violet)] border border-[color:var(--brand-violet)]/30"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}>
+                    {f === "all" ? "Tous" : f === "crypto" ? "Crypto" : "Forex"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                {visibleSymbols.map((s) => (
+                  <button key={s.deriv} onClick={() => setChartSymbol(s)}
+                    className={cn(
+                      "rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
+                      chartSymbol.deriv === s.deriv
+                        ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] border border-[color:var(--brand-cyan)]/30"
+                        : "border border-border/40 bg-muted/10 text-muted-foreground hover:text-foreground",
+                    )}>
+                    {s.label}
+                  </button>
+                ))}
               </div>
             </div>
-            <span className="rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground">
-              Temps réel
-            </span>
           </div>
-
-          {/* Market filter: Tous / Crypto / Forex */}
-          <div className="mt-3 inline-flex rounded-lg border border-border bg-muted/20 p-0.5">
-            {([
-              { id: "all", label: "Tous" },
-              { id: "crypto", label: "Crypto" },
-              { id: "forex", label: "Forex" },
-            ] as const).map((f) => (
-              <button
-                key={f.id}
-                onClick={() => selectMarket(f.id)}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
-                  marketFilter === f.id
-                    ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)]"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Symbol selector (allocation-style chips) */}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {visibleSymbols.map((s) => (
-              <button
-                key={s.deriv}
-                onClick={() => setChartSymbol(s)}
-                className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
-                  chartSymbol.deriv === s.deriv
-                    ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] border border-[color:var(--brand-cyan)]/30"
-                    : "border border-border bg-muted/30 text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 h-80">
+          <div className="h-72 px-2 pb-2 pt-4">
             {series.length > 1 ? (
               <PriceChart data={series} />
             ) : (
-              <div className="grid h-full place-items-center text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 animate-pulse" />
-                  En attente des ticks Deriv…
+              <div className="grid h-full place-items-center">
+                <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                  <Activity className="h-6 w-6 animate-pulse text-[color:var(--brand-violet)]" />
+                  <span className="text-sm">En attente des ticks Deriv…</span>
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right action panel (Voltrex deposit-style) */}
-        <div className="glass-panel flex flex-col rounded-2xl p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-foreground">Mon compte</h2>
-            <Wallet className="h-4 w-4 text-[color:var(--brand-cyan)]" />
+        {/* Right panel */}
+        <div className="flex flex-col gap-3">
+
+          {/* Balance card */}
+          <div className="glass-panel-violet rounded-2xl p-5 relative overflow-hidden">
+            <div className="pointer-events-none absolute -top-8 -right-8 h-32 w-32 rounded-full bg-[color:var(--brand-violet)]/20 blur-2xl" />
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-white/50">Mon compte</span>
+                <Wallet className="h-4 w-4 text-white/40" />
+              </div>
+              <div className="text-xs text-white/50 uppercase tracking-wider mb-1">
+                {derivBalance ? `${derivBalance.currency} · Deriv` : "Simulation"}
+              </div>
+              <div className="font-mono-tabular text-3xl font-black text-white text-glow-violet leading-none">
+                {balanceDisplay ?? "—"}
+              </div>
+              {tradeCount !== null && (
+                <div className="mt-2 text-xs text-white/40">{tradeCount} trades historiques</div>
+              )}
+            </div>
           </div>
 
-          <div className="mt-3 rounded-xl border border-border/60 bg-muted/20 p-3">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Balance</div>
-            <div className="mt-0.5 text-2xl font-bold tracking-tight text-foreground">{balanceDisplay}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {derivBalance ? "Compte Deriv connecté" : "Mode démo — connecte ton token"}
+          {/* Sessions marchés */}
+          <div className="glass-panel rounded-2xl p-4">
+            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60 mb-3">Sessions marchés</div>
+            <div className="space-y-3">
+              {[
+                { name: "Tokyo",    open: 0,  close: 9  },
+                { name: "Londres",  open: 7,  close: 16 },
+                { name: "New York", open: 12, close: 21 },
+              ].map(({ name, open, close }) => {
+                const h = now.getUTCHours();
+                const isOpen = h >= open && h < close;
+                const progress = isOpen ? ((h - open) / (close - open)) * 100 : 0;
+                return (
+                  <div key={name}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-2 w-2 rounded-full shrink-0", isOpen ? "bg-[color:var(--up)] animate-pulse" : "bg-muted/30")} />
+                        <span className="text-sm text-muted-foreground font-medium">{name}</span>
+                      </div>
+                      <span className={cn("text-xs font-bold", isOpen ? "text-[color:var(--up)]" : "text-muted-foreground/30")}>
+                        {isOpen ? "OUVERT" : `${open}h–${close}h`}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-white/[0.05]">
+                      {isOpen && (
+                        <div className="h-full rounded-full bg-[color:var(--up)]/40 transition-all" style={{ width: `${progress}%` }} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* Quick actions */}
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <ActionTile to="/autotrader" icon={<Zap className="h-4 w-4" />} label="Auto-Trader" />
-            <ActionTile to="/portfolio" icon={<BriefcaseBusiness className="h-4 w-4" />} label="Portfolio" />
-            <ActionTile to="/signals" icon={<Radar className="h-4 w-4" />} label="Signaux" />
-            <ActionTile to="/settings" icon={<Wallet className="h-4 w-4" />} label="Déposer" />
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { to: "/autotrader", icon: <Zap />, label: "Bot",      color: "violet" },
+              { to: "/portfolio",  icon: <BriefcaseBusiness />, label: "Portfolio", color: "cyan" },
+              { to: "/signals",    icon: <Radar />,  label: "Signaux",  color: "up" },
+              { to: "/settings",   icon: <Wallet />, label: "Compte",   color: "amber" },
+            ].map(({ to, icon, label, color }) => (
+              <Link
+                key={to}
+                to={to}
+                className={cn(
+                  "flex items-center justify-between rounded-xl border px-3 py-3 text-sm font-semibold transition-all hover:scale-[1.02] sm:py-2.5 sm:text-xs",
+                  color === "violet" && "border-[color:var(--brand-violet)]/20 bg-[color:var(--brand-violet)]/5 text-[color:var(--brand-violet)] hover:bg-[color:var(--brand-violet)]/12",
+                  color === "cyan"   && "border-[color:var(--brand-cyan)]/20 bg-[color:var(--brand-cyan)]/5 text-[color:var(--brand-cyan)] hover:bg-[color:var(--brand-cyan)]/12",
+                  color === "up"     && "border-[color:var(--up)]/20 bg-[color:var(--up)]/5 text-[color:var(--up)] hover:bg-[color:var(--up)]/12",
+                  color === "amber"  && "border-[color:var(--brand-amber)]/20 bg-[color:var(--brand-amber)]/5 text-[color:var(--brand-amber)] hover:bg-[color:var(--brand-amber)]/12",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+                  {label}
+                </div>
+                <ChevronRight className="h-3 w-3 opacity-40" />
+              </Link>
+            ))}
           </div>
-
-          <div className="mt-4 rounded-xl border border-border/60 bg-muted/10 p-3">
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-[color:var(--brand-cyan)]" />
-              <span className="text-sm font-semibold text-foreground">Assistant Lio23</span>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
-              Analyse marché, signaux et backtest en langage naturel — avec les données Deriv en direct.
-            </p>
-          </div>
-
-          <Button asChild className="mt-4 w-full bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-semibold hover:opacity-90">
-            <Link to="/assistant">
-              Ouvrir le chat <ArrowUpRight className="ml-1 h-4 w-4" />
-            </Link>
-          </Button>
         </div>
       </div>
 
-      {/* ── Bottom: signal cards (copy-trading style) ──────────────── */}
+      {/* ── LIVE SIGNALS ── */}
       <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Signaux IA actifs</h2>
-          <Link to="/signals" className="text-xs text-[color:var(--brand-cyan)] hover:underline">
-            Voir tout →
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color:var(--brand-violet)]/15">
+              <Sparkles className="h-4 w-4 text-[color:var(--brand-violet)]" />
+            </div>
+            <h2 className="text-base font-bold text-foreground sm:text-sm">Signaux IA en direct</h2>
+            {liveSignals.length > 0 && (
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[color:var(--up)] animate-pulse" />
+            )}
+          </div>
+          <Link to="/signals" className="flex items-center gap-1 text-xs text-[color:var(--brand-violet)] hover:text-[color:var(--brand-cyan)] transition-colors font-semibold">
+            Voir tout <ArrowUpRight className="h-3 w-3" />
           </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           {liveSignals.length === 0
-            ? [0, 1, 2].map((i) => (
-                <div key={i} className="glass-panel h-44 animate-pulse rounded-2xl" />
-              ))
+            ? [0, 1, 2].map((i) => <div key={i} className="glass-panel rounded-2xl h-52 animate-pulse" />)
             : liveSignals.slice(0, 3).map((s) => <SignalCard key={s.pair} signal={s} />)}
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        ⚠️ Le trading comporte des risques. LIO23 fournit des analyses, pas des conseils financiers.
-        Toutes les décisions restent sous contrôle humain.
-      </p>
+      {/* Footer disclaimer */}
+      <div className="flex items-start gap-3 rounded-xl border border-border/30 bg-muted/5 px-4 py-3">
+        <Bot className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground/60 leading-relaxed">
+          Le trading comporte des risques significatifs. Vertex fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
+        </p>
+      </div>
     </div>
   );
 }
 
-function Metric({
-  label,
-  value,
-  sub,
-  tone = "default",
-  subTone = "default",
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: "default" | "cyan" | "bull" | "bear" | "violet";
-  subTone?: "default" | "bull" | "bear";
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+
+type Tone = "default" | "bull" | "bear" | "cyan" | "violet" | "amber";
+
+const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; dot: string }> = {
+  default: { panel: "glass-panel",        value: "text-foreground",               icon: "text-muted-foreground",          dot: "bg-muted-foreground/40" },
+  bull:    { panel: "glass-panel-up",     value: "text-[color:var(--up)]",         icon: "text-[color:var(--up)]",          dot: "bg-[color:var(--up)]" },
+  bear:    { panel: "glass-panel",        value: "text-[color:var(--down)]",       icon: "text-[color:var(--down)]",        dot: "bg-[color:var(--down)]" },
+  cyan:    { panel: "glass-panel-cyan",   value: "text-[color:var(--brand-cyan)]", icon: "text-[color:var(--brand-cyan)]",  dot: "bg-[color:var(--brand-cyan)]" },
+  violet:  { panel: "glass-panel-violet", value: "text-white",                     icon: "text-white/60",                   dot: "bg-[color:var(--brand-violet)]" },
+  amber:   { panel: "glass-panel-amber",  value: "text-[color:var(--brand-amber)]",icon: "text-[color:var(--brand-amber)]", dot: "bg-[color:var(--brand-amber)]" },
+};
+
+function KpiCard({ label, value, delta, tone = "default", icon }: {
+  label: string; value: React.ReactNode; delta?: string; tone?: Tone; icon?: React.ReactNode;
 }) {
-  const toneCls = {
-    default: "text-foreground",
-    cyan: "text-[color:var(--brand-cyan)]",
-    bull: "text-[color:var(--bull)]",
-    bear: "text-[color:var(--bear)]",
-    violet: "text-[color:var(--brand-violet)]",
-  }[tone];
-  const subCls = {
-    default: "text-muted-foreground",
-    bull: "text-[color:var(--bull)]",
-    bear: "text-[color:var(--bear)]",
-  }[subTone];
+  const t = TONE_STYLES[tone];
   return (
-    <div>
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-xl font-bold tracking-tight", toneCls)}>{value}</div>
-      {sub && <div className={cn("text-xs font-medium", subCls)}>{sub}</div>}
+    <div className={cn(t.panel, "rounded-2xl p-4 relative overflow-hidden group hover:scale-[1.01] transition-transform duration-200")}>
+      <div className="flex items-start justify-between mb-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-white/50">{label}</span>
+        {icon && <span className={cn("opacity-50 group-hover:opacity-80 transition-opacity [&>svg]:h-4 [&>svg]:w-4", t.icon)}>{icon}</span>}
+      </div>
+      <div className={cn("font-mono-tabular text-2xl font-black leading-none tracking-tight", t.value)}>{value}</div>
+      {delta && <div className="mt-2 text-xs text-white/40">{delta}</div>}
     </div>
-  );
-}
-
-function ActionTile({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-[color:var(--brand-cyan)]/40 hover:bg-[color:var(--brand-cyan)]/5"
-    >
-      <span className="text-[color:var(--brand-cyan)]">{icon}</span>
-      {label}
-    </Link>
   );
 }
 
 function useLiveSignals() {
-  // Fixed, unconditional candle hooks (no hooks-in-loop)
   const { candles: btc } = useDerivCandles("cryBTCUSD", GRANULARITY["15m"], 250);
   const { candles: eur } = useDerivCandles("frxEURUSD", GRANULARITY["15m"], 250);
   const { candles: eth } = useDerivCandles("cryETHUSD", GRANULARITY["15m"], 250);
 
-  // Memoize the heavy signal computation: only recompute when candle data
-  // actually changes (last epoch), NOT on every live tick re-render.
   return useMemo(() => {
     const defs = [
       { def: SYMBOLS.find((s) => s.deriv === "cryBTCUSD")!, candles: btc },
@@ -395,12 +443,9 @@ function useLiveSignals() {
     });
     const ready = out.every((s) => s.triggers.length > 0 && s.triggers[0] !== "insufficient-data");
     return ready ? out : [];
-    // Key on the latest epoch + length of each series — stable across ticks
   }, [
     btc.length, btc[btc.length - 1]?.epoch,
     eur.length, eur[eur.length - 1]?.epoch,
     eth.length, eth[eth.length - 1]?.epoch,
   ]);
 }
-
-useLiveSignals.displayName = "useLiveSignals";

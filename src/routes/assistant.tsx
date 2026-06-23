@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Copy, KeyRound, Loader2, Mic, User, Volume2, VolumeX } from "lucide-react";
+import { ArrowUp, Bot, Copy, KeyRound, Loader2, Mic, User, Volume2, VolumeX } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ function getAiConfig(): { apiKey: string; provider: string } {
 
 export const Route = createFileRoute("/assistant")({
   head: () => ({ meta: [{ title: "Assistant Lio23 — LIO23" }] }),
-  component: AssistantPage,
+  component: DisabledAssistantPage,
 });
 
 const SUGGESTIONS = [
@@ -33,6 +33,25 @@ const SUGGESTIONS = [
   "Quels indicateurs combiner pour le scalping ?",
   "C'est quoi le ratio de Sharpe ?",
 ];
+
+function DisabledAssistantPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <div className="text-center py-12">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted/20 mb-4">
+          <Bot className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight mb-2">Assistant désactivé</h1>
+        <p className="text-xs text-muted-foreground max-w-md mx-auto">
+          La fonctionnalité de chat IA est temporairement désactivée.
+        </p>
+        <Link to="/" className="inline-flex items-center gap-2 mt-6 text-xs font-bold uppercase tracking-wider text-primary hover:underline">
+          Retour au Dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function MarkdownText({ text }: { text: string }) {
   const lines = text.split("\n");
