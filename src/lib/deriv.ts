@@ -56,6 +56,7 @@ export const GRANULARITY: Record<string, number> = {
   "1D": 86400,
 };
 
+// ── PRIVATE SOCKET — authenticated operations (balance, trades) ──────────────
 let sharedSocket: WebSocket | null = null;
 let connecting: Promise<WebSocket> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -64,55 +65,117 @@ let reqId = 0;
 type Listener = (msg: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
 
-// Architecture auto-cicatrisante pour Deriv
 interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason: any) => void;
 }
 const pendingRequests = new Map<number, PendingRequest>();
 
-interface ActiveTickSubscription {
-  symbol: string;
-  onTick: (tick: DerivTick) => void;
-  listener: Listener;
-}
-const activeTickSubscriptions = new Set<ActiveTickSubscription>();
-
-/** Re-souscrire automatiquement tous les graphiques et indicateurs actifs au rétablissement de la connexion WS */
-function resubscribeAllActive() {
-  for (const sub of activeTickSubscriptions) {
-    listeners.add(sub.listener);
-    derivRequest({ ticks: sub.symbol, subscribe: 1 }).catch(() => {});
-  }
-}
-
-/** Generate unique request ID (monotonically increasing with wraparound) */
 function nextId(): number {
-  reqId = (reqId + 1) % 9000000000; // wrap around at 9 billion to stay within safe int
+  reqId = (reqId + 1) % 9000000000;
   return reqId;
 }
 
-/** Start heartbeat to keep connection alive on mobile networks */
 function startHeartbeat(ws: WebSocket) {
   if (heartbeatInterval) clearInterval(heartbeatInterval);
   heartbeatInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
-      // Send ping every 30s to keep connection alive on mobile
-      try {
-        ws.send(JSON.stringify({ ping: 1 }));
-      } catch {
-        /* ignore */
-      }
+      try { ws.send(JSON.stringify({ ping: 1 })); } catch { /* ignore */ }
     }
   }, 30000);
 }
 
-/** Stop heartbeat */
 function stopHeartbeat() {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+}
+
+function resubscribeAllActive() { /* ticks are now on the public socket */ }
+
+// ── PUBLIC SOCKET — market data (ticks, candles) — no auth, starts immediately
+let pubSocket: WebSocket | null = null;
+let pubConnecting: Promise<WebSocket> | null = null;
+let pubHeartbeat: ReturnType<typeof setInterval> | null = null;
+const pubListeners = new Set<Listener>();
+const pendingPubReqs = new Map<number, PendingRequest>();
+let pubReqId = 0;
+
+interface PubTickSub {
+  symbol: string;
+  onTick: (tick: DerivTick) => void;
+  listener: Listener;
+}
+const activePubSubs = new Set<PubTickSub>();
+
+function nextPubId(): number {
+  pubReqId = (pubReqId + 1) % 9000000000;
+  return pubReqId;
+}
+
+function resubscribePubActive() {
+  for (const sub of activePubSubs) {
+    pubListeners.add(sub.listener);
+    pubRequest({ ticks: sub.symbol, subscribe: 1 }).catch(() => {});
   }
+}
+
+function getPublicSocket(): Promise<WebSocket> {
+  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+  if (pubSocket && pubSocket.readyState === WebSocket.OPEN) return Promise.resolve(pubSocket);
+  if (pubConnecting) return pubConnecting;
+  pubConnecting = new Promise((resolve, reject) => {
+    const ws = new WebSocket(DERIV_WS_URL);
+    ws.onerror = (e) => { pubConnecting = null; reject(e); };
+    ws.onclose = () => {
+      pubSocket = null;
+      pubConnecting = null;
+      if (pubHeartbeat) { clearInterval(pubHeartbeat); pubHeartbeat = null; }
+      for (const [, req] of pendingPubReqs.entries()) req.reject(new Error("Public socket closed"));
+      pendingPubReqs.clear();
+      pubListeners.clear();
+      setTimeout(() => getPublicSocket().then(() => resubscribePubActive()).catch(() => {}), 2000);
+    };
+    ws.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        for (const l of pubListeners) l(data);
+      } catch { /* ignore */ }
+    };
+    ws.onopen = () => {
+      pubSocket = ws;
+      pubConnecting = null;
+      pubHeartbeat = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify({ ping: 1 })); } catch { /* ignore */ }
+        }
+      }, 30000);
+      resolve(ws);
+    };
+  });
+  return pubConnecting;
+}
+
+async function pubRequest<T = Record<string, unknown>>(payload: Record<string, unknown>): Promise<T> {
+  const ws = await getPublicSocket();
+  const id = nextPubId();
+  return new Promise<T>((resolve, reject) => {
+    const l: Listener = (msg) => {
+      if (msg.req_id === id) {
+        pubListeners.delete(l);
+        pendingPubReqs.delete(id);
+        if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
+        else resolve(msg as T);
+      }
+    };
+    pubListeners.add(l);
+    pendingPubReqs.set(id, { resolve, reject });
+    try {
+      ws.send(JSON.stringify({ ...payload, req_id: id }));
+    } catch (err) {
+      pubListeners.delete(l);
+      pendingPubReqs.delete(id);
+      reject(err);
+    }
+  });
 }
 
 function getSocket(): Promise<WebSocket> {
@@ -248,9 +311,14 @@ let reconnectAttempts = 0;
 if (typeof window !== "undefined" && !(window as unknown as Record<string, boolean>).__lio23_deriv_listeners__) {
   (window as unknown as Record<string, boolean>).__lio23_deriv_listeners__ = true;
 
+  // Eagerly start the public socket so ticks are ready before any component mounts
+  getPublicSocket().catch(() => {});
+
   window.addEventListener("online", () => {
     reconnectAttempts = 0;
     handleMobileReconnect();
+    // Also reconnect public socket on network restore
+    getPublicSocket().then(() => resubscribePubActive()).catch(() => {});
   });
 
   window.addEventListener("offline", () => {
@@ -263,6 +331,10 @@ if (typeof window !== "undefined" && !(window as unknown as Record<string, boole
       reconnectAttempts = 0;
       if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
         handleMobileReconnect();
+      }
+      // Also ensure public socket is alive when tab comes back into focus
+      if (!pubSocket || pubSocket.readyState !== WebSocket.OPEN) {
+        getPublicSocket().then(() => resubscribePubActive()).catch(() => {});
       }
     }
   });
@@ -294,7 +366,7 @@ export async function derivRequest<T = Record<string, unknown>>(
   });
 }
 
-/** Subscribe to live ticks. Returns an unsubscribe function. */
+/** Subscribe to live ticks via the public socket (no auth required — fast start). */
 export function subscribeTicks(
   symbol: string,
   onTick: (tick: DerivTick) => void,
@@ -309,21 +381,19 @@ export function subscribeTicks(
       onTick({ epoch: t.epoch, quote: Number(t.quote), symbol: t.symbol });
     }
   };
-  
-  const subObj: ActiveTickSubscription = { symbol, onTick, listener: l };
-  activeTickSubscriptions.add(subObj);
-  listeners.add(l);
-  
-  derivRequest({ ticks: symbol, subscribe: 1 }).catch(() => {
-    /* ignore */
-  });
+
+  const subObj: PubTickSub = { symbol, onTick, listener: l };
+  activePubSubs.add(subObj);
+  pubListeners.add(l);
+
+  pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => { /* ignore */ });
 
   return () => {
     if (stopped) return;
     stopped = true;
-    activeTickSubscriptions.delete(subObj);
-    listeners.delete(l);
-    if (subId) derivRequest({ forget: subId }).catch(() => {});
+    activePubSubs.delete(subObj);
+    pubListeners.delete(l);
+    if (subId) pubRequest({ forget: subId }).catch(() => {});
   };
 }
 
@@ -337,15 +407,7 @@ export async function fetchCandles(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // Ensure socket is connected before making request
-      const ws = await getSocket();
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        throw new Error("WebSocket not connected");
-      }
-
-      const res = await derivRequest<{
-        candles?: DerivCandle[];
-      }>({
+      const res = await pubRequest<{ candles?: DerivCandle[] }>({
         ticks_history: symbol,
         style: "candles",
         granularity,
@@ -361,12 +423,8 @@ export async function fetchCandles(
     } catch (e) {
       lastError = e as Error;
       if (attempt < maxRetries) {
-        // Wait before retrying (exponential backoff)
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-        // Reset socket to force reconnection
-        if (sharedSocket?.readyState !== WebSocket.OPEN) {
-          sharedSocket = null;
-        }
+        if (pubSocket?.readyState !== WebSocket.OPEN) pubSocket = null;
       }
     }
   }
