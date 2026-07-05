@@ -1,7 +1,7 @@
 // Auto-trading engine — all logic runs client-side.
 // Only executes trades when strict signal quality thresholds are met.
 
-import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, GRANULARITY, getBalance } from "./deriv";
+import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance } from "./deriv";
 import { generateSignal, atr } from "./indicators";
 
 let derivConnected = false;
@@ -22,7 +22,62 @@ async function checkDerivConnection(): Promise<boolean> {
   }
 }
 
-export type TradingSession = "asia" | "london" | "newyork";
+/**
+ * Robust buy pipeline: Deriv proposal IDs expire within seconds, so each retry
+ * MUST request a fresh proposal instead of reusing a stale ID.
+ */
+async function proposeAndBuy(params: {
+  symbol: string;
+  amount: number;
+  contractType: "CALL" | "PUT";
+  durationMinutes: number;
+}, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number; payout: number; startTime: number }> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const proposal = await proposalContract(params);
+      return await buyContract(proposal.id, proposal.askPrice * 1.05);
+    } catch (e) {
+      lastError = e as Error;
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
+    }
+  }
+  throw lastError ?? new Error("Échec achat après plusieurs tentatives");
+}
+
+export type TradingSession = "sydney" | "asia" | "london" | "newyork";
+
+// ─── Contract availability on the Deriv Options Trading API ──────────────────
+// - crypto (cry*): MULTIPLIER contracts only — CALL/PUT rise/fall unavailable
+// - Boom/Crash (BOOM*/CRASH*): no CALL/PUT either
+// - forex/commodities (frx*): CALL/PUT from 15 minutes, session-bound
+// - stock indices (OTC_*): CALL/PUT 15m→1h, only during exchange hours
+// - synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR): from 15s, 24/7
+
+/** True when the symbol supports CALL/PUT contracts (what the bot trades). */
+export function isCallPutAvailable(symbol: string): boolean {
+  return !symbol.startsWith("cry") && !symbol.startsWith("BOOM") && !symbol.startsWith("CRASH");
+}
+
+/** Minimum CALL/PUT contract duration (minutes) allowed for this symbol. */
+export function minContractMinutes(symbol: string): number {
+  return symbol.startsWith("frx") || symbol.startsWith("OTC_") ? 15 : 5;
+}
+
+/** Symbols that trade around the clock (no session/news filtering needed). */
+export function is24x7Symbol(symbol: string): boolean {
+  return !symbol.startsWith("frx") && !symbol.startsWith("OTC_") && !symbol.startsWith("WLD");
+}
+
+// Stock indices only trade during their home exchange's hours — approximated
+// by the matching forex session window (backstop: Deriv rejects with
+// MarketIsClosed if we're off).
+export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
+  OTC_N225: "asia", OTC_HSI: "asia", OTC_AS51: "asia",
+  OTC_FTSE: "london", OTC_GDAXI: "london", OTC_FCHI: "london",
+  OTC_AEX: "london", OTC_SSMI: "london", OTC_SX5E: "london",
+  OTC_SPC: "newyork", OTC_DJI: "newyork", OTC_NDX: "newyork",
+};
 
 export type TradingMode = "simulation" | "demo" | "live";
 
@@ -62,7 +117,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   minTfAgreement: 2,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
-  symbols: ["cryBTCUSD", "frxEURUSD"],
+  symbols: ["R_100", "R_50", "frxEURUSD"],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
@@ -134,7 +189,7 @@ export const CONSERVATIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 4,
   maxConsecutiveLosses: 2,
   maxVolatilityPct: 2,
-  symbols: ["cryBTCUSD", "frxEURUSD"],
+  symbols: ["R_25", "R_50", "frxEURUSD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: true,
@@ -166,7 +221,7 @@ export const MODERATE_PRESET: PresetConfig = {
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  symbols: ["cryBTCUSD", "frxEURUSD", "cryETHUSD"],
+  symbols: ["R_100", "R_50", "frxEURUSD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -198,7 +253,7 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  symbols: ["cryBTCUSD", "cryETHUSD", "frxEURUSD", "frxGBPUSD", "cryLTCUSD"],
+  symbols: ["R_100", "R_75", "R_50", "1HZ100V", "frxEURUSD", "frxGBPUSD"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -325,7 +380,7 @@ export function isCorrelatedWithActive(symbol: string, activeSymbols: Set<string
 
 export interface ScanSymbolResult {
   symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block";
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable";
   direction?: "CALL" | "PUT" | null;
   confidence?: number;
   agreement?: number;
@@ -367,29 +422,36 @@ export function notifyTradeTaken(symbol: string, direction: string, confidence: 
 // ─── Session helpers ───────────────────────────────────────────────────────────
 
 export const SESSION_HOURS: Record<TradingSession, { label: string; open: number; close: number }> = {
+  sydney:   { label: "Sydney",    open: 21, close: 6  },  // 21:00–06:00 UTC (passe minuit)
   asia:     { label: "Asie",      open: 0,  close: 9  },  // 00:00–09:00 UTC
   london:   { label: "Londres",   open: 7,  close: 16 },  // 07:00–16:00 UTC
   newyork:  { label: "New York",  open: 12, close: 21 },  // 12:00–21:00 UTC
 };
 
-export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
-  // Crypto trades 24/7 — no session filter
-  if (symbol.startsWith("cry")) return true;
-
+/** Is the given session window active right now? Handles windows crossing midnight (Sydney). */
+function isSessionActive(s: TradingSession, edgeMinutes = 0): boolean {
   const now = new Date();
   const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  return sessions.some((s) => {
-    const { open, close } = SESSION_HOURS[s];
-    return utcMins >= open * 60 + edgeMinutes && utcMins < close * 60 - edgeMinutes;
-  });
+  const { open, close } = SESSION_HOURS[s];
+  const start = open * 60 + edgeMinutes;
+  const end = close * 60 - edgeMinutes;
+  if (open > close) return utcMins >= start || utcMins < end; // wraps past midnight
+  return utcMins >= start && utcMins < end;
+}
+
+export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
+  // Crypto and synthetic indices trade 24/7 — no session filter
+  if (is24x7Symbol(symbol)) return true;
+
+  // Stock indices: their home exchange must be open AND enabled in the config
+  const home = INDEX_HOME_SESSION[symbol];
+  if (home) return sessions.includes(home) && isSessionActive(home, edgeMinutes);
+
+  return sessions.some((s) => isSessionActive(s, edgeMinutes));
 }
 
 export function currentActiveSessions(): TradingSession[] {
-  const utcHour = new Date().getUTCHours();
-  return (Object.keys(SESSION_HOURS) as TradingSession[]).filter((s) => {
-    const { open, close } = SESSION_HOURS[s];
-    return utcHour >= open && utcHour < close;
-  });
+  return (Object.keys(SESSION_HOURS) as TradingSession[]).filter((s) => isSessionActive(s));
 }
 
 // ─── Adaptive stake ────────────────────────────────────────────────────────────
@@ -552,6 +614,10 @@ export async function forceDemoTrade(
   durationMinutes: number,
   onEvent: TradeEventHandler,
 ): Promise<void> {
+  if (!isCallPutAvailable(symbolDeriv)) {
+    throw new Error("CALL/PUT indisponible sur les cryptos — choisis un indice Volatility (R_100…) ou une paire forex");
+  }
+  durationMinutes = Math.max(durationMinutes, minContractMinutes(symbolDeriv));
   const logs = loadTradeLog();
   const emit = (log: TradeLog) => {
     const idx = logs.findIndex((l) => l.id === log.id);
@@ -588,15 +654,7 @@ export async function forceDemoTrade(
   emit(pending);
 
   try {
-    const proposal = await proposalContract({ symbol: symbolDeriv, amount: stake, contractType: direction, durationMinutes });
-
-    let bought: { contractId: number; buyPrice: number; payout: number; startTime: number } | null = null;
-    let attempts = 0;
-    while (attempts < 3 && !bought) {
-      try { attempts++; bought = await buyContract(proposal.id, proposal.askPrice * 1.05); }
-      catch (e) { if (attempts >= 3) throw e; await new Promise((r) => setTimeout(r, 500)); }
-    }
-    if (!bought) throw new Error("Échec achat après 3 tentatives");
+    const bought = await proposeAndBuy({ symbol: symbolDeriv, amount: stake, contractType: direction, durationMinutes });
 
     const openLog: TradeLog = { ...pending, status: "open", payout: bought.payout, contractId: bought.contractId };
     emit(openLog);
@@ -607,7 +665,8 @@ export async function forceDemoTrade(
       resolved = true;
       clearTimeout(fallback);
       unsub();
-      emit({ ...openLog, status: won ? "won" : "lost", profit: won ? profit : -stake, closedAt: Date.now() });
+      // Use the REAL profit reported by Deriv (covers partial payouts and early sells)
+      emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
     };
 
     const unsub = subscribeContract(bought.contractId, (update) => {
@@ -627,6 +686,57 @@ export async function forceDemoTrade(
     }, (durationMinutes + 2) * 60_000);
   } catch (e) {
     emit({ ...pending, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
+  }
+}
+
+/**
+ * Reconciles locally-tracked "open" trades with the real Deriv account.
+ * Called after page reload / session reconnect: any position whose contract
+ * subscription was lost is either re-tracked (still open on Deriv) or
+ * resolved with the REAL profit from the profit table.
+ */
+export async function reconcileOpenTrades(onEvent: TradeEventHandler): Promise<void> {
+  const logs = loadTradeLog();
+  const stale = logs.filter(
+    (l) => (l.status === "open" || l.status === "pending") && l.contractId,
+  );
+  if (!stale.length) return;
+
+  const emit = (log: TradeLog) => {
+    const idx = logs.findIndex((l) => l.id === log.id);
+    if (idx >= 0) logs[idx] = log;
+    saveTradeLog(logs);
+    clearTradeLogCache();
+    onEvent(log);
+  };
+
+  let openIds = new Set<number>();
+  try {
+    const positions = await getOpenPositions();
+    openIds = new Set(positions.map((p) => p.contractId));
+  } catch { return; /* not connected — retry on next reconcile */ }
+
+  let profitRecords: Awaited<ReturnType<typeof getProfitTable>> = [];
+  try { profitRecords = await getProfitTable(50); } catch { /* ignore */ }
+
+  for (const log of stale) {
+    const cid = log.contractId!;
+    if (openIds.has(cid)) {
+      // Still open on Deriv — re-attach live tracking
+      const unsub = subscribeContract(cid, (update) => {
+        if (update.status === "open") return;
+        unsub();
+        emit({ ...log, status: update.status === "won" ? "won" : "lost", profit: update.profit, closedAt: Date.now() });
+      });
+    } else {
+      // Closed while we were away — settle with the real result
+      const match = profitRecords.find((r) => r.contractId === cid);
+      if (match) {
+        emit({ ...log, status: match.profit > 0 ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
+      } else {
+        emit({ ...log, status: "error", profit: 0, note: "Contrat introuvable — vérifie ton compte Deriv", closedAt: Date.now() });
+      }
+    }
   }
 }
 
@@ -946,6 +1056,13 @@ export function startAutoTrader(
     for (const symbol of config.symbols) {
       if (stopped) break;
 
+      // Crypto pairs only offer multiplier contracts on the Options API —
+      // CALL/PUT is impossible, skip with an explicit reason.
+      if (!isCallPutAvailable(symbol)) {
+        scanResults.push({ symbol, action: "not-tradeable", note: "CALL/PUT indisponible sur crypto — utilise les indices Volatility (R_100…)" });
+        continue;
+      }
+
       if (activeSymbols.has(symbol)) {
         scanResults.push({ symbol, action: "open-trade" });
         continue;
@@ -956,8 +1073,8 @@ export function startAutoTrader(
         continue;
       }
 
-      // Skip high-risk news windows for forex pairs (crypto trades 24/7 unaffected)
-      if (!symbol.startsWith("cry")) {
+      // Skip high-risk news windows for forex pairs (24/7 markets unaffected)
+      if (!is24x7Symbol(symbol)) {
         const riskCheck = isHighRiskWindow();
         if (riskCheck.blocked) {
           scanResults.push({ symbol, action: "news-block", note: riskCheck.reason });
@@ -1017,6 +1134,9 @@ export function startAutoTrader(
         entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
       } catch { /* ignore */ }
 
+      // Clamp to the symbol's minimum allowed duration (forex CALL/PUT starts at 15m)
+      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+
       const logId = `t_${Date.now()}_${symbol}`;
       const pendingLog: TradeLog = {
         id: logId,
@@ -1031,8 +1151,8 @@ export function startAutoTrader(
         tfAgreement: analysis.agreement,
         note: noteStr || undefined,
         entryPrice: entryPrice || undefined,
-        durationMinutes: analysis.suggestedDuration,
-        expiry: Date.now() + analysis.suggestedDuration * 60_000,
+        durationMinutes: tradeDuration,
+        expiry: Date.now() + tradeDuration * 60_000,
       };
       emit(pendingLog);
       notifyTradeTaken(
@@ -1076,7 +1196,7 @@ export function startAutoTrader(
           } finally {
             activeSymbols.delete(symbol);
           }
-        }, analysis.suggestedDuration * 60_000);
+        }, tradeDuration * 60_000);
 
       } else {
         // Real Deriv account (demo or live): verify connection first
@@ -1088,27 +1208,13 @@ export function startAutoTrader(
 
         try {
           activeSymbols.add(symbol);
-          const proposal = await proposalContract({
+          // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
+          const bought = await proposeAndBuy({
             symbol,
             amount: effectiveStake,
             contractType: analysis.direction,
-            durationMinutes: analysis.suggestedDuration,
+            durationMinutes: tradeDuration,
           });
-
-          // Retry logic for buyContract (Deriv sometimes requires multiple attempts)
-          let bought: { contractId: number; buyPrice: number; payout: number; startTime: number } | null = null;
-          let attempts = 0;
-          const maxAttempts = 3;
-          while (attempts < maxAttempts && !bought) {
-            try {
-              attempts++;
-              bought = await buyContract(proposal.id, proposal.askPrice * 1.05);
-            } catch (e) {
-              if (attempts >= maxAttempts) throw e;
-              await new Promise((r) => setTimeout(r, 500)); // wait 500ms before retry
-            }
-          }
-          if (!bought) throw new Error("Failed to buy contract after retries");
 
           const openLog: TradeLog = {
             ...pendingLog,
@@ -1128,7 +1234,8 @@ export function startAutoTrader(
             emit({
               ...openLog,
               status: won ? "won" : "lost",
-              profit: won ? profit : -effectiveStake,
+              // REAL Deriv profit — negative on loss, includes partial payouts
+              profit,
               closedAt: Date.now(),
             } as TradeLog);
           };
@@ -1163,7 +1270,7 @@ export function startAutoTrader(
                 emit({ ...openLog, status: "error", profit: 0, note: "Timeout résolution contrat" });
               }
             }
-          }, (analysis.suggestedDuration + 2) * 60_000);
+          }, (tradeDuration + 2) * 60_000);
         } catch (e) {
           emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
           activeSymbols.delete(symbol);

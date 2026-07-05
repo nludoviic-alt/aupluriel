@@ -90,6 +90,7 @@ import {
   loadCustomPresets,
   loadTradeLogCached,
   openPreviewTrade,
+  reconcileOpenTrades,
   PRUDENT_CONFIG,
   PRESETS,
   SCAN_INTERVAL_MS,
@@ -126,9 +127,24 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 
+// Crypto pairs only offer multiplier contracts on the Deriv Options API —
+// migrate saved watchlists to the equivalent Volatility indices (tradables 24/7).
+const CRYPTO_MIGRATION: Record<string, string> = {
+  cryBTCUSD: "R_100",
+  cryETHUSD: "R_75",
+  cryLTCUSD: "R_50",
+};
+
 function loadConfig(): AutoTraderConfig {
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}") };
+    const cfg: AutoTraderConfig = { ...DEFAULT_CONFIG, ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}") };
+    const migrated = [...new Set(cfg.symbols.map((s) => CRYPTO_MIGRATION[s] ?? s))];
+    if (migrated.some((s, i) => s !== cfg.symbols[i]) || migrated.length !== cfg.symbols.length) {
+      cfg.symbols = migrated;
+      saveConfig(cfg);
+      toast.info("Paires crypto remplacées par les indices Volatility — CALL/PUT indisponible sur crypto");
+    }
+    return cfg;
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -176,6 +192,23 @@ function AutoTraderPage() {
   // Keep balanceRef in sync with the live Deriv balance
   useEffect(() => { balanceRef.current = derivSession.balance ?? undefined; }, [derivSession.balance]);
 
+  // Réconcilie les positions réelles avec Deriv après chaque (re)connexion :
+  // re-suit les contrats encore ouverts, règle ceux fermés pendant l'absence.
+  useEffect(() => {
+    if (!derivSession.connected) return;
+    reconcileOpenTrades((log) => {
+      setLogs((prev) => {
+        const exists = prev.find((l) => l.id === log.id);
+        if (exists) return prev.map((l) => (l.id === log.id ? log : l));
+        return [log, ...prev].slice(0, 50);
+      });
+      if (log.status === "won" || log.status === "lost") {
+        setCumulativePnl(loadCumulativePnl());
+        refreshDerivBalance();
+      }
+    }).catch(() => {});
+  }, [derivSession.connected]);
+
   useEffect(() => {
     // Load custom presets
     setCustomPresets(loadCustomPresets());
@@ -192,7 +225,7 @@ function AutoTraderPage() {
     setConfig(loaded);
     setDraftDuration(loaded.durationMinutes);
     setDraftMaxTrades(loaded.maxTradesPerDay);
-    setForceSymbol(loaded.symbols[0] ?? "cryBTCUSD");
+    setForceSymbol(loaded.symbols[0] ?? "R_100");
     setLogs(loadTradeLogCached());
     setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
@@ -665,7 +698,7 @@ function AutoTraderPage() {
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sessions marchés</span>
             </div>
             <div className="space-y-2">
-              {(["asia", "london", "newyork"] as TradingSession[]).map((s) => {
+              {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
                 const isActive = activeSessions.includes(s);
                 const inCfg = config.tradingSessions.includes(s);
                 return (
@@ -1087,7 +1120,7 @@ function AutoTraderPage() {
                   <div className="sm:col-span-2 lg:col-span-3">
                     <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Sessions autorisées</label>
                     <div className="flex flex-wrap gap-2">
-                      {(["asia","london","newyork"] as TradingSession[]).map((s) => {
+                      {(["sydney","asia","london","newyork"] as TradingSession[]).map((s) => {
                         const active = config.tradingSessions.includes(s);
                         const isOpen = activeSessions.includes(s);
                         return (
@@ -1102,7 +1135,7 @@ function AutoTraderPage() {
                         );
                       })}
                     </div>
-                    <p className="mt-1.5 text-[10px] text-muted-foreground">BTC/ETH ignorent ce filtre — 24h/24.</p>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">Les indices Volatility (R_100…) ignorent ce filtre — ouverts 24h/24, 7j/7.</p>
                   </div>
                 </div>
               )}

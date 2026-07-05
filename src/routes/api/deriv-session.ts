@@ -3,7 +3,6 @@ import { getDb } from "@/lib/db.server";
 import { getUserFromRequest } from "@/lib/auth.server";
 
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
-const DERIV_WS_V3 = "wss://ws.binaryws.com/websockets/v3?app_id=1089&l=EN&brand=deriv";
 
 interface DerivAccount {
   account_id: string;
@@ -14,8 +13,10 @@ interface DerivAccount {
 }
 
 interface DerivSessionResponse {
+  // OTP-authenticated WebSocket URL (single-use, valid 120s) — the client
+  // connects directly, no authorize message needed. `pat_` tokens are NOT
+  // valid on the legacy v3 `authorize` call, so this is the only way in.
   wsUrl: string;
-  authToken: string;
   loginId: string;
   balance: number;
   currency: string;
@@ -68,10 +69,20 @@ export const Route = createFileRoute("/api/deriv-session")({
 
         if (!chosen) return json({ error: "Aucun compte actif trouvé" }, 400);
 
-        // Use standard Deriv v3 WebSocket — client will authorize with the API token
+        // Issue a single-use OTP WebSocket URL scoped to the chosen account.
+        const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, {
+          method: "POST",
+          headers,
+        });
+        if (!otpRes.ok) {
+          const text = await otpRes.text();
+          return json({ error: `OTP WebSocket refusé (${otpRes.status}): ${text.slice(0, 200)}` }, 502);
+        }
+        const otpData = (await otpRes.json()) as { data?: { url?: string } };
+        if (!otpData.data?.url) return json({ error: "URL WebSocket OTP manquante dans la réponse Deriv" }, 502);
+
         const response: DerivSessionResponse = {
-          wsUrl: DERIV_WS_V3,
-          authToken: token,
+          wsUrl: otpData.data.url,
           loginId: chosen.account_id,
           balance: parseFloat(chosen.balance),
           currency: chosen.currency,

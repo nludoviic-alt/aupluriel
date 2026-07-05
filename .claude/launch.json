@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "lio23",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 8081
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "npm run dev -- --port ${PORT:-8081} --strictPort"],
+      "port": 8081,
+      "autoPort": true
     }
   ]
 }

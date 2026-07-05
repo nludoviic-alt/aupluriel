@@ -1,13 +1,19 @@
 // Browser-side Deriv WebSocket client.
-// Uses v3 standard WS endpoint with explicit authorize message for trading.
+// Trading: OTP-authenticated WS from the Options Trading API (api.derivws.com).
+//   The OTP URL comes from /api/deriv-session; it is SINGLE-USE and expires in
+//   120s — every reconnect needs a fresh URL (handled via onDerivDisconnect).
+// Market data: legacy v3 public WS (no auth) — still serves the same symbols.
 
 export const DERIV_APP_ID = 1089;
 export const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 
 let derivSessionUrl: string | null = null;
-let derivAuthToken: string | null = null;
+let sessionUrlConsumed = false; // OTP URLs are single-use — never reconnect with one
 let derivTargetAccount: string | null = null;
 let _disconnectCallback: (() => void) | null = null;
+// Real currency of the target account (EUR, BTC, tUSDT…) — proposals MUST
+// use it or Deriv rejects the buy on non-USD accounts.
+let accountCurrency: string | null = null;
 
 /** Register a callback fired whenever the authenticated WS session closes unexpectedly. */
 export function onDerivDisconnect(cb: (() => void) | null): void {
@@ -15,13 +21,21 @@ export function onDerivDisconnect(cb: (() => void) | null): void {
 }
 
 /** Call after fetching /api/deriv-session to wire up the authenticated WS. */
-export function setDerivSession(wsUrl: string, authToken?: string, targetAccount?: string): void {
+export function setDerivSession(wsUrl: string, targetAccount?: string, currency?: string): void {
   derivSessionUrl = wsUrl;
-  derivAuthToken = authToken ?? null;
+  sessionUrlConsumed = false;
   derivTargetAccount = targetAccount ?? null;
-  if (sharedSocket) { sharedSocket.close(); sharedSocket = null; }
+  if (currency) accountCurrency = currency;
+  if (sharedSocket) {
+    expectedCloseSocket = sharedSocket; // our own close — don't trigger reconnect
+    sharedSocket.close();
+    sharedSocket = null;
+  }
   connecting = null;
 }
+
+// Socket we closed on purpose — its onclose must not fire the disconnect callback.
+let expectedCloseSocket: WebSocket | null = null;
 
 export interface DerivCandle {
   epoch: number;
@@ -38,13 +52,46 @@ export interface DerivTick {
 }
 
 // Map common labels to Deriv symbols.
-export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex" | "commodity" }[] = [
-  { label: "BTC/USD", deriv: "cryBTCUSD", market: "crypto" },
-  { label: "ETH/USD", deriv: "cryETHUSD", market: "crypto" },
+// NOTE: crypto pairs only offer MULTIPLIER contracts on the Options API — the
+// auto-trader (CALL/PUT) cannot trade them. Synthetic indices trade 24/7 with
+// durations from 15s and are the best fit for the bot. Stock indices (OTC_*)
+// offer CALL/PUT 15m→1h during their exchange's hours only.
+export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex" | "commodity" | "synthetic" | "indices" }[] = [
+  // ── Synthétiques (24/7, CALL/PUT dès 15s) ──
+  { label: "Volatility 100", deriv: "R_100", market: "synthetic" },
+  { label: "Volatility 75", deriv: "R_75", market: "synthetic" },
+  { label: "Volatility 50", deriv: "R_50", market: "synthetic" },
+  { label: "Volatility 25", deriv: "R_25", market: "synthetic" },
+  { label: "Volatility 10", deriv: "R_10", market: "synthetic" },
+  { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
+  { label: "Jump 100", deriv: "JD100", market: "synthetic" },
+  { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },
+  { label: "Bull Market", deriv: "RDBULL", market: "synthetic" },
+  { label: "Bear Market", deriv: "RDBEAR", market: "synthetic" },
+  // ── Indices boursiers (heures de bourse) ──
+  { label: "US 500", deriv: "OTC_SPC", market: "indices" },
+  { label: "US Tech 100", deriv: "OTC_NDX", market: "indices" },
+  { label: "Wall Street 30", deriv: "OTC_DJI", market: "indices" },
+  { label: "Germany 40", deriv: "OTC_GDAXI", market: "indices" },
+  { label: "UK 100", deriv: "OTC_FTSE", market: "indices" },
+  { label: "Japan 225", deriv: "OTC_N225", market: "indices" },
+  { label: "Hong Kong 50", deriv: "OTC_HSI", market: "indices" },
+  // ── Forex (sessions, CALL/PUT dès 15 min) ──
   { label: "EUR/USD", deriv: "frxEURUSD", market: "forex" },
   { label: "GBP/USD", deriv: "frxGBPUSD", market: "forex" },
+  { label: "USD/JPY", deriv: "frxUSDJPY", market: "forex" },
+  { label: "AUD/USD", deriv: "frxAUDUSD", market: "forex" },
+  { label: "USD/CAD", deriv: "frxUSDCAD", market: "forex" },
+  { label: "USD/CHF", deriv: "frxUSDCHF", market: "forex" },
+  { label: "EUR/GBP", deriv: "frxEURGBP", market: "forex" },
+  { label: "EUR/JPY", deriv: "frxEURJPY", market: "forex" },
   { label: "GBP/JPY", deriv: "frxGBPJPY", market: "forex" },
-  { label: "XAU/USD", deriv: "frxXAUUSD", market: "commodity" },
+  // ── Matières premières ──
+  { label: "XAU/USD (Or)", deriv: "frxXAUUSD", market: "commodity" },
+  { label: "XAG/USD (Argent)", deriv: "frxXAGUSD", market: "commodity" },
+  // ── Crypto (graphiques uniquement — pas de CALL/PUT) ──
+  { label: "BTC/USD", deriv: "cryBTCUSD", market: "crypto" },
+  { label: "ETH/USD", deriv: "cryETHUSD", market: "crypto" },
 ];
 
 export const GRANULARITY: Record<string, number> = {
@@ -89,7 +136,20 @@ function stopHeartbeat() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
 }
 
-function resubscribeAllActive() { /* ticks are now on the public socket */ }
+// Active contract subscriptions — re-established automatically after a reconnect
+// so open positions keep resolving even if the socket dropped mid-trade.
+interface ContractSub {
+  contractId: number;
+  listener: Listener;
+}
+const activeContractSubs = new Set<ContractSub>();
+
+function resubscribeAllActive() {
+  for (const sub of activeContractSubs) {
+    listeners.add(sub.listener);
+    derivRequest({ proposal_open_contract: 1, contract_id: sub.contractId, subscribe: 1 }).catch(() => {});
+  }
+}
 
 // ── PUBLIC SOCKET — market data (ticks, candles) — no auth, starts immediately
 let pubSocket: WebSocket | null = null;
@@ -182,18 +242,25 @@ function getSocket(): Promise<WebSocket> {
   if (typeof window === "undefined") return Promise.reject(new Error("no window"));
   if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) return Promise.resolve(sharedSocket);
   if (connecting) return connecting;
+  if (!derivSessionUrl) return Promise.reject(new Error("Session Deriv non initialisée"));
+  if (sessionUrlConsumed) {
+    // The OTP URL was already used by a previous connection — a fresh one must
+    // be fetched via /api/deriv-session. Notify the session manager and fail fast.
+    _disconnectCallback?.();
+    return Promise.reject(new Error("Session Deriv expirée — reconnexion en cours"));
+  }
   connecting = new Promise((resolve, reject) => {
-    const ws = new WebSocket(derivSessionUrl ?? DERIV_WS_URL);
-    // Prevents the disconnect callback from firing when WE close the socket (auth/switch failure)
-    // vs an unexpected network drop that should trigger reconnection.
-    let expectedClose = false;
+    const ws = new WebSocket(derivSessionUrl!);
 
     ws.onerror = (e) => {
       connecting = null;
       reject(e);
     };
     ws.onclose = () => {
-      sharedSocket = null;
+      const expected = expectedCloseSocket === ws;
+      if (expected) expectedCloseSocket = null;
+      if (sharedSocket === ws) sharedSocket = null;
+      connecting = null;
       stopHeartbeat();
 
       for (const [, req] of pendingRequests.entries()) {
@@ -202,8 +269,9 @@ function getSocket(): Promise<WebSocket> {
       pendingRequests.clear();
       listeners.clear();
 
-      // Only trigger reconnect for unexpected drops, not our own auth/switch failures
-      if (!expectedClose && derivSessionUrl) _disconnectCallback?.();
+      // The OTP URL is dead either way (consumed or expired) — ask the session
+      // manager for a fresh one, unless we closed this socket ourselves.
+      if (!expected) _disconnectCallback?.();
     };
     ws.onmessage = (evt) => {
       try {
@@ -215,67 +283,14 @@ function getSocket(): Promise<WebSocket> {
     };
 
     ws.onopen = () => {
-      if (!derivAuthToken) {
-        sharedSocket = ws;
-        connecting = null;
-        startHeartbeat(ws);
-        resubscribeAllActive();
-        resolve(ws);
-        return;
-      }
-
-      const authId = nextId();
-      const onAuth = (msg: Record<string, unknown>) => {
-        if (msg.req_id !== authId) return;
-        listeners.delete(onAuth);
-
-        if (msg.error) {
-          connecting = null;
-          expectedClose = true;
-          ws.close();
-          reject(new Error(String((msg.error as { message?: string }).message ?? "Authorize failed")));
-          return;
-        }
-
-        const authorizedId = (msg as { authorize?: { loginid?: string } }).authorize?.loginid;
-        const needSwitch = derivTargetAccount && authorizedId !== derivTargetAccount;
-
-        if (!needSwitch) {
-          sharedSocket = ws;
-          connecting = null;
-          startHeartbeat(ws);
-          resubscribeAllActive();
-          resolve(ws);
-          return;
-        }
-
-        const switchId = nextId();
-        const onSwitch = (m: Record<string, unknown>) => {
-          if (m.req_id !== switchId) return;
-          listeners.delete(onSwitch);
-
-          if (m.error) {
-            // Switch failed — fall back to the already-authorized account rather than
-            // closing and looping. This handles API tokens that can't switch accounts.
-            connecting = null;
-            sharedSocket = ws;
-            startHeartbeat(ws);
-            resubscribeAllActive();
-            resolve(ws);
-            return;
-          }
-
-          sharedSocket = ws;
-          connecting = null;
-          startHeartbeat(ws);
-          resubscribeAllActive();
-          resolve(ws);
-        };
-        listeners.add(onSwitch);
-        ws.send(JSON.stringify({ account_switch: derivTargetAccount, req_id: switchId }));
-      };
-      listeners.add(onAuth);
-      ws.send(JSON.stringify({ authorize: derivAuthToken, req_id: authId }));
+      // The OTP in the URL is now consumed — this socket is authenticated and
+      // scoped to the target account; no authorize message is needed.
+      sessionUrlConsumed = true;
+      sharedSocket = ws;
+      connecting = null;
+      startHeartbeat(ws);
+      resubscribeAllActive();
+      resolve(ws);
     };
   });
   return connecting;
@@ -438,7 +453,10 @@ export async function getBalance(): Promise<{ balance: number; currency: string 
     const res = await derivRequest<{ balance?: { balance: number; currency: string } }>({
       balance: 1,
     });
-    if (res.balance) return { balance: Number(res.balance.balance), currency: res.balance.currency };
+    if (res.balance) {
+      accountCurrency = res.balance.currency;
+      return { balance: Number(res.balance.balance), currency: res.balance.currency };
+    }
     return null;
   } catch {
     return null;
@@ -469,13 +487,15 @@ export async function proposalContract(params: {
     error?: { message: string };
   }>({
     proposal: 1,
-    amount: params.amount,
+    // Deriv rejects stakes with >2 decimals (percent-based stakes produce them)
+    amount: Math.round(params.amount * 100) / 100,
     basis: "stake",
     contract_type: params.contractType,
-    currency: params.currency ?? "USD",
+    currency: params.currency ?? accountCurrency ?? "USD",
     duration: params.durationMinutes,
     duration_unit: "m",
-    symbol: params.symbol,
+    // Options Trading API expects `underlying_symbol` (legacy `symbol` is rejected)
+    underlying_symbol: params.symbol,
   });
   if (!res.proposal) throw new Error("Proposal failed");
   return {
@@ -527,9 +547,12 @@ export function subscribeContract(
   onUpdate: (update: ContractUpdate) => void,
 ): () => void {
   let stopped = false;
+  let subId: string | undefined;
   const l: Listener = (msg) => {
     const p = (msg as { proposal_open_contract?: Record<string, unknown> }).proposal_open_contract;
     if (!p || p.contract_id !== contractId) return;
+    const subscription = (msg as { subscription?: { id?: string } }).subscription;
+    if (subscription?.id) subId = subscription.id;
     const status =
       p.is_expired || p.is_settleable || p.is_sold
         ? p.profit !== undefined && Number(p.profit) > 0
@@ -544,13 +567,18 @@ export function subscribeContract(
       sellPrice: p.sell_price !== undefined ? Number(p.sell_price) : undefined,
     });
   };
+  const subObj: ContractSub = { contractId, listener: l };
+  activeContractSubs.add(subObj);
   listeners.add(l);
   derivRequest({ proposal_open_contract: 1, contract_id: contractId, subscribe: 1 }).catch(() => {});
   return () => {
     if (stopped) return;
     stopped = true;
+    activeContractSubs.delete(subObj);
     listeners.delete(l);
-    derivRequest({ forget_all: "proposal_open_contract" }).catch(() => {});
+    // Forget ONLY this contract's stream — never forget_all, which would kill
+    // tracking of other concurrently open positions.
+    if (subId) derivRequest({ forget: subId }).catch(() => {});
   };
 }
 
@@ -628,9 +656,11 @@ export async function getProfitTable(limit = 50): Promise<ProfitRecord[]> {
         transactions?: Array<{
           contract_id: number;
           shortcode: string;
+          underlying_symbol?: string;
+          contract_type?: string;
           buy_price: number;
           sell_price: number;
-          profit: number;
+          profit?: number; // absent on the Options Trading API — derive it
           purchase_time: number;
           sell_time: number;
           app_id?: number;
@@ -641,11 +671,11 @@ export async function getProfitTable(limit = 50): Promise<ProfitRecord[]> {
       const parts = t.shortcode?.split("_") ?? [];
       return {
         contractId: t.contract_id,
-        symbol: parts[1] ?? "—",
-        contractType: parts[0] ?? "—",
+        symbol: t.underlying_symbol ?? parts[1] ?? "—",
+        contractType: t.contract_type ?? parts[0] ?? "—",
         buyPrice: Number(t.buy_price),
         sellPrice: Number(t.sell_price),
-        profit: Number(t.profit),
+        profit: t.profit !== undefined ? Number(t.profit) : Number(t.sell_price) - Number(t.buy_price),
         purchaseTime: t.purchase_time,
         sellTime: t.sell_time,
       };

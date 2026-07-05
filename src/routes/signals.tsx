@@ -64,7 +64,7 @@ function DirBadge({ dir, strong = false }: { dir: SignalDirection | "MIXTE"; str
 }
 
 function SignalsPage() {
-  const [filter, setFilter] = useState<"all" | "crypto" | "forex" | "commodity">("all");
+  const [filter, setFilter] = useState<"all" | "synthetic" | "indices" | "crypto" | "forex" | "commodity">("all");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -97,7 +97,7 @@ function SignalsPage() {
           </button>
           <div className="inline-flex items-center rounded-lg border border-border bg-card/40 p-1 text-xs">
             <Filter className="ml-2 mr-1 h-3.5 w-3.5 text-muted-foreground" />
-            {(["all", "crypto", "forex", "commodity"] as const).map((f) => (
+            {(["all", "synthetic", "indices", "forex", "commodity", "crypto"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -108,7 +108,7 @@ function SignalsPage() {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {f === "all" ? "Tous" : f}
+                {f === "all" ? "Tous" : f === "synthetic" ? "Synthétiques" : f === "indices" ? "Indices" : f === "commodity" ? "Mat. prem." : f}
               </button>
             ))}
           </div>

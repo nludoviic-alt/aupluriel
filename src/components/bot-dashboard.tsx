@@ -95,6 +95,7 @@ export function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashbo
     cooldown:      { text: "⏸ Cooldown",            cls: "text-amber-400" },
     correlated:    { text: "⛓ Corrélée — skippée",  cls: "text-muted-foreground/60" },
     "news-block":  { text: "📰 Fenêtre macro",       cls: "text-amber-400" },
+    "not-tradeable": { text: "🚫 CALL/PUT indispo",   cls: "text-muted-foreground/60" },
   };
 
   // ── Today stats ──────────────────────────────────────────────────────────────

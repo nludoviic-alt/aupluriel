@@ -57,7 +57,6 @@ function initSession() {
   api
     .post<{
       wsUrl?: string;
-      authToken?: string;
       loginId?: string;
       balance?: number;
       currency?: string;
@@ -70,7 +69,7 @@ function initSession() {
         _initStarted = false;
         return;
       }
-      setDerivSession(res.wsUrl, res.authToken, res.loginId);
+      setDerivSession(res.wsUrl, res.loginId, res.currency);
       dispatch({
         connected: true,
         loginId: res.loginId ?? "",
