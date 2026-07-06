@@ -5,7 +5,7 @@ import { LogoMark } from "@/components/logo";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/verify-email")({
-  head: () => ({ meta: [{ title: "Vérification — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Vérification — Vertex" }] }),
   component: VerifyEmailPage,
 });
 
@@ -72,8 +72,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col items-center gap-3 mb-8">
           <LogoMark className="h-16 w-16" />
           <div className="text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">LIO23</h1>
-            <p className="text-sm text-muted-foreground">Quant Trading AI — Crypto & Forex</p>
+            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">Vertex</h1>
+            <p className="text-sm text-muted-foreground">Quant Trading — Crypto & Forex</p>
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-xl shadow-black/20 flex items-center justify-center min-h-[160px]">

@@ -1,10 +1,21 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound, ShieldOff } from "lucide-react";
+import { ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound, ShieldOff, UserPlus, Dices } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — LIO23" }] }),
@@ -27,6 +38,9 @@ function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -72,6 +86,43 @@ function AdminPage() {
     }
   }
 
+  function generatePassword() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    const bytes = new Uint32Array(14);
+    crypto.getRandomValues(bytes);
+    const password = Array.from(bytes, (n) => chars[n % chars.length]).join("");
+    setForm((f) => ({ ...f, password }));
+  }
+
+  async function createAccount() {
+    if (!form.username || !form.email || !form.password) {
+      toast.error("Nom d'utilisateur, email et mot de passe requis.");
+      return;
+    }
+    if (form.password.length < 6) {
+      toast.error("Le mot de passe doit faire au moins 6 caractères.");
+      return;
+    }
+    setCreateBusy(true);
+    try {
+      await api.post("/api/admin/users", {
+        action: "create",
+        username: form.username,
+        email: form.email,
+        password: form.password,
+        isAdmin: form.isAdmin,
+      });
+      toast.success("Compte créé ✓");
+      setCreateOpen(false);
+      setForm({ username: "", email: "", password: "", isAdmin: false });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création");
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
   if (authLoading || !user?.is_admin) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -89,17 +140,116 @@ function AdminPage() {
           <ShieldCheck className="h-6 w-6 text-[color:var(--brand-cyan)]" />
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Administration</h1>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={load}
-          className="w-full sm:w-auto h-10 text-sm sm:h-9"
-          disabled={loading}
-        >
-          <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
-          Actualiser
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            className="flex-1 sm:flex-none h-10 text-sm sm:h-9"
+          >
+            <UserPlus className="h-4 w-4 mr-1.5" />
+            Créer un compte
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            className="flex-1 sm:flex-none h-10 text-sm sm:h-9"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            Actualiser
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="glass-panel border-border/60 sm:rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]">
+                <UserPlus className="h-5 w-5" />
+              </div>
+              <div className="text-left">
+                <DialogTitle className="text-sm font-bold uppercase tracking-wide">Créer un compte</DialogTitle>
+                <DialogDescription className="mt-1 text-xs leading-relaxed">
+                  Le compte est créé directement approuvé et vérifié. Les identifiants sont envoyés par email.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-username" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Nom d'utilisateur
+              </Label>
+              <Input
+                id="new-username"
+                value={form.username}
+                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                placeholder="jdupont"
+                autoComplete="off"
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-email" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Email
+              </Label>
+              <Input
+                id="new-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="jean.dupont@exemple.com"
+                autoComplete="off"
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Mot de passe
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="new-password"
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="Au moins 6 caractères"
+                  autoComplete="new-password"
+                  className="bg-background font-mono"
+                />
+                <Button type="button" variant="outline" size="icon" onClick={generatePassword} title="Générer un mot de passe">
+                  <Dices className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background/40 px-3 py-2.5">
+              <Label htmlFor="new-is-admin" className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Compte administrateur
+              </Label>
+              <Switch
+                id="new-is-admin"
+                checked={form.isAdmin}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, isAdmin: checked }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)} disabled={createBusy}>
+              Annuler
+            </Button>
+            <Button
+              size="sm"
+              onClick={createAccount}
+              disabled={createBusy}
+              className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold"
+            >
+              {createBusy ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5 mr-1.5" />}
+              Créer le compte
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <p className="text-sm text-muted-foreground">
         {users.length} compte{users.length > 1 ? "s" : ""} · {pending.length} en attente d'approbation
       </p>

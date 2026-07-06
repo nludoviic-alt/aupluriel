@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
-import { requireAdmin, generateAuthToken } from "@/lib/auth.server";
-import { sendEmail, resetEmail, getAppUrl } from "@/lib/email.server";
+import { requireAdmin, generateAuthToken, hashPassword } from "@/lib/auth.server";
+import { sendEmail, resetEmail, welcomeEmail, getAppUrl } from "@/lib/email.server";
 
 const RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
@@ -22,22 +22,75 @@ export const Route = createFileRoute("/api/admin/users")({
         return json({ users });
       },
 
-      // Approve / reject / delete an account (admin only).
+      // Create / approve / reject / delete an account (admin only).
       POST: async ({ request }) => {
         const admin = await requireAdmin(request);
         if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
 
-        const { userId, action } = (await request.json()) as {
+        const body = (await request.json()) as {
           userId?: number;
-          action?: "approve" | "reject" | "revoke" | "delete" | "reset-password";
+          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password";
+          email?: string;
+          username?: string;
+          password?: string;
+          isAdmin?: boolean;
         };
-        if (!userId || !action) return json({ error: "userId et action requis." }, 400);
+        const { action } = body;
+        if (!action) return json({ error: "action requise." }, 400);
+
+        const db = getDb();
+
+        if (action === "create") {
+          const { email, username, password, isAdmin } = body;
+          if (!email || !username || !password) {
+            return json({ error: "Email, nom d'utilisateur et mot de passe requis." }, 400);
+          }
+          if (password.length < 6) {
+            return json({ error: "Le mot de passe doit faire au moins 6 caractères." }, 400);
+          }
+          const normalizedEmail = email.toLowerCase();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+            return json({ error: "Email invalide." }, 400);
+          }
+
+          const existing = db
+            .prepare("SELECT id FROM users WHERE email = ? OR username = ?")
+            .get(normalizedEmail, username);
+          if (existing) {
+            return json({ error: "Cet email ou nom d'utilisateur est déjà utilisé." }, 409);
+          }
+
+          const passwordHash = await hashPassword(password);
+          // Admin-created accounts are pre-verified and pre-approved — no email/admin gate needed.
+          const result = db
+            .prepare(
+              "INSERT INTO users (email, username, password_hash, email_verified, status, is_admin) VALUES (?, ?, ?, 1, 'approved', ?)",
+            )
+            .run(normalizedEmail, username, passwordHash, isAdmin ? 1 : 0);
+
+          const newUserId = result.lastInsertRowid as number;
+          db.prepare("INSERT INTO user_settings (user_id) VALUES (?)").run(newUserId);
+
+          const { subject, html } = welcomeEmail(username, normalizedEmail, password);
+          try {
+            await sendEmail({ to: normalizedEmail, subject, html });
+          } catch {
+            // Don't fail account creation if the email provider hiccups.
+          }
+
+          return json({
+            ok: true,
+            user: { id: newUserId, email: normalizedEmail, username, is_admin: isAdmin ? 1 : 0 },
+          });
+        }
+
+        const { userId } = body;
+        if (!userId) return json({ error: "userId requis." }, 400);
 
         if (userId === admin.id) {
           return json({ error: "Tu ne peux pas modifier ton propre compte admin." }, 400);
         }
 
-        const db = getDb();
         const target = db.prepare("SELECT id, is_admin FROM users WHERE id = ?").get(userId) as
           | { id: number; is_admin: number }
           | undefined;

@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
-  { title: "IA Signals",       url: "/signals",         icon: Radar,            color: "text-emerald-400", glow: "shadow-emerald-500/30" },
+  { title: "Signaux",          url: "/signals",         icon: Radar,            color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
   { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
 ];
@@ -235,31 +235,31 @@ export function AppSidebar() {
       {/* Same height, glass treatment, glow and shimmer accent as the main <header> in __root.tsx,
           so the two form one continuous header band across the full width. */}
       <SidebarHeader className="relative h-24 shrink-0 justify-center gap-0 overflow-hidden px-5 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)]">
-        <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-violet-500/10 blur-[90px]" />
+        <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-          <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.24_290/0.7),oklch(0.88_0.20_195/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
+          <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.7),oklch(0.85_0.20_70/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
         </div>
         <RouterLink to="/" className="group/logo flex items-center gap-3.5">
           <div className="relative shrink-0">
             {/* Glow behind logo */}
-            <div className="absolute inset-0 rounded-2xl bg-violet-500/25 blur-lg opacity-70 group-hover/logo:opacity-100 transition-opacity duration-500" />
-            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/20 to-purple-600/15 backdrop-blur-md group-hover/logo:border-violet-500/50 transition-colors duration-300">
-              <LogoMark className="h-8.5 w-8.5 object-contain rounded-lg" />
+            <div className="absolute inset-0 rounded-2xl bg-orange-500/25 blur-lg opacity-70 group-hover/logo:opacity-100 transition-opacity duration-500" />
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/20 to-amber-600/15 backdrop-blur-md group-hover/logo:border-orange-500/50 transition-colors duration-300">
+              <LogoMark className="h-8 w-8 object-contain" />
             </div>
             {/* Live dot */}
             <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-60" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 shadow-md shadow-violet-500/50" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-gradient-to-r from-orange-400 to-amber-500 shadow-md shadow-orange-500/50" />
             </span>
           </div>
 
           <div className="flex flex-col leading-none overflow-hidden group-data-[collapsible=icon]:hidden">
-            <span className="text-[21px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">
+            <span className="text-[26px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">
               Vertex
             </span>
-            <span className="mt-2 text-[10px] font-bold uppercase tracking-[0.24em] bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
-              Quant Trading AI
+            <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.24em] bg-gradient-to-r from-orange-400 to-amber-500 bg-clip-text text-transparent">
+              Quant Trading
             </span>
           </div>
         </RouterLink>
@@ -331,10 +331,7 @@ export function AppSidebar() {
         {/* User card */}
         {user && (
           <div className="mb-3 flex items-center gap-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5 transition-all duration-200 hover:bg-white/[0.05] hover:border-white/[0.1]">
-            {/* Avatar placeholder */}
-            <div className="flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 border border-violet-500/25 text-violet-400 text-sm font-bold uppercase">
-              {user.username?.charAt(0) ?? "U"}
-            </div>
+            <LogoMark className="h-9.5 w-9.5 shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[14.5px] font-semibold text-foreground leading-none">{user.username}</div>
               <div className="truncate text-[12px] text-muted-foreground/50 mt-1.5 leading-none">{user.email}</div>
@@ -350,17 +347,17 @@ export function AppSidebar() {
         )}
 
         {/* AI engine badge */}
-        <div className="flex items-center gap-3 rounded-xl border border-violet-500/15 bg-gradient-to-r from-violet-500/[0.07] to-transparent px-3.5 py-3">
-          <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20">
-            <Cpu className="h-4 w-4 text-violet-400" />
+        <div className="flex items-center gap-3 rounded-xl border border-orange-500/15 bg-gradient-to-r from-orange-500/[0.07] to-transparent px-3.5 py-3">
+          <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 border border-orange-500/20">
+            <Cpu className="h-4 w-4 text-orange-400" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[12px] font-semibold text-foreground/80 leading-none">Vertex AI Engine</div>
+            <div className="text-[12px] font-semibold text-foreground/80 leading-none">Vertex Engine</div>
             <div className="text-[10px] text-muted-foreground/50 mt-1 leading-none">Max 2% par trade · DÉMO</div>
           </div>
           <span className="relative flex h-2 w-2 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-50" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-50" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-500" />
           </span>
         </div>
       </SidebarFooter>

@@ -14,6 +14,7 @@ import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { LogoMark } from "@/components/logo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -102,30 +103,24 @@ function Dashboard() {
     <div className="p-4 md:p-6 space-y-5 max-w-[1600px] mx-auto">
 
       {/* ── HERO USER CARD ── */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[oklch(0.17_0.038_255)]">
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0A0A]">
         {/* Ambient glows */}
         <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full opacity-20"
-          style={{ background: "radial-gradient(circle, oklch(0.70 0.24 290) 0%, transparent 70%)" }} />
+          style={{ background: "radial-gradient(circle, #f97316 0%, transparent 70%)" }} />
         <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full opacity-10"
-          style={{ background: "radial-gradient(circle, oklch(0.88 0.20 195) 0%, transparent 70%)" }} />
+          style={{ background: "radial-gradient(circle, #fbbf24 0%, transparent 70%)" }} />
 
         <div className="relative flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6">
           {/* Left: avatar + info */}
           <div className="flex items-center gap-4">
-            <div
-              className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-black text-white shadow-lg"
-              style={{ background: "linear-gradient(135deg, oklch(0.70 0.24 290), oklch(0.88 0.20 195))" }}
-            >
-              {initials}
-              <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-[oklch(0.17_0.038_255)] bg-[color:var(--up)]" />
-            </div>
+            <LogoMark className="h-14 w-14 shrink-0 shadow-lg" />
             <div>
               <p className="text-sm text-muted-foreground">{greeting},</p>
               <h1 className="text-2xl font-black tracking-tight text-foreground leading-tight">
                 {user?.username ?? "Trader"}
               </h1>
               <div className="mt-1.5 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full border border-[color:var(--brand-violet)]/40 bg-[color:var(--brand-violet)]/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[color:var(--brand-violet)]">
+                <span className="inline-flex items-center gap-1 rounded-full border border-orange-500/40 bg-orange-500/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-orange-500">
                   Deriv {derivBalance ? "connecté" : "démo"}
                 </span>
                 {status === "live" && (
@@ -142,8 +137,8 @@ function Dashboard() {
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2">
             <Link
               to="/autotrader"
-              className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:opacity-90 hover:scale-[1.02] sm:py-2.5"
-              style={{ background: "linear-gradient(135deg, oklch(0.70 0.24 290), oklch(0.60 0.28 290))" }}
+              className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:opacity-90 hover:scale-[1.02] sm:py-2.5"
+              style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
             >
               <Zap className="h-4 w-4" />
               <span className="hidden xs:inline">Auto-Trader</span>
@@ -153,7 +148,7 @@ function Dashboard() {
               to="/signals"
               className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-white/[0.08] sm:py-2.5"
             >
-              <Radar className="h-4 w-4 text-[color:var(--brand-cyan)]" />
+              <Radar className="h-4 w-4 text-orange-400" />
               Signaux
             </Link>
             <Link
@@ -174,7 +169,7 @@ function Dashboard() {
           value={balanceDisplay ? `${derivBalance?.currency} ${balanceDisplay}` : "—"}
           delta={derivBalance ? "Compte Deriv connecté" : "Mode simulation"}
           icon={<Wallet className="h-5 w-5" />}
-          tone="violet"
+          tone="amber"
         />
         <KpiCard
           label="Win Rate"
@@ -231,7 +226,7 @@ function Dashboard() {
                     className={cn(
                       "rounded-lg px-3 py-2 text-xs font-semibold transition-all capitalize sm:py-1.5",
                       marketFilter === f
-                        ? "bg-[color:var(--brand-violet)]/20 text-[color:var(--brand-violet)] border border-[color:var(--brand-violet)]/30"
+                        ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
                         : "text-muted-foreground hover:text-foreground",
                     )}>
                     {f === "all" ? "Tous" : f === "crypto" ? "Crypto" : "Forex"}
@@ -244,7 +239,7 @@ function Dashboard() {
                     className={cn(
                       "rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
                       chartSymbol.deriv === s.deriv
-                        ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] border border-[color:var(--brand-cyan)]/30"
+                        ? "bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.1)]"
                         : "border border-border/40 bg-muted/10 text-muted-foreground hover:text-foreground",
                     )}>
                     {s.label}
@@ -271,17 +266,17 @@ function Dashboard() {
         <div className="flex flex-col gap-3">
 
           {/* Balance card */}
-          <div className="glass-panel-violet rounded-2xl p-5 relative overflow-hidden">
-            <div className="pointer-events-none absolute -top-8 -right-8 h-32 w-32 rounded-full bg-[color:var(--brand-violet)]/20 blur-2xl" />
+          <div className="glass-panel-amber rounded-2xl p-5 relative overflow-hidden group">
+            <div className="pointer-events-none absolute -top-8 -right-8 h-32 w-32 rounded-full bg-orange-500/20 blur-2xl group-hover:scale-110 transition-transform" />
             <div className="relative">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-white/50">Mon compte</span>
-                <Wallet className="h-4 w-4 text-white/40" />
+                <Wallet className="h-4 w-4 text-orange-400" />
               </div>
               <div className="text-xs text-white/50 uppercase tracking-wider mb-1">
                 {derivBalance ? `${derivBalance.currency} · Deriv` : "Simulation"}
               </div>
-              <div className="font-mono-tabular text-3xl font-black text-white text-glow-violet leading-none">
+              <div className="font-mono-tabular text-3xl font-black text-white text-glow-orange leading-none">
                 {balanceDisplay ?? "—"}
               </div>
               {tradeCount !== null && (
@@ -358,15 +353,15 @@ function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color:var(--brand-violet)]/15">
-              <Sparkles className="h-4 w-4 text-[color:var(--brand-violet)]" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/15">
+              <Sparkles className="h-4 w-4 text-orange-400" />
             </div>
-            <h2 className="text-base font-bold text-foreground sm:text-sm">Signaux IA en direct</h2>
+            <h2 className="text-base font-bold text-foreground sm:text-sm">Signaux en direct</h2>
             {liveSignals.length > 0 && (
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[color:var(--up)] animate-pulse" />
             )}
           </div>
-          <Link to="/signals" className="flex items-center gap-1 text-xs text-[color:var(--brand-violet)] hover:text-[color:var(--brand-cyan)] transition-colors font-semibold">
+          <Link to="/signals" className="flex items-center gap-1 text-xs text-orange-500 hover:text-amber-400 transition-colors font-semibold">
             Voir tout <ArrowUpRight className="h-3 w-3" />
           </Link>
         </div>

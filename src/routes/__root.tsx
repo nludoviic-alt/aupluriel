@@ -110,30 +110,36 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Vertex — Quant Trading AI" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
+      { title: "Vertex — Quant Trading" },
+      { name: "theme-color", content: "#050505" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Vertex" },
       {
         name: "description",
         content:
-          "Vertex — IA de trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
+          "Vertex — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
       },
       { name: "author", content: "Vertex" },
-      { property: "og:title", content: "Vertex — Quant Trading AI" },
+      { property: "og:title", content: "Vertex — Quant Trading" },
       {
         property: "og:description",
-        content: "Signaux IA, backtest et marchés en temps réel via Deriv.",
+        content: "Signaux, backtest et marchés en temps réel via Deriv.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Vertex — Quant Trading AI" },
-      { name: "description", content: "Vertex is a quantitative trading AI web application for Crypto and Forex markets." },
-      { property: "og:description", content: "Vertex is a quantitative trading AI web application for Crypto and Forex markets." },
-      { name: "twitter:description", content: "Vertex is a quantitative trading AI web application for Crypto and Forex markets." },
+      { name: "twitter:title", content: "Vertex — Quant Trading" },
+      { name: "description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
+      { property: "og:description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
+      { name: "twitter:description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/33b8af68-47f4-4ab3-8bed-26dc0b6f9834/id-preview-571df8d4--c8db877e-99f8-451d-b8a6-7db33c51d41f.lovable.app-1781494469804.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/33b8af68-47f4-4ab3-8bed-26dc0b6f9834/id-preview-571df8d4--c8db877e-99f8-451d-b8a6-7db33c51d41f.lovable.app-1781494469804.png" },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.json" },
+      { rel: "apple-touch-icon", href: "/logo.png" },
       { rel: "icon", type: "image/png", href: "/logo.png" },
       { rel: "preconnect", href: "https://rsms.me/" },
       { rel: "stylesheet", href: "https://rsms.me/inter/inter.css" },
@@ -214,6 +220,19 @@ function RootComponent() {
   // Auth gate: send signed-out visitors to the login page, except on public auth routes.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, loading: authLoading } = useAuth();
+
+  // Register Service Worker for PWA
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/sw.js")
+          .then((reg) => console.log("SW registered:", reg))
+          .catch((err) => console.error("SW reg error:", err));
+      });
+    }
+  }, []);
+
   const publicRoutes = ["/login", "/verify-email", "/forgot-password", "/reset-password"];
   const isPublicRoute = publicRoutes.includes(pathname);
   useEffect(() => {
@@ -264,13 +283,13 @@ function RootComponent() {
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}
             <header className="relative sticky top-0 z-30 flex h-20 md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 md:px-6 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
-              {/* Ambient glow blobs matching the midnight blue theme */}
-              <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-violet-500/10 blur-[90px]" />
-              <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-cyan-500/10 blur-[90px]" />
+              {/* Ambient glow blobs matching the orange theme */}
+              <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
+              <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
-              {/* Animated shimmering accent line bridging violet and cyan */}
+              {/* Animated shimmering accent line bridging orange and amber */}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-                <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.24_290/0.7),oklch(0.88_0.20_195/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
+                <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.7),oklch(0.85_0.20_70/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
               </div>
 
               {/* Desktop sidebar trigger */}

@@ -9,7 +9,7 @@ interface SendEmailInput {
   html: string;
 }
 
-const APP_NAME = "LIO23";
+const APP_NAME = "Vertex";
 
 export function getAppUrl(): string {
   // Public base URL used to build links in emails.
@@ -62,16 +62,16 @@ function layout(title: string, body: string): string {
     <h1 style="font-size:20px;font-weight:800;background:linear-gradient(90deg,#22d3ee,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent">${APP_NAME}</h1>
     <h2 style="font-size:16px;margin-top:16px">${title}</h2>
     <div style="font-size:14px;line-height:1.6;color:#334155">${body}</div>
-    <p style="font-size:11px;color:#94a3b8;margin-top:24px">LIO23 — Quant Trading AI. Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>
+    <p style="font-size:11px;color:#94a3b8;margin-top:24px">Vertex — Quant Trading. Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>
   </div>`;
 }
 
 export function verificationEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Vérifie ton adresse email — LIO23",
+    subject: "Vérifie ton adresse email — Vertex",
     html: layout(
       "Active ton compte",
-      `<p>Bienvenue ! Confirme ton adresse email pour activer ton compte LIO23.</p>
+      `<p>Bienvenue ! Confirme ton adresse email pour activer ton compte Vertex.</p>
        <p style="margin:20px 0"><a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Vérifier mon email</a></p>
        <p style="font-size:12px;color:#64748b">Ou copie ce lien : <br>${link}</p>
        <p style="font-size:12px;color:#64748b">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
@@ -79,9 +79,27 @@ export function verificationEmail(link: string): { subject: string; html: string
   };
 }
 
+export function welcomeEmail(
+  username: string,
+  email: string,
+  password: string,
+): { subject: string; html: string } {
+  const link = `${getAppUrl()}/login`;
+  return {
+    subject: "Ton compte Vertex a été créé",
+    html: layout(
+      "Bienvenue sur Vertex",
+      `<p>Un administrateur vient de créer ton compte. Voici tes identifiants de connexion :</p>
+       <p style="font-size:13px;color:#334155">Identifiant : <strong>${username}</strong><br>Email : <strong>${email}</strong><br>Mot de passe : <strong>${password}</strong></p>
+       <p style="margin:20px 0"><a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Se connecter</a></p>
+       <p style="font-size:12px;color:#64748b">Nous te recommandons de changer ce mot de passe après ta première connexion.</p>`,
+    ),
+  };
+}
+
 export function resetEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Réinitialise ton mot de passe — LIO23",
+    subject: "Réinitialise ton mot de passe — Vertex",
     html: layout(
       "Réinitialisation du mot de passe",
       `<p>Tu as demandé à réinitialiser ton mot de passe.</p>

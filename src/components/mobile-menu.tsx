@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 const NAV_PRIMARY = [
   { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
   { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness },
-  { title: "IA Signals",  url: "/signals",    icon: Radar },
+  { title: "Signaux",     url: "/signals",    icon: Radar },
   { title: "Auto-Trader", url: "/autotrader", icon: Zap },
 ];
 
@@ -82,7 +82,7 @@ export function MobileMenu() {
             </div>
             <div className="leading-none">
               <div className="text-lg font-black tracking-tight brand-gradient-text">Vertex</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Quant Trading AI</div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Quant Trading</div>
             </div>
           </Link>
           <button
@@ -190,13 +190,7 @@ export function MobileMenu() {
         <div className="border-t border-white/[0.06] p-3 space-y-2">
           {user && (
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
-              {/* Avatar initials */}
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
-                style={{ background: "linear-gradient(135deg, oklch(0.70 0.24 290), oklch(0.88 0.20 195))" }}
-              >
-                {(user.username?.[0] ?? user.email?.[0] ?? "U").toUpperCase()}
-              </div>
+              <LogoMark className="h-8 w-8 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-foreground">{user.username}</div>
                 <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>

@@ -21,7 +21,7 @@ function getAiConfig(): { apiKey: string; provider: string } {
 }
 
 export const Route = createFileRoute("/assistant")({
-  head: () => ({ meta: [{ title: "Assistant Lio23 — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Assistant — Vertex" }] }),
   component: DisabledAssistantPage,
 });
 
@@ -43,7 +43,7 @@ function DisabledAssistantPage() {
         </div>
         <h1 className="text-xl md:text-2xl font-bold tracking-tight mb-2">Assistant désactivé</h1>
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          La fonctionnalité de chat IA est temporairement désactivée.
+          La fonctionnalité de chat est temporairement désactivée.
         </p>
         <Link to="/" className="inline-flex items-center gap-2 mt-6 text-xs font-bold uppercase tracking-wider text-primary hover:underline">
           Retour au Dashboard
@@ -305,7 +305,7 @@ function AssistantPage() {
     : aiConfig.provider === "google" ? "Gemini · Google"
     : aiConfig.provider === "groq" ? "Llama 3.3 70B · Groq (gratuit)"
     : aiConfig.provider === "openrouter" ? "Llama 3.3 70B · OpenRouter (gratuit)"
-    : "IA";
+    : "Modèle";
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden">
@@ -364,7 +364,7 @@ function AssistantPage() {
         <div className="mx-6 mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
           <div className="flex items-center gap-2 text-sm">
             <KeyRound className="h-4 w-4 shrink-0 text-amber-400" />
-            <span className="text-muted-foreground">Configure ta clé API pour activer le chat IA.</span>
+            <span className="text-muted-foreground">Configure ta clé API pour activer le chat.</span>
           </div>
           <Button asChild size="sm" variant="outline" className="shrink-0 text-xs border-[color:var(--brand-cyan)]/40 text-[color:var(--brand-cyan)] hover:bg-[color:var(--brand-cyan)]/5">
             <Link to="/settings">Configurer →</Link>
@@ -386,7 +386,7 @@ function AssistantPage() {
             </div>
             <h3 className="text-xl font-bold tracking-tight">Comment puis-je t'aider ?</h3>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Analyse de marché, signaux IA, backtest, gestion du risque…
+              Analyse de marché, signaux, backtest, gestion du risque…
             </p>
             <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
               {SUGGESTIONS.map((s) => (

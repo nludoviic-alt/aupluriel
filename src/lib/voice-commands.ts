@@ -9,7 +9,7 @@ export interface VoiceRoute {
 export const VOICE_ROUTES: VoiceRoute[] = [
   { to: "/", keywords: ["dashboard", "accueil", "tableau de bord", "page principale"], label: "Dashboard" },
   { to: "/portfolio", keywords: ["portfolio", "portefeuille", "mes positions", "positions"], label: "Portfolio" },
-  { to: "/signals", keywords: ["signaux", "signal", "ia signals", "signaux ia"], label: "Signaux" },
+  { to: "/signals", keywords: ["signaux", "signal", "signals", "mes signaux"], label: "Signaux" },
   { to: "/autotrader", keywords: ["auto trader", "autotrader", "trading automatique", "robot", "bot"], label: "Auto-Trader" },
   { to: "/backtest", keywords: ["backtest", "back test", "test historique"], label: "Backtest" },
   { to: "/markets", keywords: ["marché", "marchés", "marche", "graphique", "graphiques", "cours"], label: "Marchés" },

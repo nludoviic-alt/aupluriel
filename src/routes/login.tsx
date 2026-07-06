@@ -129,6 +129,12 @@ function LoginPage() {
       {/* Auth Form Container */}
       <div className="w-full max-w-[480px] p-6 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
         <div className="flex flex-col items-center space-y-8">
+          {/* Logo Mark - New sphere design */}
+          <div className="relative group cursor-default">
+            <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-xl group-hover:bg-orange-500/30 transition-all duration-500" />
+            <LogoMark className="h-20 w-20 relative z-10" />
+          </div>
+
           {/* Header - Centered Text */}
           <div className="flex flex-col items-center w-full text-center space-y-4">
             <div className="flex items-center justify-center gap-4">
@@ -201,7 +207,7 @@ function LoginPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between ml-1">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Mot de Passe</label>
-                      <Link to="/forgot-password" size="sm" className="text-[10px] text-orange-500/80 hover:text-orange-400 transition-colors font-bold uppercase tracking-wider">
+                      <Link to="/forgot-password" className="text-[10px] text-orange-500/80 hover:text-orange-400 transition-colors font-bold uppercase tracking-wider">
                         Oublié ?
                       </Link>
                     </div>

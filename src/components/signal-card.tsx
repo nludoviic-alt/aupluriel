@@ -30,10 +30,10 @@ export function SignalCard({ signal }: { signal: SignalItem }) {
     <div className={cn(panelCls, "rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200 hover:scale-[1.01] hover:brightness-110")}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold tracking-tight text-foreground">{signal.pair}</span>
-            <span className="rounded-md bg-muted/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate text-sm font-bold tracking-tight text-foreground">{signal.pair}</span>
+            <span className="shrink-0 rounded-md bg-muted/30 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
               {signal.market}
             </span>
           </div>

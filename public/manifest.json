@@ -1,0 +1,23 @@
+{
+  "name": "Vertex Quant Trading AI",
+  "short_name": "Vertex",
+  "description": "Quantitative trading AI for Crypto & Forex markets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#f97316",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

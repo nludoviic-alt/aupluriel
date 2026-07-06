@@ -8,7 +8,7 @@ import { GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/signals")({
-  head: () => ({ meta: [{ title: "Signaux IA — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Signaux — Vertex" }] }),
   component: SignalsPage,
 });
 
@@ -83,34 +83,36 @@ function SignalsPage() {
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Signaux IA</h1>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Signaux</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Générés en direct · RSI + MACD + EMA + multi-timeframe
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 max-w-full">
           <button
             onClick={() => setRefreshKey((k) => k + 1)}
-            className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="shrink-0 flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Actualiser
           </button>
-          <div className="inline-flex items-center rounded-lg border border-border bg-card/40 p-1 text-xs">
-            <Filter className="ml-2 mr-1 h-3.5 w-3.5 text-muted-foreground" />
-            {(["all", "synthetic", "indices", "forex", "commodity", "crypto"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "rounded-md px-3 py-1 capitalize transition-colors",
-                  filter === f
-                    ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)]"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f === "all" ? "Tous" : f === "synthetic" ? "Synthétiques" : f === "indices" ? "Indices" : f === "commodity" ? "Mat. prem." : f}
-              </button>
-            ))}
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="inline-flex items-center rounded-lg border border-border bg-card/40 p-1 text-xs whitespace-nowrap">
+              <Filter className="ml-2 mr-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {(["all", "synthetic", "indices", "forex", "commodity", "crypto"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    "shrink-0 rounded-md px-3 py-1 capitalize transition-colors",
+                    filter === f
+                      ? "bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)]"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f === "all" ? "Tous" : f === "synthetic" ? "Synthétiques" : f === "indices" ? "Indices" : f === "commodity" ? "Mat. prem." : f}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -124,8 +126,8 @@ function SignalsPage() {
       {/* Multi-timeframe analysis */}
       <div>
         <h2 className="mb-3 text-base font-semibold">Analyse multi-timeframe</h2>
-        <div className="glass-panel overflow-hidden rounded-xl">
-          <table className="w-full text-sm">
+        <div className="glass-panel overflow-x-auto rounded-xl">
+          <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 text-left">Paire</th>
@@ -160,13 +162,13 @@ function SignalsPage() {
             </button>
           )}
         </div>
-        <div className="glass-panel overflow-hidden rounded-xl">
+        <div className="glass-panel overflow-x-auto rounded-xl">
           {history.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
               Aucun historique — les signaux BUY/SELL apparaîtront ici automatiquement.
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[520px] text-sm">
               <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Heure</th>
