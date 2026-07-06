@@ -1,11 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, LogOut, MessageCircle, ShieldAlert } from "lucide-react";
+import { Bot, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SYMBOLS } from "@/lib/deriv";
 import { toast } from "sonner";
 import { api, clearToken } from "@/lib/api";
-import { loadCoachSymbols, saveCoachSymbols } from "@/lib/coach";
 import { cn } from "@/lib/utils";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
@@ -34,7 +32,6 @@ function SettingsPage() {
   const [aiKey, setAiKey] = useState("");
   const [showAiKey, setShowAiKey] = useState(false);
   const [aiProvider, setAiProvider] = useState<"google" | "groq" | "openrouter">("groq");
-  const [coachSymbols, setCoachSymbols] = useState<string[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -45,7 +42,6 @@ function SettingsPage() {
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
     setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
     setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "google" | "groq" | "openrouter") ?? "groq");
-    setCoachSymbols(loadCoachSymbols());
     // Then hydrate from server
     api.get<Record<string, unknown>>("/api/settings").then((s) => {
       if (s.deriv_token) setToken(s.deriv_token as string);
@@ -347,52 +343,6 @@ function SettingsPage() {
             </p>
           )}
         </div>
-      </div>
-
-      {/* Market coach — watched pairs */}
-      <div className="glass-panel rounded-xl p-5">
-        <div className="flex items-start gap-3">
-          <MessageCircle className="mt-1 h-5 w-5 text-[color:var(--brand-cyan)] shrink-0" />
-          <div className="flex-1">
-            <h2 className="text-sm font-bold uppercase tracking-wide">Coach marché</h2>
-            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-              Choisis les paires que le coach surveille pour ses bulles de conseils en temps réel.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {SYMBOLS.map((s) => {
-            const active = coachSymbols.includes(s.deriv);
-            return (
-              <button
-                key={s.deriv}
-                onClick={() => {
-                  const next = active
-                    ? coachSymbols.filter((d) => d !== s.deriv)
-                    : [...coachSymbols, s.deriv];
-                  if (next.length === 0) {
-                    toast.error("Garde au moins une paire surveillée.");
-                    return;
-                  }
-                  setCoachSymbols(next);
-                  saveCoachSymbols(next);
-                }}
-                className={cn(
-                  "rounded-md border px-3 py-2 text-xs font-semibold transition-colors sm:px-2.5 sm:py-1 sm:font-medium",
-                  active
-                    ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2.5 text-xs text-muted-foreground leading-relaxed">
-          Les changements sont appliqués immédiatement au coach.
-        </p>
       </div>
 
       <p className="text-xs text-muted-foreground leading-relaxed">

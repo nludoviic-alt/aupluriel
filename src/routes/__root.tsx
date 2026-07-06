@@ -17,12 +17,30 @@ import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sid
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useMarketAlert } from "@/hooks/use-market-alert";
+import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
-import { Bell, Loader2, Menu, X } from "lucide-react";
+import {
+  Bell,
+  Loader2,
+  Menu,
+  X,
+  LayoutDashboard,
+  BriefcaseBusiness,
+  Radar,
+  Zap,
+  CandlestickChart,
+  FlaskConical,
+  BarChart3,
+  Workflow,
+  Calculator,
+  Settings,
+  ShieldCheck,
+  MessageSquare,
+  Compass,
+} from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { VoiceControl } from "@/components/voice-control";
-import { MarketCoach } from "@/components/market-coach";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
@@ -151,16 +169,41 @@ function HamburgerButton() {
       onClick={toggleSidebar}
       aria-label={openMobile ? "Fermer le menu" : "Ouvrir le menu"}
       className={cn(
-        "relative flex md:hidden h-9 w-9 flex-col items-center justify-center gap-[5px] rounded-xl border transition-all duration-200",
+        "relative flex md:hidden h-10 w-10 flex-col items-center justify-center gap-[5px] rounded-xl border transition-all duration-300 shadow-sm",
         openMobile
-          ? "border-primary/40 bg-primary/10 text-primary"
-          : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-foreground",
+          ? "border-violet-500/40 bg-violet-500/10 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
+          : "border-white/5 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground hover:border-white/10",
       )}
     >
       <span className={cn("block h-px w-4 bg-current transition-all duration-300 origin-center", openMobile && "translate-y-[5px] rotate-45")} />
       <span className={cn("block h-px w-4 bg-current transition-all duration-200", openMobile && "scale-x-0 opacity-0")} />
       <span className={cn("block h-px w-4 bg-current transition-all duration-300 origin-center", openMobile && "-translate-y-[5px] -rotate-45")} />
     </button>
+  );
+}
+
+const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }> = {
+  "/": { label: "Dashboard", icon: LayoutDashboard },
+  "/portfolio": { label: "Portfolio", icon: BriefcaseBusiness },
+  "/signals": { label: "IA Signals", icon: Radar },
+  "/autotrader": { label: "Auto-Trader", icon: Zap },
+  "/markets": { label: "Marchés", icon: CandlestickChart },
+  "/backtest": { label: "Backtest", icon: FlaskConical },
+  "/journal": { label: "Journal", icon: BarChart3 },
+  "/strategies": { label: "Stratégies", icon: Workflow },
+  "/risk-calculator": { label: "Risk Calculator", icon: Calculator },
+  "/alerts": { label: "Alertes", icon: Bell },
+  "/settings": { label: "Paramètres", icon: Settings },
+  "/admin": { label: "Administration", icon: ShieldCheck },
+  "/assistant": { label: "Assistant", icon: MessageSquare },
+};
+
+function getPageMeta(pathname: string) {
+  return (
+    PAGE_META[pathname] ?? {
+      label: pathname === "/" ? "Dashboard" : pathname.slice(1).charAt(0).toUpperCase() + pathname.slice(2),
+      icon: Compass,
+    }
   );
 }
 
@@ -180,6 +223,9 @@ function RootComponent() {
   // Only run heavy hooks on authenticated routes to avoid blocking mobile UI
   const { activeAlerts, notifPermission, requestPermission } = useMarketAlert(!isPublicRoute && !!user);
   const hasAlerts = useMemo(() => activeAlerts.length > 0, [activeAlerts]);
+  const pageMeta = useMemo(() => getPageMeta(pathname), [pathname]);
+  const PageIcon = pageMeta.icon;
+  useMarketOpenNotify(!isPublicRoute && !!user);
   usePriceAlerts(!isPublicRoute && !!user);
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
@@ -203,68 +249,103 @@ function RootComponent() {
         <div className="flex min-h-screen w-full">
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
-            <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/60 bg-background/60 px-4 backdrop-blur-xl">
+            {/* Header for main content */}
+            <header className="relative sticky top-0 z-30 flex h-20 md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 md:px-6 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
+              {/* Ambient glow blobs matching the midnight blue theme */}
+              <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-violet-500/10 blur-[90px]" />
+              <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-cyan-500/10 blur-[90px]" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
+              {/* Animated shimmering accent line bridging violet and cyan */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+                <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.24_290/0.7),oklch(0.88_0.20_195/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
+              </div>
+
               {/* Desktop sidebar trigger */}
-              <SidebarTrigger className="hidden md:flex" />
+              <SidebarTrigger className="hidden md:flex rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.08] hover:border-white/10 transition-all p-2 h-10 w-10 cursor-pointer" />
               {/* Mobile hamburger */}
               <HamburgerButton />
-              <div className="flex items-center gap-3">
-                <LogoMark className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" />
-                <div className="flex flex-col justify-center leading-none">
-                  <span className="text-lg font-black tracking-tight leading-none brand-gradient-text sm:text-sm sm:font-extrabold">Vertex</span>
-                  <span className="text-[8px] uppercase tracking-[0.12em] text-muted-foreground mt-0.5 sm:text-[10px] sm:tracking-[0.15em] sm:mt-1">
-                    <span className="sm:hidden">Trading AI</span>
-                    <span className="hidden sm:inline">Quant Trading AI</span>
-                  </span>
+
+              {/* Divider between nav controls and page title (desktop only) */}
+              <div className="hidden md:block h-9 w-px shrink-0 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
+
+              {/* Page title */}
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="hidden md:flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-violet-500/15 via-white/[0.02] to-cyan-500/10 text-violet-300 shadow-inner shadow-black/30">
+                  <PageIcon className="h-5 w-5" />
+                </div>
+                <div className="flex min-w-0 flex-col">
+                  <h1 className="truncate text-xl md:text-[26px] font-black leading-tight tracking-tight bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-transparent">
+                    {pageMeta.label}
+                  </h1>
+                  <div className="mt-1 hidden items-center gap-1.5 sm:flex">
+                    <span className="relative flex h-1.5 w-1.5 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    </span>
+                    <p className="truncate text-[10.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground/50">
+                      Vertex Quant Trading
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="ml-auto flex items-center gap-2 text-xs">
-                <VoiceControl />
+
+              <div className="flex shrink-0 items-center gap-2 md:gap-2.5">
+                <div className="hidden sm:flex">
+                  <VoiceControl />
+                </div>
                 {/* Market alert indicator */}
                 {hasAlerts && (
                   <Link
                     to="/signals"
-                    className="flex items-center gap-1.5 rounded-sm border border-up/40 bg-up/10 px-2.5 py-1 text-up font-semibold hover:bg-up/20 transition-colors"
+                    className="flex h-10 items-center gap-2 rounded-xl border border-up/30 bg-up/5 px-3.5 text-up font-semibold text-xs hover:bg-up/10 hover:border-up/50 transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.1)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                   >
-                    <span className="h-2 w-2 rounded-full bg-up animate-ping absolute" />
-                    <span className="h-2 w-2 rounded-full bg-up" />
+                    <span className="relative flex h-2 w-2">
+                      <span className="h-2 w-2 rounded-full bg-up animate-ping absolute" />
+                      <span className="h-2 w-2 rounded-full bg-up" />
+                    </span>
                     <span className="hidden sm:inline">
                       {activeAlerts.length} signal{activeAlerts.length > 1 ? "s" : ""} fort{activeAlerts.length > 1 ? "s" : ""}
                     </span>
-                    <Bell className="h-3.5 w-3.5 sm:hidden" />
+                    <Bell className="h-4 w-4 sm:hidden" />
                   </Link>
                 )}
                 {notifPermission === "default" && (
                   <button
                     onClick={requestPermission}
-                    className="hidden sm:flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                    className="hidden sm:flex h-10 items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3.5 text-xs text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/10 transition-all duration-300"
                     title="Activer les notifications"
                   >
                     <Bell className="h-3.5 w-3.5" />
-                    <span>Notifs</span>
+                    <span>Notifications</span>
                   </button>
                 )}
                 {deriv.connecting && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                  <span className="flex h-10 items-center gap-2 text-muted-foreground px-3.5 text-xs bg-white/[0.02] border border-white/5 rounded-xl">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
                     <span className="hidden sm:inline">Connexion Deriv…</span>
                   </span>
                 )}
                 {deriv.connected && deriv.balance !== null && (
                   <Link
                     to="/portfolio"
-                    className="flex items-center gap-1.5 rounded-sm border border-primary/30 bg-primary/5 px-2.5 py-1 text-primary font-semibold hover:bg-primary/10 transition-colors"
+                    className="flex h-10 items-center gap-2 sm:gap-2.5 rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/5 to-transparent px-2.5 sm:px-3.5 text-violet-300 hover:text-violet-200 font-semibold hover:border-violet-500/40 transition-all duration-300 shadow-[0_0_12px_rgba(139,92,246,0.1)] hover:shadow-[0_0_18px_rgba(139,92,246,0.2)]"
                   >
-                    <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse" />
-                    {deriv.balance.toFixed(2)} {deriv.currency}
+                    <span className="relative hidden h-2 w-2 sm:flex">
+                      <span className="h-2 w-2 rounded-full bg-violet-400 animate-ping absolute opacity-75" />
+                      <span className="h-2 w-2 rounded-full bg-violet-500" />
+                    </span>
+                    <span className="font-mono text-sm leading-none tracking-tight">
+                      {deriv.balance.toFixed(2)} <span className="hidden sm:inline text-xs text-violet-400/80 font-sans font-normal ml-0.5">{deriv.currency}</span>
+                    </span>
                   </Link>
                 )}
                 <span className={cn(
-                  "rounded-md border px-2 py-0.5 font-medium",
+                  "flex h-10 items-center gap-1.5 rounded-xl border px-2.5 sm:px-3.5 font-bold text-[10px] tracking-widest uppercase transition-all duration-300",
                   deriv.accountType === "live"
-                    ? "border-down/30 bg-down/10 text-down"
-                    : "border-up/30 bg-up/10 text-up"
+                    ? "border-down/30 bg-down/5 text-down shadow-[0_0_10px_rgba(239,68,68,0.1)] hover:bg-down/10 hover:border-down/40"
+                    : "border-up/30 bg-up/5 text-up shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:bg-up/10 hover:border-up/40"
                 )}>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", deriv.accountType === "live" ? "bg-down animate-pulse" : "bg-up animate-pulse")} />
                   {deriv.accountType === "live" ? "LIVE" : "DEMO"}
                 </span>
               </div>
@@ -272,21 +353,24 @@ function RootComponent() {
 
             {/* Strong signal banner */}
             {hasAlerts && (
-              <div className="border-b border-up/20 bg-up/5 px-4 py-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-semibold text-up">Marché favorable :</span>
+              <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className="font-semibold text-up flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
+                    Marché favorable :
+                  </span>
                   {activeAlerts.map((a) => (
                     <Link
                       key={a.symbol}
                       to="/signals"
-                      className="flex items-center gap-1.5 rounded-sm bg-up/10 border border-up/20 px-2 py-0.5 text-up hover:bg-up/20 transition-colors font-medium"
+                      className="flex items-center gap-2 rounded-lg bg-up/10 border border-up/30 px-3 py-1.5 text-up hover:bg-up/20 hover:border-up/40 transition-all duration-200 font-medium shadow-lg shadow-up/10"
                     >
-                      <span>{a.direction === "BUY" ? "▲" : "▼"}</span>
+                      <span className="font-bold">{a.direction === "BUY" ? "▲" : "▼"}</span>
                       <span>{a.label}</span>
                       <span className="opacity-70">{a.confidence}% · {a.agreement}/4 TF</span>
                     </Link>
                   ))}
-                  <Link to="/autotrader" className="ml-auto text-up hover:underline font-semibold">
+                  <Link to="/autotrader" className="ml-auto flex items-center gap-2 text-up hover:underline font-semibold transition-all duration-200 hover:gap-3">
                     Lancer l'auto-trader →
                   </Link>
                 </div>
@@ -300,7 +384,6 @@ function RootComponent() {
           </div>
         </div>
         <BottomNav />
-        <MarketCoach />
         <Toaster />
       </SidebarProvider>
     </QueryClientProvider>

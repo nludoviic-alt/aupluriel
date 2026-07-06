@@ -66,10 +66,10 @@ export function VoiceControl() {
         onClick={toggle}
         title="Commande vocale — dites par exemple « ouvre le portfolio » ou « démarre le bot »"
         className={cn(
-          "flex items-center gap-1.5 rounded-md border px-2 py-0.5 transition-colors",
+          "flex h-10 items-center gap-1.5 rounded-xl border px-3.5 text-xs transition-all duration-300",
           listening
             ? "border-[color:var(--bear)]/50 bg-[color:var(--bear)]/10 text-[color:var(--bear)] animate-pulse"
-            : "border-border text-muted-foreground hover:text-foreground",
+            : "border-white/5 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/10",
         )}
       >
         {listening ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}

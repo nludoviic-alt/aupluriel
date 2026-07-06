@@ -5,15 +5,16 @@ import {
   FlaskConical,
   CandlestickChart,
   Workflow,
-  Bot,
+  Zap,
   Bell,
   Settings,
-  Zap,
   BriefcaseBusiness,
   BarChart3,
   Calculator,
   ShieldCheck,
   LogOut,
+  ChevronRight,
+  Cpu,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -30,21 +31,185 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { LogoMark } from "@/components/logo";
+import { Link as RouterLink } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Portfolio", url: "/portfolio", icon: BriefcaseBusiness },
-  { title: "IA Signals", url: "/signals", icon: Radar },
-  { title: "Auto-Trader", url: "/autotrader", icon: Zap },
-  { title: "Backtest", url: "/backtest", icon: FlaskConical },
-  { title: "Journal", url: "/journal", icon: BarChart3 },
-  { title: "Marchés", url: "/markets", icon: CandlestickChart },
-  { title: "Stratégies", url: "/strategies", icon: Workflow },
-  { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator },
-  { title: "Alertes", url: "/alerts", icon: Bell },
-  { title: "Paramètres", url: "/settings", icon: Settings },
+const tradingItems = [
+  { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
+  { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
+  { title: "IA Signals",       url: "/signals",         icon: Radar,            color: "text-emerald-400", glow: "shadow-emerald-500/30" },
+  { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
+  { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
 ];
+
+const analysisItems = [
+  { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
+  { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
+  { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
+  { title: "Risk Calculator",  url: "/risk-calculator", icon: Calculator,       color: "text-rose-400",    glow: "shadow-rose-500/30" },
+];
+
+const toolItems = [
+  { title: "Alertes",          url: "/alerts",          icon: Bell,             color: "text-yellow-400",  glow: "shadow-yellow-500/30" },
+  { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
+];
+
+function getHoverClasses(color: string) {
+  switch (color) {
+    case "text-violet-400":
+      return {
+        bg: "hover:bg-violet-500/[0.04]",
+        border: "hover:border-violet-500/15",
+        text: "hover:text-violet-300",
+        iconBg: "group-hover/nav:bg-violet-500/15 group-hover/nav:border-violet-500/25",
+        iconText: "group-hover/nav:text-violet-400"
+      };
+    case "text-cyan-400":
+      return {
+        bg: "hover:bg-cyan-500/[0.04]",
+        border: "hover:border-cyan-500/15",
+        text: "hover:text-cyan-300",
+        iconBg: "group-hover/nav:bg-cyan-500/15 group-hover/nav:border-cyan-500/25",
+        iconText: "group-hover/nav:text-cyan-400"
+      };
+    case "text-emerald-400":
+      return {
+        bg: "hover:bg-emerald-500/[0.04]",
+        border: "hover:border-emerald-500/15",
+        text: "hover:text-emerald-300",
+        iconBg: "group-hover/nav:bg-emerald-500/15 group-hover/nav:border-emerald-500/25",
+        iconText: "group-hover/nav:text-emerald-400"
+      };
+    case "text-mint":
+      return {
+        bg: "hover:bg-mint/[0.04]",
+        border: "hover:border-mint/15",
+        text: "hover:text-mint/80",
+        iconBg: "group-hover/nav:bg-mint/15 group-hover/nav:border-mint/25",
+        iconText: "group-hover/nav:text-mint"
+      };
+    case "text-amber-400":
+      return {
+        bg: "hover:bg-amber-500/[0.04]",
+        border: "hover:border-amber-500/15",
+        text: "hover:text-amber-300",
+        iconBg: "group-hover/nav:bg-amber-500/15 group-hover/nav:border-amber-500/25",
+        iconText: "group-hover/nav:text-amber-400"
+      };
+    case "text-blue-400":
+      return {
+        bg: "hover:bg-blue-500/[0.04]",
+        border: "hover:border-blue-500/15",
+        text: "hover:text-blue-300",
+        iconBg: "group-hover/nav:bg-blue-500/15 group-hover/nav:border-blue-500/25",
+        iconText: "group-hover/nav:text-blue-400"
+      };
+    case "text-fuchsia-400":
+      return {
+        bg: "hover:bg-fuchsia-500/[0.04]",
+        border: "hover:border-fuchsia-500/15",
+        text: "hover:text-fuchsia-300",
+        iconBg: "group-hover/nav:bg-fuchsia-500/15 group-hover/nav:border-fuchsia-500/25",
+        iconText: "group-hover/nav:text-fuchsia-400"
+      };
+    case "text-orange-400":
+      return {
+        bg: "hover:bg-orange-500/[0.04]",
+        border: "hover:border-orange-500/15",
+        text: "hover:text-orange-300",
+        iconBg: "group-hover/nav:bg-orange-500/15 group-hover/nav:border-orange-500/25",
+        iconText: "group-hover/nav:text-orange-400"
+      };
+    case "text-teal-400":
+      return {
+        bg: "hover:bg-teal-500/[0.04]",
+        border: "hover:border-teal-500/15",
+        text: "hover:text-teal-300",
+        iconBg: "group-hover/nav:bg-teal-500/15 group-hover/nav:border-teal-500/25",
+        iconText: "group-hover/nav:text-teal-400"
+      };
+    case "text-rose-400":
+      return {
+        bg: "hover:bg-rose-500/[0.04]",
+        border: "hover:border-rose-500/15",
+        text: "hover:text-rose-300",
+        iconBg: "group-hover/nav:bg-rose-500/15 group-hover/nav:border-rose-500/25",
+        iconText: "group-hover/nav:text-rose-400"
+      };
+    case "text-yellow-400":
+      return {
+        bg: "hover:bg-yellow-500/[0.04]",
+        border: "hover:border-yellow-500/15",
+        text: "hover:text-yellow-300",
+        iconBg: "group-hover/nav:bg-yellow-500/15 group-hover/nav:border-yellow-500/25",
+        iconText: "group-hover/nav:text-yellow-400"
+      };
+    case "text-slate-400":
+    default:
+      return {
+        bg: "hover:bg-white/[0.03]",
+        border: "hover:border-white/5",
+        text: "hover:text-white",
+        iconBg: "group-hover/nav:bg-white/10 group-hover/nav:border-white/15",
+        iconText: "group-hover/nav:text-white"
+      };
+  }
+}
+
+function NavItem({
+  item,
+  isActive,
+  onClick,
+}: {
+  item: { title: string; url: string; icon: React.ElementType; color: string; glow: string };
+  isActive: boolean;
+  onClick?: () => void;
+}) {
+  const hover = getHoverClasses(item.color);
+  return (
+    <SidebarMenuItem className="relative">
+      {isActive && (
+        <span className={cn(
+          "pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full",
+          "bg-gradient-to-b from-amber-400 via-yellow-400 to-amber-600",
+          "shadow-lg shadow-amber-500/60"
+        )} />
+      )}
+      <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+        <Link
+          to={item.url}
+          onClick={onClick}
+          className={cn(
+            "group/nav flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-base transition-all duration-200",
+            isActive
+              ? "bg-amber-500/[0.08] border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)]"
+              : cn("bg-transparent border border-transparent", hover.bg, hover.border)
+          )}
+        >
+          <span className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border",
+            isActive
+              ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
+              : cn("bg-white/[0.04] border-white/[0.05] text-muted-foreground", hover.iconBg)
+          )}>
+            <item.icon className={cn("h-4.5 w-4.5 transition-colors duration-200", isActive ? "text-amber-400" : hover.iconText)} />
+          </span>
+          <span className={cn(
+            "font-semibold transition-colors duration-200 text-[15px] tracking-wide",
+            isActive 
+              ? "text-amber-300 font-bold" 
+              : cn("text-muted-foreground/80", hover.text)
+          )}>
+            {item.title}
+          </span>
+          {isActive && (
+            <ChevronRight className="ml-auto h-4 w-4 shrink-0 opacity-60 text-amber-400" />
+          )}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -52,7 +217,6 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
-  // Mobile nav is handled by MobileMenu — sidebar is desktop-only
   if (isMobile) return null;
 
   function handleNavClick() {
@@ -60,90 +224,140 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="offcanvas">
-      <SidebarHeader className="p-4 border-b border-white/[0.04]">
-        <Link to="/" className="flex items-center gap-3.5 py-1">
-          <div className="relative">
-            <LogoMark className="h-11 w-11 shrink-0" />
-            <div className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
-          </div>
-          <div className="leading-none group-data-[collapsible=icon]:hidden">
-            <div className="text-xl font-black tracking-tight leading-none brand-gradient-text">Vertex</div>
-            <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground mt-1.5 font-bold">
-              Quant Trading
+    <Sidebar
+      collapsible="offcanvas"
+      className={cn(
+        "border-r border-white/[0.05] bg-[oklch(0.175_0.036_255)]",
+        "shadow-[4px_0_30px_rgba(0,0,0,0.4)]"
+      )}
+    >
+      {/* ── SIDEBAR HEADER ── */}
+      <SidebarHeader className="px-5 pt-6 pb-4">
+        <RouterLink to="/" className="group/logo flex items-center gap-3.5">
+          <div className="relative shrink-0">
+            {/* Glow behind logo */}
+            <div className="absolute inset-0 rounded-2xl bg-violet-500/25 blur-lg opacity-70 group-hover/logo:opacity-100 transition-opacity duration-500" />
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/20 to-purple-600/15 backdrop-blur-md group-hover/logo:border-violet-500/50 transition-colors duration-300">
+              <LogoMark className="h-8.5 w-8.5 object-contain rounded-lg" />
             </div>
+            {/* Live dot */}
+            <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-60" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 shadow-md shadow-violet-500/50" />
+            </span>
           </div>
-        </Link>
+
+          <div className="flex flex-col leading-none overflow-hidden group-data-[collapsible=icon]:hidden">
+            <span className="text-[21px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">
+              Vertex
+            </span>
+            <span className="mt-2 text-[10px] font-bold uppercase tracking-[0.24em] bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
+              Quant Trading AI
+            </span>
+          </div>
+        </RouterLink>
+
+        {/* Separator */}
+        <div className="mt-5 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+
+      {/* ── SIDEBAR CONTENT ── */}
+      <SidebarContent className="px-3 pb-2 gap-1">
+
+        {/* Trading group */}
+        <SidebarGroup className="pt-0">
+          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+            Trading
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const active = isActive(item.url);
-                return (
-                  <SidebarMenuItem key={item.url} className="relative">
-                    {active && (
-                      <span className="pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full bg-[color:var(--brand-violet)]" />
-                    )}
-                    <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
-                      <Link
-                        to={item.url}
-                        onClick={handleNavClick}
-                        className="flex items-center gap-3 text-sm pl-3"
-                      >
-                        <item.icon className={cn("h-4 w-4 shrink-0", active && "text-[color:var(--brand-violet)]")} />
-                        <span className={active ? "text-foreground font-semibold" : ""}>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+            <SidebarMenu className="gap-0.5">
+              {tradingItems.map((item) => (
+                <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+        {/* Analysis group */}
+        <SidebarGroup className="pt-2">
+          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+            Analyse
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              {analysisItems.map((item) => (
+                <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+        {/* Tools group */}
+        <SidebarGroup className="pt-2">
+          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+            Outils
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              {toolItems.map((item) => (
+                <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
+              ))}
               {user?.is_admin && (() => {
                 const active = isActive("/admin");
                 return (
-                  <SidebarMenuItem className="relative">
-                    {active && (
-                      <span className="pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full bg-[color:var(--brand-amber)]" />
-                    )}
-                    <SidebarMenuButton asChild isActive={active} tooltip="Administration">
-                      <Link to="/admin" className="flex items-center gap-3 pl-3" onClick={handleNavClick}>
-                        <ShieldCheck className={cn("h-4 w-4 shrink-0", active && "text-[color:var(--brand-amber)]")} />
-                        <span className={active ? "text-foreground font-semibold" : ""}>Administration</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavItem
+                    key="/admin"
+                    item={{ title: "Administration", url: "/admin", icon: ShieldCheck, color: "text-amber-400", glow: "shadow-amber-500/30" }}
+                    isActive={active}
+                    onClick={handleNavClick}
+                  />
                 );
               })()}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-3 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-        {user ? (
-          <div className="mb-2 flex items-center gap-2 rounded-md border border-border/60 bg-card/40 p-2">
+
+      {/* ── SIDEBAR FOOTER ── */}
+      <SidebarFooter className="p-4 pt-2 border-t border-white/[0.05] group-data-[collapsible=icon]:hidden">
+        {/* User card */}
+        {user && (
+          <div className="mb-3 flex items-center gap-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5 transition-all duration-200 hover:bg-white/[0.05] hover:border-white/[0.1]">
+            {/* Avatar placeholder */}
+            <div className="flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 border border-violet-500/25 text-violet-400 text-sm font-bold uppercase">
+              {user.username?.charAt(0) ?? "U"}
+            </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-medium text-foreground">{user.username}</div>
-              <div className="truncate text-[11px]">{user.email}</div>
+              <div className="truncate text-[14.5px] font-semibold text-foreground leading-none">{user.username}</div>
+              <div className="truncate text-[12px] text-muted-foreground/50 mt-1.5 leading-none">{user.email}</div>
             </div>
             <button
               onClick={logout}
               title="Se déconnecter"
-              className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all duration-200"
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
-        ) : null}
-        <div className="rounded-md border border-border/60 bg-card/40 p-2 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
-            <span className="font-medium text-foreground">Compte DÉMO</span>
+        )}
+
+        {/* AI engine badge */}
+        <div className="flex items-center gap-3 rounded-xl border border-violet-500/15 bg-gradient-to-r from-violet-500/[0.07] to-transparent px-3.5 py-3">
+          <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20">
+            <Cpu className="h-4 w-4 text-violet-400" />
           </div>
-          <p className="mt-1 leading-snug">
-            Trading à risque. Max 2% par trade.
-          </p>
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] font-semibold text-foreground/80 leading-none">Vertex AI Engine</div>
+            <div className="text-[10px] text-muted-foreground/50 mt-1 leading-none">Max 2% par trade · DÉMO</div>
+          </div>
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-50" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+          </span>
         </div>
       </SidebarFooter>
     </Sidebar>
