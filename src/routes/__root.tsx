@@ -134,6 +134,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/33b8af68-47f4-4ab3-8bed-26dc0b6f9834/id-preview-571df8d4--c8db877e-99f8-451d-b8a6-7db33c51d41f.lovable.app-1781494469804.png" },
     ],
     links: [
+      { rel: "icon", type: "image/png", href: "/logo.png" },
       { rel: "preconnect", href: "https://rsms.me/" },
       { rel: "stylesheet", href: "https://rsms.me/inter/inter.css" },
       {
@@ -231,7 +232,15 @@ function RootComponent() {
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
   // full-screen without the app sidebar/header chrome.
-  if (isPublicRoute || !user) {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-black">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
+  if (isPublicRoute) {
     return (
       <QueryClientProvider client={queryClient}>
         <main className="min-h-screen w-full">
@@ -240,6 +249,10 @@ function RootComponent() {
         <Toaster />
       </QueryClientProvider>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (

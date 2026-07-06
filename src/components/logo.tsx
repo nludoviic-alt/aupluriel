@@ -8,7 +8,7 @@ export function LogoMark({ className }: { className?: string }) {
     <img
       src="/logo.png"
       alt="Vertex Logo"
-      className={cn("h-9 w-9 object-contain rounded-lg shadow-md", className)}
+      className={cn("h-16 w-24 object-contain rounded-lg shadow-md", className)}
     />
   );
 }
