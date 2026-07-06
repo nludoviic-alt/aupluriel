@@ -43,7 +43,7 @@ function TickerItem({ symbol, label, decimals }: { symbol: string; label: string
 
 export function TickerBar() {
   return (
-    <div className="sticky top-14 z-20 flex h-9 items-center border-b border-white/[0.05] bg-[oklch(0.17_0.035_255)] overflow-x-auto scrollbar-none">
+    <div className="sticky top-20 md:top-24 z-20 flex h-9 items-center border-b border-white/[0.05] bg-[oklch(0.17_0.035_255)] overflow-x-auto scrollbar-none">
       <div className="flex items-center h-full min-w-max">
         {TICKERS.map((t) => (
           <TickerItem key={t.symbol} {...t} />

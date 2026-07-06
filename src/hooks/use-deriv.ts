@@ -53,7 +53,12 @@ export function useDerivTicks(symbol: string, maxPoints = 120) {
   return { series, last, status };
 }
 
-export function useDerivCandles(symbol: string, granularity: number, count = 200) {
+/**
+ * `refreshKey` triggers a refetch without needing to remount the component via
+ * a changing React `key` — a full remount discards local state and forces
+ * React to tear down/rebuild the DOM subtree, which is unnecessary here.
+ */
+export function useDerivCandles(symbol: string, granularity: number, count = 200, refreshKey: number | string = 0) {
   const [candles, setCandles] = useState<DerivCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +80,7 @@ export function useDerivCandles(symbol: string, granularity: number, count = 200
     return () => {
       cancelled = true;
     };
-  }, [symbol, granularity, count]);
+  }, [symbol, granularity, count, refreshKey]);
 
   return { candles, loading, error };
 }

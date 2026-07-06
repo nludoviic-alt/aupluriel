@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 export interface CandlePoint {
   t: number;
@@ -24,6 +24,7 @@ interface Props {
 
 const W = 1000;
 const MARGIN = { top: 8, right: 68, bottom: 28, left: 4 };
+const EMPTY_OVERLAYS: Overlays = {}; // stable reference so the `overlays = {}` default doesn't defeat React.memo
 
 function buildLinePath(xs: number[], ys: (number | null)[]): string {
   const parts: string[] = [];
@@ -36,7 +37,7 @@ function buildLinePath(xs: number[], ys: (number | null)[]): string {
   return parts.join(" ");
 }
 
-export function CandlestickChart({ data, overlays = {}, chartHeight = 380 }: Props) {
+export const CandlestickChart = memo(function CandlestickChart({ data, overlays = EMPTY_OVERLAYS, chartHeight = 380 }: Props) {
   const H = chartHeight;
   const cW = W - MARGIN.left - MARGIN.right;
   const cH = H - MARGIN.top - MARGIN.bottom;
@@ -235,4 +236,4 @@ export function CandlestickChart({ data, overlays = {}, chartHeight = 380 }: Pro
       )}
     </svg>
   );
-}
+});

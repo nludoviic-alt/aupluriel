@@ -232,7 +232,14 @@ export function AppSidebar() {
       )}
     >
       {/* ── SIDEBAR HEADER ── */}
-      <SidebarHeader className="px-5 pt-6 pb-4">
+      {/* Same height, glass treatment, glow and shimmer accent as the main <header> in __root.tsx,
+          so the two form one continuous header band across the full width. */}
+      <SidebarHeader className="relative h-24 shrink-0 justify-center gap-0 overflow-hidden px-5 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)]">
+        <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-violet-500/10 blur-[90px]" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+          <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.24_290/0.7),oklch(0.88_0.20_195/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
+        </div>
         <RouterLink to="/" className="group/logo flex items-center gap-3.5">
           <div className="relative shrink-0">
             {/* Glow behind logo */}
@@ -256,13 +263,10 @@ export function AppSidebar() {
             </span>
           </div>
         </RouterLink>
-
-        {/* Separator */}
-        <div className="mt-5 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
       </SidebarHeader>
 
       {/* ── SIDEBAR CONTENT ── */}
-      <SidebarContent className="px-3 pb-2 gap-1">
+      <SidebarContent className="px-3 pt-6 pb-2 gap-1">
 
         {/* Trading group */}
         <SidebarGroup className="pt-0">

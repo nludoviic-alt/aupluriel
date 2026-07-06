@@ -82,14 +82,23 @@ function MarketsPage() {
     return { last: last.close, high24, low24, change };
   }, [data]);
 
-  const candleData = data.map((d) => ({ t: d.t, open: d.open, high: d.high, low: d.low, close: d.close }));
-  const overlays = {
-    ema50: data.map((d) => d.ema50),
-    ema200: data.map((d) => d.ema200),
-    bbUpper: data.map((d) => d.bbU),
-    bbLower: data.map((d) => d.bbL),
-    bbMiddle: data.map((d) => d.bbM),
-  };
+  // Memoized so CandlestickChart's React.memo actually skips re-rendering when
+  // unrelated state changes elsewhere on the page (new literals every render
+  // would otherwise always look "changed" to a shallow prop comparison).
+  const candleData = useMemo(
+    () => data.map((d) => ({ t: d.t, open: d.open, high: d.high, low: d.low, close: d.close })),
+    [data],
+  );
+  const overlays = useMemo(
+    () => ({
+      ema50: data.map((d) => d.ema50),
+      ema200: data.map((d) => d.ema200),
+      bbUpper: data.map((d) => d.bbU),
+      bbLower: data.map((d) => d.bbL),
+      bbMiddle: data.map((d) => d.bbM),
+    }),
+    [data],
+  );
 
   return (
     <div className="p-6 space-y-6">

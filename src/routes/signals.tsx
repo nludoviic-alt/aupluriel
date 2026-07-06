@@ -117,7 +117,7 @@ function SignalsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((s) => (
-          <LiveSignal key={`${s.deriv}-${refreshKey}`} sym={s} onReady={onSignalReady} />
+          <LiveSignal key={s.deriv} sym={s} onReady={onSignalReady} refreshKey={refreshKey} />
         ))}
       </div>
 
@@ -136,8 +136,8 @@ function SignalsPage() {
               </tr>
             </thead>
             <tbody>
-              {SYMBOLS.map((s) => (
-                <MtfRow key={`${s.deriv}-${refreshKey}`} sym={s} />
+              {filtered.map((s) => (
+                <MtfRow key={s.deriv} sym={s} refreshKey={refreshKey} />
               ))}
             </tbody>
           </table>
@@ -202,11 +202,13 @@ function SignalsPage() {
 function LiveSignal({
   sym,
   onReady,
+  refreshKey,
 }: {
   sym: (typeof SYMBOLS)[number];
   onReady: (entry: HistoryEntry) => void;
+  refreshKey: number;
 }) {
-  const { candles, loading } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250);
+  const { candles, loading } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250, refreshKey);
   const [saved, setSaved] = useState(false);
 
   const sig = useMemo(() => {
@@ -239,11 +241,11 @@ function LiveSignal({
 }
 
 /** Each row loads data for all 4 timeframes independently — hooks called unconditionally. */
-function MtfRow({ sym }: { sym: (typeof SYMBOLS)[number] }) {
-  const { candles: c5m } = useDerivCandles(sym.deriv, GRANULARITY["5m"], 250);
-  const { candles: c15m } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250);
-  const { candles: c1h } = useDerivCandles(sym.deriv, GRANULARITY["1H"], 250);
-  const { candles: c4h } = useDerivCandles(sym.deriv, GRANULARITY["4H"], 250);
+function MtfRow({ sym, refreshKey }: { sym: (typeof SYMBOLS)[number]; refreshKey: number }) {
+  const { candles: c5m } = useDerivCandles(sym.deriv, GRANULARITY["5m"], 250, refreshKey);
+  const { candles: c15m } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250, refreshKey);
+  const { candles: c1h } = useDerivCandles(sym.deriv, GRANULARITY["1H"], 250, refreshKey);
+  const { candles: c4h } = useDerivCandles(sym.deriv, GRANULARITY["4H"], 250, refreshKey);
 
   const sigs = useMemo(
     () =>

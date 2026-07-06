@@ -31,7 +31,8 @@ function migrate(db: Database.Database) {
       ai_provider   TEXT    DEFAULT 'groq',
       ai_api_key    TEXT,
       risk_per_trade REAL   DEFAULT 2,
-      max_drawdown  REAL    DEFAULT 5
+      max_drawdown  REAL    DEFAULT 5,
+      default_stake_usd REAL DEFAULT 5
     );
 
     CREATE TABLE IF NOT EXISTS strategies (
@@ -110,6 +111,14 @@ function migrate(db: Database.Database) {
   }
   if (!userCols.has("is_admin")) {
     db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // --- Additive column migrations on `user_settings` (idempotent) ---
+  const settingsCols = new Set(
+    (db.prepare("PRAGMA table_info(user_settings)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!settingsCols.has("default_stake_usd")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN default_stake_usd REAL DEFAULT 5");
   }
 
   // Promote the configured admin email if that account already exists.

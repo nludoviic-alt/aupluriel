@@ -1,8 +1,11 @@
 // Auto-trading engine — all logic runs client-side.
 // Only executes trades when strict signal quality thresholds are met.
 
-import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance } from "./deriv";
-import { generateSignal, atr } from "./indicators";
+import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
+import { generateSignal, atr, rsi, macd, ema, bollinger } from "./indicators";
+import { evaluateStrategies } from "./strategies";
+import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
+import { mapWithConcurrency } from "./utils";
 
 let derivConnected = false;
 let lastConnectionCheck = 0;
@@ -43,6 +46,27 @@ async function proposeAndBuy(params: {
     }
   }
   throw lastError ?? new Error("Échec achat après plusieurs tentatives");
+}
+
+/**
+ * Real payout ratio (profit-if-won / stake) for a symbol+duration, fetched as a
+ * live quote (no money committed — a proposal is just a price check). Replaces
+ * the flat 85% assumption previously hardcoded into simulation P&L and the
+ * backtest: real Deriv payouts vary by instrument, duration and volatility.
+ * Falls back to 0.85 if no quote can be obtained (e.g. offline / unsupported symbol).
+ */
+export async function fetchRealPayoutRatio(
+  symbol: string,
+  durationMinutes: number,
+  stakeUsd = 10,
+): Promise<number> {
+  try {
+    const proposal = await proposalContract({ symbol, amount: stakeUsd, contractType: "CALL", durationMinutes });
+    const ratio = (proposal.payout - proposal.askPrice) / proposal.askPrice;
+    return ratio > 0 && ratio < 5 ? ratio : 0.85;
+  } catch {
+    return 0.85;
+  }
 }
 
 export type TradingSession = "sydney" | "asia" | "london" | "newyork";
@@ -101,11 +125,14 @@ export interface AutoTraderConfig {
   stopOnRisk: boolean;            // hard-stop immediately when risk detected
   maxVolatilityPct: number;       // skip/stop if ATR% above this on a symbol
   maxDailyProfitUsd: number;     // stop bot when daily profit >= this (0 = disabled)
-  stakeMode: "fixed" | "percent"; // fixed USD or % of balance
+  stakeMode: "fixed" | "percent" | "kelly"; // fixed USD, % of balance, or measured-edge Kelly sizing
   stakePercent: number;           // % of balance per trade (used when stakeMode = "percent")
+  kellyFraction: number;          // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
   sessionEdgeMinutes: number;     // skip N minutes at session open/close (avoids fake breakouts)
   trailingStopUsd: number;        // stop if P&L drops this much below session peak (0 = disabled)
   blockCorrelated: boolean;       // skip correlated pairs when one is already active
+  symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
+  maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
@@ -129,9 +156,12 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   maxDailyProfitUsd: 0,
   stakeMode: "fixed",
   stakePercent: 1,
+  kellyFraction: 0.5,
   sessionEdgeMinutes: 0,
   trailingStopUsd: 0,
   blockCorrelated: true,
+  symbolMode: "watchlist",
+  maxSimultaneousTrades: 3,
 };
 
 export const SCAN_INTERVAL_MS = 60_000;
@@ -359,6 +389,7 @@ export interface TradeLog {
   entryPrice?: number;       // price at trade open (for live visual)
   durationMinutes?: number;  // contract duration (for live countdown)
   expiry?: number;           // epoch ms when the contract resolves
+  components?: import("./indicators").SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning on close
 }
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
@@ -470,11 +501,73 @@ export function computeAdaptiveStake(baseStake: number, recentLogs: TradeLog[]):
   return baseStake; // normal
 }
 
+// ─── Real Kelly-criterion stake ────────────────────────────────────────────────
+// "adaptiveStake" above is a coarse win-rate-tiered haircut, marketed as "Kelly"
+// in the UI but not an actual Kelly calculation. This is: same formula already
+// used correctly in risk-calculator.tsx (f* = p - q/b), fed by the REAL measured
+// win-rate/payout from backtestMultiTf instead of a value the user guesses.
+
+const BACKTEST_STATS_KEY = "lio23.backtest_stats";
+
+export interface SymbolBacktestStats {
+  winRate: number;   // 0-1
+  payoutPct: number; // e.g. 0.85
+  trades: number;
+  updatedAt: number;
+}
+
+export function saveBacktestStats(symbol: string, stats: Omit<SymbolBacktestStats, "updatedAt">) {
+  try {
+    const all = JSON.parse(localStorage.getItem(BACKTEST_STATS_KEY) ?? "{}");
+    all[symbol] = { ...stats, updatedAt: Date.now() };
+    localStorage.setItem(BACKTEST_STATS_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+export function loadBacktestStats(symbol: string): SymbolBacktestStats | null {
+  try {
+    const all = JSON.parse(localStorage.getItem(BACKTEST_STATS_KEY) ?? "{}");
+    return all[symbol] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Kelly fraction f* = p - (1-p)/b, for win probability p and net payout odds b. */
+export function computeKellyFraction(winRate: number, payoutRatio: number): number {
+  if (payoutRatio <= 0) return 0;
+  return Math.max(0, winRate - (1 - winRate) / payoutRatio);
+}
+
+/**
+ * Kelly stake for this symbol from its persisted backtest stats, or null if no
+ * (or too little) measured data exists yet — callers should fall back to the
+ * fixed/percent stake rather than guess. Capped at 5% of balance regardless of
+ * what the raw Kelly formula suggests: a short/overfit backtest sample can
+ * output an unrealistically large fraction, and this is meant to recalibrate
+ * sizing, not to bet the account on one instrument's small sample.
+ */
+export function computeKellyStake(symbol: string, balance: number, kellyFraction: number): number | null {
+  const stats = loadBacktestStats(symbol);
+  if (!stats || stats.trades < 20) return null;
+  const kelly = computeKellyFraction(stats.winRate, stats.payoutPct);
+  if (kelly <= 0) return null; // measured edge is flat/negative — Kelly says don't size up
+  const pct = Math.min(kelly * kellyFraction, 0.05);
+  return Math.max(1, balance * pct);
+}
+
 // ─── Consecutive loss tracker ─────────────────────────────────────────────────
 
-export function countConsecutiveLosses(logs: TradeLog[]): number {
+/**
+ * Consecutive losses at the head of the log, optionally scoped to one symbol.
+ * Without a symbol, a losing streak on ONE instrument would otherwise trip the
+ * same counter as every other symbol combined — too aggressive when scanning
+ * many markets, and not targeted at whichever symbol is actually failing.
+ */
+export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): number {
   let count = 0;
   for (const l of logs) {
+    if (symbol && l.symbol !== symbol) continue;
     if (l.status === "lost") count++;
     else if (l.status === "won") break;
   }
@@ -570,6 +663,7 @@ export async function openPreviewTrade(
     if (sig.direction === "SELL") direction = "PUT";
     else if (sig.direction === "BUY") direction = "CALL";
   } catch { /* ignore */ }
+  const payoutRatio = await fetchRealPayoutRatio(symbolDeriv, durationMinutes, stakeUsd);
 
   const id = `preview_${Date.now()}_${symbolDeriv}`;
   const base: TradeLog = {
@@ -595,7 +689,7 @@ export async function openPreviewTrade(
       const candles = await fetchCandles(symbolDeriv, GRANULARITY["1m"], 2);
       const last = candles[candles.length - 1]?.close ?? entryPrice;
       const won = direction === "CALL" ? last > entryPrice : last < entryPrice;
-      const profit = won ? stakeUsd * 0.85 : -stakeUsd;
+      const profit = won ? stakeUsd * payoutRatio : -stakeUsd;
       emit({ ...base, status: won ? "won" : "lost", profit, payout: won ? stakeUsd + profit : 0, closedAt: Date.now() });
     } catch {
       emit({ ...base, status: "error", profit: 0 });
@@ -783,66 +877,72 @@ interface SymbolAnalysis {
   agreement: number;
   premiumCount: number;       // how many timeframes graded PREMIUM
   volatilityPct: number;      // current ATR% on the base timeframe
+  volatilityRatio: number;    // current ATR% vs this symbol's own recent median (1 = normal)
   blockers: string[];         // reasons signals were rejected
   dominantTf: string | null;  // TF with highest confidence signal
   suggestedDuration: number;  // optimal contract duration in minutes
   trendAlignmentScore: number; // 0-4: how many TFs agree on direction
   patternBonus: number;        // extra confidence from candle patterns
+  strategyVote?: "BUY" | "SELL" | null; // vote from the user's custom /strategies rules, if any apply
+  components?: import("./indicators").SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning
 }
 
-async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
+type TfSignalMap = Partial<Record<(typeof TIMEFRAMES)[number], import("./indicators").GeneratedSignal>>;
+
+const EMPTY_ANALYSIS = (blockers: string[], volatilityPct = 0, volatilityRatio = 1, dominantTf: string | null = null, suggestedDuration = 15): SymbolAnalysis => ({
+  direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, volatilityRatio,
+  blockers, dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus: 0,
+});
+
+/**
+ * Pure decision layer: given one GeneratedSignal per timeframe (already computed),
+ * applies the exact same majority-vote + 4H-veto + Trend-Alignment-Score + pattern-bonus
+ * logic the live engine uses. Shared by the live analyzeSymbol() AND the historical
+ * multi-timeframe backtest so the two can never drift apart.
+ */
+function aggregateTfSignals(
+  tfSignals: TfSignalMap,
+  volatilityPct: number,
+  volatilityRatio: number,
+): SymbolAnalysis {
   const results: string[] = [];
   const qualities: string[] = [];
   const blockers = new Set<string>();
-  // Per-TF direction map for cross-TF alignment check
   const tfDirections: Record<string, "BUY" | "SELL"> = {};
   let totalConf = 0;
-  let volatilityPct = 0;
   let bestConf = 0;
   let dominantTf: string | null = null;
   let patternBonus = 0;
 
   for (const tf of TIMEFRAMES) {
-    try {
-      const candles = await fetchCandles(symbolDeriv, GRANULARITY[tf], 250);
-      if (!candles.length) continue;
+    const sig = tfSignals[tf];
+    if (!sig) continue;
+    if (sig.blockers) sig.blockers.forEach((b) => blockers.add(`${tf}: ${b}`));
+    if (sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
 
-      // Capture volatility from the entry timeframe (15m)
-      if (tf === "15m") {
-        const a = atr(candles.map((c) => c.high), candles.map((c) => c.low), candles.map((c) => c.close), 14);
-        const atrNow = a[a.length - 1];
-        const price = candles[candles.length - 1].close;
-        if (atrNow !== null && price > 0) volatilityPct = (atrNow / price) * 100;
-      }
+    // Record TF direction even if weak (used for cross-TF alignment)
+    tfDirections[tf] = sig.direction as "BUY" | "SELL";
 
-      const sig = generateSignal(candles);
-      if (sig.blockers) sig.blockers.forEach((b) => blockers.add(`${tf}: ${b}`));
-      if (sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
+    if (sig.quality === "weak") continue; // ignore weak votes for scoring
+    results.push(sig.direction);
+    qualities.push(sig.quality ?? "weak");
+    totalConf += sig.confidence;
 
-      // Record TF direction even if weak (used for cross-TF alignment)
-      tfDirections[tf] = sig.direction as "BUY" | "SELL";
+    // Accumulate pattern bonus from 15m (most actionable TF)
+    if (tf === "15m" && sig.patterns) {
+      for (const p of sig.patterns) patternBonus += p.strength * 2;
+    }
 
-      if (sig.quality === "weak") continue; // ignore weak votes for scoring
-      results.push(sig.direction);
-      qualities.push(sig.quality ?? "weak");
-      totalConf += sig.confidence;
-
-      // Accumulate pattern bonus from 15m (most actionable TF)
-      if (tf === "15m" && sig.patterns) {
-        for (const p of sig.patterns) patternBonus += p.strength * 2;
-      }
-
-      if (sig.confidence > bestConf) {
-        bestConf = sig.confidence;
-        dominantTf = tf;
-      }
-    } catch { /* ignore */ }
+    if (sig.confidence > bestConf) {
+      bestConf = sig.confidence;
+      dominantTf = tf;
+    }
   }
 
   const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : 15;
 
   if (!results.length) {
-    return { direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, blockers: [...blockers], dominantTf: null, suggestedDuration: 15, trendAlignmentScore: 0, patternBonus: 0 };
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
   }
 
   const buys = results.filter((r) => r === "BUY").length;
@@ -850,7 +950,7 @@ async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
   const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
 
   if (!rawDirection) {
-    return { direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus };
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
   }
 
   const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
@@ -863,7 +963,7 @@ async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
   const h4dir = tfDirections["4H"];
   if (h4dir && h4dir !== signalBias) {
     blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
-    return { direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus };
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
   }
 
   // Confidence bonus based on alignment
@@ -878,8 +978,220 @@ async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
   const premiumCount = qualities.filter((q) => q === "premium").length;
   const agreement = rawDirection === "CALL" ? buys : sells;
 
-  if (rawDirection === "CALL") return { direction: "CALL", confidence: avgConf, agreement, premiumCount, volatilityPct, blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus };
-  return { direction: "PUT", confidence: avgConf, agreement, premiumCount, volatilityPct, blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus };
+  // Union of components from every TF that agreed with the final direction — the
+  // full "coalition" that drove this trade, for later win/loss attribution.
+  const components: import("./indicators").SignalComponent[] = [];
+  for (const tf of TIMEFRAMES) {
+    const sig = tfSignals[tf];
+    if (sig?.direction === signalBias && sig.components) components.push(...sig.components);
+  }
+
+  return {
+    direction: rawDirection, confidence: avgConf, agreement, premiumCount, volatilityPct, volatilityRatio,
+    blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
+    components: components.length ? components : undefined,
+  };
+}
+
+/** rsi/macd/ema/bollinger snapshot at the last closed candle — feeds the custom /strategies engine. */
+function computeIndicatorSnapshot(candles: { close: number }[]) {
+  const closes = candles.map((c) => c.close);
+  const last = closes.length - 1;
+  const { histogram } = macd(closes);
+  const bb = bollinger(closes, 20, 2);
+  return {
+    rsi: rsi(closes, 14)[last],
+    macdHist: histogram[last],
+    ema50: ema(closes, 50)[last],
+    ema200: ema(closes, 200)[last],
+    bbUpper: bb.upper[last],
+    bbLower: bb.lower[last],
+    close: closes[last],
+  };
+}
+
+/**
+ * Folds the user's custom /strategies rules (see strategies.ts) into an already-computed
+ * analysis: when a custom strategy is enabled for this symbol, its vote nudges confidence
+ * up (agrees) or down (disagrees) instead of being silently ignored like before.
+ */
+function applyStrategyOverlay(analysis: SymbolAnalysis, symbolDeriv: string, candles15m: { close: number }[] | null): SymbolAnalysis {
+  if (!analysis.direction || !candles15m || candles15m.length < 60) return analysis;
+  const snapshot = computeIndicatorSnapshot(candles15m);
+  const vote = evaluateStrategies(symbolDeriv, snapshot);
+  if (!vote) return analysis;
+
+  const agrees = (vote === "BUY" && analysis.direction === "CALL") || (vote === "SELL" && analysis.direction === "PUT");
+  if (agrees) {
+    return { ...analysis, confidence: Math.min(95, analysis.confidence + 5), strategyVote: vote };
+  }
+  return {
+    ...analysis,
+    confidence: Math.max(0, analysis.confidence - 5),
+    blockers: [...analysis.blockers, `Stratégie perso en désaccord (${vote} attendu, signal ${analysis.direction})`],
+    strategyVote: vote,
+  };
+}
+
+/** Median of the last `n` non-null values — used to establish each symbol's own volatility baseline. */
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
+  const tfSignals: TfSignalMap = {};
+  let volatilityPct = 0;
+  let volatilityRatio = 1;
+  let candles15m: { close: number }[] | null = null;
+  const learnedWeights = getLearnedWeights(symbolDeriv);
+
+  for (const tf of TIMEFRAMES) {
+    try {
+      const candles = await fetchCandles(symbolDeriv, GRANULARITY[tf], 250);
+      if (!candles.length) continue;
+
+      // Capture volatility from the entry timeframe (15m), normalized against
+      // this symbol's OWN recent ATR% distribution — a flat global cutoff either
+      // over-restricts calm instruments (major forex) or under-restricts violent
+      // ones (Volatility 100), so we also track a relative ratio.
+      if (tf === "15m") {
+        candles15m = candles;
+        const highs = candles.map((c) => c.high), lows = candles.map((c) => c.low), closes = candles.map((c) => c.close);
+        const atrSeries = atr(highs, lows, closes, 14);
+        const price = closes[closes.length - 1];
+        const atrNow = atrSeries[atrSeries.length - 1];
+        if (atrNow !== null && price > 0) volatilityPct = (atrNow / price) * 100;
+
+        const atrPctSeries = atrSeries
+          .map((v, i) => (v !== null && closes[i] > 0 ? (v / closes[i]) * 100 : null))
+          .filter((v): v is number => v !== null)
+          .slice(0, -1); // exclude the current (possibly spiking) bar from its own baseline
+        const baseline = median(atrPctSeries.slice(-100));
+        if (baseline > 0 && atrNow !== null) volatilityRatio = atrNow / baseline;
+      }
+
+      tfSignals[tf] = generateSignal(candles, { weights: learnedWeights });
+    } catch { /* ignore */ }
+  }
+
+  const analysis = aggregateTfSignals(tfSignals, volatilityPct, volatilityRatio);
+  return applyStrategyOverlay(analysis, symbolDeriv, candles15m);
+}
+
+// ─── Real multi-timeframe backtest ────────────────────────────────────────────
+// indicators.ts' backtestSignal() only replays a SINGLE timeframe, but the live
+// engine trades on a 4-TF vote + 4H veto + Trend Alignment Score + pattern bonus
+// (aggregateTfSignals above). This replays that exact pipeline over historical,
+// time-aligned candles across all 4 timeframes — no lookahead: at each test point
+// only candles closed before that instant are visible to each timeframe.
+
+const GRAN_MINUTES: Record<string, number> = { "5m": 5, "15m": 15, "1H": 60, "4H": 240 };
+
+/** Binary search: the trailing `lookback` candles that were already closed as of `epoch`. */
+function sliceAsOf<T extends { epoch: number }>(candles: T[], epoch: number, lookback: number): T[] {
+  let lo = 0, hi = candles.length - 1, idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].epoch <= epoch) { idx = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  if (idx < 0) return [];
+  return candles.slice(Math.max(0, idx - lookback + 1), idx + 1);
+}
+
+export interface MultiTfBacktestResult {
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  pnl: number;
+  avgConfidence: number;
+  breakEvenWinRate: number;
+  payoutPct: number;
+  /** Win rate segmented by how many timeframes agreed (1-4) — reveals whether TF agreement actually predicts outcomes. */
+  byAgreement: Record<number, { trades: number; wins: number }>;
+}
+
+export async function backtestMultiTf(
+  symbolDeriv: string,
+  {
+    minConfidence = 70,
+    minTfAgreement = 2,
+    durationMinutes = 15,
+    stakeUsd = 5,
+    testCandles = 150, // number of 15m entry points tested (~37.5h of opportunities)
+  }: {
+    minConfidence?: number;
+    minTfAgreement?: number;
+    durationMinutes?: number;
+    stakeUsd?: number;
+    testCandles?: number;
+  } = {},
+): Promise<MultiTfBacktestResult> {
+  const LOOKBACK = 250; // same per-TF depth analyzeSymbol() fetches live
+  const durationCandles = Math.max(1, Math.round(durationMinutes / 15));
+  const testSpanMinutes = testCandles * 15;
+  // Replay with the SAME learned weights the live bot currently uses for this
+  // symbol, so the backtest reflects the bot's actual current behavior, not a
+  // frozen baseline it moved past.
+  const learnedWeights = getLearnedWeights(symbolDeriv);
+  const countFor = (tf: string, margin = 20) =>
+    Math.ceil((testSpanMinutes + LOOKBACK * GRAN_MINUTES[tf]) / GRAN_MINUTES[tf]) + margin;
+
+  const [c5m, c15m, c1h, c4h, payoutPct] = await Promise.all([
+    fetchCandles(symbolDeriv, GRANULARITY["5m"], countFor("5m")),
+    fetchCandles(symbolDeriv, GRANULARITY["15m"], countFor("15m") + durationCandles),
+    fetchCandles(symbolDeriv, GRANULARITY["1H"], countFor("1H")),
+    fetchCandles(symbolDeriv, GRANULARITY["4H"], countFor("4H")),
+    fetchRealPayoutRatio(symbolDeriv, durationMinutes, stakeUsd),
+  ]);
+  const bySrc: Record<string, typeof c15m> = { "5m": c5m, "15m": c15m, "1H": c1h, "4H": c4h };
+
+  let wins = 0, losses = 0, totalConf = 0;
+  const byAgreement: Record<number, { trades: number; wins: number }> = {
+    1: { trades: 0, wins: 0 }, 2: { trades: 0, wins: 0 }, 3: { trades: 0, wins: 0 }, 4: { trades: 0, wins: 0 },
+  };
+
+  const start = Math.max(LOOKBACK, c15m.length - testCandles - durationCandles);
+  const end = c15m.length - durationCandles;
+
+  for (let i = start; i < end; i++) {
+    const asOfEpoch = c15m[i - 1].epoch;
+    const tfSignals: TfSignalMap = {};
+    for (const tf of TIMEFRAMES) {
+      const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
+      if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights: learnedWeights });
+    }
+    const analysis = aggregateTfSignals(tfSignals, 0, 1);
+    if (!analysis.direction) continue;
+    if (analysis.confidence < minConfidence) continue;
+    if (analysis.agreement < minTfAgreement) continue;
+
+    const entry = c15m[i - 1].close;
+    const exit = c15m[i - 1 + durationCandles].close;
+    const won = analysis.direction === "CALL" ? exit > entry : exit < entry;
+    if (won) wins++; else losses++;
+    totalConf += analysis.confidence;
+
+    const bucket = Math.min(4, Math.max(1, analysis.agreement));
+    byAgreement[bucket].trades++;
+    if (won) byAgreement[bucket].wins++;
+  }
+
+  const trades = wins + losses;
+  const winRate = trades > 0 ? wins / trades : 0;
+  const pnl = wins * stakeUsd * payoutPct - losses * stakeUsd;
+
+  return {
+    trades, wins, losses, winRate, pnl,
+    avgConfidence: trades > 0 ? Math.round(totalConf / trades) : 0,
+    breakEvenWinRate: 1 / (1 + payoutPct),
+    payoutPct,
+    byAgreement,
+  };
 }
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
@@ -929,7 +1241,9 @@ export function startAutoTrader(
   const logs = loadTradeLog();
   const activeSymbols = new Set<string>();
   let interval: ReturnType<typeof setInterval> | undefined;
-  let cooldownUntil = 0; // epoch ms — engine skips trades until this time
+  // Per-symbol cooldown (epoch ms) — a losing streak on ONE instrument no longer
+  // has to pause every other symbol too (see countConsecutiveLosses(logs, symbol)).
+  const symbolCooldowns = new Map<string, number>();
   let sessionPeakPnl = 0; // highest daily P&L seen since engine start
 
   function emit(log: TradeLog, meta?: { cooldownUntil?: number }) {
@@ -942,6 +1256,9 @@ export function startAutoTrader(
     if ((log.status === "won" || log.status === "lost") &&
         prev && prev.status !== "won" && prev.status !== "lost") {
       addToCumulativePnl(log.profit);
+      // Feed the outcome back into the adaptive indicator weights for this symbol —
+      // the actual "learns from its mistakes" mechanism, not just a stake haircut.
+      recordComponentOutcomes(log.symbol, log.components, log.status === "won");
     }
     onEvent(log, meta);
   }
@@ -1005,35 +1322,6 @@ export function startAutoTrader(
       return;
     }
 
-    // Consecutive losses → hard stop (stopOnRisk) or cooldown pause (!stopOnRisk)
-    const consecutive = countConsecutiveLosses(logs);
-    if (consecutive >= config.maxConsecutiveLosses) {
-      if (config.stopOnRisk) {
-        riskStop([`${consecutive} pertes consécutives (max ${config.maxConsecutiveLosses})`]);
-        return;
-      } else if (cooldownUntil <= Date.now()) {
-        cooldownUntil = Date.now() + config.cooldownMinutes * 60_000;
-        const cdLog: TradeLog = {
-          id: `cd_${Date.now()}`,
-          time: Date.now(),
-          symbol: "—",
-          direction: "CALL",
-          stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
-          status: "cooldown",
-          note: `${consecutive} pertes consécutives — pause ${config.cooldownMinutes} min`,
-        };
-        emit(cdLog, { cooldownUntil });
-        onScanResult?.({ time: Date.now(), results: config.symbols.map((s) => ({ symbol: s, action: "cooldown" as const })) });
-        return;
-      }
-    }
-
-    // Still in cooldown — skip tick
-    if (Date.now() < cooldownUntil) {
-      onScanResult?.({ time: Date.now(), results: config.symbols.map((s) => ({ symbol: s, action: "cooldown" as const })) });
-      return;
-    }
-
     if (count >= config.maxTradesPerDay) {
       for (const symbol of config.symbols) {
         scanResults.push({ symbol, action: "daily-limit" });
@@ -1042,37 +1330,39 @@ export function startAutoTrader(
       return;
     }
 
-    // Base stake: fixed USD or % of current balance (resolve getter if needed)
+    // Base stake: fixed USD, % of current balance, or (if a Kelly stake can't be
+    // resolved for a given symbol later) this same fixed/percent fallback.
     const currentBalance = typeof balanceUsd === "function" ? balanceUsd() : balanceUsd;
     const baseStake = config.stakeMode === "percent" && currentBalance && currentBalance > 0
       ? Math.max(1, (currentBalance * config.stakePercent) / 100)
       : config.stakeUsd;
 
-    // Adaptive stake
+    // Adaptive stake (win-rate-tiered haircut on recent trades)
     const effectiveStake = config.adaptiveStake
       ? computeAdaptiveStake(baseStake, logs)
       : baseStake;
 
-    for (const symbol of config.symbols) {
-      if (stopped) break;
+    // ── Candidate symbols: the manual watchlist, or every CALL/PUT-eligible market ──
+    const candidateSymbols = config.symbolMode === "all-markets"
+      ? SYMBOLS.filter((s) => isCallPutAvailable(s.deriv)).map((s) => s.deriv)
+      : config.symbols;
 
-      // Crypto pairs only offer multiplier contracts on the Options API —
-      // CALL/PUT is impossible, skip with an explicit reason.
+    // ── Cheap pre-filter (no network) — trims the list before spending
+    // analyzeSymbol's 4-timeframe fetches on symbols that can't trade anyway ──
+    const toAnalyze: string[] = [];
+    for (const symbol of candidateSymbols) {
       if (!isCallPutAvailable(symbol)) {
         scanResults.push({ symbol, action: "not-tradeable", note: "CALL/PUT indisponible sur crypto — utilise les indices Volatility (R_100…)" });
         continue;
       }
-
       if (activeSymbols.has(symbol)) {
         scanResults.push({ symbol, action: "open-trade" });
         continue;
       }
-
       if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
         scanResults.push({ symbol, action: "session-closed" });
         continue;
       }
-
       // Skip high-risk news windows for forex pairs (24/7 markets unaffected)
       if (!is24x7Symbol(symbol)) {
         const riskCheck = isHighRiskWindow();
@@ -1082,12 +1372,73 @@ export function startAutoTrader(
         }
       }
 
+      const symbolCooldownUntil = symbolCooldowns.get(symbol) ?? 0;
+      if (Date.now() < symbolCooldownUntil) {
+        scanResults.push({ symbol, action: "cooldown" });
+        continue;
+      }
+      if (symbolCooldownUntil > 0) symbolCooldowns.delete(symbol); // expired
+
+      // Consecutive losses on THIS symbol specifically — a streak on one
+      // instrument shouldn't pause every other symbol too (see task notes).
+      const consecutive = countConsecutiveLosses(logs, symbol);
+      if (consecutive >= config.maxConsecutiveLosses) {
+        if (config.stopOnRisk) {
+          riskStop([`${consecutive} pertes consécutives sur ${symbol} (max ${config.maxConsecutiveLosses})`]);
+          return;
+        }
+        symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
+        emit({
+          id: `cd_${Date.now()}_${symbol}`,
+          time: Date.now(),
+          symbol,
+          direction: "CALL",
+          stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+          status: "cooldown",
+          note: `${consecutive} pertes consécutives sur ${symbol} — pause ${config.cooldownMinutes} min`,
+        });
+        scanResults.push({ symbol, action: "cooldown" });
+        continue;
+      }
+
+      toAnalyze.push(symbol);
+    }
+
+    if (!toAnalyze.length) {
+      onScanResult?.({ time: Date.now(), results: scanResults });
+      return;
+    }
+
+    // ── Parallel analysis (concurrency-capped) ──────────────────
+    // Sequentially awaiting analyzeSymbol per symbol made a large watchlist (or
+    // an all-markets scan) take minutes; this caps concurrency instead.
+    const analyzed = await mapWithConcurrency(toAnalyze, 6, async (symbol) => ({
+      symbol,
+      analysis: await analyzeSymbol(symbol),
+    }));
+
+    // All-markets mode: best opportunities get first crack at the trade slots
+    // this tick allows. Watchlist mode keeps the user's configured order.
+    const ordered = config.symbolMode === "all-markets"
+      ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
+      : analyzed;
+
+    let newTradesThisTick = 0;
+
+    for (const { symbol, analysis } of ordered) {
+      if (stopped) break;
+
+      if (newTradesThisTick >= config.maxSimultaneousTrades) {
+        scanResults.push({ symbol, action: "daily-limit", note: `Limite de ${config.maxSimultaneousTrades} trades/cycle atteinte` });
+        continue;
+      }
+
+      // Correlation can change mid-tick as earlier candidates open trades —
+      // must be rechecked here, not just in the pre-filter pass above.
       if (config.blockCorrelated && isCorrelatedWithActive(symbol, activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
         continue;
       }
-
-      const analysis = await analyzeSymbol(symbol);
 
       // ── Extreme volatility = RISK → stop immediately ──────────
       if (config.stopOnRisk && analysis.volatilityPct > config.maxVolatilityPct) {
@@ -1096,6 +1447,16 @@ export function startAutoTrader(
           "Conditions de marché dangereuses — arrêt préventif",
         ]);
         return;
+      }
+
+      // ── Abnormal volatility for THIS symbol specifically ──────
+      // A flat ATR% cutoff either over-restricts calm pairs (EUR/USD) or
+      // under-restricts violent ones (Volatility 100). On top of the absolute
+      // gate above, skip this symbol only when its current ATR% is a multiple
+      // of ITS OWN recent norm — catches an abnormal spike a global % would miss.
+      if (analysis.volatilityRatio > 3) {
+        scanResults.push({ symbol, action: "volatility", note: `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale de ce marché — signal ignoré` });
+        continue;
       }
 
       // ── FAVORABLE-ONLY FILTERS ────────────────────────────────
@@ -1119,13 +1480,27 @@ export function startAutoTrader(
       // Signal qualifies — will trade
       scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
       onScanResult?.({ time: Date.now(), results: scanResults });
+      newTradesThisTick++;
 
-      const stakeLabel = effectiveStake < config.stakeUsd
-        ? `réduite: $${effectiveStake.toFixed(2)}`
-        : "";
+      // Stake for THIS trade: Kelly (per-symbol measured edge) when enabled and
+      // enough backtest data exists for this symbol, otherwise the fixed/percent
+      // fallback already computed above.
+      let stakeForTrade = effectiveStake;
+      let kellyNote = "";
+      if (config.stakeMode === "kelly") {
+        const kellyStake = computeKellyStake(symbol, currentBalance ?? config.initialCapital, config.kellyFraction);
+        if (kellyStake !== null) {
+          stakeForTrade = config.adaptiveStake ? computeAdaptiveStake(kellyStake, logs) : kellyStake;
+          kellyNote = `Kelly $${kellyStake.toFixed(2)}`;
+        } else {
+          kellyNote = "Kelly indisponible (backtest requis) — mise de secours";
+        }
+      }
+
+      const stakeLabel = stakeForTrade < config.stakeUsd ? `réduite: $${stakeForTrade.toFixed(2)}` : "";
       const tasLabel = `TAS ${analysis.trendAlignmentScore}/4`;
       const patLabel = analysis.patternBonus > 0 ? ` · pattern +${analysis.patternBonus}` : "";
-      const noteStr = [stakeLabel, tasLabel + patLabel].filter(Boolean).join(" · ");
+      const noteStr = [kellyNote, stakeLabel, tasLabel + patLabel].filter(Boolean).join(" · ");
 
       // Capture entry price at open for the live visual
       let entryPrice = 0;
@@ -1143,7 +1518,7 @@ export function startAutoTrader(
         time: Date.now(),
         symbol,
         direction: analysis.direction,
-        stake: effectiveStake,
+        stake: stakeForTrade,
         payout: 0,
         status: "pending",
         profit: 0,
@@ -1153,6 +1528,7 @@ export function startAutoTrader(
         entryPrice: entryPrice || undefined,
         durationMinutes: tradeDuration,
         expiry: Date.now() + tradeDuration * 60_000,
+        components: analysis.components,
       };
       emit(pendingLog);
       notifyTradeTaken(
@@ -1165,6 +1541,8 @@ export function startAutoTrader(
         // Local simulation - no real trades
         activeSymbols.add(symbol);
         emit({ ...pendingLog, status: "open" });
+        // Real current payout quote (no money committed) instead of an assumed flat 85%.
+        const payoutRatio = await fetchRealPayoutRatio(symbol, tradeDuration, stakeForTrade);
 
         setTimeout(async () => {
           try {
@@ -1173,23 +1551,23 @@ export function startAutoTrader(
             const won = entryPrice > 0 && exitPrice > 0
               ? (analysis.direction === "CALL" ? exitPrice > entryPrice : exitPrice < entryPrice)
               : Math.random() < Math.min(0.65, analysis.confidence / 100);
-            const profit = won ? effectiveStake * 0.85 : -effectiveStake;
+            const profit = won ? stakeForTrade * payoutRatio : -stakeForTrade;
             emit({
               ...pendingLog,
               status: won ? "won" : "lost",
               profit,
-              payout: won ? effectiveStake + profit : 0,
+              payout: won ? stakeForTrade + profit : 0,
               closedAt: Date.now(),
             });
           } catch {
             const winProb = Math.min(0.65, analysis.confidence / 100);
             const won = Math.random() < winProb;
-            const profit = won ? effectiveStake * 0.85 : -effectiveStake;
+            const profit = won ? stakeForTrade * payoutRatio : -stakeForTrade;
             emit({
               ...pendingLog,
               status: won ? "won" : "lost",
               profit,
-              payout: won ? effectiveStake + profit : 0,
+              payout: won ? stakeForTrade + profit : 0,
               closedAt: Date.now(),
               note: "Simulation (prix temps réel indisponible)",
             });
@@ -1211,7 +1589,7 @@ export function startAutoTrader(
           // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
           const bought = await proposeAndBuy({
             symbol,
-            amount: effectiveStake,
+            amount: stakeForTrade,
             contractType: analysis.direction,
             durationMinutes: tradeDuration,
           });

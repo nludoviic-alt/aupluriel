@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { api, clearToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -27,6 +28,7 @@ function SettingsPage() {
   const [account, setAccount] = useState<"demo" | "live">("demo");
   const [risk, setRisk] = useState(2);
   const [maxDd, setMaxDd] = useState(5);
+  const [stake, setStake] = useState(5);
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState<{ id?: string; balance?: number; currency?: string } | null>(null);
   const [aiKey, setAiKey] = useState("");
@@ -40,6 +42,7 @@ function SettingsPage() {
     setAccount((localStorage.getItem(KEYS.account) as "demo" | "live") ?? "demo");
     setRisk(Number(localStorage.getItem(KEYS.riskPerTrade) ?? 2));
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
+    setStake(loadDefaultStake());
     setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
     setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "google" | "groq" | "openrouter") ?? "groq");
     // Then hydrate from server
@@ -48,6 +51,7 @@ function SettingsPage() {
       if (s.account_type) setAccount(s.account_type as "demo" | "live");
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
+      if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
       if (s.ai_provider) setAiProvider(s.ai_provider as "google" | "groq" | "openrouter");
       if (s.ai_api_key) setAiKey(s.ai_api_key as string);
     }).catch(() => {});
@@ -58,6 +62,7 @@ function SettingsPage() {
     localStorage.setItem(KEYS.account, account);
     localStorage.setItem(KEYS.riskPerTrade, String(risk));
     localStorage.setItem(KEYS.maxDrawdown, String(maxDd));
+    saveDefaultStake(stake);
     await api.put("/api/settings", {
       deriv_token: token || null,
       account_type: account,
@@ -203,6 +208,20 @@ function SettingsPage() {
         <h2 className="text-sm font-bold uppercase tracking-wide">Gestion du risque</h2>
         <p className="text-xs text-muted-foreground leading-relaxed mt-1">Appliqué automatiquement à tous les signaux et ordres.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              Mise par défaut ($) — reprise par l'Auto-Trader et le trade forcé
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              step={1}
+              value={stake}
+              onChange={(e) => setStake(Number(e.target.value))}
+              className="w-full rounded-md border border-border bg-background px-3 py-3 text-sm sm:py-2"
+            />
+          </label>
           <label className="block">
             <span className="mb-2 block text-xs uppercase tracking-wider text-muted-foreground font-semibold">
               Risque par trade (%) — max recommandé: 2

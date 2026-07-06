@@ -348,6 +348,17 @@ export function detectCandlePatterns(candles: { open: number; high: number; low:
 
 export type SignalDirection = "BUY" | "SELL" | "HOLD";
 
+/** Named scoring components — used to attribute win/loss credit for adaptive weight learning (see indicator-weights.ts). */
+export type SignalComponentName =
+  | "ADX" | "RSI" | "RSI_MOMENTUM" | "MACD" | "MACD_HIST"
+  | "EMA_TREND" | "EMA_SLOPE" | "STOCH" | "STOCH_CROSS"
+  | "CANDLE_MOMENTUM" | "PATTERN" | "SR";
+
+export interface SignalComponent {
+  name: SignalComponentName;
+  bias: "bull" | "bear";
+}
+
 export interface GeneratedSignal {
   direction: SignalDirection;
   confidence: number; // 0-100
@@ -355,6 +366,12 @@ export interface GeneratedSignal {
   quality?: "premium" | "good" | "weak"; // signal grade
   blockers?: string[]; // reasons a signal was downgraded/rejected
   patterns?: CandlePattern[]; // detected Japanese candlestick patterns
+  components?: SignalComponent[]; // which scoring components fired and which way
+}
+
+export interface GenerateSignalOptions {
+  /** Learned per-component weight multipliers (default 1 = original fixed behavior). */
+  weights?: Partial<Record<SignalComponentName, number>>;
 }
 
 export interface Candle {
@@ -378,7 +395,7 @@ type CandleLike = { open: number; high: number; low: number; close: number };
  *  - Conflicting-signal penalty: opposing indicators lower confidence
  *  - Calibrated confidence: based on agreement ratio, not a flat formula
  */
-export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
+export function generateSignal(input: number[] | Candle[], options: GenerateSignalOptions = {}): GeneratedSignal {
   // Normalize input
   const isCandles = input.length > 0 && typeof input[0] === "object";
   const closes = isCandles ? (input as Candle[]).map((c) => c.close) : (input as number[]);
@@ -400,6 +417,17 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   let bull = 0; // bullish points
   let bear = 0; // bearish points
   let maxPoints = 0;
+
+  // Learned per-component weight multipliers (default 1 = original fixed scoring).
+  // Adaptive weights (indicator-weights.ts) let components that have historically
+  // been right more often carry proportionally more say in future signals.
+  const weights = options.weights ?? {};
+  const components: SignalComponent[] = [];
+  const vote = (name: SignalComponentName, bias: "bull" | "bear", points: number) => {
+    const weighted = points * (weights[name] ?? 1);
+    if (bias === "bull") bull += weighted; else bear += weighted;
+    components.push({ name, bias });
+  };
 
   // ── 1. Volatility filter (ATR%) ──────────────────────────────
   const atrArr = atr(highs, lows, closes, 14);
@@ -429,8 +457,8 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
       triggers.push(`ADX ${adxNow.toFixed(0)} — tendance ${label}`);
       maxPoints += 2;
       if (pdiNow !== null && mdiNow !== null) {
-        if (pdiNow > mdiNow) bull += 2;
-        else bear += 2;
+        if (pdiNow > mdiNow) vote("ADX", "bull", 2);
+        else vote("ADX", "bear", 2);
       }
     } else if (ranging) {
       blockers.push(`ADX ${adxNow.toFixed(0)} — marché sans tendance`);
@@ -443,14 +471,14 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   const rPrev2 = r[last - 2];
   maxPoints += 2;
   if (rNow !== null) {
-    if (rNow < 30) { bull += 2; triggers.push(`RSI ${rNow.toFixed(1)} (survendu)`); }
-    else if (rNow > 70) { bear += 2; triggers.push(`RSI ${rNow.toFixed(1)} (suracheté)`); }
-    else if (rNow < 45) { bull += 1; }
-    else if (rNow > 55) { bear += 1; }
+    if (rNow < 30) { vote("RSI", "bull", 2); triggers.push(`RSI ${rNow.toFixed(1)} (survendu)`); }
+    else if (rNow > 70) { vote("RSI", "bear", 2); triggers.push(`RSI ${rNow.toFixed(1)} (suracheté)`); }
+    else if (rNow < 45) { vote("RSI", "bull", 1); }
+    else if (rNow > 55) { vote("RSI", "bear", 1); }
     // RSI momentum : RSI qui monte confirme BUY, qui descend confirme SELL
     if (rPrev2 !== null) {
-      if (rNow > rPrev2 + 3) { bull += 1; triggers.push("RSI momentum haussier"); }
-      else if (rNow < rPrev2 - 3) { bear += 1; triggers.push("RSI momentum baissier"); }
+      if (rNow > rPrev2 + 3) { vote("RSI_MOMENTUM", "bull", 1); triggers.push("RSI momentum haussier"); }
+      else if (rNow < rPrev2 - 3) { vote("RSI_MOMENTUM", "bear", 1); triggers.push("RSI momentum baissier"); }
     }
   }
 
@@ -460,14 +488,14 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   const histNow = hist[last], histPrev = hist[last - 1];
   maxPoints += 2;
   if (mNow !== null && sNow !== null && mPrev !== null && sPrev !== null) {
-    if (mPrev < sPrev && mNow > sNow) { bull += 2; triggers.push("MACD cross haussier"); }
-    else if (mPrev > sPrev && mNow < sNow) { bear += 2; triggers.push("MACD cross baissier"); }
-    else if (mNow > sNow) { bull += 1; }
-    else if (mNow < sNow) { bear += 1; }
+    if (mPrev < sPrev && mNow > sNow) { vote("MACD", "bull", 2); triggers.push("MACD cross haussier"); }
+    else if (mPrev > sPrev && mNow < sNow) { vote("MACD", "bear", 2); triggers.push("MACD cross baissier"); }
+    else if (mNow > sNow) { vote("MACD", "bull", 1); }
+    else if (mNow < sNow) { vote("MACD", "bear", 1); }
     // Histogram expansion = momentum accelerating
     if (histNow !== null && histPrev !== null) {
-      if (histNow > 0 && histNow > histPrev) { bull += 1; triggers.push("MACD histogramme croissant"); }
-      else if (histNow < 0 && histNow < histPrev) { bear += 1; triggers.push("MACD histogramme décroissant"); }
+      if (histNow > 0 && histNow > histPrev) { vote("MACD_HIST", "bull", 1); triggers.push("MACD histogramme croissant"); }
+      else if (histNow < 0 && histNow < histPrev) { vote("MACD_HIST", "bear", 1); triggers.push("MACD histogramme décroissant"); }
     }
   }
 
@@ -478,12 +506,12 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   const e50prev = e50[last - 3]; // slope over 3 bars
   maxPoints += 2;
   if (e50n !== null && e200n !== null) {
-    if (e50n > e200n) { bull += 1; triggers.push("EMA50 > EMA200 (haussier)"); }
-    else { bear += 1; triggers.push("EMA50 < EMA200 (baissier)"); }
+    if (e50n > e200n) { vote("EMA_TREND", "bull", 1); triggers.push("EMA50 > EMA200 (haussier)"); }
+    else { vote("EMA_TREND", "bear", 1); triggers.push("EMA50 < EMA200 (baissier)"); }
     // EMA50 slope: is the trend accelerating?
     if (e50prev !== null) {
-      if (e50n > e50prev) { bull += 1; triggers.push("EMA50 en pente haussière"); }
-      else if (e50n < e50prev) { bear += 1; triggers.push("EMA50 en pente baissière"); }
+      if (e50n > e50prev) { vote("EMA_SLOPE", "bull", 1); triggers.push("EMA50 en pente haussière"); }
+      else if (e50n < e50prev) { vote("EMA_SLOPE", "bear", 1); triggers.push("EMA50 en pente baissière"); }
     }
   }
 
@@ -493,14 +521,14 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   const dNow = stoch.d[last];
   maxPoints += 2;
   if (kNow !== null) {
-    if (kNow < 20) { bull += 1; triggers.push(`Stoch K ${kNow.toFixed(0)} (survendu)`); }
-    else if (kNow > 80) { bear += 1; triggers.push(`Stoch K ${kNow.toFixed(0)} (suracheté)`); }
+    if (kNow < 20) { vote("STOCH", "bull", 1); triggers.push(`Stoch K ${kNow.toFixed(0)} (survendu)`); }
+    else if (kNow > 80) { vote("STOCH", "bear", 1); triggers.push(`Stoch K ${kNow.toFixed(0)} (suracheté)`); }
     // K crosses D = confirmation signal
     if (dNow !== null) {
       const kPrev = stoch.k[last - 1], dPrev = stoch.d[last - 1];
       if (kPrev !== null && dPrev !== null) {
-        if (kPrev < dPrev && kNow > dNow) { bull += 1; triggers.push("Stoch K cross D (haussier)"); }
-        else if (kPrev > dPrev && kNow < dNow) { bear += 1; triggers.push("Stoch K cross D (baissier)"); }
+        if (kPrev < dPrev && kNow > dNow) { vote("STOCH_CROSS", "bull", 1); triggers.push("Stoch K cross D (haussier)"); }
+        else if (kPrev > dPrev && kNow < dNow) { vote("STOCH_CROSS", "bear", 1); triggers.push("Stoch K cross D (baissier)"); }
       }
     }
   }
@@ -514,8 +542,8 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
     const bodyRatio = candleRange > 0 ? Math.abs(prevBody) / candleRange : 0;
     maxPoints += 2;
     if (bodyRatio > 0.4) { // bougie avec corps significatif (pas doji)
-      if (prevBody > 0) { bull += 2; triggers.push("Bougie haussière confirmée"); }
-      else if (prevBody < 0) { bear += 2; triggers.push("Bougie baissière confirmée"); }
+      if (prevBody > 0) { vote("CANDLE_MOMENTUM", "bull", 2); triggers.push("Bougie haussière confirmée"); }
+      else if (prevBody < 0) { vote("CANDLE_MOMENTUM", "bear", 2); triggers.push("Bougie baissière confirmée"); }
     }
   }
 
@@ -524,10 +552,10 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   for (const pat of detectedPatterns) {
     maxPoints += pat.strength;
     if (pat.bias === "bullish") {
-      bull += pat.strength;
+      vote("PATTERN", "bull", pat.strength);
       triggers.push(`🟢 ${pat.name}`);
     } else {
-      bear += pat.strength;
+      vote("PATTERN", "bear", pat.strength);
       triggers.push(`🔴 ${pat.name}`);
     }
   }
@@ -541,10 +569,10 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
     maxPoints += 2;
     if (near) {
       if (near.type === "support") {
-        bull += 2;
+        vote("SR", "bull", 2);
         triggers.push(`Support fort (${near.strength} touches)`);
       } else {
-        bear += 2;
+        vote("SR", "bear", 2);
         triggers.push(`Résistance forte (${near.strength} touches)`);
       }
     }
@@ -580,7 +608,19 @@ export function generateSignal(input: number[] | Candle[]): GeneratedSignal {
   const quality: GeneratedSignal["quality"] =
     confidence >= 80 ? "premium" : confidence >= 55 ? "good" : "weak";
 
-  return { direction, confidence, triggers, quality, blockers: blockers.length ? blockers : undefined, patterns: detectedPatterns.length ? detectedPatterns : undefined };
+  // Only keep the components that agree with the FINAL direction — those are the
+  // ones whose credit/blame is unambiguous when the trade resolves (a component
+  // that voted the losing side of an internal conflict didn't drive this trade).
+  const decisiveComponents = direction === "HOLD"
+    ? undefined
+    : components.filter((c) => (direction === "BUY" ? c.bias === "bull" : c.bias === "bear"));
+
+  return {
+    direction, confidence, triggers, quality,
+    blockers: blockers.length ? blockers : undefined,
+    patterns: detectedPatterns.length ? detectedPatterns : undefined,
+    components: decisiveComponents?.length ? decisiveComponents : undefined,
+  };
 }
 
 export function stochastic(

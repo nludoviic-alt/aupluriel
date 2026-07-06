@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { generateSignal } from "@/lib/indicators";
+import { mapWithConcurrency } from "@/lib/utils";
 
 export interface MarketAlert {
   symbol: string;
@@ -103,31 +104,41 @@ export function useMarketAlert(enabled = true) {
     const now = Date.now();
     const newAlerts: MarketAlert[] = [];
 
-    for (const sym of SYMBOLS) {
+    // Concurrency-capped instead of sequential: ~28 symbols × 4 timeframes each
+    // awaited one at a time could take minutes; this bounds it without
+    // hammering the shared Deriv connection.
+    const analyzed = await mapWithConcurrency(SYMBOLS, 6, async (sym) => {
       try {
-        const result = await analyzeSymbol(sym.deriv);
-        if (!result.direction) continue;
-        if (result.confidence < MIN_CONFIDENCE) continue;
-        if (result.agreement < MIN_AGREEMENT) continue;
+        return { sym, result: await analyzeSymbol(sym.deriv) };
+      } catch {
+        return null;
+      }
+    });
 
-        const alert: MarketAlert = {
-          symbol: sym.deriv,
-          label: sym.label,
-          direction: result.direction,
-          confidence: Math.round(result.confidence),
-          agreement: result.agreement,
-          time: now,
-        };
-        newAlerts.push(alert);
+    for (const entry of analyzed) {
+      if (!entry) continue;
+      const { sym, result } = entry;
+      if (!result.direction) continue;
+      if (result.confidence < MIN_CONFIDENCE) continue;
+      if (result.agreement < MIN_AGREEMENT) continue;
 
-        // Only send notification if we haven't alerted on this symbol in the last 30 min
-        const lastTime = lastAlertTimesRef.current[sym.deriv] ?? 0;
-        if (now - lastTime > 30 * 60_000) {
-          sendBrowserNotification(alert);
-          lastAlertTimesRef.current[sym.deriv] = now;
-          saveLastAlertTimes(lastAlertTimesRef.current);
-        }
-      } catch {}
+      const alert: MarketAlert = {
+        symbol: sym.deriv,
+        label: sym.label,
+        direction: result.direction,
+        confidence: Math.round(result.confidence),
+        agreement: result.agreement,
+        time: now,
+      };
+      newAlerts.push(alert);
+
+      // Only send notification if we haven't alerted on this symbol in the last 30 min
+      const lastTime = lastAlertTimesRef.current[sym.deriv] ?? 0;
+      if (now - lastTime > 30 * 60_000) {
+        sendBrowserNotification(alert);
+        lastAlertTimesRef.current[sym.deriv] = now;
+        saveLastAlertTimes(lastAlertTimesRef.current);
+      }
     }
 
     setActiveAlerts(newAlerts);

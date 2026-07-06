@@ -351,6 +351,9 @@ function RootComponent() {
               </div>
             </header>
 
+            {/* Breathing room below the sticky header */}
+            <div className="h-6 shrink-0" />
+
             {/* Strong signal banner */}
             {hasAlerts && (
               <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">

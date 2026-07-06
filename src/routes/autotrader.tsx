@@ -77,6 +77,7 @@ import { Switch } from "@/components/ui/switch";
 import { SYMBOLS } from "@/lib/deriv";
 import {
   addToCumulativePnl,
+  backtestMultiTf,
   computeAdaptiveStake,
   CORRELATION_GROUPS,
   countConsecutiveLosses,
@@ -85,12 +86,14 @@ import {
   deleteCustomPreset,
   dismissTrade,
   forceDemoTrade,
+  isCallPutAvailable,
   isInTradingSession,
   loadCumulativePnl,
   loadCustomPresets,
   loadTradeLogCached,
   openPreviewTrade,
   reconcileOpenTrades,
+  saveBacktestStats,
   PRUDENT_CONFIG,
   PRESETS,
   SCAN_INTERVAL_MS,
@@ -101,6 +104,7 @@ import {
   todayTradeCount,
   type AutoTraderConfig,
   type CustomPreset,
+  type MultiTfBacktestResult,
   type PresetConfig,
   type RiskProfile,
   type ScanResult,
@@ -108,14 +112,14 @@ import {
   type TradingSession,
   type TradeLog,
 } from "@/lib/autotrader";
-import { fetchCandles, GRANULARITY } from "@/lib/deriv";
-import { backtestSignal, type BacktestSignalResult } from "@/lib/indicators";
+import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
 import { VOICE_ACTION_EVENT } from "@/components/voice-control";
 import { activeStrategySymbols } from "@/lib/strategies";
+import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard } from "@/components/bot-dashboard";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
@@ -137,7 +141,11 @@ const CRYPTO_MIGRATION: Record<string, string> = {
 
 function loadConfig(): AutoTraderConfig {
   try {
-    const cfg: AutoTraderConfig = { ...DEFAULT_CONFIG, ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}") };
+    const cfg: AutoTraderConfig = {
+      ...DEFAULT_CONFIG,
+      stakeUsd: loadDefaultStake(),
+      ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}"),
+    };
     const migrated = [...new Set(cfg.symbols.map((s) => CRYPTO_MIGRATION[s] ?? s))];
     if (migrated.some((s, i) => s !== cfg.symbols[i]) || migrated.length !== cfg.symbols.length) {
       cfg.symbols = migrated;
@@ -163,7 +171,7 @@ function AutoTraderPage() {
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [showLogs, setShowLogs] = useState(true);
-  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [showWeights, setShowWeights] = useState(false);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
   const [riskStopReasons, setRiskStopReasons] = useState<string[]>([]);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
@@ -176,6 +184,7 @@ function AutoTraderPage() {
   const [forcingTrade, setForcingTrade] = useState(false);
   const [forceSymbol, setForceSymbol] = useState("");
   const [forceDir, setForceDir] = useState<"CALL" | "PUT">("CALL");
+  const [forceStake, setForceStake] = useState(DEFAULT_CONFIG.stakeUsd);
   const [draftDuration, setDraftDuration] = useState(DEFAULT_CONFIG.durationMinutes);
   const [draftMaxTrades, setDraftMaxTrades] = useState(DEFAULT_CONFIG.maxTradesPerDay);
   const [showSaveParams, setShowSaveParams] = useState(false);
@@ -183,7 +192,7 @@ function AutoTraderPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "backtest">("profiles");
   const [backtestRunning, setBacktestRunning] = useState(false);
-  const [backtestResults, setBacktestResults] = useState<Record<string, BacktestSignalResult & { symbol: string }>>({});
+  const [backtestResults, setBacktestResults] = useState<Record<string, MultiTfBacktestResult & { symbol: string }>>({});
   const stopRef = useRef<(() => void) | null>(null);
   const balanceRef = useRef<number | undefined>(undefined);
   const { confirmState, confirm } = useConfirm();
@@ -226,6 +235,7 @@ function AutoTraderPage() {
     setDraftDuration(loaded.durationMinutes);
     setDraftMaxTrades(loaded.maxTradesPerDay);
     setForceSymbol(loaded.symbols[0] ?? "R_100");
+    setForceStake(loaded.stakeUsd);
     setLogs(loadTradeLogCached());
     setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
@@ -255,6 +265,14 @@ function AutoTraderPage() {
 
   const { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake } = stats;
   const openTrades = openTradeList.length;
+
+  // Reads localStorage per configured symbol (indicator-weights.ts) — only recompute
+  // when the watchlist changes or a trade closes (logs update), not on every render.
+  const breakdowns = useMemo(() => {
+    return config.symbols
+      .map((sym) => ({ sym, rows: getComponentBreakdown(sym) }))
+      .filter((b) => b.rows.length > 0);
+  }, [config.symbols, logs]);
 
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
@@ -302,8 +320,7 @@ function AutoTraderPage() {
       }
     }
     if (log.status === "cooldown") {
-      setCooldownUntil(meta?.cooldownUntil ?? 0);
-      toast.warning(`⏸ Cooldown activé — ${log.note}`);
+      toast.warning(`⏸ ${log.note}`);
     }
   }, [config.mode]);
 
@@ -384,17 +401,21 @@ function AutoTraderPage() {
   async function runBacktest() {
     setBacktestRunning(true);
     setBacktestResults({});
-    const results: Record<string, BacktestSignalResult & { symbol: string }> = {};
-    const durationCandles = config.durationMinutes <= 5 ? 1 : config.durationMinutes <= 15 ? 1 : 2;
+    const results: Record<string, MultiTfBacktestResult & { symbol: string }> = {};
     for (const sym of config.symbols) {
       try {
-        const candles = await fetchCandles(sym, GRANULARITY["15m"], 600);
-        const result = backtestSignal(candles, {
+        const result = await backtestMultiTf(sym, {
           minConfidence: config.minConfidence,
-          durationCandles,
+          minTfAgreement: config.minTfAgreement,
+          durationMinutes: config.durationMinutes,
           stakeUsd: config.stakeUsd,
         });
         results[sym] = { ...result, symbol: sym };
+        // Feed the measured win-rate/payout into the persisted store so "Kelly"
+        // stake sizing has real data to size positions from instead of guessing.
+        if (result.trades > 0) {
+          saveBacktestStats(sym, { winRate: result.winRate, payoutPct: result.payoutPct, trades: result.trades });
+        }
       } catch {
         // skip failed symbols silently
       }
@@ -504,7 +525,7 @@ function AutoTraderPage() {
         </div>
       )}
 
-      <CooldownBanner cooldownUntil={cooldownUntil} consecutiveLosses={consecutiveLosses} />
+      <CooldownBanner lastScan={lastScan} />
 
       {/* ── KPI strip — pleine largeur ── */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -661,6 +682,17 @@ function AutoTraderPage() {
                     ))}
                   </div>
                 </div>
+                <Field label="Mise pour ce trade forcé ($)">
+                  <AmountInput value={forceStake} min={1} max={100} step={1} disabled={!derivSession.connected || forcingTrade}
+                    onCommit={async (v) => {
+                      if (config.mode === "live") {
+                        const ok = await confirm({ title: "Confirmer la mise ?", description: `Trade forcé à $${v} (argent réel).`, confirmLabel: "Confirmer", danger: true });
+                        if (!ok) return false;
+                      }
+                      setForceStake(v);
+                      return true;
+                    }} />
+                </Field>
                 <Button
                   size="sm"
                   disabled={!derivSession.connected || forcingTrade}
@@ -670,7 +702,7 @@ function AutoTraderPage() {
                     const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
                     toast.info(`🚀 Trade forcé en cours — ${label} ${forceDir}…`);
                     try {
-                      await forceDemoTrade(forceSymbol, forceDir, config.stakeUsd, config.durationMinutes, (log) => {
+                      await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
                         handleEvent(log);
                         if (log.status === "open") toast.success(`✅ Contrat ouvert — ${label} ${forceDir} · ID ${log.contractId}`);
                       });
@@ -685,7 +717,7 @@ function AutoTraderPage() {
                     ? <><Activity className="h-3.5 w-3.5 animate-pulse" /> Envoi en cours…</>
                     : !derivSession.connected
                     ? <><Zap className="h-3.5 w-3.5" /> Connexion Deriv requise</>
-                    : <><Zap className="h-3.5 w-3.5" /> Forcer un trade (${config.stakeUsd})</>}
+                    : <><Zap className="h-3.5 w-3.5" /> Forcer un trade (${forceStake})</>}
                 </Button>
               </div>
             </div>
@@ -931,25 +963,18 @@ function AutoTraderPage() {
                     <div className="sm:col-span-2 lg:col-span-3">
                       <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Mode de mise</label>
                       <div className="flex rounded-xl border border-border overflow-hidden w-fit">
-                        {(["fixed", "percent"] as const).map((m) => (
+                        {(["fixed", "percent", "kelly"] as const).map((m) => (
                           <button key={m} disabled={running} onClick={() => patchConfig("stakeMode", m)}
                             className={cn("px-4 py-2 text-xs font-semibold transition-colors",
                               config.stakeMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
                               running && "opacity-40 cursor-not-allowed")}>
-                            {m === "fixed" ? "$ Fixe" : "% Capital"}
+                            {m === "fixed" ? "$ Fixe" : m === "percent" ? "% Capital" : "Kelly"}
                           </button>
                         ))}
                       </div>
                     </div>
-                    <Field label={config.stakeMode === "percent" ? `Mise par trade (${config.stakePercent}% du capital)` : "Mise par trade ($)"}>
-                      {config.stakeMode === "fixed" ? (
-                        <AmountInput value={config.stakeUsd} min={1} max={100} step={1} disabled={running}
-                          onCommit={async (v) => {
-                            const ok = await confirm({ title: "Modifier la mise ?", description: `$${config.stakeUsd} → $${v} par trade${config.mode === "live" ? " (argent réel)" : ""}`, confirmLabel: "Confirmer", danger: config.mode === "live" });
-                            if (ok) { patchConfig("stakeUsd", v); toast.success(`Mise: $${v}`); }
-                            return ok;
-                          }} />
-                      ) : (
+                    <Field label={config.stakeMode === "percent" ? `Mise par trade (${config.stakePercent}% du capital)` : config.stakeMode === "kelly" ? "Mise Kelly — mise de secours ($)" : "Mise par trade ($)"}>
+                      {config.stakeMode === "percent" ? (
                         <div>
                           <input type="range" min={0.5} max={5} step={0.5} value={config.stakePercent} disabled={running}
                             onChange={(e) => patchConfig("stakePercent", Number(e.target.value))} className="w-full accent-primary" />
@@ -962,8 +987,30 @@ function AutoTraderPage() {
                           </div>
                           <p className="text-[10px] text-muted-foreground mt-1">Recommandé : 1–2% du capital par trade</p>
                         </div>
+                      ) : (
+                        <AmountInput value={config.stakeUsd} min={1} max={100} step={1} disabled={running}
+                          onCommit={async (v) => {
+                            const ok = await confirm({ title: "Modifier la mise ?", description: `$${config.stakeUsd} → $${v} par trade${config.mode === "live" ? " (argent réel)" : ""}`, confirmLabel: "Confirmer", danger: config.mode === "live" });
+                            if (ok) { patchConfig("stakeUsd", v); saveDefaultStake(v); toast.success(`Mise: $${v}`); }
+                            return ok;
+                          }} />
                       )}
                     </Field>
+                    {config.stakeMode === "kelly" && (
+                      <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-border/60 bg-muted/10 p-3.5">
+                        <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">
+                          Fraction de Kelly ({(config.kellyFraction * 100).toFixed(0)}%)
+                        </label>
+                        <input type="range" min={0.1} max={1} step={0.05} value={config.kellyFraction} disabled={running}
+                          onChange={(e) => patchConfig("kellyFraction", Number(e.target.value))} className="w-full accent-primary" />
+                        <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                          Mise = fraction de Kelly (f* = gain − perte/payout) calculée à partir du win rate et du payout
+                          <strong> réellement mesurés au backtest</strong> pour chaque paire — pas une estimation. 50%
+                          (demi-Kelly) est recommandé pour amortir l'incertitude d'échantillon. Sans backtest récent
+                          (≥20 trades) pour une paire, la mise de secours ($ Fixe) est utilisée à la place.
+                        </p>
+                      </div>
+                    )}
                     <Field label={`Durée contrat${draftDuration !== config.durationMinutes ? " ●" : ""}`}>
                       <select
                         value={draftDuration}
@@ -1008,13 +1055,38 @@ function AutoTraderPage() {
                         onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
                       <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
                     </Field>
-                    <div className="sm:col-span-2 lg:col-span-1">
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Mode de scan</label>
+                      <div className="flex rounded-xl border border-border overflow-hidden w-fit">
+                        {(["watchlist", "all-markets"] as const).map((m) => (
+                          <button key={m} disabled={running} onClick={() => patchConfig("symbolMode", m)}
+                            className={cn("px-4 py-2 text-xs font-semibold transition-colors",
+                              config.symbolMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
+                              running && "opacity-40 cursor-not-allowed")}>
+                            {m === "watchlist" ? "Paires choisies" : `Tous les marchés (${SYMBOLS.filter((s) => isCallPutAvailable(s.deriv)).length})`}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                        {config.symbolMode === "all-markets"
+                          ? "Analyse toutes les paires CALL/PUT en parallèle à chaque cycle et trade les meilleures opportunités classées par confiance — les filtres de qualité ci-dessus s'appliquent toujours."
+                          : "Ne trade que les paires cochées ci-dessous."}
+                      </p>
+                    </div>
+                    {config.symbolMode === "all-markets" && (
+                      <Field label={`Trades max par cycle (${config.maxSimultaneousTrades})`}>
+                        <input type="range" min={1} max={10} step={1} value={config.maxSimultaneousTrades} disabled={running}
+                          onChange={(e) => patchConfig("maxSimultaneousTrades", Number(e.target.value))} className="w-full accent-primary" />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Limite les nouvelles positions ouvertes en un seul cycle de scan.</p>
+                      </Field>
+                    )}
+                    <div className={cn("sm:col-span-2 lg:col-span-1", config.symbolMode === "all-markets" && "opacity-40 pointer-events-none")}>
                       <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Paires surveillées</label>
                       <div className="flex flex-wrap gap-1.5">
                         {SYMBOLS.map((s) => {
                           const active = config.symbols.includes(s.deriv);
                           return (
-                            <button key={s.deriv} disabled={running}
+                            <button key={s.deriv} disabled={running || config.symbolMode === "all-markets"}
                               onClick={() => { const next = active ? config.symbols.filter((x) => x !== s.deriv) : [...config.symbols, s.deriv]; if (next.length > 0) patchConfig("symbols", next); }}
                               className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                                 active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground",
@@ -1146,11 +1218,13 @@ function AutoTraderPage() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start justify-between">
                     <div>
                       <p className="text-xs text-muted-foreground leading-relaxed max-w-lg">
-                        Simule le moteur de signal exact sur <strong>600 bougies 15m</strong> réelles par paire configurée.
-                        Chaque signal qualifié est évalué sur la bougie suivante — même logique que le bot en live.
+                        Rejoue le <strong>pipeline live exact</strong> — 4 timeframes (5m/15m/1H/4H), véto 4H, score
+                        d'alignement de tendance et bonus de patterns — sur des données historiques réelles et
+                        synchronisées, sans anticipation (chaque timeframe ne voit que les bougies déjà closes).
                       </p>
                       <p className="text-xs text-muted-foreground/60 mt-1.5">
-                        Seuil d'équilibre options binaires (payout 85%) : <strong className="text-amber-400">54.1% win rate minimum</strong>
+                        Payout réel utilisé (coté en direct, pas une estimation) : seuil de rentabilité ≈
+                        <strong className="text-amber-400"> {(1 / (1 + (Object.values(backtestResults)[0]?.payoutPct ?? 0.85)) * 100).toFixed(1)}% win rate minimum</strong>
                       </p>
                     </div>
                     <Button size="sm" onClick={runBacktest} disabled={backtestRunning}
@@ -1263,8 +1337,47 @@ function AutoTraderPage() {
                             </tbody>
                           </table>
                         </div>
+
+                        {(() => {
+                          const combined: Record<number, { trades: number; wins: number }> = { 1: { trades: 0, wins: 0 }, 2: { trades: 0, wins: 0 }, 3: { trades: 0, wins: 0 }, 4: { trades: 0, wins: 0 } };
+                          for (const r of allResults) {
+                            for (const k of [1, 2, 3, 4] as const) {
+                              combined[k].trades += r.byAgreement?.[k]?.trades ?? 0;
+                              combined[k].wins += r.byAgreement?.[k]?.wins ?? 0;
+                            }
+                          }
+                          const anyData = Object.values(combined).some((v) => v.trades > 0);
+                          if (!anyData) return null;
+                          return (
+                            <div className="rounded-xl border border-border/40 p-4">
+                              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2.5">
+                                Win rate par niveau d'accord entre timeframes
+                              </div>
+                              <div className="grid grid-cols-4 gap-2">
+                                {[1, 2, 3, 4].map((k) => {
+                                  const d = combined[k];
+                                  const wr = d.trades > 0 ? d.wins / d.trades : null;
+                                  return (
+                                    <div key={k} className="rounded-lg bg-muted/15 px-2 py-2.5 text-center">
+                                      <div className="text-[10px] text-muted-foreground">{k}/4 TF</div>
+                                      <div className={cn("text-sm font-bold font-mono-tabular mt-0.5", wr === null ? "text-muted-foreground" : wr >= breakEven ? "text-up" : "text-down")}>
+                                        {wr === null ? "—" : `${(wr * 100).toFixed(0)}%`}
+                                      </div>
+                                      <div className="text-[9px] text-muted-foreground/70 mt-0.5">{d.trades} trades</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-[10px] text-muted-foreground/60">
+                                Si le win rate ne monte pas avec le nombre de TF d'accord, le seuil "minTfAgreement" n'apporte pas l'edge qu'on lui suppose.
+                              </p>
+                            </div>
+                          );
+                        })()}
+
                         <p className="text-[10px] text-muted-foreground/60">
-                          Backtest sur 1 TF (15m) uniquement. Le bot live utilise 4 TF simultanés — plus sélectif, win rate réel potentiellement différent. Ne constitue pas une garantie de performance future.
+                          Pipeline live réel (4 timeframes, véto 4H, alignement de tendance, patterns) — pas une approximation single-TF.
+                          Fenêtre testée limitée (~37h par paire) : reste indicatif, pas une garantie de performance future.
                         </p>
                       </div>
                     );
@@ -1282,6 +1395,65 @@ function AutoTraderPage() {
           </div>
         )}
       </div>
+
+      {/* ── Adaptive indicator weights — the real "learns from its mistakes" mechanism ── */}
+      {(() => {
+        if (!breakdowns.length) return null;
+        return (
+          <div className="glass-panel rounded-2xl overflow-hidden">
+            <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
+              onClick={() => setShowWeights((v) => !v)}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">🧠 Poids adaptatifs</span>
+                <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">
+                  {breakdowns.length} paire{breakdowns.length > 1 ? "s" : ""} avec historique
+                </span>
+              </div>
+              {showWeights ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {showWeights && (
+              <div className="border-t border-border/40 p-5 space-y-4">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Chaque indicateur part avec un poids neutre (1.0×). Après chaque trade clôturé, le poids des
+                  composants qui l'ont déclenché est recalculé selon leur taux de réussite réel — c'est le
+                  mécanisme qui fait que le bot ajuste sa confiance dans chaque indicateur au fil des trades,
+                  au lieu de garder des poids fixes pour toujours.
+                </p>
+                {breakdowns.map(({ sym, rows }) => (
+                  <div key={sym}>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
+                      {SYMBOLS.find((s) => s.deriv === sym)?.label ?? sym}
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-border/40">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Composant</th>
+                            <th className="px-3 py-2 text-right">Gagnés / Perdus</th>
+                            <th className="px-3 py-2 text-right">Poids actuel</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.name} className="border-t border-border/30">
+                              <td className="px-3 py-2 font-medium">{r.name}</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground">{r.wins} / {r.losses}</td>
+                              <td className={cn("px-3 py-2 text-right font-bold font-mono-tabular",
+                                r.weight > 1.02 ? "text-up" : r.weight < 0.98 ? "text-down" : "text-muted-foreground")}>
+                                {r.weight.toFixed(2)}×
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Trade Journal ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
@@ -1565,25 +1737,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CooldownBanner({
-  cooldownUntil,
-  consecutiveLosses,
-}: {
-  cooldownUntil: number;
-  consecutiveLosses: number;
-}) {
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    if (cooldownUntil <= Date.now()) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [cooldownUntil]);
-
-  const inCooldown = now < cooldownUntil;
-  if (!inCooldown) return null;
-
-  const secsLeft = Math.ceil((cooldownUntil - now) / 1000);
+/** Cooldown is now tracked per-symbol in the engine (a losing streak on one
+ * instrument no longer pauses every other symbol) — derive the banner from the
+ * latest scan instead of a single global timer. */
+function CooldownBanner({ lastScan }: { lastScan: ScanResult | null }) {
+  if (!lastScan) return null;
+  const paused = lastScan.results.filter((r) => r.action === "cooldown");
+  if (!paused.length) return null;
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 flex items-center gap-4">
@@ -1591,12 +1751,12 @@ function CooldownBanner({
         <Clock className="h-5 w-5 text-amber-400" />
       </div>
       <div>
-        <span className="text-sm font-semibold text-amber-300">Cooldown actif</span>
-        <span className="text-sm text-amber-400/80 ml-2">
-          {consecutiveLosses} pertes consécutives — reprise dans{" "}
+        <span className="text-sm font-semibold text-amber-300">
+          {paused.length} paire{paused.length > 1 ? "s" : ""} en pause
         </span>
-        <span className="text-sm font-bold text-amber-300">
-          {Math.floor(secsLeft / 60)}m {String(secsLeft % 60).padStart(2, "0")}s
+        <span className="text-sm text-amber-400/80 ml-2">
+          {paused.map((p) => SYMBOLS.find((s) => s.deriv === p.symbol)?.label ?? p.symbol).join(", ")}
+          {" "}— trop de pertes consécutives, reprise automatique après le délai configuré.
         </span>
       </div>
     </div>

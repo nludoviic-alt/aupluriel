@@ -28,6 +28,7 @@ export const Route = createFileRoute("/api/settings")({
           ai_api_key?: string;
           risk_per_trade?: number;
           max_drawdown?: number;
+          default_stake_usd?: number;
         };
 
         const db = getDb();
@@ -38,7 +39,8 @@ export const Route = createFileRoute("/api/settings")({
               ai_provider = COALESCE(?, ai_provider),
               ai_api_key = COALESCE(?, ai_api_key),
               risk_per_trade = COALESCE(?, risk_per_trade),
-              max_drawdown = COALESCE(?, max_drawdown)
+              max_drawdown = COALESCE(?, max_drawdown),
+              default_stake_usd = COALESCE(?, default_stake_usd)
           WHERE user_id = ?
         `).run(
           body.deriv_token ?? null,
@@ -47,6 +49,7 @@ export const Route = createFileRoute("/api/settings")({
           body.ai_api_key ?? null,
           body.risk_per_trade ?? null,
           body.max_drawdown ?? null,
+          body.default_stake_usd ?? null,
           auth.userId,
         );
 

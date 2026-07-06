@@ -159,12 +159,14 @@ const pubListeners = new Set<Listener>();
 const pendingPubReqs = new Map<number, PendingRequest>();
 let pubReqId = 0;
 
-interface PubTickSub {
-  symbol: string;
-  onTick: (tick: DerivTick) => void;
-  listener: Listener;
-}
-const activePubSubs = new Set<PubTickSub>();
+// Multiple components often subscribe to ticks for the SAME symbol at once
+// (ticker bar, chart, a live trade card, the dashboard...). Rather than each
+// opening its own Deriv `ticks` subscription (duplicate server-side streams,
+// duplicate parsing work), one real subscription per symbol fans out to every
+// local listener callback.
+const tickListenersBySymbol = new Map<string, Set<(tick: DerivTick) => void>>();
+const tickSharedListeners = new Map<string, Listener>();
+const tickSubIds = new Map<string, string>();
 
 function nextPubId(): number {
   pubReqId = (pubReqId + 1) % 9000000000;
@@ -172,9 +174,9 @@ function nextPubId(): number {
 }
 
 function resubscribePubActive() {
-  for (const sub of activePubSubs) {
-    pubListeners.add(sub.listener);
-    pubRequest({ ticks: sub.symbol, subscribe: 1 }).catch(() => {});
+  for (const [symbol, listener] of tickSharedListeners) {
+    pubListeners.add(listener);
+    pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => {});
   }
 }
 
@@ -381,34 +383,52 @@ export async function derivRequest<T = Record<string, unknown>>(
   });
 }
 
-/** Subscribe to live ticks via the public socket (no auth required — fast start). */
+/**
+ * Subscribe to live ticks via the public socket (no auth required — fast start).
+ * Dedupes across callers: the first subscriber for a symbol opens the real
+ * Deriv subscription; later ones just add a listener to the existing fan-out.
+ * The underlying subscription is torn down only once the last listener for
+ * that symbol unsubscribes.
+ */
 export function subscribeTicks(
   symbol: string,
   onTick: (tick: DerivTick) => void,
 ): () => void {
+  let listeners = tickListenersBySymbol.get(symbol);
+  if (!listeners) {
+    listeners = new Set();
+    tickListenersBySymbol.set(symbol, listeners);
+
+    const l: Listener = (msg) => {
+      if (msg.msg_type === "tick" && (msg as { tick?: { symbol?: string } }).tick?.symbol === symbol) {
+        const t = (msg as { tick: DerivTick & { id?: string } }).tick;
+        if (t.id) tickSubIds.set(symbol, t.id);
+        const tick = { epoch: t.epoch, quote: Number(t.quote), symbol: t.symbol };
+        for (const cb of tickListenersBySymbol.get(symbol) ?? []) cb(tick);
+      }
+    };
+    tickSharedListeners.set(symbol, l);
+    pubListeners.add(l);
+    pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => { /* ignore */ });
+  }
+  listeners.add(onTick);
+
   let stopped = false;
-  let subId: string | undefined;
-
-  const l: Listener = (msg) => {
-    if (msg.msg_type === "tick" && (msg as { tick?: { symbol?: string } }).tick?.symbol === symbol) {
-      const t = (msg as { tick: DerivTick & { id?: string } }).tick;
-      if (t.id) subId = t.id;
-      onTick({ epoch: t.epoch, quote: Number(t.quote), symbol: t.symbol });
-    }
-  };
-
-  const subObj: PubTickSub = { symbol, onTick, listener: l };
-  activePubSubs.add(subObj);
-  pubListeners.add(l);
-
-  pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => { /* ignore */ });
-
   return () => {
     if (stopped) return;
     stopped = true;
-    activePubSubs.delete(subObj);
-    pubListeners.delete(l);
-    if (subId) pubRequest({ forget: subId }).catch(() => {});
+    const set = tickListenersBySymbol.get(symbol);
+    if (!set) return;
+    set.delete(onTick);
+    if (set.size === 0) {
+      tickListenersBySymbol.delete(symbol);
+      const l = tickSharedListeners.get(symbol);
+      if (l) pubListeners.delete(l);
+      tickSharedListeners.delete(symbol);
+      const subId = tickSubIds.get(symbol);
+      tickSubIds.delete(symbol);
+      if (subId) pubRequest({ forget: subId }).catch(() => {});
+    }
   };
 }
 
@@ -417,6 +437,7 @@ export async function fetchCandles(
   granularity: number,
   count = 200,
   maxRetries = 2,
+  endEpoch?: number,
 ): Promise<DerivCandle[]> {
   let lastError: Error | null = null;
 
@@ -427,7 +448,7 @@ export async function fetchCandles(
         style: "candles",
         granularity,
         count,
-        end: "latest",
+        end: endEpoch ?? "latest",
       });
 
       if (!res.candles || res.candles.length === 0) {

@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { memo, useMemo, useEffect, useState } from "react";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SYMBOLS } from "@/lib/deriv";
@@ -13,13 +13,22 @@ interface BotDashboardProps {
   pnl: number;
 }
 
-export function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashboardProps) {
-  const [, setTick] = useState(0);
+/** Isolated so the once-a-second tick only re-renders this text, not the whole
+ * dashboard (equity SVG + full signal grid) — same pattern as autotrader.tsx's
+ * ScanCountdown. */
+function ScanCountdownText({ lastScanTime, running }: { lastScanTime: number; running: boolean }) {
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [running]);
+  if (!running) return null;
+  const secsLeft = Math.max(0, Math.ceil((lastScanTime + SCAN_INTERVAL_MS - now) / 1000));
+  return <>{secsLeft > 0 ? `scan dans ${secsLeft}s` : "scan en cours…"}</>;
+}
+
+export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashboardProps) {
   // ── Equity curve ─────────────────────────────────────────────────────────────
   const equityPoints = useMemo(() => {
     const startOfDay = new Date();
@@ -277,10 +286,7 @@ export function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashbo
               Signaux · {new Date(lastScan.time).toLocaleTimeString()}
             </span>
             <span className="text-xs text-muted-foreground/70">
-              {running ? (() => {
-                const secsLeft = Math.max(0, Math.ceil((lastScan.time + SCAN_INTERVAL_MS - Date.now()) / 1000));
-                return secsLeft > 0 ? `scan dans ${secsLeft}s` : "scan en cours…";
-              })() : null}
+              <ScanCountdownText lastScanTime={lastScan.time} running={running} />
               <span className="ml-2 opacity-60">≥{config.minConfidence}% · {config.minTfAgreement}/4TF</span>
             </span>
           </div>
@@ -375,4 +381,4 @@ export function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashbo
       )}
     </div>
   );
-}
+});
