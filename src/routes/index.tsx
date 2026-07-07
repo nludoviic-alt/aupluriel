@@ -113,7 +113,7 @@ function Dashboard() {
         <div className="relative flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6">
           {/* Left: avatar + info */}
           <div className="flex items-center gap-4">
-            <LogoMark className="h-14 w-14 shrink-0 shadow-lg" />
+            <LogoMark className="hidden h-14 w-14 shrink-0 shadow-lg sm:flex" />
             <div>
               <p className="text-sm text-muted-foreground">{greeting},</p>
               <h1 className="text-2xl font-black tracking-tight text-foreground leading-tight">
@@ -197,9 +197,11 @@ function Dashboard() {
       {/* ── CHART + SESSIONS ── */}
       <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
 
-        {/* Chart */}
+        {/* Chart — the full interactive chart, market filters and symbol picker
+            duplicate the dedicated Marchés page and eat a lot of vertical space,
+            so mobile only gets the price itself; the rest is desktop-only. */}
         <div className="glass-panel rounded-2xl overflow-hidden">
-          <div className="flex flex-col gap-3 p-4 pb-0 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3 sm:p-5 sm:pb-0">
+          <div className="flex flex-col gap-3 p-4 pb-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-3 md:p-5 md:pb-0">
             <div className="flex items-center gap-3">
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">{chartSymbol.label}</div>
@@ -219,7 +221,7 @@ function Dashboard() {
                 </span>
               )}
             </div>
-            <div className="flex flex-col gap-2 sm:items-end">
+            <div className="hidden md:flex flex-col gap-2 sm:items-end">
               <div className="inline-flex rounded-xl border border-border/60 bg-muted/15 p-0.5">
                 {(["all", "crypto", "forex"] as const).map((f) => (
                   <button key={f} onClick={() => selectMarket(f)}
@@ -248,7 +250,7 @@ function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="h-72 px-2 pb-2 pt-4">
+          <div className="hidden md:block h-72 px-2 pb-2 pt-4">
             {series.length > 1 ? (
               <PriceChart data={series} />
             ) : (

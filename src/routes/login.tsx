@@ -129,48 +129,53 @@ function LoginPage() {
       {/* Auth Form Container */}
       <div className="w-full max-w-[480px] p-6 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
         <div className="flex flex-col items-center space-y-8">
-          {/* Logo Mark - New sphere design */}
-          <div className="relative group cursor-default">
-            <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-xl group-hover:bg-orange-500/30 transition-all duration-500" />
-            <LogoMark className="h-20 w-20 relative z-10" />
-          </div>
-
-          {/* Header - Centered Text */}
-          <div className="flex flex-col items-center w-full text-center space-y-4">
-            <div className="flex items-center justify-center gap-4">
-              <h2 className="text-5xl font-black tracking-tighter text-white leading-none">
-                {tab === "login" ? "Welcome" : "Welcome"}
-              </h2>
-              <div className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,1)]"></span>
-              </div>
+          {/* Harmonized Header - Centered with Logo & Text on same line */}
+          <div className="flex items-center justify-center gap-6 w-full">
+            {/* Logo Mark */}
+            <div className="relative group cursor-default">
+              <div className="absolute -inset-3 rounded-full bg-orange-500/15 blur-2xl group-hover:bg-orange-500/25 transition-all duration-500" />
+              <LogoMark className="h-20 w-20 relative z-10 shadow-orange-500/10 shadow-2xl transition-transform duration-500 group-hover:scale-105" />
             </div>
-            
-            <div className="flex flex-col items-center space-y-2">
-              <div className="flex items-center space-x-3">
-                <span className="h-px w-8 bg-orange-500/50" />
+
+            {/* Vertex & Future Text stacked */}
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex items-center gap-3">
+                <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-white leading-tight">
+                  Vertex
+                </h2>
+                <div className="relative flex h-3 w-3 mt-1">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.8)]"></span>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-3 opacity-80">
+                <span className="h-px w-8 bg-gradient-to-r from-transparent to-orange-500/40" />
                 <p className="text-orange-500/90 font-black text-[11px] uppercase tracking-[0.3em]">
-                  {tab === "login" ? "Authentification" : "Nouveau Profil"}
+                  the future
                 </p>
-                <span className="h-px w-8 bg-orange-500/50" />
+                <span className="h-px w-8 bg-gradient-to-l from-transparent to-orange-500/40" />
               </div>
             </div>
           </div>
 
           <div className="w-full relative">
-            {/* Glow effect behind the card - matched to orange theme */}
-            <div className="absolute -inset-1 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-700/10 rounded-[2.5rem] blur-2xl opacity-60" />
+            {/* Enhanced glow effect */}
+            <div className="absolute -inset-0.5 bg-gradient-to-br from-orange-500/20 via-amber-500/10 to-orange-600/20 rounded-[2.5rem] blur-2xl opacity-75 animate-pulse-slow" />
+            <div className="absolute -inset-1 bg-gradient-to-r from-orange-500/5 via-amber-500/5 to-orange-700/5 rounded-[2.5rem] blur-xl opacity-50" />
             
-            <div className="relative bg-black/60 border border-white/5 backdrop-blur-3xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl">
+            <div className="relative bg-gradient-to-b from-black/80 to-black/90 border border-white/10 backdrop-blur-3xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl overflow-hidden">
+              {/* Subtle inner glow */}
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent rounded-[2.5rem] pointer-events-none" />
+              
               {/* Tabs Toggle */}
-              <div className="flex p-1.5 bg-white/5 rounded-2xl mb-8 border border-white/5">
+              <div className="relative flex p-1.5 bg-white/5 rounded-2xl mb-8 border border-white/5 shadow-inner">
                 <button
                   onClick={() => setTab("login")}
                   className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
                     tab === "login" 
-                      ? "bg-white text-black shadow-lg" 
-                      : "text-gray-500 hover:text-white"
+                      ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/25" 
+                      : "text-gray-500 hover:text-white hover:bg-white/5"
                   }`}
                 >
                   Connexion
@@ -179,8 +184,8 @@ function LoginPage() {
                   onClick={() => setTab("register")}
                   className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
                     tab === "register" 
-                      ? "bg-white text-black shadow-lg" 
-                      : "text-gray-500 hover:text-white"
+                      ? "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25" 
+                      : "text-gray-500 hover:text-white hover:bg-white/5"
                   }`}
                 >
                   S'inscrire

@@ -90,7 +90,6 @@ import {
   isInTradingSession,
   loadCumulativePnl,
   loadCustomPresets,
-  loadTradeLogCached,
   openPreviewTrade,
   reconcileOpenTrades,
   saveBacktestStats,
@@ -99,7 +98,6 @@ import {
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
-  startAutoTrader,
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
@@ -123,6 +121,13 @@ import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard } from "@/components/bot-dashboard";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
+import {
+  useAutoTraderEngine,
+  startAutoTraderEngine,
+  stopAutoTraderEngine,
+  setEngineLogs,
+  setEngineRiskStopReasons,
+} from "@/hooks/use-autotrader-engine";
 
 export const Route = createFileRoute("/autotrader")({
   head: () => ({ meta: [{ title: "Auto-Trader — Vertex" }] }),
@@ -166,20 +171,21 @@ function saveConfig(c: AutoTraderConfig) {
 
 function AutoTraderPage() {
   const [config, setConfig] = useState<AutoTraderConfig>(DEFAULT_CONFIG);
-  const [running, setRunning] = useState(false);
-  const [logs, setLogs] = useState<TradeLog[]>([]);
+  // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
+  // in a module-level store so it survives navigating to another page — see
+  // use-autotrader-engine.ts for why.
+  const { running, logs, lastScan, riskStopReasons } = useAutoTraderEngine();
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [showLogs, setShowLogs] = useState(true);
   const [showWeights, setShowWeights] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
-  const [riskStopReasons, setRiskStopReasons] = useState<string[]>([]);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetName, setPresetName] = useState("");
   const lastPendingToastRef = useRef<number>(0);
   const [presetDesc, setPresetDesc] = useState("");
-  const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const [cumulativePnl, setCumulativePnl] = useState(0);
   const [forcingTrade, setForcingTrade] = useState(false);
   const [forceSymbol, setForceSymbol] = useState("");
@@ -193,7 +199,6 @@ function AutoTraderPage() {
   const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "backtest">("profiles");
   const [backtestRunning, setBacktestRunning] = useState(false);
   const [backtestResults, setBacktestResults] = useState<Record<string, MultiTfBacktestResult & { symbol: string }>>({});
-  const stopRef = useRef<(() => void) | null>(null);
   const balanceRef = useRef<number | undefined>(undefined);
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
@@ -206,7 +211,7 @@ function AutoTraderPage() {
   useEffect(() => {
     if (!derivSession.connected) return;
     reconcileOpenTrades((log) => {
-      setLogs((prev) => {
+      setEngineLogs((prev) => {
         const exists = prev.find((l) => l.id === log.id);
         if (exists) return prev.map((l) => (l.id === log.id ? log : l));
         return [log, ...prev].slice(0, 50);
@@ -236,7 +241,6 @@ function AutoTraderPage() {
     setDraftMaxTrades(loaded.maxTradesPerDay);
     setForceSymbol(loaded.symbols[0] ?? "R_100");
     setForceStake(loaded.stakeUsd);
-    setLogs(loadTradeLogCached());
     setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
     setDisclaimerAccepted(accepted);
@@ -281,16 +285,9 @@ function AutoTraderPage() {
   }
 
   const handleEvent = useCallback((log: TradeLog, meta?: { cooldownUntil?: number }) => {
-    // Optimized: append to existing state instead of reloading all logs
-    setLogs((prev) => {
-      const exists = prev.find((l) => l.id === log.id);
-      if (exists) {
-        // Update existing
-        return prev.map((l) => (l.id === log.id ? log : l));
-      }
-      // Add new (keep max 50)
-      return [log, ...prev].slice(0, 50);
-    });
+    // Log state itself is owned by the engine store (use-autotrader-engine.ts)
+    // so it keeps updating even while this page isn't mounted — this callback
+    // only needs to handle side effects (toasts, sounds, notifications).
     if (log.status === "won") {
       playWinSound();
       toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
@@ -325,18 +322,14 @@ function AutoTraderPage() {
   }, [config.mode]);
 
   const handleRiskStop = useCallback((reasons: string[]) => {
-    setRunning(false);
-    setRiskStopReasons(reasons);
-    setLogs(loadTradeLogCached());
+    // running/riskStopReasons are updated by the engine store itself.
     toast.error(`🛑 Auto-trader ARRÊTÉ — ${reasons[0]}`, { duration: 10000 });
   }, []);
 
   async function toggleEngine() {
     if (running) {
       // Stopping is reversible and low-risk — no confirmation
-      stopRef.current?.();
-      stopRef.current = null;
-      setRunning(false);
+      stopAutoTraderEngine();
       toast.info("Auto-trader arrêté");
     } else {
       if (!disclaimerAccepted) {
@@ -369,7 +362,6 @@ function AutoTraderPage() {
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
         Notification.requestPermission();
       }
-      setRiskStopReasons([]);
       // Merge active strategy symbols into the watchlist
       const stratSymbols = activeStrategySymbols();
       const mergedSymbols = [...new Set([...config.symbols, ...stratSymbols])];
@@ -379,9 +371,8 @@ function AutoTraderPage() {
       if (stratSymbols.length) {
         toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
       }
-      stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan), () => balanceRef.current);
-      setRunning(true);
-      toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
+      const started = startAutoTraderEngine(effectiveConfig, handleEvent, handleRiskStop, () => balanceRef.current);
+      if (started) toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
     }
   }
 
@@ -433,16 +424,14 @@ function AutoTraderPage() {
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       Notification.requestPermission();
     }
-    setRiskStopReasons([]);
     const stratSymbols = activeStrategySymbols();
     const mergedSymbols = [...new Set([...config.symbols, ...stratSymbols])];
     const effectiveConfig = mergedSymbols.length > config.symbols.length
       ? { ...config, symbols: mergedSymbols }
       : config;
     if (stratSymbols.length) toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
-    stopRef.current = startAutoTrader(effectiveConfig, handleEvent, handleRiskStop, (scan) => setLastScan(scan), () => balanceRef.current);
-    setRunning(true);
-    toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
+    const started = startAutoTraderEngine(effectiveConfig, handleEvent, handleRiskStop, () => balanceRef.current);
+    if (started) toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
   }
 
   // ── derived helpers ─────────────────────────────────────────────────────────
@@ -464,7 +453,9 @@ function AutoTraderPage() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
 
-      {/* ── Header ── */}
+      {/* ── Header — description and quick-action shortcuts are power-user
+          extras already reachable from Configuration, so they're desktop-only
+          to keep the mobile screen focused on the core start/stop action. ── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15">
@@ -472,10 +463,10 @@ function AutoTraderPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight leading-none">Auto-Trader</h1>
-            <p className="text-sm text-muted-foreground mt-1">Algorithme multi-indicateurs · 4 timeframes · Patterns japonais</p>
+            <p className="hidden md:block text-sm text-muted-foreground mt-1">Algorithme multi-indicateurs · 4 timeframes · Patterns japonais</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           <Button variant="outline" size="sm" disabled={running}
             onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
               setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
@@ -507,19 +498,19 @@ function AutoTraderPage() {
             {riskStopReasons.map((r, i) => <div key={i} className="text-sm text-foreground">• {r}</div>)}
             <p className="mt-2 text-xs text-muted-foreground">Vérifie les conditions avant de relancer.</p>
           </div>
-          <button onClick={() => setRiskStopReasons([])} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
+          <button onClick={() => setEngineRiskStopReasons([])} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
         </div>
       )}
       {config.mode === "simulation" && derivSession.connected && !running && (
-        <div className="rounded-xl border border-up/30 bg-up/6 p-4 flex items-center gap-4">
+        <div className="rounded-xl border border-up/30 bg-up/6 p-4 flex items-center gap-3 md:gap-4">
           <span className="text-2xl shrink-0">🎮</span>
-          <div className="flex-1">
-            <span className="text-sm font-semibold text-up">Deriv est connecté</span>
-            <span className="text-sm text-muted-foreground ml-2">— passe en mode Demo pour envoyer de vraies positions (argent de test)</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-semibold text-up">Deriv connecté</span>
+            <span className="hidden md:inline text-sm text-muted-foreground ml-2">— passe en mode Demo pour envoyer de vraies positions (argent de test)</span>
           </div>
           <button
             onClick={() => { patchConfig("mode", "demo"); toast.success("Mode Demo activé — trades réels sur compte démo Deriv"); }}
-            className="shrink-0 rounded-lg bg-up/20 px-4 py-2 text-sm font-semibold text-up hover:bg-up/30 transition-colors">
+            className="shrink-0 rounded-lg bg-up/20 px-3 py-2 md:px-4 text-sm font-semibold text-up hover:bg-up/30 transition-colors">
             Passer en Demo
           </button>
         </div>
@@ -640,9 +631,12 @@ function AutoTraderPage() {
             </div>
           </div>
 
-          {/* Force Trade panel — toujours visible en mode demo/live pour éviter les clignotements de l'interface */}
+          {/* Force Trade panel — a debug/QA tool (manually fire a trade to verify
+              the Deriv pipeline), not a core action — desktop-only on mobile to
+              cut clutter. Toujours visible en mode demo/live pour éviter les
+              clignotements de l'interface. */}
           {(config.mode === "demo" || config.mode === "live") && (
-            <div className={cn("glass-panel rounded-xl px-4 py-3 border border-amber-500/20 transition-all duration-300",
+            <div className={cn("hidden md:block glass-panel rounded-xl px-4 py-3 border border-amber-500/20 transition-all duration-300",
               !derivSession.connected && "opacity-60")}>
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
@@ -723,8 +717,18 @@ function AutoTraderPage() {
             </div>
           )}
 
-          {/* Sessions marchés */}
-          <div className="glass-panel rounded-xl px-4 py-4">
+          {/* Mise Kelly réduite — affects the actual stake in play, so it stays
+              visible on mobile even though the sessions panel below doesn't. */}
+          {config.adaptiveStake && effectiveStake < config.stakeUsd && (
+            <div className="glass-panel rounded-xl px-4 py-2.5 flex items-center justify-between">
+              <span className="text-sm text-amber-400 font-semibold">Mise Kelly réduite</span>
+              <span className="text-sm font-bold text-amber-400">${effectiveStake.toFixed(2)}</span>
+            </div>
+          )}
+
+          {/* Sessions marchés — informational only (not actionable), so it's
+              desktop-only on mobile to keep the screen focused. */}
+          <div className="hidden md:block glass-panel rounded-xl px-4 py-4">
             <div className="flex items-center gap-2 mb-3">
               <Globe className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sessions marchés</span>
@@ -743,19 +747,32 @@ function AutoTraderPage() {
                   </div>
                 );
               })}
-              {config.adaptiveStake && effectiveStake < config.stakeUsd && (
-                <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-4 py-2.5">
-                  <span className="text-sm text-amber-400 font-semibold">Mise Kelly réduite</span>
-                  <span className="text-sm font-bold text-amber-400">${effectiveStake.toFixed(2)}</span>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className="space-y-5 min-w-0">
-          <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+          {/* Desktop: always visible. Mobile: collapsed by default behind a
+              toggle — the equity curve + full signal grid is monitoring detail,
+              not needed to see the bot is running. */}
+          <div className="hidden md:block">
+            <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+          </div>
+          <div className="md:hidden">
+            <button
+              onClick={() => setShowDashboard((s) => !s)}
+              className="w-full flex items-center justify-between rounded-xl glass-panel px-4 py-3"
+            >
+              <span className="text-sm font-semibold">Tableau de bord détaillé</span>
+              {showDashboard ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </button>
+            {showDashboard && (
+              <div className="mt-3">
+                <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+              </div>
+            )}
+          </div>
 
           {openTradeList.length > 0 ? (
             <div>
@@ -766,7 +783,7 @@ function AutoTraderPage() {
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {openTradeList.map((t) => (
                   <LiveTradeCard key={t.id} trade={t}
-                    onDismiss={() => { setLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
+                    onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
                 ))}
               </div>
             </div>
@@ -1547,7 +1564,7 @@ function AutoTraderPage() {
                       const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
                       if (!ok) return;
                       localStorage.removeItem("lio23.autotrader_log");
-                      setLogs([]);
+                      setEngineLogs([]);
                     }} className="text-[10px] text-muted-foreground hover:text-down transition-colors">
                       Effacer le journal
                     </button>

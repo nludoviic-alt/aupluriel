@@ -39,7 +39,6 @@ import {
   MessageSquare,
   Compass,
 } from "lucide-react";
-import { LogoMark } from "@/components/logo";
 import { VoiceControl } from "@/components/voice-control";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -325,20 +324,21 @@ function RootComponent() {
                 <div className="hidden sm:flex">
                   <VoiceControl />
                 </div>
-                {/* Market alert indicator */}
+                {/* Market alert indicator — redundant with the full-detail banner
+                    shown below the header on every page when hasAlerts, so it's
+                    desktop-only to keep the mobile title from being crowded out. */}
                 {hasAlerts && (
                   <Link
                     to="/signals"
-                    className="flex h-10 items-center gap-2 rounded-xl border border-up/30 bg-up/5 px-3.5 text-up font-semibold text-xs hover:bg-up/10 hover:border-up/50 transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.1)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                    className="hidden md:flex h-10 items-center gap-2 rounded-xl border border-up/30 bg-up/5 px-3.5 text-up font-semibold text-xs hover:bg-up/10 hover:border-up/50 transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.1)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                   >
                     <span className="relative flex h-2 w-2">
                       <span className="h-2 w-2 rounded-full bg-up animate-ping absolute" />
                       <span className="h-2 w-2 rounded-full bg-up" />
                     </span>
-                    <span className="hidden sm:inline">
+                    <span>
                       {activeAlerts.length} signal{activeAlerts.length > 1 ? "s" : ""} fort{activeAlerts.length > 1 ? "s" : ""}
                     </span>
-                    <Bell className="h-4 w-4 sm:hidden" />
                   </Link>
                 )}
                 {notifPermission === "default" && (
@@ -360,7 +360,7 @@ function RootComponent() {
                 {deriv.connected && deriv.balance !== null && (
                   <Link
                     to="/portfolio"
-                    className="flex h-10 items-center gap-2 sm:gap-2.5 rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/5 to-transparent px-2.5 sm:px-3.5 text-violet-300 hover:text-violet-200 font-semibold hover:border-violet-500/40 transition-all duration-300 shadow-[0_0_12px_rgba(139,92,246,0.1)] hover:shadow-[0_0_18px_rgba(139,92,246,0.2)]"
+                    className="flex h-10 items-center gap-2 sm:gap-2.5 rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 via-fuchsia-500/5 to-transparent px-3 sm:px-4 text-violet-300 hover:text-violet-200 font-semibold hover:border-violet-500/40 transition-all duration-300 shadow-[0_0_12px_rgba(139,92,246,0.1)] hover:shadow-[0_0_18px_rgba(139,92,246,0.2)]"
                   >
                     <span className="relative hidden h-2 w-2 sm:flex">
                       <span className="h-2 w-2 rounded-full bg-violet-400 animate-ping absolute opacity-75" />
@@ -412,7 +412,11 @@ function RootComponent() {
               </div>
             )}
 
-            <TickerBar />
+            {/* Live price ticker is a nice-to-have, not core to using the app —
+                desktop-only, keeps the mobile header/main area focused. */}
+            <div className="hidden md:block">
+              <TickerBar />
+            </div>
             <main className="flex-1 min-w-0 pb-16 md:pb-0">
               <Outlet />
             </main>
