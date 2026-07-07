@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { User, Mail, Lock, Eye, EyeOff, KeyRound } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -52,7 +52,6 @@ function LoginPage() {
   const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [showRegPw, setShowRegPw] = useState(false);
-  const [regInvite, setRegInvite] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -82,7 +81,6 @@ function LoginPage() {
         email: regEmail,
         username: regUsername,
         password: regPassword,
-        inviteCode: regInvite || undefined,
       });
       // Admin accounts log in immediately; everyone else must verify + await approval.
       if (data.token && data.user) {
@@ -310,21 +308,7 @@ function LoginPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Code d'invitation</label>
-                    <div className="relative group">
-                      <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
-                      <input
-                        type="text"
-                        value={regInvite}
-                        onChange={(e) => setRegInvite(e.target.value)}
-                        placeholder="Optionnel"
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <Button 
+                  <Button
                     type="submit" 
                     disabled={loading} 
                     className="w-full py-7 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white font-black uppercase tracking-[0.2em] shadow-[0_10px_30px_-10px_rgba(245,158,11,0.4)] border-none transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"

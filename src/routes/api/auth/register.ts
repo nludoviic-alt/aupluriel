@@ -9,11 +9,10 @@ export const Route = createFileRoute("/api/auth/register")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { email, username, password, inviteCode } = (await request.json()) as {
+        const { email, username, password } = (await request.json()) as {
           email?: string;
           username?: string;
           password?: string;
-          inviteCode?: string;
         };
 
         if (!email || !username || !password) {
@@ -23,12 +22,6 @@ export const Route = createFileRoute("/api/auth/register")({
         const normalizedEmail = email.toLowerCase();
         const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
         const isAdmin = !!adminEmail && normalizedEmail === adminEmail;
-
-        // Invite-only gate: enforced when INVITE_CODE is configured. The admin email bypasses it.
-        const requiredInvite = process.env.INVITE_CODE;
-        if (!isAdmin && requiredInvite && inviteCode !== requiredInvite) {
-          return json({ error: "Code d'invitation invalide." }, 403);
-        }
 
         if (password.length < 6) {
           return json({ error: "Le mot de passe doit faire au moins 6 caractères." }, 400);
