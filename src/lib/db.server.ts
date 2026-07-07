@@ -96,6 +96,38 @@ function migrate(db: Database.Database) {
       used       INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    -- Server-side auto-trader: one row per user; the engine restores enabled
+    -- bots at server boot so trading continues with the app/phone closed.
+    CREATE TABLE IF NOT EXISTS bot_state (
+      user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      enabled      INTEGER NOT NULL DEFAULT 0,
+      config       TEXT    NOT NULL DEFAULT '{}',
+      paused_until INTEGER,          -- epoch ms; risk pauses survive restarts
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    -- Trades placed by the SERVER engine (the browser engine logs to localStorage).
+    CREATE TABLE IF NOT EXISTS bot_trades (
+      id               TEXT    PRIMARY KEY,
+      user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      time             INTEGER NOT NULL,  -- epoch ms
+      symbol           TEXT    NOT NULL,
+      direction        TEXT    NOT NULL,  -- CALL | PUT
+      stake            REAL    NOT NULL,
+      payout           REAL    NOT NULL DEFAULT 0,
+      status           TEXT    NOT NULL,  -- pending | open | won | lost | error | cooldown | risk-stop
+      profit           REAL    NOT NULL DEFAULT 0,
+      confidence       INTEGER NOT NULL DEFAULT 0,
+      tf_agreement     INTEGER NOT NULL DEFAULT 0,
+      contract_id      INTEGER,
+      closed_at        INTEGER,
+      note             TEXT,
+      entry_price      REAL,
+      duration_minutes INTEGER,
+      expiry           INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_bot_trades_user_time ON bot_trades(user_id, time DESC);
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---

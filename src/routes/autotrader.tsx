@@ -109,7 +109,9 @@ import {
   type TradingMode,
   type TradingSession,
   type TradeLog,
+  type Veto4hMode,
 } from "@/lib/autotrader";
+import { api } from "@/lib/api";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -174,7 +176,7 @@ function AutoTraderPage() {
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
   // use-autotrader-engine.ts for why.
-  const { running, logs, lastScan, riskStopReasons } = useAutoTraderEngine();
+  const { running, logs, lastScan, riskStopReasons, pausedUntil } = useAutoTraderEngine();
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [showLogs, setShowLogs] = useState(true);
@@ -202,6 +204,60 @@ function AutoTraderPage() {
   const balanceRef = useRef<number | undefined>(undefined);
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
+
+  // ── Server-side bot (runs with the app closed / phone locked) ──
+  interface CloudStatus {
+    enabled: boolean;
+    running: boolean;
+    pausedUntil: number | null;
+    lastError?: string | null;
+    todayPnl: number;
+    todayCount: number;
+    trades: TradeLog[];
+  }
+  const [cloud, setCloud] = useState<CloudStatus | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+
+  const refreshCloud = useCallback(async () => {
+    try {
+      const data = await api.get<CloudStatus>("/api/bot");
+      setCloud(data);
+    } catch { /* signed out or server unreachable — leave as-is */ }
+  }, []);
+
+  useEffect(() => {
+    refreshCloud();
+    const id = setInterval(refreshCloud, 20_000);
+    return () => clearInterval(id);
+  }, [refreshCloud]);
+
+  async function toggleCloud() {
+    if (cloudBusy) return;
+    setCloudBusy(true);
+    try {
+      if (cloud?.enabled) {
+        await api.post("/api/bot", { action: "stop" });
+        toast.info("Bot serveur arrêté");
+      } else {
+        if (config.mode === "simulation") {
+          toast.error("Le bot serveur trade sur Deriv — passe en mode Démo ou Live d'abord");
+          return;
+        }
+        // Never run both engines at once — same account, duplicate trades.
+        if (running) {
+          stopAutoTraderEngine();
+          toast.info("Moteur local arrêté — le serveur prend le relais");
+        }
+        await api.post("/api/bot", { action: "start", config });
+        toast.success("☁️ Bot serveur démarré — il tourne même téléphone verrouillé");
+      }
+      await refreshCloud();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur bot serveur");
+    } finally {
+      setCloudBusy(false);
+    }
+  }
 
   // Keep balanceRef in sync with the live Deriv balance
   useEffect(() => { balanceRef.current = derivSession.balance ?? undefined; }, [derivSession.balance]);
@@ -327,6 +383,10 @@ function AutoTraderPage() {
   }, []);
 
   async function toggleEngine() {
+    if (cloud?.enabled) {
+      toast.error("☁️ Le bot serveur est actif — désactive-le pour utiliser le moteur local (sinon trades en double)");
+      return;
+    }
     if (running) {
       // Stopping is reversible and low-risk — no confirmation
       stopAutoTraderEngine();
@@ -494,9 +554,13 @@ function AutoTraderPage() {
         <div className="rounded-xl border border-down/40 bg-down/8 p-5 flex gap-4">
           <ShieldAlert className="h-6 w-6 shrink-0 text-down mt-0.5" />
           <div className="flex-1">
-            <div className="text-sm font-bold uppercase tracking-wide text-down mb-2">🛑 Bot arrêté — risque détecté</div>
+            <div className="text-sm font-bold uppercase tracking-wide text-down mb-2">⏸ Bot en pause — risque détecté</div>
             {riskStopReasons.map((r, i) => <div key={i} className="text-sm text-foreground">• {r}</div>)}
-            <p className="mt-2 text-xs text-muted-foreground">Vérifie les conditions avant de relancer.</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {pausedUntil && pausedUntil > Date.now()
+                ? `Reprise automatique à ${new Date(pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — pas besoin de relancer.`
+                : "Le bot a repris son scan automatiquement."}
+            </p>
           </div>
           <button onClick={() => setEngineRiskStopReasons([])} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
         </div>
@@ -629,6 +693,63 @@ function AutoTraderPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* ── Server bot: keeps trading with the app closed / phone locked ── */}
+          <div className={cn(
+            "glass-panel rounded-xl px-4 py-4 border transition-all duration-300",
+            cloud?.enabled ? "border-[color:var(--brand-cyan)]/40" : "border-border/60",
+          )}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none">☁️</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">Bot serveur</span>
+                  {cloud?.enabled && (
+                    <span className={cn("h-2 w-2 rounded-full", cloud.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
+                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée.
+                </p>
+              </div>
+              <Switch
+                checked={!!cloud?.enabled}
+                disabled={cloudBusy}
+                onCheckedChange={toggleCloud}
+              />
+            </div>
+
+            {cloud?.enabled && (
+              <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-semibold uppercase tracking-wider">Statut</span>
+                  <span className={cn("font-bold", cloud.pausedUntil ? "text-amber-400" : "text-up")}>
+                    {cloud.pausedUntil
+                      ? `⏸ Pause — reprise ${new Date(cloud.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                      : cloud.running ? "● Actif sur le serveur" : "Démarrage…"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-semibold uppercase tracking-wider">P&L jour (serveur)</span>
+                  <span className={cn("font-bold font-mono-tabular", cloud.todayPnl >= 0 ? "text-up" : "text-down")}>
+                    {cloud.todayPnl >= 0 ? "+" : ""}${cloud.todayPnl.toFixed(2)} · {cloud.todayCount} trade{cloud.todayCount > 1 ? "s" : ""}
+                  </span>
+                </div>
+                {cloud.lastError && (
+                  <p className="text-[10px] text-down">⚠ {cloud.lastError}</p>
+                )}
+                {cloud.trades.filter((t) => t.stake > 0).slice(0, 5).map((t) => (
+                  <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs">
+                    <span className="font-medium truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
+                    <span className={cn("font-bold shrink-0 ml-2",
+                      t.status === "won" ? "text-up" : t.status === "lost" ? "text-down" : "text-muted-foreground")}>
+                      {t.direction} · {t.status === "won" ? `+$${t.profit.toFixed(2)}` : t.status === "lost" ? `-$${Math.abs(t.profit).toFixed(2)}` : t.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Force Trade panel — a debug/QA tool (manually fire a trade to verify
@@ -1174,8 +1295,9 @@ function AutoTraderPage() {
                   </Field>
                   {([
                     ["premiumOnly","Signaux PREMIUM uniquement","Ne trade que les meilleurs signaux"],
-                    ["stopOnRisk","Arrêt immédiat sur risque","Hard-stop + notification"],
+                    ["stopOnRisk","Pause auto sur risque","Pause + notification, reprise automatique"],
                     ["adaptiveStake","Mise Kelly adaptative","Réduit la mise quand win rate < 55%"],
+                    ["newsFilter","Filtre news & ouvertures","Bloque les fenêtres à risque (NFP, Fed, ouvertures de session) sur forex/indices"],
                   ] as const).map(([key, label, desc]) => (
                     <Field key={key} label={label}>
                       <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
@@ -1185,6 +1307,14 @@ function AutoTraderPage() {
                       <p className="mt-0.5 text-[10px] text-muted-foreground">{desc}</p>
                     </Field>
                   ))}
+                  <Field label="Veto 4H (contre-tendance)">
+                    <select value={config.veto4h ?? "strong-only"} disabled={running} onChange={(e) => patchConfig("veto4h", e.target.value as Veto4hMode)} className="cfg-input">
+                      <option value="strong-only">Signal 4H fort uniquement — recommandé</option>
+                      <option value="always">Toujours (strict)</option>
+                      <option value="off">Désactivé</option>
+                    </select>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Un 4H opposé annule le trade. « Fort uniquement » ignore les 4H hésitants — plus de trades.</p>
+                  </Field>
                   <Field label={`Trailing stop — drawdown ($${config.trailingStopUsd === 0 ? " off" : config.trailingStopUsd})`}>
                     <AmountInput value={config.trailingStopUsd} min={0} max={500} step={5}
                       onCommit={(v) => { patchConfig("trailingStopUsd", v); toast.success(v === 0 ? "Trailing stop désactivé" : `Trailing stop: $${v} sous le pic`); return true; }} />

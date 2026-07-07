@@ -1,0 +1,543 @@
+// Pure trading logic shared by the BROWSER engine (autotrader.ts) and the
+// SERVER engine (bot-engine.server.ts). Nothing here may touch localStorage,
+// WebSocket, window or any other environment-specific API — both engines must
+// produce identical decisions from identical inputs.
+
+import { generateSignal } from "./indicators";
+import type { GeneratedSignal, SignalComponent } from "./indicators";
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+export type TradingSession = "sydney" | "asia" | "london" | "newyork";
+
+export const SESSION_HOURS: Record<TradingSession, { label: string; open: number; close: number }> = {
+  sydney:   { label: "Sydney",    open: 21, close: 6  },  // 21:00–06:00 UTC (passe minuit)
+  asia:     { label: "Asie",      open: 0,  close: 9  },  // 00:00–09:00 UTC
+  london:   { label: "Londres",   open: 7,  close: 16 },  // 07:00–16:00 UTC
+  newyork:  { label: "New York",  open: 12, close: 21 },  // 12:00–21:00 UTC
+};
+
+/** Is the given session window active right now? Handles windows crossing midnight (Sydney). */
+function isSessionActive(s: TradingSession, edgeMinutes = 0): boolean {
+  const now = new Date();
+  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const { open, close } = SESSION_HOURS[s];
+  const start = open * 60 + edgeMinutes;
+  const end = close * 60 - edgeMinutes;
+  if (open > close) return utcMins >= start || utcMins < end; // wraps past midnight
+  return utcMins >= start && utcMins < end;
+}
+
+export function currentActiveSessions(): TradingSession[] {
+  return (Object.keys(SESSION_HOURS) as TradingSession[]).filter((s) => isSessionActive(s));
+}
+
+// ─── Contract availability on the Deriv Options Trading API ──────────────────
+// - crypto (cry*): MULTIPLIER contracts only — CALL/PUT rise/fall unavailable
+// - Boom/Crash (BOOM*/CRASH*): no CALL/PUT either
+// - forex/commodities (frx*): CALL/PUT from 15 minutes, session-bound
+// - stock indices (OTC_*): CALL/PUT 15m→1h, only during exchange hours
+// - synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR): from 15s, 24/7
+
+/** True when the symbol supports CALL/PUT contracts (what the bot trades). */
+export function isCallPutAvailable(symbol: string): boolean {
+  return !symbol.startsWith("cry") && !symbol.startsWith("BOOM") && !symbol.startsWith("CRASH");
+}
+
+/** Minimum CALL/PUT contract duration (minutes) allowed for this symbol. */
+export function minContractMinutes(symbol: string): number {
+  return symbol.startsWith("frx") || symbol.startsWith("OTC_") ? 15 : 5;
+}
+
+/** Symbols that trade around the clock (no session/news filtering needed). */
+export function is24x7Symbol(symbol: string): boolean {
+  return !symbol.startsWith("frx") && !symbol.startsWith("OTC_") && !symbol.startsWith("WLD");
+}
+
+// Stock indices only trade during their home exchange's hours — approximated
+// by the matching forex session window (backstop: Deriv rejects with
+// MarketIsClosed if we're off).
+export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
+  OTC_N225: "asia", OTC_HSI: "asia", OTC_AS51: "asia",
+  OTC_FTSE: "london", OTC_GDAXI: "london", OTC_FCHI: "london",
+  OTC_AEX: "london", OTC_SSMI: "london", OTC_SX5E: "london",
+  OTC_SPC: "newyork", OTC_DJI: "newyork", OTC_NDX: "newyork",
+};
+
+export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
+  // Crypto and synthetic indices trade 24/7 — no session filter
+  if (is24x7Symbol(symbol)) return true;
+
+  // Stock indices: their home exchange must be open AND enabled in the config
+  const home = INDEX_HOME_SESSION[symbol];
+  if (home) return sessions.includes(home) && isSessionActive(home, edgeMinutes);
+
+  return sessions.some((s) => isSessionActive(s, edgeMinutes));
+}
+
+// ─── News macro filter ───────────────────────────────────────────────────────
+// Event windows only apply on the days those events actually happen (Fed =
+// Wednesday, ECB = Thursday, NFP = first Friday); session-open windows apply
+// every weekday. The whole filter is opt-out via config.newsFilter for users
+// who WANT to trade the volatile open (higher risk, their call).
+interface RiskWindow {
+  utcHour: number;
+  utcMinute: number;
+  durationMinutes: number;
+  label: string;
+  /** Limit to a UTC weekday (0=Sun … 6=Sat). Absent = every weekday. */
+  utcDay?: number;
+  /** Additionally require it to be the first such weekday of the month (NFP). */
+  firstOfMonth?: boolean;
+}
+
+const HIGH_RISK_WINDOWS: RiskWindow[] = [
+  { utcHour: 7,  utcMinute: 55, durationMinutes: 20, label: "Ouverture Londres" },
+  { utcHour: 13, utcMinute: 25, durationMinutes: 20, label: "Ouverture NY" },
+  { utcHour: 17, utcMinute: 55, durationMinutes: 15, label: "Fix Londres" },
+  { utcHour: 23, utcMinute: 55, durationMinutes: 15, label: "Ouverture Asie" },
+  { utcHour: 12, utcMinute: 15, durationMinutes: 30, label: "NFP", utcDay: 5, firstOfMonth: true },
+  { utcHour: 12, utcMinute: 15, durationMinutes: 30, label: "ECB", utcDay: 4 },
+  { utcHour: 18, utcMinute: 0,  durationMinutes: 20, label: "Zone Fed", utcDay: 3 },
+];
+
+export function isHighRiskWindow(): { blocked: boolean; reason?: string } {
+  const now = new Date();
+  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  // Block on Fridays after 20:00 UTC (low liquidity weekend)
+  if (now.getUTCDay() === 5 && now.getUTCHours() >= 20) {
+    return { blocked: true, reason: "Vendredi soir — faible liquidité avant week-end" };
+  }
+  for (const w of HIGH_RISK_WINDOWS) {
+    if (w.utcDay !== undefined && now.getUTCDay() !== w.utcDay) continue;
+    if (w.firstOfMonth && now.getUTCDate() > 7) continue;
+    const start = w.utcHour * 60 + w.utcMinute;
+    if (utcMins >= start && utcMins < start + w.durationMinutes) {
+      return { blocked: true, reason: `Fenêtre à risque : ${w.label} (${w.durationMinutes}min)` };
+    }
+  }
+  return { blocked: false };
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+export type TradingMode = "simulation" | "demo" | "live";
+
+/** How the 4H timeframe can veto a trade whose direction it contradicts. */
+export type Veto4hMode = "always" | "strong-only" | "off";
+
+export interface AutoTraderConfig {
+  enabled: boolean;
+  mode: TradingMode; // simulation = local, demo = Deriv demo account, live = Deriv real money
+  stakeUsd: number;
+  durationMinutes: number;
+  minConfidence: number;
+  minTfAgreement: number;
+  maxDailyLossUsd: number;
+  maxTradesPerDay: number;
+  symbols: string[];
+  initialCapital: number;          // starting capital for virtual P&L tracking
+  // --- Risk protection ---
+  maxConsecutiveLosses: number;   // pause the SYMBOL after N consecutive losses on it
+  cooldownMinutes: number;        // per-symbol pause length after a losing streak
+  tradingSessions: TradingSession[]; // only trade during these sessions
+  adaptiveStake: boolean;         // reduce stake automatically when losing
+  premiumOnly: boolean;           // only trade PREMIUM-grade signals
+  stopOnRisk: boolean;            // pause engine (with auto-resume) when a daily risk limit hits
+  maxVolatilityPct: number;       // skip a symbol when ATR% above this
+  maxDailyProfitUsd: number;     // pause bot for the day when daily profit >= this (0 = disabled)
+  stakeMode: "fixed" | "percent" | "kelly"; // fixed USD, % of balance, or measured-edge Kelly sizing
+  stakePercent: number;           // % of balance per trade (used when stakeMode = "percent")
+  kellyFraction: number;          // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
+  sessionEdgeMinutes: number;     // skip N minutes at session open/close (avoids fake breakouts)
+  trailingStopUsd: number;        // pause for the day if P&L drops this much below session peak (0 = disabled)
+  blockCorrelated: boolean;       // skip correlated pairs when one is already active
+  symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
+  maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
+  newsFilter: boolean;            // block session-open / macro-event windows on session-bound markets
+  veto4h: Veto4hMode;             // how strictly a contrarian 4H cancels a trade
+}
+
+export const DEFAULT_CONFIG: AutoTraderConfig = {
+  enabled: false,
+  mode: "demo",
+  stakeUsd: 5,
+  durationMinutes: 15,
+  minConfidence: 70,
+  minTfAgreement: 2,
+  maxDailyLossUsd: 20,
+  maxTradesPerDay: 10,
+  symbols: ["R_100", "R_50", "frxEURUSD"],
+  initialCapital: 100,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 30,
+  tradingSessions: ["london", "newyork"],
+  adaptiveStake: true,
+  premiumOnly: false,
+  stopOnRisk: true,
+  maxVolatilityPct: 4,
+  maxDailyProfitUsd: 0,
+  stakeMode: "fixed",
+  stakePercent: 1,
+  kellyFraction: 0.5,
+  sessionEdgeMinutes: 0,
+  trailingStopUsd: 0,
+  blockCorrelated: true,
+  symbolMode: "watchlist",
+  maxSimultaneousTrades: 3,
+  newsFilter: true,
+  // A weak counter-trend 4H used to cancel the trade outright — the single
+  // biggest signal-frequency killer found in the engine audit. Only a
+  // confident (good/premium) 4H veto is honored by default now.
+  veto4h: "strong-only",
+};
+
+export const SCAN_INTERVAL_MS = 60_000;
+
+// ─── Trade log ────────────────────────────────────────────────────────────────
+
+export interface TradeLog {
+  id: string;
+  time: number;
+  symbol: string;
+  direction: "CALL" | "PUT";
+  stake: number;
+  payout: number;
+  status: "pending" | "open" | "won" | "lost" | "error" | "cooldown" | "risk-stop";
+  profit: number;
+  confidence: number;
+  tfAgreement: number;
+  contractId?: number;
+  closedAt?: number;
+  note?: string;
+  entryPrice?: number;       // price at trade open (for live visual)
+  durationMinutes?: number;  // contract duration (for live countdown)
+  expiry?: number;           // epoch ms when the contract resolves
+  components?: SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning on close
+}
+
+export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
+export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;
+
+export interface ScanSymbolResult {
+  symbol: string;
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable";
+  direction?: "CALL" | "PUT" | null;
+  confidence?: number;
+  agreement?: number;
+  note?: string;
+}
+
+export interface ScanResult {
+  time: number;
+  results: ScanSymbolResult[];
+}
+
+export type ScanResultHandler = (result: ScanResult) => void;
+
+// ─── P&L / trade-count helpers ────────────────────────────────────────────────
+
+export function todayPnl(logs: TradeLog[]): number {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return logs
+    .filter((l) => l.time >= start.getTime() && (l.status === "won" || l.status === "lost"))
+    .reduce((sum, l) => sum + l.profit, 0);
+}
+
+/**
+ * Trades that count toward the daily cap: positions actually placed (or being
+ * placed). Cooldown markers, risk-stop markers and failed buys previously
+ * consumed the budget too — a flaky connection could eat the whole day's
+ * allowance without a single position (audit fix).
+ */
+export function todayTradeCount(logs: TradeLog[]): number {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return logs.filter(
+    (l) =>
+      l.time >= start.getTime() &&
+      l.stake > 0 &&
+      (l.status === "pending" || l.status === "open" || l.status === "won" || l.status === "lost"),
+  ).length;
+}
+
+export function allTimePnl(logs: TradeLog[]): number {
+  return logs
+    .filter((l) => l.status === "won" || l.status === "lost")
+    .reduce((sum, l) => sum + l.profit, 0);
+}
+
+/**
+ * Consecutive losses at the head of the log, optionally scoped to one symbol.
+ * Without a symbol, a losing streak on ONE instrument would otherwise trip the
+ * same counter as every other symbol combined — too aggressive when scanning
+ * many markets, and not targeted at whichever symbol is actually failing.
+ */
+export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): number {
+  let count = 0;
+  for (const l of logs) {
+    if (symbol && l.symbol !== symbol) continue;
+    if (l.status === "lost") count++;
+    else if (l.status === "won") break;
+  }
+  return count;
+}
+
+// ─── Correlation ──────────────────────────────────────────────────────────────
+
+// Pairs that share high exposure — only one from each group should be active at a time.
+export const CORRELATION_GROUPS: string[][] = [
+  ["frxEURUSD", "frxGBPUSD"],
+  ["cryBTCUSD", "cryETHUSD", "cryLTCUSD"],
+];
+
+export function isCorrelatedWithActive(symbol: string, activeSymbols: Set<string>): boolean {
+  const group = CORRELATION_GROUPS.find((g) => g.includes(symbol));
+  if (!group) return false;
+  return group.some((s) => s !== symbol && activeSymbols.has(s));
+}
+
+// ─── Adaptive stake ───────────────────────────────────────────────────────────
+
+export function computeAdaptiveStake(baseStake: number, recentLogs: TradeLog[]): number {
+  const closed = recentLogs.filter((l) => l.status === "won" || l.status === "lost").slice(0, 20);
+  if (closed.length < 5) return baseStake; // not enough data yet
+
+  const wins = closed.filter((l) => l.status === "won").length;
+  const winRate = wins / closed.length;
+
+  // Reduce stake proportionally to under-performance
+  if (winRate < 0.35) return Math.max(1, baseStake * 0.25); // -75%
+  if (winRate < 0.45) return Math.max(1, baseStake * 0.5);  // -50%
+  if (winRate < 0.55) return Math.max(1, baseStake * 0.75); // -25%
+  return baseStake; // normal
+}
+
+/** Kelly fraction f* = p - (1-p)/b, for win probability p and net payout odds b. */
+export function computeKellyFraction(winRate: number, payoutRatio: number): number {
+  if (payoutRatio <= 0) return 0;
+  return Math.max(0, winRate - (1 - winRate) / payoutRatio);
+}
+
+// ─── Multi-timeframe aggregation ──────────────────────────────────────────────
+
+export const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
+
+export const TF_DURATION_MAP: Record<string, number> = {
+  "5m":  5,
+  "15m": 15,
+  "1H":  30,
+  "4H":  60,
+};
+
+export interface SymbolAnalysis {
+  direction: "CALL" | "PUT" | null;
+  confidence: number;
+  agreement: number;
+  premiumCount: number;       // how many timeframes graded PREMIUM
+  volatilityPct: number;      // current ATR% on the base timeframe
+  volatilityRatio: number;    // current ATR% vs this symbol's own recent median (1 = normal)
+  blockers: string[];         // reasons signals were rejected
+  dominantTf: string | null;  // TF with highest confidence signal
+  suggestedDuration: number;  // optimal contract duration in minutes
+  trendAlignmentScore: number; // 0-4: how many TFs agree on direction
+  patternBonus: number;        // extra confidence from candle patterns
+  strategyVote?: "BUY" | "SELL" | null; // vote from the user's custom /strategies rules, if any apply
+  components?: SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning
+}
+
+export type TfSignalMap = Partial<Record<(typeof TIMEFRAMES)[number], GeneratedSignal>>;
+
+export const EMPTY_ANALYSIS = (blockers: string[], volatilityPct = 0, volatilityRatio = 1, dominantTf: string | null = null, suggestedDuration = 15): SymbolAnalysis => ({
+  direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, volatilityRatio,
+  blockers, dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus: 0,
+});
+
+/**
+ * Pure decision layer: given one GeneratedSignal per timeframe (already computed),
+ * applies the exact same majority-vote + 4H-veto + Trend-Alignment-Score + pattern-bonus
+ * logic the live engine uses. Shared by the live engines AND the historical
+ * multi-timeframe backtest so they can never drift apart.
+ */
+export function aggregateTfSignals(
+  tfSignals: TfSignalMap,
+  volatilityPct: number,
+  volatilityRatio: number,
+  veto4h: Veto4hMode = "strong-only",
+): SymbolAnalysis {
+  const results: string[] = [];
+  const qualities: string[] = [];
+  const blockers = new Set<string>();
+  const tfDirections: Record<string, "BUY" | "SELL"> = {};
+  const tfQuality: Record<string, GeneratedSignal["quality"]> = {};
+  let totalConf = 0;
+  let bestConf = 0;
+  let dominantTf: string | null = null;
+  let patternBonus = 0;
+
+  for (const tf of TIMEFRAMES) {
+    const sig = tfSignals[tf];
+    if (!sig) continue;
+    if (sig.blockers) sig.blockers.forEach((b) => blockers.add(`${tf}: ${b}`));
+    if (sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
+
+    // Record TF direction even if weak (used for cross-TF alignment)
+    tfDirections[tf] = sig.direction as "BUY" | "SELL";
+    tfQuality[tf] = sig.quality;
+
+    if (sig.quality === "weak") continue; // ignore weak votes for scoring
+    results.push(sig.direction);
+    qualities.push(sig.quality ?? "weak");
+    totalConf += sig.confidence;
+
+    // Accumulate pattern bonus from 15m (most actionable TF)
+    if (tf === "15m" && sig.patterns) {
+      for (const p of sig.patterns) patternBonus += p.strength * 2;
+    }
+
+    if (sig.confidence > bestConf) {
+      bestConf = sig.confidence;
+      dominantTf = tf;
+    }
+  }
+
+  const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : 15;
+
+  if (!results.length) {
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
+  }
+
+  const buys = results.filter((r) => r === "BUY").length;
+  const sells = results.filter((r) => r === "SELL").length;
+  const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
+
+  if (!rawDirection) {
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+  }
+
+  const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
+
+  // ── Trend Alignment Score (TAS) ────────────────────────────────────────────
+  // Count how many TFs explicitly agree with the final direction
+  const trendAlignmentScore = Object.values(tfDirections).filter((d) => d === signalBias).length;
+
+  // VETO rule: a contrarian 4H can cancel the trade. "strong-only" (default)
+  // requires the 4H signal itself to be confident (good/premium) — a weak,
+  // barely-there 4H lean shouldn't kill an otherwise clean 15m setup.
+  const h4dir = tfDirections["4H"];
+  if (h4dir && h4dir !== signalBias && veto4h !== "off") {
+    const h4strong = tfQuality["4H"] !== undefined && tfQuality["4H"] !== "weak";
+    if (veto4h === "always" || h4strong) {
+      blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
+      return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+    }
+    blockers.add(`4H contre-tendance faible (${h4dir}) — toléré`);
+  }
+
+  // Confidence bonus based on alignment
+  let avgConf = totalConf / results.length;
+  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 15); // all 4 TFs agree
+  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 8); // 3 TFs agree
+  else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10); // weak alignment
+
+  // Pattern bonus (capped at +10 to avoid over-confidence)
+  avgConf = Math.min(95, avgConf + Math.min(10, patternBonus));
+
+  const premiumCount = qualities.filter((q) => q === "premium").length;
+  const agreement = rawDirection === "CALL" ? buys : sells;
+
+  // Union of components from every TF that agreed with the final direction — the
+  // full "coalition" that drove this trade, for later win/loss attribution.
+  const components: SignalComponent[] = [];
+  for (const tf of TIMEFRAMES) {
+    const sig = tfSignals[tf];
+    if (sig?.direction === signalBias && sig.components) components.push(...sig.components);
+  }
+
+  return {
+    direction: rawDirection, confidence: avgConf, agreement, premiumCount, volatilityPct, volatilityRatio,
+    blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
+    components: components.length ? components : undefined,
+  };
+}
+
+// ─── Shared symbol analysis (pluggable data source) ──────────────────────────
+
+export interface CandleBar {
+  epoch: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+/** Median of the given values — used to establish each symbol's own volatility baseline. */
+export function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export type CandleFetcher = (symbol: string, granularitySeconds: number, count: number) => Promise<CandleBar[]>;
+
+export const GRANULARITY_SECONDS: Record<(typeof TIMEFRAMES)[number], number> = {
+  "5m": 300,
+  "15m": 900,
+  "1H": 3600,
+  "4H": 14400,
+};
+
+/**
+ * Fetches all 4 timeframes through the provided fetcher and aggregates them —
+ * the environment-independent core of analyzeSymbol. The browser engine wraps
+ * this with learned weights + custom-strategy overlay; the server engine uses
+ * it directly.
+ */
+export async function analyzeSymbolCore(
+  symbolDeriv: string,
+  fetchCandlesFn: CandleFetcher,
+  opts: {
+    weights?: Partial<Record<SignalComponent["name"], number>>;
+    veto4h?: Veto4hMode;
+  } = {},
+): Promise<{ analysis: SymbolAnalysis; candles15m: CandleBar[] | null }> {
+  const { atr } = await import("./indicators");
+  const tfSignals: TfSignalMap = {};
+  let volatilityPct = 0;
+  let volatilityRatio = 1;
+  let candles15m: CandleBar[] | null = null;
+
+  for (const tf of TIMEFRAMES) {
+    try {
+      const candles = await fetchCandlesFn(symbolDeriv, GRANULARITY_SECONDS[tf], 250);
+      if (!candles.length) continue;
+
+      // Volatility from the entry timeframe (15m), normalized against this
+      // symbol's OWN recent ATR% distribution — a flat global cutoff either
+      // over-restricts calm instruments (major forex) or under-restricts violent
+      // ones (Volatility 100), so we also track a relative ratio.
+      if (tf === "15m") {
+        candles15m = candles;
+        const highs = candles.map((c) => c.high), lows = candles.map((c) => c.low), closes = candles.map((c) => c.close);
+        const atrSeries = atr(highs, lows, closes, 14);
+        const price = closes[closes.length - 1];
+        const atrNow = atrSeries[atrSeries.length - 1];
+        if (atrNow !== null && price > 0) volatilityPct = (atrNow / price) * 100;
+
+        const atrPctSeries = atrSeries
+          .map((v, i) => (v !== null && closes[i] > 0 ? (v / closes[i]) * 100 : null))
+          .filter((v): v is number => v !== null)
+          .slice(0, -1); // exclude the current (possibly spiking) bar from its own baseline
+        const baseline = median(atrPctSeries.slice(-100));
+        if (baseline > 0 && atrNow !== null) volatilityRatio = atrNow / baseline;
+      }
+
+      tfSignals[tf] = generateSignal(candles, { weights: opts.weights });
+    } catch { /* ignore */ }
+  }
+
+  const analysis = aggregateTfSignals(tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only");
+  return { analysis, candles15m };
+}

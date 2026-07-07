@@ -30,8 +30,10 @@ import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
 import { Route as ApiAuthResetPasswordRouteImport } from './routes/api/auth/reset-password'
@@ -147,6 +149,11 @@ const ApiSettingsRoute = ApiSettingsRouteImport.update({
   path: '/api/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   id: '/api/deriv-session',
   path: '/api/deriv-session',
@@ -155,6 +162,11 @@ const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBotRoute = ApiBotRouteImport.update({
+  id: '/api/bot',
+  path: '/api/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAlertsRoute = ApiAlertsRouteImport.update({
@@ -223,8 +235,10 @@ export interface FileRoutesByFullPath {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -257,8 +271,10 @@ export interface FileRoutesByTo {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -292,8 +308,10 @@ export interface FileRoutesById {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -328,8 +346,10 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
+    | '/api/health'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -362,8 +382,10 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
+    | '/api/health'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -396,8 +418,10 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
+    | '/api/health'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -431,8 +455,10 @@ export interface RootRouteChildren {
   StrategiesRoute: typeof StrategiesRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
+  ApiBotRoute: typeof ApiBotRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
@@ -596,6 +622,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/deriv-session': {
       id: '/api/deriv-session'
       path: '/api/deriv-session'
@@ -608,6 +641,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat'
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bot': {
+      id: '/api/bot'
+      path: '/api/bot'
+      fullPath: '/api/bot'
+      preLoaderRoute: typeof ApiBotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/alerts': {
@@ -695,8 +735,10 @@ const rootRouteChildren: RootRouteChildren = {
   StrategiesRoute: StrategiesRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,
+  ApiBotRoute: ApiBotRoute,
   ApiChatRoute: ApiChatRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,

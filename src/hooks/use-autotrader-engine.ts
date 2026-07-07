@@ -27,6 +27,8 @@ export interface AutoTraderEngineState {
   logs: TradeLog[];
   lastScan: ScanResult | null;
   riskStopReasons: string[];
+  /** Epoch ms until which the engine is risk-paused (auto-resumes) — null when not paused. */
+  pausedUntil: number | null;
 }
 
 type LogsUpdater = TradeLog[] | ((prev: TradeLog[]) => TradeLog[]);
@@ -37,6 +39,7 @@ let _state: AutoTraderEngineState = {
   logs: loadTradeLogCached(),
   lastScan: null,
   riskStopReasons: [],
+  pausedUntil: null,
 };
 const _listeners = new Set<(s: AutoTraderEngineState) => void>();
 
@@ -73,7 +76,7 @@ export function startAutoTraderEngine(
   balanceUsd?: number | (() => number | undefined),
 ): boolean {
   if (_stop) return false;
-  dispatch({ riskStopReasons: [] });
+  dispatch({ riskStopReasons: [], pausedUntil: null });
   _stop = startAutoTrader(
     config,
     (log, meta) => {
@@ -83,12 +86,13 @@ export function startAutoTraderEngine(
       });
       onEvent(log, meta);
     },
-    (reasons) => {
-      _stop = null;
-      dispatch({ running: false, riskStopReasons: reasons });
-      onRiskStop?.(reasons);
+    (reasons, pausedUntil) => {
+      // Risk events now PAUSE the engine (it auto-resumes) instead of killing
+      // it — keep running=true and surface the pause window to the UI.
+      dispatch({ riskStopReasons: reasons, pausedUntil: pausedUntil ?? null });
+      onRiskStop?.(reasons, pausedUntil);
     },
-    (scan) => dispatch({ lastScan: scan }),
+    (scan) => dispatch({ lastScan: scan, pausedUntil: _state.pausedUntil && Date.now() >= _state.pausedUntil ? null : _state.pausedUntil }),
     balanceUsd,
   );
   dispatch({ running: true });
@@ -98,7 +102,7 @@ export function startAutoTraderEngine(
 export function stopAutoTraderEngine() {
   _stop?.();
   _stop = null;
-  dispatch({ running: false });
+  dispatch({ running: false, pausedUntil: null, riskStopReasons: [] });
 }
 
 export function useAutoTraderEngine(): AutoTraderEngineState {

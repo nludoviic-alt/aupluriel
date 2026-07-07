@@ -1,11 +1,43 @@
-// Auto-trading engine — all logic runs client-side.
+// BROWSER auto-trading engine. The pure decision logic (signal aggregation,
+// sessions, news windows, risk math) lives in signal-core.ts, shared with the
+// server engine (bot-engine.server.ts) so the two can never drift apart.
 // Only executes trades when strict signal quality thresholds are met.
 
 import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
-import { generateSignal, atr, rsi, macd, ema, bollinger } from "./indicators";
+import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
 import { mapWithConcurrency } from "./utils";
+import {
+  DEFAULT_CONFIG,
+  TIMEFRAMES,
+  aggregateTfSignals,
+  analyzeSymbolCore,
+  computeAdaptiveStake,
+  computeKellyFraction,
+  countConsecutiveLosses,
+  is24x7Symbol,
+  isCallPutAvailable,
+  isCorrelatedWithActive,
+  isHighRiskWindow,
+  isInTradingSession,
+  minContractMinutes,
+  todayPnl,
+  todayTradeCount,
+  type AutoTraderConfig,
+  type RiskStopHandler,
+  type ScanResultHandler,
+  type ScanSymbolResult,
+  type SymbolAnalysis,
+  type TfSignalMap,
+  type TradeEventHandler,
+  type TradeLog,
+  type TradingSession,
+  type Veto4hMode,
+} from "./signal-core";
+
+// Re-export the shared core so the many existing UI imports from "@/lib/autotrader" keep working.
+export * from "./signal-core";
 
 let derivConnected = false;
 let lastConnectionCheck = 0;
@@ -68,103 +100,6 @@ export async function fetchRealPayoutRatio(
     return 0.85;
   }
 }
-
-export type TradingSession = "sydney" | "asia" | "london" | "newyork";
-
-// ─── Contract availability on the Deriv Options Trading API ──────────────────
-// - crypto (cry*): MULTIPLIER contracts only — CALL/PUT rise/fall unavailable
-// - Boom/Crash (BOOM*/CRASH*): no CALL/PUT either
-// - forex/commodities (frx*): CALL/PUT from 15 minutes, session-bound
-// - stock indices (OTC_*): CALL/PUT 15m→1h, only during exchange hours
-// - synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR): from 15s, 24/7
-
-/** True when the symbol supports CALL/PUT contracts (what the bot trades). */
-export function isCallPutAvailable(symbol: string): boolean {
-  return !symbol.startsWith("cry") && !symbol.startsWith("BOOM") && !symbol.startsWith("CRASH");
-}
-
-/** Minimum CALL/PUT contract duration (minutes) allowed for this symbol. */
-export function minContractMinutes(symbol: string): number {
-  return symbol.startsWith("frx") || symbol.startsWith("OTC_") ? 15 : 5;
-}
-
-/** Symbols that trade around the clock (no session/news filtering needed). */
-export function is24x7Symbol(symbol: string): boolean {
-  return !symbol.startsWith("frx") && !symbol.startsWith("OTC_") && !symbol.startsWith("WLD");
-}
-
-// Stock indices only trade during their home exchange's hours — approximated
-// by the matching forex session window (backstop: Deriv rejects with
-// MarketIsClosed if we're off).
-export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
-  OTC_N225: "asia", OTC_HSI: "asia", OTC_AS51: "asia",
-  OTC_FTSE: "london", OTC_GDAXI: "london", OTC_FCHI: "london",
-  OTC_AEX: "london", OTC_SSMI: "london", OTC_SX5E: "london",
-  OTC_SPC: "newyork", OTC_DJI: "newyork", OTC_NDX: "newyork",
-};
-
-export type TradingMode = "simulation" | "demo" | "live";
-
-export interface AutoTraderConfig {
-  enabled: boolean;
-  mode: TradingMode; // simulation = local, demo = Deriv demo account, live = Deriv real money
-  stakeUsd: number;
-  durationMinutes: number;
-  minConfidence: number;
-  minTfAgreement: number;
-  maxDailyLossUsd: number;
-  maxTradesPerDay: number;
-  symbols: string[];
-  initialCapital: number;          // starting capital for virtual P&L tracking
-  // --- Risk protection ---
-  maxConsecutiveLosses: number;   // hard-stop engine after N consecutive losses
-  cooldownMinutes: number;        // (legacy) kept for compatibility
-  tradingSessions: TradingSession[]; // only trade during these sessions
-  adaptiveStake: boolean;         // reduce stake automatically when losing
-  premiumOnly: boolean;           // only trade PREMIUM-grade signals
-  stopOnRisk: boolean;            // hard-stop immediately when risk detected
-  maxVolatilityPct: number;       // skip/stop if ATR% above this on a symbol
-  maxDailyProfitUsd: number;     // stop bot when daily profit >= this (0 = disabled)
-  stakeMode: "fixed" | "percent" | "kelly"; // fixed USD, % of balance, or measured-edge Kelly sizing
-  stakePercent: number;           // % of balance per trade (used when stakeMode = "percent")
-  kellyFraction: number;          // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
-  sessionEdgeMinutes: number;     // skip N minutes at session open/close (avoids fake breakouts)
-  trailingStopUsd: number;        // stop if P&L drops this much below session peak (0 = disabled)
-  blockCorrelated: boolean;       // skip correlated pairs when one is already active
-  symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
-  maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
-}
-
-export const DEFAULT_CONFIG: AutoTraderConfig = {
-  enabled: false,
-  mode: "demo",
-  stakeUsd: 5,
-  durationMinutes: 15,
-  minConfidence: 70,
-  minTfAgreement: 2,
-  maxDailyLossUsd: 20,
-  maxTradesPerDay: 10,
-  symbols: ["R_100", "R_50", "frxEURUSD"],
-  initialCapital: 100,
-  maxConsecutiveLosses: 3,
-  cooldownMinutes: 30,
-  tradingSessions: ["london", "newyork"],
-  adaptiveStake: true,
-  premiumOnly: false,
-  stopOnRisk: true,
-  maxVolatilityPct: 4,
-  maxDailyProfitUsd: 0,
-  stakeMode: "fixed",
-  stakePercent: 1,
-  kellyFraction: 0.5,
-  sessionEdgeMinutes: 0,
-  trailingStopUsd: 0,
-  blockCorrelated: true,
-  symbolMode: "watchlist",
-  maxSimultaneousTrades: 3,
-};
-
-export const SCAN_INTERVAL_MS = 60_000;
 
 /**
  * "Prudent" preset — discipline-focused overrides applied on top of the
@@ -372,59 +307,6 @@ export function updatePresetPerformance(
   }
 }
 
-export interface TradeLog {
-  id: string;
-  time: number;
-  symbol: string;
-  direction: "CALL" | "PUT";
-  stake: number;
-  payout: number;
-  status: "pending" | "open" | "won" | "lost" | "error" | "cooldown" | "risk-stop";
-  profit: number;
-  confidence: number;
-  tfAgreement: number;
-  contractId?: number;
-  closedAt?: number;
-  note?: string;
-  entryPrice?: number;       // price at trade open (for live visual)
-  durationMinutes?: number;  // contract duration (for live countdown)
-  expiry?: number;           // epoch ms when the contract resolves
-  components?: import("./indicators").SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning on close
-}
-
-export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
-export type RiskStopHandler = (reasons: string[]) => void;
-
-// Pairs that share high exposure — only one from each group should be active at a time.
-// Group 0: EUR/GBP forex (positive correlation ~0.85)
-// Group 1: crypto block (BTC/ETH/LTC move together ~0.80+)
-export const CORRELATION_GROUPS: string[][] = [
-  ["frxEURUSD", "frxGBPUSD"],
-  ["cryBTCUSD", "cryETHUSD", "cryLTCUSD"],
-];
-
-export function isCorrelatedWithActive(symbol: string, activeSymbols: Set<string>): boolean {
-  const group = CORRELATION_GROUPS.find((g) => g.includes(symbol));
-  if (!group) return false;
-  return group.some((s) => s !== symbol && activeSymbols.has(s));
-}
-
-export interface ScanSymbolResult {
-  symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable";
-  direction?: "CALL" | "PUT" | null;
-  confidence?: number;
-  agreement?: number;
-  note?: string;
-}
-
-export interface ScanResult {
-  time: number;
-  results: ScanSymbolResult[];
-}
-
-export type ScanResultHandler = (result: ScanResult) => void;
-
 // ─── Risk notification ─────────────────────────────────────────────────────────
 
 export function notifyRiskStop(reasons: string[]) {
@@ -448,57 +330,6 @@ export function notifyTradeTaken(symbol: string, direction: string, confidence: 
     tag: `lio23-trade-${symbol}`,
   });
   setTimeout(() => n.close(), 8000);
-}
-
-// ─── Session helpers ───────────────────────────────────────────────────────────
-
-export const SESSION_HOURS: Record<TradingSession, { label: string; open: number; close: number }> = {
-  sydney:   { label: "Sydney",    open: 21, close: 6  },  // 21:00–06:00 UTC (passe minuit)
-  asia:     { label: "Asie",      open: 0,  close: 9  },  // 00:00–09:00 UTC
-  london:   { label: "Londres",   open: 7,  close: 16 },  // 07:00–16:00 UTC
-  newyork:  { label: "New York",  open: 12, close: 21 },  // 12:00–21:00 UTC
-};
-
-/** Is the given session window active right now? Handles windows crossing midnight (Sydney). */
-function isSessionActive(s: TradingSession, edgeMinutes = 0): boolean {
-  const now = new Date();
-  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const { open, close } = SESSION_HOURS[s];
-  const start = open * 60 + edgeMinutes;
-  const end = close * 60 - edgeMinutes;
-  if (open > close) return utcMins >= start || utcMins < end; // wraps past midnight
-  return utcMins >= start && utcMins < end;
-}
-
-export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
-  // Crypto and synthetic indices trade 24/7 — no session filter
-  if (is24x7Symbol(symbol)) return true;
-
-  // Stock indices: their home exchange must be open AND enabled in the config
-  const home = INDEX_HOME_SESSION[symbol];
-  if (home) return sessions.includes(home) && isSessionActive(home, edgeMinutes);
-
-  return sessions.some((s) => isSessionActive(s, edgeMinutes));
-}
-
-export function currentActiveSessions(): TradingSession[] {
-  return (Object.keys(SESSION_HOURS) as TradingSession[]).filter((s) => isSessionActive(s));
-}
-
-// ─── Adaptive stake ────────────────────────────────────────────────────────────
-
-export function computeAdaptiveStake(baseStake: number, recentLogs: TradeLog[]): number {
-  const closed = recentLogs.filter((l) => l.status === "won" || l.status === "lost").slice(0, 20);
-  if (closed.length < 5) return baseStake; // not enough data yet
-
-  const wins = closed.filter((l) => l.status === "won").length;
-  const winRate = wins / closed.length;
-
-  // Reduce stake proportionally to under-performance
-  if (winRate < 0.35) return Math.max(1, baseStake * 0.25); // -75%
-  if (winRate < 0.45) return Math.max(1, baseStake * 0.5);  // -50%
-  if (winRate < 0.55) return Math.max(1, baseStake * 0.75); // -25%
-  return baseStake; // normal
 }
 
 // ─── Real Kelly-criterion stake ────────────────────────────────────────────────
@@ -533,12 +364,6 @@ export function loadBacktestStats(symbol: string): SymbolBacktestStats | null {
   }
 }
 
-/** Kelly fraction f* = p - (1-p)/b, for win probability p and net payout odds b. */
-export function computeKellyFraction(winRate: number, payoutRatio: number): number {
-  if (payoutRatio <= 0) return 0;
-  return Math.max(0, winRate - (1 - winRate) / payoutRatio);
-}
-
 /**
  * Kelly stake for this symbol from its persisted backtest stats, or null if no
  * (or too little) measured data exists yet — callers should fall back to the
@@ -554,24 +379,6 @@ export function computeKellyStake(symbol: string, balance: number, kellyFraction
   if (kelly <= 0) return null; // measured edge is flat/negative — Kelly says don't size up
   const pct = Math.min(kelly * kellyFraction, 0.05);
   return Math.max(1, balance * pct);
-}
-
-// ─── Consecutive loss tracker ─────────────────────────────────────────────────
-
-/**
- * Consecutive losses at the head of the log, optionally scoped to one symbol.
- * Without a symbol, a losing streak on ONE instrument would otherwise trip the
- * same counter as every other symbol combined — too aggressive when scanning
- * many markets, and not targeted at whichever symbol is actually failing.
- */
-export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): number {
-  let count = 0;
-  for (const l of logs) {
-    if (symbol && l.symbol !== symbol) continue;
-    if (l.status === "lost") count++;
-    else if (l.status === "won") break;
-  }
-  return count;
 }
 
 // ─── Cumulative P&L (persists forever, never resets) ─────────────────────────
@@ -599,7 +406,6 @@ export function resetCumulativePnl() {
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
-const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
 const STORAGE_KEY = "lio23.autotrader_log";
 
 export function loadTradeLog(): TradeLog[] {
@@ -834,164 +640,7 @@ export async function reconcileOpenTrades(onEvent: TradeEventHandler): Promise<v
   }
 }
 
-// ─── News macro filter ───────────────────────────────────────────────────────
-// High-risk UTC windows: NFP (1st Fri 12:30), Fed (Wed 18:00), ECB (Thu 12:15)
-// Plus daily: NY open (13:30), London open (07:55), Asia open (23:55)
-const HIGH_RISK_WINDOWS: { utcHour: number; utcMinute: number; durationMinutes: number; label: string }[] = [
-  { utcHour: 7,  utcMinute: 55, durationMinutes: 20, label: "Ouverture Londres" },
-  { utcHour: 12, utcMinute: 15, durationMinutes: 30, label: "Zone ECB/NFP" },
-  { utcHour: 13, utcMinute: 25, durationMinutes: 20, label: "Ouverture NY" },
-  { utcHour: 17, utcMinute: 55, durationMinutes: 15, label: "Fix Londres" },
-  { utcHour: 18, utcMinute: 0,  durationMinutes: 20, label: "Zone Fed" },
-  { utcHour: 23, utcMinute: 55, durationMinutes: 15, label: "Ouverture Asie" },
-];
-
-export function isHighRiskWindow(): { blocked: boolean; reason?: string } {
-  const now = new Date();
-  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  // Block on Fridays after 20:00 UTC (low liquidity weekend)
-  if (now.getUTCDay() === 5 && now.getUTCHours() >= 20) {
-    return { blocked: true, reason: "Vendredi soir — faible liquidité avant week-end" };
-  }
-  for (const w of HIGH_RISK_WINDOWS) {
-    const start = w.utcHour * 60 + w.utcMinute;
-    if (utcMins >= start && utcMins < start + w.durationMinutes) {
-      return { blocked: true, reason: `Fenêtre à risque : ${w.label} (${w.durationMinutes}min)` };
-    }
-  }
-  return { blocked: false };
-}
-
 // ─── Signal analysis ──────────────────────────────────────────────────────────
-
-const TF_DURATION_MAP: Record<string, number> = {
-  "5m":  5,
-  "15m": 15,
-  "1H":  30,
-  "4H":  60,
-};
-
-interface SymbolAnalysis {
-  direction: "CALL" | "PUT" | null;
-  confidence: number;
-  agreement: number;
-  premiumCount: number;       // how many timeframes graded PREMIUM
-  volatilityPct: number;      // current ATR% on the base timeframe
-  volatilityRatio: number;    // current ATR% vs this symbol's own recent median (1 = normal)
-  blockers: string[];         // reasons signals were rejected
-  dominantTf: string | null;  // TF with highest confidence signal
-  suggestedDuration: number;  // optimal contract duration in minutes
-  trendAlignmentScore: number; // 0-4: how many TFs agree on direction
-  patternBonus: number;        // extra confidence from candle patterns
-  strategyVote?: "BUY" | "SELL" | null; // vote from the user's custom /strategies rules, if any apply
-  components?: import("./indicators").SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning
-}
-
-type TfSignalMap = Partial<Record<(typeof TIMEFRAMES)[number], import("./indicators").GeneratedSignal>>;
-
-const EMPTY_ANALYSIS = (blockers: string[], volatilityPct = 0, volatilityRatio = 1, dominantTf: string | null = null, suggestedDuration = 15): SymbolAnalysis => ({
-  direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, volatilityRatio,
-  blockers, dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus: 0,
-});
-
-/**
- * Pure decision layer: given one GeneratedSignal per timeframe (already computed),
- * applies the exact same majority-vote + 4H-veto + Trend-Alignment-Score + pattern-bonus
- * logic the live engine uses. Shared by the live analyzeSymbol() AND the historical
- * multi-timeframe backtest so the two can never drift apart.
- */
-function aggregateTfSignals(
-  tfSignals: TfSignalMap,
-  volatilityPct: number,
-  volatilityRatio: number,
-): SymbolAnalysis {
-  const results: string[] = [];
-  const qualities: string[] = [];
-  const blockers = new Set<string>();
-  const tfDirections: Record<string, "BUY" | "SELL"> = {};
-  let totalConf = 0;
-  let bestConf = 0;
-  let dominantTf: string | null = null;
-  let patternBonus = 0;
-
-  for (const tf of TIMEFRAMES) {
-    const sig = tfSignals[tf];
-    if (!sig) continue;
-    if (sig.blockers) sig.blockers.forEach((b) => blockers.add(`${tf}: ${b}`));
-    if (sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
-
-    // Record TF direction even if weak (used for cross-TF alignment)
-    tfDirections[tf] = sig.direction as "BUY" | "SELL";
-
-    if (sig.quality === "weak") continue; // ignore weak votes for scoring
-    results.push(sig.direction);
-    qualities.push(sig.quality ?? "weak");
-    totalConf += sig.confidence;
-
-    // Accumulate pattern bonus from 15m (most actionable TF)
-    if (tf === "15m" && sig.patterns) {
-      for (const p of sig.patterns) patternBonus += p.strength * 2;
-    }
-
-    if (sig.confidence > bestConf) {
-      bestConf = sig.confidence;
-      dominantTf = tf;
-    }
-  }
-
-  const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : 15;
-
-  if (!results.length) {
-    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
-  }
-
-  const buys = results.filter((r) => r === "BUY").length;
-  const sells = results.filter((r) => r === "SELL").length;
-  const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
-
-  if (!rawDirection) {
-    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
-  }
-
-  const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
-
-  // ── Trend Alignment Score (TAS) ────────────────────────────────────────────
-  // Count how many TFs explicitly agree with the final direction
-  const trendAlignmentScore = Object.values(tfDirections).filter((d) => d === signalBias).length;
-
-  // VETO rule: if 4H explicitly contradicts the signal → block entirely
-  const h4dir = tfDirections["4H"];
-  if (h4dir && h4dir !== signalBias) {
-    blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
-    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
-  }
-
-  // Confidence bonus based on alignment
-  let avgConf = totalConf / results.length;
-  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 15); // all 4 TFs agree
-  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 8); // 3 TFs agree
-  else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10); // weak alignment
-
-  // Pattern bonus (capped at +10 to avoid over-confidence)
-  avgConf = Math.min(95, avgConf + Math.min(10, patternBonus));
-
-  const premiumCount = qualities.filter((q) => q === "premium").length;
-  const agreement = rawDirection === "CALL" ? buys : sells;
-
-  // Union of components from every TF that agreed with the final direction — the
-  // full "coalition" that drove this trade, for later win/loss attribution.
-  const components: import("./indicators").SignalComponent[] = [];
-  for (const tf of TIMEFRAMES) {
-    const sig = tfSignals[tf];
-    if (sig?.direction === signalBias && sig.components) components.push(...sig.components);
-  }
-
-  return {
-    direction: rawDirection, confidence: avgConf, agreement, premiumCount, volatilityPct, volatilityRatio,
-    blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
-    components: components.length ? components : undefined,
-  };
-}
 
 /** rsi/macd/ema/bollinger snapshot at the last closed candle — feeds the custom /strategies engine. */
 function computeIndicatorSnapshot(candles: { close: number }[]) {
@@ -1033,51 +682,13 @@ function applyStrategyOverlay(analysis: SymbolAnalysis, symbolDeriv: string, can
   };
 }
 
-/** Median of the last `n` non-null values — used to establish each symbol's own volatility baseline. */
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-async function analyzeSymbol(symbolDeriv: string): Promise<SymbolAnalysis> {
-  const tfSignals: TfSignalMap = {};
-  let volatilityPct = 0;
-  let volatilityRatio = 1;
-  let candles15m: { close: number }[] | null = null;
+async function analyzeSymbol(symbolDeriv: string, veto4h: Veto4hMode): Promise<SymbolAnalysis> {
   const learnedWeights = getLearnedWeights(symbolDeriv);
-
-  for (const tf of TIMEFRAMES) {
-    try {
-      const candles = await fetchCandles(symbolDeriv, GRANULARITY[tf], 250);
-      if (!candles.length) continue;
-
-      // Capture volatility from the entry timeframe (15m), normalized against
-      // this symbol's OWN recent ATR% distribution — a flat global cutoff either
-      // over-restricts calm instruments (major forex) or under-restricts violent
-      // ones (Volatility 100), so we also track a relative ratio.
-      if (tf === "15m") {
-        candles15m = candles;
-        const highs = candles.map((c) => c.high), lows = candles.map((c) => c.low), closes = candles.map((c) => c.close);
-        const atrSeries = atr(highs, lows, closes, 14);
-        const price = closes[closes.length - 1];
-        const atrNow = atrSeries[atrSeries.length - 1];
-        if (atrNow !== null && price > 0) volatilityPct = (atrNow / price) * 100;
-
-        const atrPctSeries = atrSeries
-          .map((v, i) => (v !== null && closes[i] > 0 ? (v / closes[i]) * 100 : null))
-          .filter((v): v is number => v !== null)
-          .slice(0, -1); // exclude the current (possibly spiking) bar from its own baseline
-        const baseline = median(atrPctSeries.slice(-100));
-        if (baseline > 0 && atrNow !== null) volatilityRatio = atrNow / baseline;
-      }
-
-      tfSignals[tf] = generateSignal(candles, { weights: learnedWeights });
-    } catch { /* ignore */ }
-  }
-
-  const analysis = aggregateTfSignals(tfSignals, volatilityPct, volatilityRatio);
+  const { analysis, candles15m } = await analyzeSymbolCore(
+    symbolDeriv,
+    (sym, granularitySeconds, count) => fetchCandles(sym, granularitySeconds, count),
+    { weights: learnedWeights, veto4h },
+  );
   return applyStrategyOverlay(analysis, symbolDeriv, candles15m);
 }
 
@@ -1123,12 +734,14 @@ export async function backtestMultiTf(
     durationMinutes = 15,
     stakeUsd = 5,
     testCandles = 150, // number of 15m entry points tested (~37.5h of opportunities)
+    veto4h = "strong-only",
   }: {
     minConfidence?: number;
     minTfAgreement?: number;
     durationMinutes?: number;
     stakeUsd?: number;
     testCandles?: number;
+    veto4h?: Veto4hMode;
   } = {},
 ): Promise<MultiTfBacktestResult> {
   const LOOKBACK = 250; // same per-TF depth analyzeSymbol() fetches live
@@ -1165,7 +778,7 @@ export async function backtestMultiTf(
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights: learnedWeights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1);
+    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h);
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;
@@ -1196,12 +809,6 @@ export async function backtestMultiTf(
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
 
-export function allTimePnl(logs: TradeLog[]): number {
-  return logs
-    .filter((l) => l.status === "won" || l.status === "lost")
-    .reduce((sum, l) => sum + l.profit, 0);
-}
-
 /** Dismiss a preview trade: mark it closed and remove from active display. */
 export function dismissTrade(id: string): TradeLog[] {
   const logs = loadTradeLog();
@@ -1212,20 +819,6 @@ export function dismissTrade(id: string): TradeLog[] {
     logsCache = logs;
   }
   return logs;
-}
-
-export function todayPnl(logs: TradeLog[]): number {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return logs
-    .filter((l) => l.time >= start.getTime() && (l.status === "won" || l.status === "lost"))
-    .reduce((sum, l) => sum + l.profit, 0);
-}
-
-export function todayTradeCount(logs: TradeLog[]): number {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return logs.filter((l) => l.time >= start.getTime() && l.status !== "pending").length;
 }
 
 // ─── Main engine ──────────────────────────────────────────────────────────────
@@ -1245,6 +838,10 @@ export function startAutoTrader(
   // has to pause every other symbol too (see countConsecutiveLosses(logs, symbol)).
   const symbolCooldowns = new Map<string, number>();
   let sessionPeakPnl = 0; // highest daily P&L seen since engine start
+  // Risk events PAUSE the engine (with automatic resume) instead of killing it:
+  // the previous hard-stop never re-armed, so a limit hit at 10am left the bot
+  // dead until someone manually restarted it (audit fix #1).
+  let pausedUntil = 0;
 
   function emit(log: TradeLog, meta?: { cooldownUntil?: number }) {
     const idx = logs.findIndex((l) => l.id === log.id);
@@ -1263,11 +860,19 @@ export function startAutoTrader(
     onEvent(log, meta);
   }
 
-  /** Hard-stop the engine, log the reasons, notify the user. */
-  function riskStop(reasons: string[]) {
-    if (stopped) return;
-    stopped = true;
-    if (interval) clearInterval(interval);
+  /** Next local midnight — daily limits re-arm when todayPnl naturally resets. */
+  function nextMidnight(): number {
+    const d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  }
+
+  /** Pause the engine until `untilTs`, log the reasons, notify — auto-resumes. */
+  function riskPause(reasons: string[], untilTs: number) {
+    if (stopped || Date.now() < pausedUntil) return;
+    pausedUntil = untilTs;
+    sessionPeakPnl = 0; // re-arm the trailing stop for the next trading window
+    const resumeLabel = new Date(untilTs).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
     const stopLog: TradeLog = {
       id: `risk_${Date.now()}`,
       time: Date.now(),
@@ -1279,15 +884,16 @@ export function startAutoTrader(
       profit: 0,
       confidence: 0,
       tfAgreement: 0,
-      note: reasons.join(" · "),
+      note: `${reasons.join(" · ")} — reprise auto à ${resumeLabel}`,
     };
     emit(stopLog);
     notifyRiskStop(reasons);
-    onRiskStop?.(reasons);
+    onRiskStop?.(reasons, untilTs);
   }
 
   async function tick() {
     if (stopped) return;
+    if (Date.now() < pausedUntil) return; // risk pause in effect — auto-resumes
 
     const pnl = todayPnl(logs);
     const count = todayTradeCount(logs);
@@ -1296,10 +902,10 @@ export function startAutoTrader(
     // ── TRAILING STOP (session peak drawdown) ──────────────────
     if (pnl > sessionPeakPnl) sessionPeakPnl = pnl;
     if (config.trailingStopUsd > 0 && sessionPeakPnl > 0 && pnl < sessionPeakPnl - config.trailingStopUsd) {
-      riskStop([
+      riskPause([
         `Trailing stop déclenché — pic: +$${sessionPeakPnl.toFixed(2)}, maintenant: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
         `Drawdown de $${(sessionPeakPnl - pnl).toFixed(2)} > seuil $${config.trailingStopUsd}`,
-      ]);
+      ], nextMidnight());
       return;
     }
 
@@ -1307,7 +913,7 @@ export function startAutoTrader(
     // Daily loss limit — always enforced
     if (pnl <= -Math.abs(config.maxDailyLossUsd)) {
       if (config.stopOnRisk) {
-        riskStop([`Perte journalière atteinte : $${Math.abs(pnl).toFixed(2)} / $${config.maxDailyLossUsd}`]);
+        riskPause([`Perte journalière atteinte : $${Math.abs(pnl).toFixed(2)} / $${config.maxDailyLossUsd}`], nextMidnight());
       } else {
         onScanResult?.({ time: Date.now(), results: config.symbols.map((s) => ({ symbol: s, action: "daily-limit" as const })) });
       }
@@ -1317,7 +923,7 @@ export function startAutoTrader(
     // Daily profit target
     if (config.maxDailyProfitUsd > 0 && pnl >= config.maxDailyProfitUsd) {
       if (config.stopOnRisk) {
-        riskStop([`Objectif journalier atteint : +$${pnl.toFixed(2)} / $${config.maxDailyProfitUsd} — bien joué !`]);
+        riskPause([`Objectif journalier atteint : +$${pnl.toFixed(2)} / $${config.maxDailyProfitUsd} — bien joué !`], nextMidnight());
       }
       return;
     }
@@ -1363,8 +969,10 @@ export function startAutoTrader(
         scanResults.push({ symbol, action: "session-closed" });
         continue;
       }
-      // Skip high-risk news windows for forex pairs (24/7 markets unaffected)
-      if (!is24x7Symbol(symbol)) {
+      // Skip high-risk news/session-open windows for session-bound markets
+      // (24/7 synthetics unaffected). Opt-out via config.newsFilter for users
+      // who explicitly want to trade the volatile session opens.
+      if (!is24x7Symbol(symbol) && config.newsFilter !== false) {
         const riskCheck = isHighRiskWindow();
         if (riskCheck.blocked) {
           scanResults.push({ symbol, action: "news-block", note: riskCheck.reason });
@@ -1379,14 +987,11 @@ export function startAutoTrader(
       }
       if (symbolCooldownUntil > 0) symbolCooldowns.delete(symbol); // expired
 
-      // Consecutive losses on THIS symbol specifically — a streak on one
-      // instrument shouldn't pause every other symbol too (see task notes).
+      // Consecutive losses on THIS symbol → pause THIS symbol only. Killing the
+      // whole engine for one instrument's streak (old stopOnRisk behavior) left
+      // every other market untraded until a manual restart (audit fix #1).
       const consecutive = countConsecutiveLosses(logs, symbol);
       if (consecutive >= config.maxConsecutiveLosses) {
-        if (config.stopOnRisk) {
-          riskStop([`${consecutive} pertes consécutives sur ${symbol} (max ${config.maxConsecutiveLosses})`]);
-          return;
-        }
         symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
         emit({
           id: `cd_${Date.now()}_${symbol}`,
@@ -1414,7 +1019,7 @@ export function startAutoTrader(
     // an all-markets scan) take minutes; this caps concurrency instead.
     const analyzed = await mapWithConcurrency(toAnalyze, 6, async (symbol) => ({
       symbol,
-      analysis: await analyzeSymbol(symbol),
+      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only"),
     }));
 
     // All-markets mode: best opportunities get first crack at the trade slots
@@ -1440,13 +1045,11 @@ export function startAutoTrader(
         continue;
       }
 
-      // ── Extreme volatility = RISK → stop immediately ──────────
-      if (config.stopOnRisk && analysis.volatilityPct > config.maxVolatilityPct) {
-        riskStop([
-          `Volatilité extrême sur ${symbol} : ATR ${analysis.volatilityPct.toFixed(2)}% (max ${config.maxVolatilityPct}%)`,
-          "Conditions de marché dangereuses — arrêt préventif",
-        ]);
-        return;
+      // ── Extreme volatility → skip THIS symbol (one wild market shouldn't
+      // shut down trading on every calm one — audit fix) ──────────
+      if (analysis.volatilityPct > config.maxVolatilityPct) {
+        scanResults.push({ symbol, action: "volatility", note: `ATR ${analysis.volatilityPct.toFixed(2)}% > max ${config.maxVolatilityPct}% — paire ignorée` });
+        continue;
       }
 
       // ── Abnormal volatility for THIS symbol specifically ──────

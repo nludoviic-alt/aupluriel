@@ -3,6 +3,20 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
+// Resume server-side auto-traders after a (re)start — this is what lets the
+// bot keep trading with the user's phone locked / app closed. Deferred a few
+// seconds so DB and env are fully ready; guarded against dev-mode HMR
+// re-execution spawning duplicate engines.
+const g = globalThis as unknown as { __lio23_bot_boot__?: boolean };
+if (!g.__lio23_bot_boot__) {
+  g.__lio23_bot_boot__ = true;
+  setTimeout(() => {
+    import("./lib/bot-engine.server")
+      .then((m) => m.restoreBots())
+      .catch((e) => console.error("[bot] Restauration au boot échouée:", e));
+  }, 3000);
+}
+
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
