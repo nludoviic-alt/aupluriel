@@ -110,18 +110,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
-      { title: "Vertex — Quant Trading" },
+      { title: "Lio23 — Quant Trading" },
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "Vertex" },
+      { name: "apple-mobile-web-app-title", content: "Lio23" },
       {
         name: "description",
         content:
-          "Vertex — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
+          "Lio23 — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
       },
-      { name: "author", content: "Vertex" },
-      { property: "og:title", content: "Vertex — Quant Trading" },
+      { name: "author", content: "Lio23" },
+      { property: "og:title", content: "Lio23 — Quant Trading" },
       {
         property: "og:description",
         content: "Signaux, backtest et marchés en temps réel via Deriv.",
@@ -129,10 +129,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Vertex — Quant Trading" },
-      { name: "description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
-      { property: "og:description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
-      { name: "twitter:description", content: "Vertex is a quantitative trading web application for Crypto and Forex markets." },
+      { name: "twitter:title", content: "Lio23 — Quant Trading" },
+      { name: "description", content: "Lio23 is a quantitative trading web application for Crypto and Forex markets." },
+      { property: "og:description", content: "Lio23 is a quantitative trading web application for Crypto and Forex markets." },
+      { name: "twitter:description", content: "Lio23 is a quantitative trading web application for Crypto and Forex markets." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/33b8af68-47f4-4ab3-8bed-26dc0b6f9834/id-preview-571df8d4--c8db877e-99f8-451d-b8a6-7db33c51d41f.lovable.app-1781494469804.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/33b8af68-47f4-4ab3-8bed-26dc0b6f9834/id-preview-571df8d4--c8db877e-99f8-451d-b8a6-7db33c51d41f.lovable.app-1781494469804.png" },
     ],
@@ -286,7 +286,7 @@ function RootComponent() {
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}
-            <header className="relative sticky top-0 z-30 flex h-20 md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 md:px-6 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
+            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -319,7 +319,7 @@ function RootComponent() {
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     </span>
                     <p className="truncate text-[10.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground/50">
-                      Vertex Quant Trading
+                      Lio23 Quant Trading
                     </p>
                   </div>
                 </div>

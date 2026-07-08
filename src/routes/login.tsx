@@ -9,8 +9,8 @@ import { api, setToken, TOKEN_KEY } from "@/lib/api";
 export const Route = createFileRoute("/login")({
   head: () => ({ 
     meta: [
-      { title: "Access — Vertex Quant Terminal" },
-      { name: "description", content: "Connect to your Vertex quantitative trading AI terminal." }
+      { title: "Access — Lio23 Quant Terminal" },
+      { name: "description", content: "Connect to your Lio23 quantitative trading AI terminal." }
     ] 
   }),
   component: LoginPage,
@@ -135,11 +135,11 @@ function LoginPage() {
               <LogoMark className="h-20 w-20 relative z-10 shadow-orange-500/10 shadow-2xl transition-transform duration-500 group-hover:scale-105" />
             </div>
 
-            {/* Vertex & Future Text stacked */}
+            {/* Lio23 & Future Text stacked */}
             <div className="flex flex-col items-start gap-1">
               <div className="flex items-center gap-3">
                 <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-white leading-tight">
-                  Vertex
+                  Lio23
                 </h2>
                 <div className="relative flex h-3 w-3 mt-1">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
@@ -326,7 +326,7 @@ function LoginPage() {
       {/* Subtle Watermark */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0">
         <h1 className="text-[10rem] font-black uppercase tracking-[0.3em] text-white/[0.04] leading-none">
-          Vertex
+          Lio23
         </h1>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Vertex logo mark — uses the newly supplied official image served from /logo.png.
+ * Lio23 logo mark — uses the official image served from /logo-lio23.png.
  */
 export function LogoMark({ className }: { className?: string }) {
   return (
@@ -10,15 +10,11 @@ export function LogoMark({ className }: { className?: string }) {
       "bg-black",
       className
     )}>
-      <img 
-        src="/logo-vertex.png" 
-        alt="Vertex" 
-        className="absolute inset-0 w-full h-full object-cover opacity-90"
+      <img
+        src="/logo-lio23.png"
+        alt="Lio23"
+        className="absolute inset-0 w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-      <span className="relative z-10 text-[min(10px,25%)] font-black tracking-tighter text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] select-none leading-none">
-        VERTEX
-      </span>
     </div>
   );
 }
@@ -28,7 +24,7 @@ export function LogoFull({ className }: { className?: string }) {
     <div className={cn("flex items-center gap-2.5", className)}>
       <LogoMark />
       <div className="leading-tight">
-        <div className="text-base font-extrabold tracking-tight brand-gradient-text">Vertex</div>
+        <div className="text-base font-extrabold tracking-tight brand-gradient-text">Lio23</div>
         <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">Quant Trading</div>
       </div>
     </div>

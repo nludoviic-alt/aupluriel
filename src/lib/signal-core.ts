@@ -163,17 +163,20 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  minConfidence: 70,
+  minConfidence: 75,
   minTfAgreement: 2,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
-  symbols: ["R_100", "R_50", "frxEURUSD"],
+  // Forex uniquement : les indices synthétiques (R_*, 1HZ*…) sont générés
+  // aléatoirement par Deriv — aucun indicateur ne peut les prédire, winrate
+  // long terme ~50% = perte structurelle face au payout <100%.
+  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD"],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
-  premiumOnly: false,
+  premiumOnly: true,
   stopOnRisk: true,
   maxVolatilityPct: 4,
   maxDailyProfitUsd: 0,

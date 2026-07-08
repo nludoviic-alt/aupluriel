@@ -5,14 +5,18 @@
 // and localStorage.
 //
 // Differences vs the browser engine (documented, deliberate):
-// - No custom-strategy overlay and no learned indicator weights (both live in
-//   the user's localStorage). Signals use the base calibrated weights.
+// - No custom-strategy overlay (lives in the user's localStorage).
+// - Learned indicator weights come from indicator_stats in SQLite — SHARED
+//   across all users, so every user's closed trades train the same weights
+//   (the browser engine's localStorage learning stays per-user).
 // - stakeMode "kelly" falls back to fixed/percent (backtest stats are client-side).
 // - Trades are persisted to bot_trades; risk pauses to bot_state.paused_until,
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
 import { DerivTradingConnection, fetchCandlesServer } from "./deriv.server";
+import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indicator-weights.server";
+import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import {
@@ -26,8 +30,6 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   minContractMinutes,
-  todayPnl,
-  todayTradeCount,
   type AutoTraderConfig,
   type ScanResult,
   type ScanSymbolResult,
@@ -56,6 +58,17 @@ interface BotTradeRow {
   entry_price: number | null;
   duration_minutes: number | null;
   expiry: number | null;
+  components: string | null;
+}
+
+function parseComponents(json: string | null): SignalComponent[] | undefined {
+  if (!json) return undefined;
+  try {
+    const arr = JSON.parse(json) as SignalComponent[];
+    return Array.isArray(arr) && arr.length ? arr : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function logFromRow(r: BotTradeRow): TradeLog {
@@ -66,13 +79,14 @@ function logFromRow(r: BotTradeRow): TradeLog {
     closedAt: r.closed_at ?? undefined, note: r.note ?? undefined,
     entryPrice: r.entry_price ?? undefined, durationMinutes: r.duration_minutes ?? undefined,
     expiry: r.expiry ?? undefined,
+    components: parseComponents(r.components),
   };
 }
 
 function upsertTrade(userId: number, log: TradeLog) {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -82,6 +96,7 @@ function upsertTrade(userId: number, log: TradeLog) {
     confidence: log.confidence, tf_agreement: log.tfAgreement,
     contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null,
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
+    components: log.components?.length ? JSON.stringify(log.components) : null,
   });
 }
 
@@ -92,11 +107,40 @@ function loadRecentTrades(userId: number, limit = 50): TradeLog[] {
   return rows.map(logFromRow);
 }
 
+/**
+ * Today's P&L and trade count computed over ALL of today's rows in SQL — the
+ * in-memory log and the API's recent-trades list are capped windows, so summing
+ * them silently drops the day's earlier wins once enough events accumulate
+ * (the "my gain disappeared" bug).
+ */
+export function getTodayStats(userId: number): { pnl: number; count: number } {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const row = getDb()
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl,
+         COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count
+       FROM bot_trades WHERE user_id = ? AND time >= ?`,
+    )
+    .get(userId, start.getTime()) as { pnl: number; count: number };
+  return row;
+}
+
 function loadBotConfig(userId: number): AutoTraderConfig | null {
   const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ?").get(userId) as { config: string } | undefined;
   if (!row) return null;
+  // Config verrouillée : seule la mise (stakeUsd, maxDailyLossUsd) est reprise
+  // de la config sauvegardée — la stratégie vient toujours de DEFAULT_CONFIG,
+  // même pour les bots configurés avant le verrouillage. Mode forcé en démo.
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(row.config) } as AutoTraderConfig;
+    const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
+    return {
+      ...DEFAULT_CONFIG,
+      stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
+      maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
+      mode: "demo",
+    };
   } catch {
     return { ...DEFAULT_CONFIG };
   }
@@ -168,7 +212,9 @@ class ServerBotEngine {
     for (const log of stale) {
       const match = records.find((r) => r.contractId === log.contractId);
       if (match) {
-        this.emit({ ...log, status: match.profit > 0 ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
+        const won = match.profit > 0;
+        this.emit({ ...log, status: won ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
+        try { recordComponentOutcomesServer(log.symbol, log.components, won); } catch { /* never break reconcile */ }
       } else if (log.expiry && Date.now() < log.expiry + 2 * 60_000) {
         this.trackContract(log); // probably still open — re-subscribe
       } else {
@@ -191,6 +237,9 @@ class ServerBotEngine {
       this.contractUnsubs.delete(contractId);
       this.activeSymbols.delete(openLog.symbol);
       this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
+      // Shared learning: credit/blame this trade's signal components in the
+      // cross-user stats so every user's trades train the same weights.
+      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
     };
 
     const unsub = this.conn.subscribeContract(contractId, (u) => {
@@ -253,8 +302,9 @@ class ServerBotEngine {
   private async runScan() {
     const config = this.config;
     const logs = this.logs;
-    const pnl = todayPnl(logs);
-    const count = todayTradeCount(logs);
+    // SQL over all of today's rows — the in-memory log is a capped window, so
+    // computing daily P&L/count from it drops early wins as events accumulate.
+    const { pnl, count } = getTodayStats(this.userId);
     const scanResults: ScanSymbolResult[] = [];
     const finishScan = () => { this.lastScan = { time: Date.now(), results: scanResults }; };
 
@@ -322,11 +372,15 @@ class ServerBotEngine {
 
     if (!toAnalyze.length) return finishScan();
 
-    // ── Analysis (shared decision core, base weights) ──
-    const analyzed = await mapWithConcurrency(toAnalyze, 4, async (symbol) => ({
-      symbol,
-      analysis: (await analyzeSymbolCore(symbol, fetchCandlesServer, { veto4h: config.veto4h ?? "strong-only" })).analysis,
-    }));
+    // ── Analysis (shared decision core + cross-user learned weights) ──
+    const analyzed = await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+      let weights: ReturnType<typeof getLearnedWeightsServer> | undefined;
+      try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
+      return {
+        symbol,
+        analysis: (await analyzeSymbolCore(symbol, fetchCandlesServer, { weights, veto4h: config.veto4h ?? "strong-only" })).analysis,
+      };
+    });
 
     const ordered = config.symbolMode === "all-markets"
       ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
@@ -392,6 +446,7 @@ class ServerBotEngine {
         entryPrice: entryPrice || undefined,
         durationMinutes: tradeDuration,
         expiry: Date.now() + tradeDuration * 60_000,
+        components: analysis.components,
       };
       this.emit(pendingLog);
 

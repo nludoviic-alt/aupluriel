@@ -8,7 +8,7 @@ import { GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/signals")({
-  head: () => ({ meta: [{ title: "Signaux — Vertex" }] }),
+  head: () => ({ meta: [{ title: "Signaux — Lio23" }] }),
   component: SignalsPage,
 });
 

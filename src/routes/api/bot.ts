@@ -6,10 +6,11 @@ import { getDb } from "@/lib/db.server";
 import {
   getBotRuntime,
   getBotTrades,
+  getTodayStats,
   startBotForUser,
   stopBotForUser,
 } from "@/lib/bot-engine.server";
-import { DEFAULT_CONFIG, todayPnl, todayTradeCount, type AutoTraderConfig } from "@/lib/signal-core";
+import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
 
 export const Route = createFileRoute("/api/bot")({
   server: {
@@ -24,6 +25,9 @@ export const Route = createFileRoute("/api/bot")({
           .get(user.id) as { enabled: number; config: string } | undefined;
         const runtime = getBotRuntime(user.id);
         const trades = getBotTrades(user.id, 20);
+        // SQL over ALL of today's rows — summing the 20-trade window instead
+        // made early wins vanish from the display as new events pushed them out.
+        const today = getTodayStats(user.id);
 
         return json({
           enabled: !!state?.enabled,
@@ -31,8 +35,8 @@ export const Route = createFileRoute("/api/bot")({
           pausedUntil: runtime.pausedUntil,
           lastScan: runtime.lastScan,
           lastError: runtime.lastError,
-          todayPnl: todayPnl(trades),
-          todayCount: todayTradeCount(trades),
+          todayPnl: today.pnl,
+          todayCount: today.count,
           trades,
         });
       },
@@ -48,7 +52,18 @@ export const Route = createFileRoute("/api/bot")({
         };
 
         if (body.action === "start") {
-          const config: AutoTraderConfig = { ...DEFAULT_CONFIG, ...(body.config ?? {}) };
+          // Config verrouillée : la stratégie (symboles forex, premiumOnly,
+          // minConfidence…) est fixée par DEFAULT_CONFIG pour tout le monde —
+          // pendant la phase d'entraînement collectif, seule la mise est
+          // réglable par l'utilisateur. Mode forcé en démo.
+          const requested = body.config ?? {};
+          const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
+          const maxDailyLossUsd = clamp(
+            Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
+            1,
+            500,
+          );
+          const config: AutoTraderConfig = { ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode: "demo" };
           try {
             await startBotForUser(user.id, config);
           } catch (e) {
@@ -67,6 +82,10 @@ export const Route = createFileRoute("/api/bot")({
     },
   },
 });
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

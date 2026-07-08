@@ -11,7 +11,7 @@ const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({ meta: [{ title: "Paramètres — Vertex" }] }),
+  head: () => ({ meta: [{ title: "Paramètres — Lio23" }] }),
   component: SettingsPage,
 });
 
@@ -365,7 +365,7 @@ function SettingsPage() {
       </div>
 
       <p className="text-xs text-muted-foreground leading-relaxed">
-        Avertissement: Vertex est un outil d'analyse. Le trading de Crypto et Forex comporte un risque
+        Avertissement: Lio23 est un outil d'analyse. Le trading de Crypto et Forex comporte un risque
         de perte en capital. Les performances passées ne préjugent pas des performances futures.
       </p>
     </div>

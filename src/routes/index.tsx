@@ -14,13 +14,12 @@ import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { LogoMark } from "@/components/logo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — Vertex" },
-      { name: "description", content: "Dashboard de trading Vertex avec données Deriv en temps réel." },
+      { title: "Dashboard — Lio23" },
+      { name: "description", content: "Dashboard de trading Lio23 avec données Deriv en temps réel." },
     ],
   }),
   component: Dashboard,
@@ -113,7 +112,6 @@ function Dashboard() {
         <div className="relative flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6">
           {/* Left: avatar + info */}
           <div className="flex items-center gap-4">
-            <LogoMark className="hidden h-14 w-14 shrink-0 shadow-lg sm:flex" />
             <div>
               <p className="text-sm text-muted-foreground">{greeting},</p>
               <h1 className="text-2xl font-black tracking-tight text-foreground leading-tight">
@@ -378,7 +376,7 @@ function Dashboard() {
       <div className="flex items-start gap-3 rounded-xl border border-border/30 bg-muted/5 px-4 py-3">
         <Bot className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-0.5" />
         <p className="text-xs text-muted-foreground/60 leading-relaxed">
-          Le trading comporte des risques significatifs. Vertex fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
+          Le trading comporte des risques significatifs. Lio23 fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
         </p>
       </div>
     </div>

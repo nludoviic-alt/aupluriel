@@ -128,6 +128,18 @@ function migrate(db: Database.Database) {
       expiry           INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_bot_trades_user_time ON bot_trades(user_id, time DESC);
+
+    -- Apprentissage partagé : stats win/loss par (symbole, composant de signal),
+    -- agrégées sur les trades réels de TOUS les utilisateurs. Le symbole
+    -- '_global' sert de prior inter-symboles pour lisser les petits échantillons.
+    CREATE TABLE IF NOT EXISTS indicator_stats (
+      symbol     TEXT    NOT NULL,
+      component  TEXT    NOT NULL,
+      wins       INTEGER NOT NULL DEFAULT 0,
+      losses     INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (symbol, component)
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---
@@ -143,6 +155,16 @@ function migrate(db: Database.Database) {
   }
   if (!userCols.has("is_admin")) {
     db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // --- Additive column migrations on `bot_trades` (idempotent) ---
+  const botTradeCols = new Set(
+    (db.prepare("PRAGMA table_info(bot_trades)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!botTradeCols.has("components")) {
+    // JSON [{name, bias}] — the signal components that drove this trade,
+    // credited/blamed against indicator_stats when the contract resolves.
+    db.exec("ALTER TABLE bot_trades ADD COLUMN components TEXT");
   }
 
   // --- Additive column migrations on `user_settings` (idempotent) ---

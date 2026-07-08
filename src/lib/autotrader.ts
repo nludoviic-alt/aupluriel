@@ -404,6 +404,39 @@ export function resetCumulativePnl() {
   saveCumulativePnl(0);
 }
 
+// ─── Daily P&L rollup (survives log trimming) ─────────────────────────────────
+// todayPnl(logs) recomputes from the trade log, but the log is trimmed to its
+// most recent entries — once enough events accumulate, the day's earlier wins
+// fall out of the window and the displayed daily gain silently shrinks. This
+// date-keyed rollup is updated once per closed trade and never trimmed.
+
+const DAILY_PNL_KEY = "lio23.daily_pnl";
+
+export interface DailyPnlRollup { date: string; pnl: number; closed: number }
+
+function localDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+export function loadDailyPnl(): DailyPnlRollup {
+  const empty: DailyPnlRollup = { date: localDateKey(), pnl: 0, closed: 0 };
+  try {
+    const stored = JSON.parse(localStorage.getItem(DAILY_PNL_KEY) ?? "null") as DailyPnlRollup | null;
+    if (!stored || stored.date !== localDateKey()) return empty; // new day — resets naturally
+    return stored;
+  } catch {
+    return empty;
+  }
+}
+
+export function addToDailyPnl(profit: number): DailyPnlRollup {
+  const current = loadDailyPnl();
+  const next: DailyPnlRollup = { date: current.date, pnl: current.pnl + profit, closed: current.closed + 1 };
+  try { localStorage.setItem(DAILY_PNL_KEY, JSON.stringify(next)); } catch {}
+  return next;
+}
+
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "lio23.autotrader_log";
@@ -421,8 +454,9 @@ let logsCache: TradeLog[] | null = null;
 
 function saveTradeLog(logs: TradeLog[]) {
   try {
-    // Keep only last 50 logs for performance
-    const trimmed = logs.slice(0, 50);
+    // Keep a generous window: enough for a full day of events (trades + markers)
+    // so day-scoped stats computed from the log stay accurate.
+    const trimmed = logs.slice(0, 200);
     logsCache = trimmed;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {}
@@ -604,9 +638,18 @@ export async function reconcileOpenTrades(onEvent: TradeEventHandler): Promise<v
 
   const emit = (log: TradeLog) => {
     const idx = logs.findIndex((l) => l.id === log.id);
+    const prev = idx >= 0 ? logs[idx] : null;
     if (idx >= 0) logs[idx] = log;
     saveTradeLog(logs);
     clearTradeLogCache();
+    // Un trade réglé pendant l'absence doit compter dans les P&L persistés —
+    // sinon ses gains n'apparaissent nulle part (même bug que la troncature).
+    if ((log.status === "won" || log.status === "lost") &&
+        prev && prev.status !== "won" && prev.status !== "lost") {
+      addToCumulativePnl(log.profit);
+      addToDailyPnl(log.profit);
+      recordComponentOutcomes(log.symbol, log.components, log.status === "won");
+    }
     onEvent(log);
   };
 
@@ -853,6 +896,7 @@ export function startAutoTrader(
     if ((log.status === "won" || log.status === "lost") &&
         prev && prev.status !== "won" && prev.status !== "lost") {
       addToCumulativePnl(log.profit);
+      addToDailyPnl(log.profit); // rollup du jour — insensible à la troncature du journal
       // Feed the outcome back into the adaptive indicator weights for this symbol —
       // the actual "learns from its mistakes" mechanism, not just a stake haircut.
       recordComponentOutcomes(log.symbol, log.components, log.status === "won");
@@ -895,7 +939,9 @@ export function startAutoTrader(
     if (stopped) return;
     if (Date.now() < pausedUntil) return; // risk pause in effect — auto-resumes
 
-    const pnl = todayPnl(logs);
+    // Rollup persisté plutôt que somme du journal tronqué — les gains du début
+    // de journée sortaient de la fenêtre et les limites de risque dérivaient.
+    const pnl = loadDailyPnl().pnl;
     const count = todayTradeCount(logs);
     const scanResults: ScanSymbolResult[] = [];
 

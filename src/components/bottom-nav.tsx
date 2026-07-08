@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, Zap, Radar, BriefcaseBusiness, X, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 
 const PRIMARY_ITEMS = [
   { title: "Accueil",      url: "/",           icon: LayoutDashboard },
@@ -24,6 +25,7 @@ export function BottomNav() {
             <Link
               key={item.url}
               to={item.url}
+              onClick={() => { if (!active) haptic("light"); }}
               className={cn(
                 "flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200 relative",
                 active ? "text-primary" : "text-muted-foreground",
@@ -42,7 +44,7 @@ export function BottomNav() {
 
         {/* Hamburger "Plus" */}
         <button
-          onClick={toggleSidebar}
+          onClick={() => { haptic("light"); toggleSidebar(); }}
           className={cn(
             "flex-1 flex flex-col items-center justify-center gap-1 relative transition-all duration-200",
             openMobile ? "text-primary" : "text-muted-foreground active:text-foreground",

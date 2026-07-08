@@ -21,7 +21,7 @@ function getAiConfig(): { apiKey: string; provider: string } {
 }
 
 export const Route = createFileRoute("/assistant")({
-  head: () => ({ meta: [{ title: "Assistant — Vertex" }] }),
+  head: () => ({ meta: [{ title: "Assistant — Lio23" }] }),
   component: DisabledAssistantPage,
 });
 

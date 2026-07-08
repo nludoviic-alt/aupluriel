@@ -90,6 +90,7 @@ import {
   isInTradingSession,
   loadCumulativePnl,
   loadCustomPresets,
+  loadDailyPnl,
   openPreviewTrade,
   reconcileOpenTrades,
   saveBacktestStats,
@@ -98,7 +99,6 @@ import {
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
-  todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
   type CustomPreset,
@@ -132,7 +132,7 @@ import {
 } from "@/hooks/use-autotrader-engine";
 
 export const Route = createFileRoute("/autotrader")({
-  head: () => ({ meta: [{ title: "Auto-Trader — Vertex" }] }),
+  head: () => ({ meta: [{ title: "Auto-Trader — Lio23" }] }),
   component: AutoTraderPage,
 });
 
@@ -308,7 +308,9 @@ function AutoTraderPage() {
 
   // Memoize expensive calculations to prevent recalculation on every render
   const stats = useMemo(() => {
-    const pnl = todayPnl(logs);
+    // Rollup persisté (jamais tronqué) — la somme du journal perdait les gains
+    // du début de journée dès que le log dépassait sa fenêtre de rétention.
+    const pnl = loadDailyPnl().pnl;
     const tradeCount = todayTradeCount(logs);
     const closedLogs = logs.filter((l) => l.status === "won" || l.status === "lost");
     const wins = logs.filter((l) => l.status === "won").length;
@@ -1784,7 +1786,7 @@ function AutoTraderPage() {
                 "Les signaux sont basés sur des indicateurs passés, pas sur le futur.",
                 "Le circuit-breaker limite les pertes mais ne les élimine pas.",
                 "En mode LIVE, du vrai argent est engagé à chaque trade.",
-                "Vertex est un outil d'analyse, pas un conseiller financier agréé."
+                "Lio23 est un outil d'analyse, pas un conseiller financier agréé."
               ].map((t, i) => (
                 <li key={i} className="flex gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-down" />
