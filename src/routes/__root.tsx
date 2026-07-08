@@ -138,7 +138,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "manifest", href: "/manifest.json" },
-      { rel: "apple-touch-icon", href: "/logo.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "icon", type: "image/png", href: "/logo.png" },
       { rel: "preconnect", href: "https://rsms.me/" },
       { rel: "stylesheet", href: "https://rsms.me/inter/inter.css" },
@@ -220,15 +220,20 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, loading: authLoading } = useAuth();
 
-  // Register Service Worker for PWA
+  // Register Service Worker for PWA. Registering inside a "load" listener
+  // never fired when hydration finished after window.load (common) — register
+  // directly, deferring only when the page is genuinely still loading.
   useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("/sw.js")
-          .then((reg) => console.log("SW registered:", reg))
-          .catch((err) => console.error("SW reg error:", err));
-      });
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    const register = () =>
+      navigator.serviceWorker
+        .register("/sw.js")
+        .catch((err) => console.error("SW reg error:", err));
+    if (document.readyState === "complete") {
+      register();
+    } else {
+      window.addEventListener("load", register, { once: true });
+      return () => window.removeEventListener("load", register);
     }
   }, []);
 
