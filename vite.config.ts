@@ -11,6 +11,9 @@ export default defineConfig({
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    // Split each route's component into its own chunk so heavy routes (charts, autotrader)
+    // aren't bundled into every page's initial load.
+    router: { autoCodeSplitting: true },
   },
   // Force a Node server build (default target is Cloudflare, which can't run
   // better-sqlite3). Produces `.output/server/index.mjs` — run with `node`.
