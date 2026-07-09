@@ -198,6 +198,38 @@ export class DerivTradingConnection {
     }
   }
 
+  /**
+   * Read-only payout quote (no money committed — a proposal is just a price
+   * check) as (payout - stake) / stake. Deriv's actual payout varies by
+   * instrument/duration/volatility and isn't the flat ~85% often assumed —
+   * lets the caller reject a trade whose current payout is too thin to be
+   * worth the risk, before the confidence score alone would greenlight it.
+   */
+  async getPayoutRatio(params: {
+    symbol: string;
+    amount: number;
+    contractType: "CALL" | "PUT";
+    durationMinutes: number;
+  }): Promise<number | null> {
+    try {
+      const prop = await this.socket.request<{ proposal?: { ask_price: number; payout: number } }>({
+        proposal: 1,
+        amount: Math.round(params.amount * 100) / 100,
+        basis: "stake",
+        contract_type: params.contractType,
+        currency: this.currency,
+        duration: params.durationMinutes,
+        duration_unit: "m",
+        underlying_symbol: params.symbol,
+      });
+      if (!prop.proposal || !prop.proposal.ask_price) return null;
+      const ratio = (prop.proposal.payout - prop.proposal.ask_price) / prop.proposal.ask_price;
+      return ratio > 0 && ratio < 5 ? ratio : null;
+    } catch {
+      return null;
+    }
+  }
+
   async proposeAndBuy(params: {
     symbol: string;
     amount: number;

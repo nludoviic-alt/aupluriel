@@ -156,6 +156,7 @@ export interface AutoTraderConfig {
   maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
   newsFilter: boolean;            // block session-open / macro-event windows on session-bound markets
   veto4h: Veto4hMode;             // how strictly a contrarian 4H cancels a trade
+  minPayoutRatio: number;         // skip a trade if the live quoted payout (profit/stake) is below this — a thin payout raises the win rate needed to break even, independent of signal confidence
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
@@ -193,6 +194,9 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // biggest signal-frequency killer found in the engine audit. Only a
   // confident (good/premium) 4H veto is honored by default now.
   veto4h: "strong-only",
+  // Break-even win rate at 65% payout is ~60.6% — below that, even a
+  // reasonably confident signal can have negative expected value.
+  minPayoutRatio: 0.65,
 };
 
 export const SCAN_INTERVAL_MS = 60_000;
@@ -224,7 +228,7 @@ export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;
 
 export interface ScanSymbolResult {
   symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable";
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout";
   direction?: "CALL" | "PUT" | null;
   confidence?: number;
   agreement?: number;
@@ -382,6 +386,7 @@ export function aggregateTfSignals(
   volatilityPct: number,
   volatilityRatio: number,
   veto4h: Veto4hMode = "strong-only",
+  minDurationMinutes = 0,
 ): SymbolAnalysis {
   const results: string[] = [];
   const qualities: string[] = [];
@@ -413,13 +418,21 @@ export function aggregateTfSignals(
       for (const p of sig.patterns) patternBonus += p.strength * 2;
     }
 
-    if (sig.confidence > bestConf) {
+    // A TF whose natural duration is shorter than the instrument's minimum
+    // contract length can't actually be traded at its own timeframe — e.g. a
+    // 5m signal on forex (15min minimum) would otherwise become "dominant"
+    // and get its suggested 5min duration force-stretched to 15min downstream,
+    // holding a short-term momentum read for 3x longer than it was calibrated
+    // for. Such a TF still counts toward direction/confidence above; it's
+    // just ineligible to set the traded duration.
+    const tfDuration = TF_DURATION_MAP[tf] ?? 15;
+    if (tfDuration >= minDurationMinutes && sig.confidence > bestConf) {
       bestConf = sig.confidence;
       dominantTf = tf;
     }
   }
 
-  const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : 15;
+  const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : Math.max(15, minDurationMinutes);
 
   if (!results.length) {
     return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
@@ -555,6 +568,9 @@ export async function analyzeSymbolCore(
     } catch { /* ignore */ }
   }
 
-  const analysis = aggregateTfSignals(tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only");
+  const analysis = aggregateTfSignals(
+    tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only",
+    minContractMinutes(symbolDeriv),
+  );
   return { analysis, candles15m };
 }

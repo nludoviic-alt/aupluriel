@@ -1131,6 +1131,29 @@ export function startAutoTrader(
         continue;
       }
 
+      // Clamp to the symbol's minimum allowed duration (forex CALL/PUT starts at 15m)
+      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+
+      // Confidence alone doesn't guard against a thin payout — Deriv's actual
+      // payout varies by instrument/duration/volatility, and a low one raises
+      // the win rate needed just to break even. Skipped entirely in simulation
+      // mode, which already prices its own P&L off a live payout quote.
+      if (config.mode !== "simulation") {
+        try {
+          const proposal = await proposalContract({
+            symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
+          });
+          const payoutRatio = (proposal.payout - proposal.askPrice) / proposal.askPrice;
+          if (payoutRatio > 0 && payoutRatio < 5 && payoutRatio < config.minPayoutRatio) {
+            scanResults.push({
+              symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
+              note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
+            });
+            continue;
+          }
+        } catch { /* quote unavailable — don't block the trade on it */ }
+      }
+
       // Signal qualifies — will trade
       scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
       onScanResult?.({ time: Date.now(), results: scanResults });
@@ -1162,9 +1185,6 @@ export function startAutoTrader(
         const entryCandles = await fetchCandles(symbol, GRANULARITY["1m"], 1);
         entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
       } catch { /* ignore */ }
-
-      // Clamp to the symbol's minimum allowed duration (forex CALL/PUT starts at 15m)
-      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
 
       const logId = `t_${Date.now()}_${symbol}`;
       const pendingLog: TradeLog = {

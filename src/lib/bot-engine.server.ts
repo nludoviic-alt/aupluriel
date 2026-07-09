@@ -420,6 +420,23 @@ class ServerBotEngine {
         continue;
       }
 
+      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+
+      // Confidence alone doesn't guard against a thin payout — Deriv's actual
+      // payout varies by instrument/duration/volatility, and a low one raises
+      // the win rate needed just to break even. Read-only quote, no money
+      // committed; a null result (quote unavailable) doesn't block the trade.
+      const payoutRatio = await this.conn.getPayoutRatio({
+        symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
+      });
+      if (payoutRatio !== null && payoutRatio < config.minPayoutRatio) {
+        scanResults.push({
+          symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
+          note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
+        });
+        continue;
+      }
+
       // ── Signal qualifies — place the trade ──
       scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
       newTradesThisTick++;
@@ -430,7 +447,6 @@ class ServerBotEngine {
         entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
       } catch { /* ignore */ }
 
-      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),

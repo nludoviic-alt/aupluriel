@@ -105,6 +105,7 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
     correlated:    { text: "⛓ Corrélée — skippée",  cls: "text-muted-foreground/60" },
     "news-block":  { text: "📰 Fenêtre macro",       cls: "text-amber-400" },
     "not-tradeable": { text: "🚫 CALL/PUT indispo",   cls: "text-muted-foreground/60" },
+    "low-payout":  { text: "💸 Payout trop faible",   cls: "text-amber-400" },
   };
 
   // ── Today stats ──────────────────────────────────────────────────────────────
@@ -344,10 +345,10 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
                         {r.action === "low-agreement" && r.agreement !== undefined && (
                           <span className="font-normal text-muted-foreground"> {r.agreement}<span className="opacity-60">/{config.minTfAgreement}TF</span></span>
                         )}
-                        {r.action === "news-block" && r.note && (
+                        {(r.action === "news-block" || r.action === "low-payout") && r.note && (
                           <span className="font-normal text-muted-foreground"> · {r.note}</span>
                         )}
-                        {r.action !== "low-confidence" && r.action !== "low-agreement" && r.action !== "news-block" && conf > 0 && r.action !== "traded" && (
+                        {r.action !== "low-confidence" && r.action !== "low-agreement" && r.action !== "news-block" && r.action !== "low-payout" && conf > 0 && r.action !== "traded" && (
                           <span className="font-normal text-muted-foreground"> {conf.toFixed(0)}%</span>
                         )}
                       </span>
