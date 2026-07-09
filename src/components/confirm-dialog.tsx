@@ -34,7 +34,7 @@ export function ConfirmDialog({ state }: ConfirmDialogProps) {
           </div>
           <div>
             <h3 className="font-semibold text-foreground">{state.title}</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{state.description}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{state.description}</p>
           </div>
         </div>
         <div className="flex gap-2 justify-end">

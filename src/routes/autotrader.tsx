@@ -214,6 +214,7 @@ function AutoTraderPage() {
     todayPnl: number;
     todayCount: number;
     trades: TradeLog[];
+    allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
   }
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
@@ -243,13 +244,41 @@ function AutoTraderPage() {
           toast.error("Le bot serveur trade sur Deriv — passe en mode Démo ou Live d'abord");
           return;
         }
+        // Real money — confirm with an up-to-the-second track record, not
+        // whatever `cloud` last polled up to 20s ago.
+        if (config.mode === "live") {
+          let stats = cloud?.allTimeStats;
+          try {
+            const fresh = await api.get<CloudStatus>("/api/bot");
+            stats = fresh.allTimeStats;
+          } catch { /* fall back to last-known stats below */ }
+
+          const trades = stats?.trades ?? 0;
+          const winRate = stats ? Math.round(stats.winRate * 100) : 0;
+          const sampleLine = trades < 20
+            ? `⚠️ Seulement ${trades} trade(s) enregistré(s) sur ton compte — échantillon trop faible pour juger la fiabilité de la stratégie.`
+            : `Historique : ${trades} trades, ${winRate}% de réussite, P&L cumulé ${stats!.pnl >= 0 ? "+" : ""}$${stats!.pnl.toFixed(2)}.`;
+          const riskLine = trades >= 5 && winRate < 50
+            ? `\n\n🔴 Win rate actuel sous 50% — passer en live maintenant reviendrait à trader en argent réel avec un historique perdant.`
+            : "";
+
+          const ok = await confirm({
+            title: "Démarrer le bot serveur en mode LIVE ?",
+            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.\n\n${sampleLine}${riskLine}`,
+            confirmLabel: "Démarrer en réel",
+            danger: true,
+          });
+          if (!ok) return;
+        }
         // Never run both engines at once — same account, duplicate trades.
         if (running) {
           stopAutoTraderEngine();
           toast.info("Moteur local arrêté — le serveur prend le relais");
         }
         await api.post("/api/bot", { action: "start", config });
-        toast.success("☁️ Bot serveur démarré — il tourne même téléphone verrouillé");
+        toast.success(config.mode === "live"
+          ? "☁️ Bot serveur démarré en LIVE — argent réel"
+          : "☁️ Bot serveur démarré — il tourne même téléphone verrouillé");
       }
       await refreshCloud();
     } catch (err) {

@@ -139,19 +139,43 @@ export function getTodayStats(userId: number): { pnl: number; count: number } {
   return row;
 }
 
+/**
+ * All-time closed-trade record for this user — surfaced before letting them
+ * switch the server bot to live so the "am I ready for real money" decision
+ * is informed by an actual number, not a guess. Cross-user by design (shared
+ * strategy, shared learning) would be more statistically meaningful, but
+ * showing someone else's win rate to justify THEIR real-money risk would be
+ * misleading — this stays scoped to the user's own trades.
+ */
+export function getAllTimeStats(userId: number): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
+  const row = getDb()
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
+         COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
+         COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl
+       FROM bot_trades WHERE user_id = ?`,
+    )
+    .get(userId) as { wins: number; losses: number; pnl: number };
+  const trades = row.wins + row.losses;
+  return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
+}
+
 function loadBotConfig(userId: number): AutoTraderConfig | null {
   const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ?").get(userId) as { config: string } | undefined;
   if (!row) return null;
-  // Config verrouillée : seule la mise (stakeUsd, maxDailyLossUsd) est reprise
-  // de la config sauvegardée — la stratégie vient toujours de DEFAULT_CONFIG,
-  // même pour les bots configurés avant le verrouillage. Mode forcé en démo.
+  // Config verrouillée : seuls la mise (stakeUsd, maxDailyLossUsd) et le mode
+  // (demo/live) sont repris de la config sauvegardée — la stratégie vient
+  // toujours de DEFAULT_CONFIG. "live" n'est retenu que si l'utilisateur l'a
+  // explicitement choisi au démarrage (voir /api/bot.ts) ; ce choix persiste
+  // across restarts/redéploiements — pas de re-bascule silencieuse en demo.
   try {
     const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
     return {
       ...DEFAULT_CONFIG,
       stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
       maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
-      mode: "demo",
+      mode: saved.mode === "live" ? "live" : "demo",
     };
   } catch {
     return { ...DEFAULT_CONFIG };

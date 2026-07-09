@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { getDb } from "@/lib/db.server";
 import {
+  getAllTimeStats,
   getBotRuntime,
   getBotTrades,
   getTodayStats,
@@ -28,6 +29,9 @@ export const Route = createFileRoute("/api/bot")({
         // SQL over ALL of today's rows — summing the 20-trade window instead
         // made early wins vanish from the display as new events pushed them out.
         const today = getTodayStats(user.id);
+        // All-time record — shown before a live-mode start so that decision is
+        // informed by this user's actual track record, not a guess.
+        const allTime = getAllTimeStats(user.id);
 
         return json({
           enabled: !!state?.enabled,
@@ -38,6 +42,7 @@ export const Route = createFileRoute("/api/bot")({
           todayPnl: today.pnl,
           todayCount: today.count,
           trades,
+          allTimeStats: allTime,
         });
       },
 
@@ -54,8 +59,10 @@ export const Route = createFileRoute("/api/bot")({
         if (body.action === "start") {
           // Config verrouillée : la stratégie (symboles forex, premiumOnly,
           // minConfidence…) est fixée par DEFAULT_CONFIG pour tout le monde —
-          // pendant la phase d'entraînement collectif, seule la mise est
-          // réglable par l'utilisateur. Mode forcé en démo.
+          // seules la mise, la limite de perte et le mode (demo/live) sont
+          // réglables par chaque utilisateur pour SON propre bot. "live" doit
+          // être explicitement demandé ; "simulation" reste navigateur-only
+          // (le bot serveur trade réellement sur Deriv, demo ou live).
           const requested = body.config ?? {};
           const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
           const maxDailyLossUsd = clamp(
@@ -63,13 +70,14 @@ export const Route = createFileRoute("/api/bot")({
             1,
             500,
           );
-          const config: AutoTraderConfig = { ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode: "demo" };
+          const mode = requested.mode === "live" ? "live" : "demo";
+          const config: AutoTraderConfig = { ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode };
           try {
             await startBotForUser(user.id, config);
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }
-          return json({ ok: true, running: true });
+          return json({ ok: true, running: true, mode });
         }
 
         if (body.action === "stop") {
