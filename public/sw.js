@@ -5,13 +5,17 @@
 // asset URLs) until they manually cleared site data. v2 is network-first for
 // navigations and only cache-first for immutable/static files, with old-cache
 // cleanup + immediate takeover on update.
-const CACHE_NAME = 'vertex-v2';
+// v3 bumps the cache name so returning visitors — whose v2 cache still holds
+// the pre-rebrand icons — get evicted and re-fetch the current Lio23 assets
+// instead of being stuck with stale icons forever (cache-first never expires).
+const CACHE_NAME = 'lio23-v3';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo.png',
   '/logo-192.png',
   '/logo-maskable-512.png',
   '/apple-touch-icon.png',
+  '/favicon.ico',
 ];
 
 self.addEventListener('install', (event) => {
@@ -79,7 +83,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Vertex';
+  const title = data.title || 'Lio23';
   const options = {
     body: data.body || 'Nouveaux signaux disponibles.',
     icon: '/logo-192.png',
