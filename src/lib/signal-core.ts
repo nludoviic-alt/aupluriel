@@ -157,6 +157,9 @@ export interface AutoTraderConfig {
   newsFilter: boolean;            // block session-open / macro-event windows on session-bound markets
   veto4h: Veto4hMode;             // how strictly a contrarian 4H cancels a trade
   minPayoutRatio: number;         // skip a trade if the live quoted payout (profit/stake) is below this — a thin payout raises the win rate needed to break even, independent of signal confidence
+  vetoDaily: Veto4hMode;          // how strictly a contrarian Daily trend cancels a trade ("off" = Daily bias not fetched at all)
+  minSymbolWinRate: number;       // pause a SYMBOL when its rolling win rate drops below this (0 = disabled)
+  symbolWinRateLookback: number;  // how many of the symbol's last closed trades the rolling win rate above is computed over
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
@@ -197,6 +200,15 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Break-even win rate at 65% payout is ~60.6% — below that, even a
   // reasonably confident signal can have negative expected value.
   minPayoutRatio: 0.65,
+  // Off by default: an untested filter shouldn't silently change what the
+  // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
+  // to "strong-only" — Daily is one more filter layer, it will trade less.
+  vetoDaily: "off",
+  // Same 35% floor computeAdaptiveStake already uses to cut stake by 75% —
+  // here it fully pauses the SYMBOL instead, catching a slow bleed (alternating
+  // win/loss) that a pure consecutive-loss streak counter never trips.
+  minSymbolWinRate: 0.35,
+  symbolWinRateLookback: 10,
 };
 
 export const SCAN_INTERVAL_MS = 60_000;
@@ -289,6 +301,21 @@ export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): numbe
     else if (l.status === "won") break;
   }
   return count;
+}
+
+/**
+ * Rolling win rate for one symbol over its last N closed trades. Complements
+ * countConsecutiveLosses: a streak counter resets to 0 on a single win, so a
+ * symbol going W-L-W-L-W-L (50% but never 2 losses in a row) sails through
+ * the streak gate forever even though it's a coin flip against a payout that
+ * needs >50% to break even. This looks at the actual rate instead of a streak.
+ */
+export function symbolRollingStats(logs: TradeLog[], symbol: string, lookback = 10): { trades: number; winRate: number } {
+  const closed = logs
+    .filter((l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"))
+    .slice(0, lookback);
+  const wins = closed.filter((l) => l.status === "won").length;
+  return { trades: closed.length, winRate: closed.length > 0 ? wins / closed.length : 1 };
 }
 
 // ─── Correlation ──────────────────────────────────────────────────────────────
@@ -387,6 +414,8 @@ export function aggregateTfSignals(
   volatilityRatio: number,
   veto4h: Veto4hMode = "strong-only",
   minDurationMinutes = 0,
+  dailySignal?: GeneratedSignal,
+  vetoDaily: Veto4hMode = "off",
 ): SymbolAnalysis {
   const results: string[] = [];
   const qualities: string[] = [];
@@ -465,6 +494,23 @@ export function aggregateTfSignals(
     blockers.add(`4H contre-tendance faible (${h4dir}) — toléré`);
   }
 
+  // VETO rule (optional, off by default): a contrarian Daily trend can cancel
+  // the trade — same "strong-only cancels, weak is tolerated" pattern as 4H,
+  // one timeframe higher. Independent of the TIMEFRAMES loop above (Daily
+  // isn't a candidate for dominantTf/suggestedDuration — a 15min-1h binary
+  // contract has no business being "held" at a daily-chart duration).
+  if (dailySignal && dailySignal.direction !== "HOLD" && vetoDaily !== "off") {
+    const dDir = dailySignal.direction;
+    if (dDir !== signalBias) {
+      const dStrong = dailySignal.quality !== undefined && dailySignal.quality !== "weak";
+      if (vetoDaily === "always" || dStrong) {
+        blockers.add(`Daily contre-tendance (${dDir}) — trade annulé`);
+        return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+      }
+      blockers.add(`Daily contre-tendance faible (${dDir}) — toléré`);
+    }
+  }
+
   // Confidence bonus based on alignment
   let avgConf = totalConf / results.length;
   if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 15); // all 4 TFs agree
@@ -531,6 +577,7 @@ export async function analyzeSymbolCore(
   opts: {
     weights?: Partial<Record<SignalComponent["name"], number>>;
     veto4h?: Veto4hMode;
+    vetoDaily?: Veto4hMode;
   } = {},
 ): Promise<{ analysis: SymbolAnalysis; candles15m: CandleBar[] | null }> {
   const { atr } = await import("./indicators");
@@ -568,9 +615,20 @@ export async function analyzeSymbolCore(
     } catch { /* ignore */ }
   }
 
+  // Daily bias is fetched separately from the TIMEFRAMES loop above — it's a
+  // veto-only input (off by default), never a candidate for dominantTf, since
+  // a day-long "duration" makes no sense for a 15min-1h binary contract.
+  let dailySignal: GeneratedSignal | undefined;
+  if ((opts.vetoDaily ?? "off") !== "off") {
+    try {
+      const daily = await fetchCandlesFn(symbolDeriv, 86_400, 250);
+      if (daily.length) dailySignal = generateSignal(daily, { weights: opts.weights });
+    } catch { /* ignore — veto simply doesn't apply this scan */ }
+  }
+
   const analysis = aggregateTfSignals(
     tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only",
-    minContractMinutes(symbolDeriv),
+    minContractMinutes(symbolDeriv), dailySignal, opts.vetoDaily ?? "off",
   );
   return { analysis, candles15m };
 }

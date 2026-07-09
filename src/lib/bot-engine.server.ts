@@ -30,6 +30,7 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   minContractMinutes,
+  symbolRollingStats,
   type AutoTraderConfig,
   type ScanResult,
   type ScanSymbolResult,
@@ -367,6 +368,24 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "cooldown" });
         continue;
       }
+
+      // A streak counter resets on any single win — a symbol alternating
+      // W-L-W-L never trips it even though it's a coin flip against a payout
+      // that needs >50% to break even. Catches that slow bleed directly.
+      if (config.minSymbolWinRate > 0) {
+        const rolling = symbolRollingStats(logs, symbol, config.symbolWinRateLookback);
+        if (rolling.trades >= 5 && rolling.winRate < config.minSymbolWinRate) {
+          this.symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
+          this.emit({
+            id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
+            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+            status: "cooldown",
+            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause ${config.cooldownMinutes} min`,
+          });
+          scanResults.push({ symbol, action: "cooldown" });
+          continue;
+        }
+      }
       toAnalyze.push(symbol);
     }
 
@@ -378,7 +397,9 @@ class ServerBotEngine {
       try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
       return {
         symbol,
-        analysis: (await analyzeSymbolCore(symbol, fetchCandlesServer, { weights, veto4h: config.veto4h ?? "strong-only" })).analysis,
+        analysis: (await analyzeSymbolCore(symbol, fetchCandlesServer, {
+          weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
+        })).analysis,
       };
     });
 

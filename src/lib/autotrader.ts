@@ -22,6 +22,7 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   minContractMinutes,
+  symbolRollingStats,
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
@@ -730,12 +731,12 @@ function applyStrategyOverlay(analysis: SymbolAnalysis, symbolDeriv: string, can
   };
 }
 
-async function analyzeSymbol(symbolDeriv: string, veto4h: Veto4hMode): Promise<SymbolAnalysis> {
+async function analyzeSymbol(symbolDeriv: string, veto4h: Veto4hMode, vetoDaily: Veto4hMode = "off"): Promise<SymbolAnalysis> {
   const learnedWeights = getLearnedWeights(symbolDeriv);
   const { analysis, candles15m } = await analyzeSymbolCore(
     symbolDeriv,
     (sym, granularitySeconds, count) => fetchCandles(sym, granularitySeconds, count),
-    { weights: learnedWeights, veto4h },
+    { weights: learnedWeights, veto4h, vetoDaily },
   );
   return applyStrategyOverlay(analysis, symbolDeriv, candles15m);
 }
@@ -1057,6 +1058,27 @@ export function startAutoTrader(
         continue;
       }
 
+      // A streak counter resets on any single win — a symbol alternating
+      // W-L-W-L never trips it even though it's a coin flip against a payout
+      // that needs >50% to break even. Catches that slow bleed directly.
+      if (config.minSymbolWinRate > 0) {
+        const rolling = symbolRollingStats(logs, symbol, config.symbolWinRateLookback);
+        if (rolling.trades >= 5 && rolling.winRate < config.minSymbolWinRate) {
+          symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
+          emit({
+            id: `cd_${Date.now()}_${symbol}`,
+            time: Date.now(),
+            symbol,
+            direction: "CALL",
+            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+            status: "cooldown",
+            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades (${symbol}) — pause ${config.cooldownMinutes} min`,
+          });
+          scanResults.push({ symbol, action: "cooldown" });
+          continue;
+        }
+      }
+
       toAnalyze.push(symbol);
     }
 
@@ -1070,7 +1092,7 @@ export function startAutoTrader(
     // an all-markets scan) take minutes; this caps concurrency instead.
     const analyzed = await mapWithConcurrency(toAnalyze, 6, async (symbol) => ({
       symbol,
-      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only"),
+      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only", config.vetoDaily ?? "off"),
     }));
 
     // All-markets mode: best opportunities get first crack at the trade slots
