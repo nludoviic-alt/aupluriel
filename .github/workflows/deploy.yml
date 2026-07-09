@@ -1,0 +1,27 @@
+name: Deploy to lio23.com
+
+# Every push to main triggers the VPS to pull, rebuild, and restart itself.
+# The runner never touches the server's filesystem directly — it just opens
+# an SSH session whose key is locked (via `command=` in authorized_keys) to
+# running /home/ubuntu/deploy.sh on the VPS, nothing else.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-lio23
+      cancel-in-progress: false
+    steps:
+      - name: Trigger remote deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 51.79.70.153 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes ubuntu@51.79.70.153

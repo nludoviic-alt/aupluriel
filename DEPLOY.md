@@ -18,25 +18,36 @@ Elle tourne en production sur un **VPS OVH** derrière nginx, servie sur
 | Node | v22 (aligné sur `engines` du package.json) |
 | Env | `/home/ubuntu/app/.env` : `JWT_SECRET`, `DB_PATH`, `ADMIN_EMAIL`, `INVITE_CODE`, `APP_URL`, `GROQ_API_KEY`, `NODE_ENV`, `PORT`, `RESEND_API_KEY`, `EMAIL_FROM` |
 
-## Déployer une nouvelle version
+## Déployer une nouvelle version — automatique ✅
 
-Depuis la machine locale :
+**`git push origin main` suffit.** Un workflow GitHub Actions
+([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) se déclenche à
+chaque push sur `main` et se connecte en SSH au VPS pour lancer
+`~/app/deploy.sh`, qui fait `git reset --hard origin/main`, `npm ci`,
+`npm run build`, puis `sudo systemctl restart lio23`.
+
+Suivre le déploiement : onglet **Actions** du dépôt GitHub, ou
+`gh run watch --repo nludoviic-alt/lio23-vortex`.
+
+Déclencher manuellement sans nouveau commit :
+`gh workflow run deploy.yml --repo nludoviic-alt/lio23-vortex`.
+
+### Comment ça marche (sécurité)
+- Une clé SSH dédiée (`DEPLOY_SSH_KEY`, secret GitHub Actions) est autorisée
+  sur le VPS, mais **verrouillée** via `command="/home/ubuntu/deploy.sh"`
+  dans `~/.ssh/authorized_keys` : même si cette clé fuite, elle ne peut
+  rien exécuter d'autre que ce script — pas de shell, pas d'autre commande.
+- Le compte GitHub Actions n'a jamais accès à la base SQLite ni aux
+  secrets du VPS (`.env` reste local au serveur).
+
+### Déploiement manuel (dépannage seulement)
+Si le VPS refuse de puller à cause de modifications locales :
 
 ```sh
-# 1. Commiter et pousser sur GitHub
-git push origin main
-
-# 2. Sur le VPS : pull, build, restart
-ssh ubuntu@51.79.70.153 'cd ~/app \
-  && git pull --ff-only origin main \
-  && npm ci \
-  && npm run build \
-  && sudo systemctl restart lio23'
+ssh ubuntu@51.79.70.153 'cd ~/app && git stash push -u -m "pre-deploy" && ~/deploy.sh'
 ```
 
 > ⚠️ Ne jamais éditer les fichiers directement sur le VPS : tout passe par git.
-> Si `git pull` refuse à cause de modifs locales sur le serveur :
-> `git stash push -u -m "pre-deploy"` puis re-tenter le pull.
 
 ## Vérifier après déploiement
 
