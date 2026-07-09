@@ -110,7 +110,7 @@ function Dashboard() {
           style={{ background: "radial-gradient(circle, #fbbf24 0%, transparent 70%)" }} />
 
         <div className="relative flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6">
-          {/* Left: avatar + info */}
+          {/* Left: greeting */}
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm text-muted-foreground">{greeting},</p>

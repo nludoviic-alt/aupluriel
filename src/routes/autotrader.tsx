@@ -497,18 +497,21 @@ function AutoTraderPage() {
   }
 
   // ── derived helpers ─────────────────────────────────────────────────────────
-  // Power button: always green when running, gold on hover when stopped
-  const modeGlow = running
+  // Power button: green when EITHER engine is running (local or server bot),
+  // gold on hover when both are stopped. Previously only reflected the local
+  // engine, so activating "Bot serveur" alone left the button looking idle.
+  const anyRunning = running || !!(cloud?.enabled && cloud?.running);
+  const modeGlow = anyRunning
     ? "shadow-[0_0_56px_rgba(34,197,94,0.45)]"
     : "shadow-[0_0_32px_rgba(255,215,0,0.18)] hover:shadow-[0_0_60px_rgba(255,215,0,0.35)]";
 
-  const modeRing = running
+  const modeRing = anyRunning
     ? "ring-2 ring-up/60"
     : "ring-1 ring-primary/30 hover:ring-primary/60";
 
-  const modeIcon = running ? "text-up" : "text-primary";
+  const modeIcon = anyRunning ? "text-up" : "text-primary";
 
-  const modeBg = running
+  const modeBg = anyRunning
     ? "bg-up/12"
     : "bg-primary/10 hover:bg-primary/18";
 
@@ -653,7 +656,7 @@ function AutoTraderPage() {
             {/* Power button + statuts */}
             <div className="p-6 flex flex-col items-center gap-5">
               <div className="relative w-32 h-32">
-                {running && <span className="absolute inset-0 rounded-full animate-ping bg-up opacity-20" />}
+                {anyRunning && <span className="absolute inset-0 rounded-full animate-ping bg-up opacity-20" />}
                 <button onClick={toggleEngine}
                   className={cn("relative w-full h-full rounded-full flex items-center justify-center transition-all duration-300 group", modeBg, modeRing, modeGlow)}>
                   <Power className={cn("h-12 w-12 transition-transform duration-200 group-hover:scale-110", modeIcon)} />
@@ -664,8 +667,14 @@ function AutoTraderPage() {
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Statut</span>
-                  <span className={cn("text-sm font-bold", running ? "text-up" : "text-muted-foreground")}>
-                    {running ? "● Actif" : "○ Arrêté"}
+                  <span className={cn("text-sm font-bold", anyRunning ? "text-up" : "text-muted-foreground")}>
+                    {running && cloud?.enabled && cloud?.running
+                      ? "● Actif (local + serveur)"
+                      : cloud?.enabled && cloud?.running
+                      ? "● Actif sur le serveur"
+                      : running
+                      ? "● Actif"
+                      : "○ Arrêté"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">

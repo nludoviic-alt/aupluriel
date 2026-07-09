@@ -127,33 +127,16 @@ function LoginPage() {
       {/* Auth Form Container */}
       <div className="w-full max-w-[480px] p-6 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
         <div className="flex flex-col items-center space-y-8">
-          {/* Harmonized Header - Centered with Logo & Text on same line */}
-          <div className="flex items-center justify-center gap-6 w-full">
-            {/* Logo Mark */}
+          {/* Logo only — the mark already carries "Lio23" + "THE FUTURE",
+              repeating them as a separate text block was pure duplication. */}
+          <div className="flex items-center justify-center w-full">
             <div className="relative group cursor-default">
-              <div className="absolute -inset-3 rounded-full bg-orange-500/15 blur-2xl group-hover:bg-orange-500/25 transition-all duration-500" />
-              <LogoMark className="h-20 w-20 relative z-10 shadow-orange-500/10 shadow-2xl transition-transform duration-500 group-hover:scale-105" />
-            </div>
-
-            {/* Lio23 & Future Text stacked */}
-            <div className="flex flex-col items-start gap-1">
-              <div className="flex items-center gap-3">
-                <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-white leading-tight">
-                  Lio23
-                </h2>
-                <div className="relative flex h-3 w-3 mt-1">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.8)]"></span>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-3 opacity-80">
-                <span className="h-px w-8 bg-gradient-to-r from-transparent to-orange-500/40" />
-                <p className="text-orange-500/90 font-black text-[11px] uppercase tracking-[0.3em]">
-                  the future
-                </p>
-                <span className="h-px w-8 bg-gradient-to-l from-transparent to-orange-500/40" />
-              </div>
+              <div className="absolute -inset-4 rounded-full bg-orange-500/15 blur-2xl group-hover:bg-orange-500/25 transition-all duration-500" />
+              <LogoMark className="h-28 w-28 relative z-10 shadow-orange-500/10 shadow-2xl transition-transform duration-500 group-hover:scale-105" />
+              <span className="absolute top-1 right-1 z-20 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.8)]" />
+              </span>
             </div>
           </div>
 
@@ -324,9 +307,9 @@ function LoginPage() {
       </div>
 
       {/* Subtle Watermark */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0">
-        <h1 className="text-[10rem] font-black uppercase tracking-[0.3em] text-white/[0.04] leading-none">
-          Lio23
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0 whitespace-nowrap">
+        <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-[0.15em] md:tracking-[0.25em] text-white/[0.04] leading-none">
+          The Future
         </h1>
       </div>
     </div>

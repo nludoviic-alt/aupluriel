@@ -3,147 +3,31 @@ import { useEffect } from "react";
 import {
   LayoutDashboard, Radar, Zap, BriefcaseBusiness, FlaskConical,
   BarChart3, CandlestickChart, Workflow, Calculator, Bell, Settings,
-  ShieldCheck, LogOut, X, ChevronRight,
+  ShieldCheck, LogOut, X,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
-import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
+// Même palette de survol par page que la sidebar desktop (app-sidebar.tsx) —
+// seule la couleur du hover est reprise ici, rien d'autre ne doit changer.
 const NAV_PRIMARY = [
-  { title: "Dashboard",   url: "/",           icon: LayoutDashboard, color: "text-violet-400",    glow: "shadow-violet-500/30" },
-  { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness, color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
-  { title: "Signaux",     url: "/signals",    icon: Radar,           color: "text-emerald-400",   glow: "shadow-emerald-500/30" },
-  { title: "Auto-Trader", url: "/autotrader", icon: Zap,             color: "text-amber-400",     glow: "shadow-amber-500/30" },
+  { title: "Dashboard",   url: "/",           icon: LayoutDashboard,   hover: "hover:bg-violet-500/[0.04] hover:text-violet-300" },
+  { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness, hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
+  { title: "Signaux",     url: "/signals",    icon: Radar,             hover: "hover:bg-emerald-500/[0.04] hover:text-emerald-300" },
+  { title: "Auto-Trader", url: "/autotrader", icon: Zap,               hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
 ];
 
 const NAV_MORE = [
-  { title: "Backtest",        url: "/backtest",        icon: FlaskConical,    color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
-  { title: "Journal",         url: "/journal",         icon: BarChart3,       color: "text-orange-400",  glow: "shadow-orange-500/30" },
-  { title: "Marchés",         url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
-  { title: "Stratégies",      url: "/strategies",      icon: Workflow,        color: "text-mint",        glow: "shadow-mint/30" },
-  { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator,      color: "text-rose-400",    glow: "shadow-rose-500/30" },
-  { title: "Alertes",         url: "/alerts",          icon: Bell,            color: "text-yellow-400",  glow: "shadow-yellow-500/30" },
-  { title: "Paramètres",      url: "/settings",        icon: Settings,        color: "text-slate-400",   glow: "shadow-slate-500/30" },
+  { title: "Backtest",        url: "/backtest",        icon: FlaskConical,     hover: "hover:bg-fuchsia-500/[0.04] hover:text-fuchsia-300" },
+  { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
+  { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
+  { title: "Stratégies",      url: "/strategies",      icon: Workflow,         hover: "hover:bg-mint/[0.04] hover:text-mint/80" },
+  { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator,       hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
+  { title: "Alertes",         url: "/alerts",          icon: Bell,             hover: "hover:bg-yellow-500/[0.04] hover:text-yellow-300" },
+  { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];
-
-function getMobileHoverClasses(color: string) {
-  switch (color) {
-    case "text-violet-400":
-      return {
-        bg: "hover:bg-violet-500/[0.04]", border: "hover:border-violet-500/15", text: "hover:text-violet-300",
-        iconBg: "group-hover/nav:bg-violet-500/15 group-hover/nav:border-violet-500/25", iconText: "group-hover/nav:text-violet-400",
-      };
-    case "text-cyan-400":
-      return {
-        bg: "hover:bg-cyan-500/[0.04]", border: "hover:border-cyan-500/15", text: "hover:text-cyan-300",
-        iconBg: "group-hover/nav:bg-cyan-500/15 group-hover/nav:border-cyan-500/25", iconText: "group-hover/nav:text-cyan-400",
-      };
-    case "text-emerald-400":
-      return {
-        bg: "hover:bg-emerald-500/[0.04]", border: "hover:border-emerald-500/15", text: "hover:text-emerald-300",
-        iconBg: "group-hover/nav:bg-emerald-500/15 group-hover/nav:border-emerald-500/25", iconText: "group-hover/nav:text-emerald-400",
-      };
-    case "text-mint":
-      return {
-        bg: "hover:bg-mint/[0.04]", border: "hover:border-mint/15", text: "hover:text-mint/80",
-        iconBg: "group-hover/nav:bg-mint/15 group-hover/nav:border-mint/25", iconText: "group-hover/nav:text-mint",
-      };
-    case "text-amber-400":
-      return {
-        bg: "hover:bg-amber-500/[0.04]", border: "hover:border-amber-500/15", text: "hover:text-amber-300",
-        iconBg: "group-hover/nav:bg-amber-500/15 group-hover/nav:border-amber-500/25", iconText: "group-hover/nav:text-amber-400",
-      };
-    case "text-blue-400":
-      return {
-        bg: "hover:bg-blue-500/[0.04]", border: "hover:border-blue-500/15", text: "hover:text-blue-300",
-        iconBg: "group-hover/nav:bg-blue-500/15 group-hover/nav:border-blue-500/25", iconText: "group-hover/nav:text-blue-400",
-      };
-    case "text-fuchsia-400":
-      return {
-        bg: "hover:bg-fuchsia-500/[0.04]", border: "hover:border-fuchsia-500/15", text: "hover:text-fuchsia-300",
-        iconBg: "group-hover/nav:bg-fuchsia-500/15 group-hover/nav:border-fuchsia-500/25", iconText: "group-hover/nav:text-fuchsia-400",
-      };
-    case "text-orange-400":
-      return {
-        bg: "hover:bg-orange-500/[0.04]", border: "hover:border-orange-500/15", text: "hover:text-orange-300",
-        iconBg: "group-hover/nav:bg-orange-500/15 group-hover/nav:border-orange-500/25", iconText: "group-hover/nav:text-orange-400",
-      };
-    case "text-rose-400":
-      return {
-        bg: "hover:bg-rose-500/[0.04]", border: "hover:border-rose-500/15", text: "hover:text-rose-300",
-        iconBg: "group-hover/nav:bg-rose-500/15 group-hover/nav:border-rose-500/25", iconText: "group-hover/nav:text-rose-400",
-      };
-    case "text-yellow-400":
-      return {
-        bg: "hover:bg-yellow-500/[0.04]", border: "hover:border-yellow-500/15", text: "hover:text-yellow-300",
-        iconBg: "group-hover/nav:bg-yellow-500/15 group-hover/nav:border-yellow-500/25", iconText: "group-hover/nav:text-yellow-400",
-      };
-    case "text-slate-400":
-    default:
-      return {
-        bg: "hover:bg-white/[0.03]", border: "hover:border-white/5", text: "hover:text-white",
-        iconBg: "group-hover/nav:bg-white/10 group-hover/nav:border-white/15", iconText: "group-hover/nav:text-white",
-      };
-  }
-}
-
-function MobileNavItem({
-  item,
-  isActive,
-  onClick,
-}: {
-  item: { title: string; url: string; icon: React.ElementType; color: string; glow: string };
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const hover = getMobileHoverClasses(item.color);
-  return (
-    <Link
-      to={item.url}
-      onClick={onClick}
-      className={cn(
-        "group/nav relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200",
-        isActive
-          ? "bg-amber-500/[0.08] border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)]"
-          : cn("bg-transparent border border-transparent", hover.bg, hover.border),
-      )}
-    >
-      {/* Active accent bar */}
-      {isActive && (
-        <span className={cn(
-          "pointer-events-none absolute left-0 inset-y-1.5 w-[3px] rounded-r-full",
-          "bg-gradient-to-b from-amber-400 via-yellow-400 to-amber-600",
-          "shadow-lg shadow-amber-500/60",
-        )} />
-      )}
-
-      {/* Icon container */}
-      <span className={cn(
-        "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200 border",
-        isActive
-          ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-          : cn("bg-white/[0.04] border-white/[0.05] text-muted-foreground", hover.iconBg),
-      )}>
-        <item.icon className={cn("h-4 w-4 transition-colors duration-200", isActive ? "text-amber-400" : hover.iconText)} />
-      </span>
-
-      <span className={cn(
-        "font-semibold transition-colors duration-200 text-sm tracking-wide",
-        isActive
-          ? "text-amber-300 font-bold"
-          : cn("text-muted-foreground/80", hover.text),
-      )}>
-        {item.title}
-      </span>
-
-      {isActive && (
-        <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 opacity-60 text-amber-400" />
-      )}
-    </Link>
-  );
-}
 
 export function MobileMenu() {
   const { openMobile, setOpenMobile } = useSidebar();
@@ -179,7 +63,7 @@ export function MobileMenu() {
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-72 flex-col",
           "border-r border-white/[0.06]",
-          "bg-background",
+          "bg-[oklch(0.13_0.035_255)]",
           "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] md:hidden",
           openMobile ? "translate-x-0" : "-translate-x-full",
         )}
@@ -192,42 +76,13 @@ export function MobileMenu() {
         />
 
         {/* Header */}
-        <div className="relative flex items-center justify-between px-5 py-3 border-b border-white/[0.06] safe-area-top overflow-hidden">
-          {/* Shimmer accent on bottom border */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-            <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.5),oklch(0.85_0.20_70/0.5),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
-          </div>
-
-          <Link to="/" onClick={close} className="group/logo flex items-center gap-3.5">
-            <div className="relative shrink-0">
-              {/* Animated glow behind logo */}
-              <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-orange-500/30 via-amber-400/20 to-orange-600/25 blur-md opacity-60 group-hover/logo:opacity-100 transition-opacity duration-500 animate-pulse" />
-
-              {/* Outer ring */}
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.03] shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.1)] backdrop-blur-xl group-hover/logo:border-orange-500/25 transition-all duration-300">
-                {/* Inner glass ring */}
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.06] bg-gradient-to-br from-white/[0.06] to-white/[0.02] shadow-[inset_0_2px_4px_rgba(255,255,255,0.05)]">
-                  <LogoMark className="h-8 w-8" />
-                </div>
-              </div>
-
-              {/* Live dot with glow */}
-              <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-50" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-gradient-to-r from-orange-400 to-amber-500 shadow-md shadow-orange-500/50" />
-              </span>
-            </div>
-
-            <div className="flex flex-col leading-none">
-              <span className="text-xl font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">
-                Lio23
-              </span>
-              <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.2em] bg-gradient-to-r from-orange-400 to-amber-500 bg-clip-text text-transparent">
-                Quant Trading
-              </span>
+        <div className="relative flex items-center justify-between px-5 py-4 border-b border-white/[0.06] safe-area-top">
+          <Link to="/" onClick={close} className="flex items-center gap-3">
+            <div className="leading-none">
+              <div className="text-lg font-black tracking-tight brand-gradient-text">Lio23</div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Quant Trading</div>
             </div>
           </Link>
-
           <button
             onClick={close}
             className="rounded-xl border border-white/10 bg-white/5 p-2 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
@@ -236,24 +91,45 @@ export function MobileMenu() {
           </button>
         </div>
 
-        {/* Nav */}
-        <div className="flex-1 overflow-hidden px-3 py-2.5 space-y-3">
+        {/* Scrollable nav */}
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
 
           {/* Primary */}
           <section>
-            <p className="mb-1 px-2 text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground/40">
+            <p className="mb-2 px-2 text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground/40">
               Principal
             </p>
             <div className="space-y-0.5">
               {NAV_PRIMARY.map((item) => {
                 const active = isActive(item.url);
                 return (
-                  <MobileNavItem
+                  <Link
                     key={item.url}
-                    item={item}
-                    isActive={active}
+                    to={item.url}
                     onClick={() => { if (!active) haptic("light"); close(); }}
-                  />
+                    className={cn(
+                      "group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                      active ? "text-white" : cn("text-muted-foreground", item.hover),
+                    )}
+                  >
+                    {active && (
+                      <>
+                        <span
+                          className="absolute inset-0 rounded-xl"
+                          style={{
+                            background: "linear-gradient(120deg, oklch(0.70 0.20 45 / 0.55) 0%, oklch(0.80 0.19 70 / 0.25) 100%)",
+                            border: "1px solid oklch(0.70 0.20 45 / 0.35)",
+                          }}
+                        />
+                        <span className="absolute left-0 inset-y-0 w-[3px] rounded-r-full bg-gradient-to-b from-[oklch(0.80_0.19_70)] to-[oklch(0.70_0.20_45)]" />
+                      </>
+                    )}
+                    <item.icon className="relative h-4 w-4 shrink-0" />
+                    <span className="relative flex-1">{item.title}</span>
+                    {active && (
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-white/70" />
+                    )}
+                  </Link>
                 );
               })}
             </div>
@@ -264,36 +140,52 @@ export function MobileMenu() {
 
           {/* More */}
           <section>
-            <p className="mb-1 px-2 text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground/40">
+            <p className="mb-2 px-2 text-[9px] uppercase tracking-[0.18em] font-semibold text-muted-foreground/40">
               Plus
             </p>
             <div className="space-y-0.5">
               {NAV_MORE.map((item) => {
                 const active = isActive(item.url);
                 return (
-                  <MobileNavItem
+                  <Link
                     key={item.url}
-                    item={item}
-                    isActive={active}
+                    to={item.url}
                     onClick={() => { if (!active) haptic("light"); close(); }}
-                  />
+                    className={cn(
+                      "group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm transition-all duration-150",
+                      active
+                        ? "text-white font-medium bg-white/[0.06] border border-white/[0.08]"
+                        : cn("text-muted-foreground", item.hover),
+                    )}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span>{item.title}</span>
+                  </Link>
                 );
               })}
               {user?.is_admin && (
-                <MobileNavItem
-                  item={{ title: "Administration", url: "/admin", icon: ShieldCheck, color: "text-amber-400", glow: "shadow-amber-500/30" }}
-                  isActive={isActive("/admin")}
+                <Link
+                  to="/admin"
                   onClick={() => { if (!isActive("/admin")) haptic("light"); close(); }}
-                />
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-150",
+                    isActive("/admin")
+                      ? "text-amber-400 bg-amber-400/10 border border-amber-400/20 font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]",
+                  )}
+                >
+                  <ShieldCheck className="h-4 w-4 shrink-0" />
+                  <span>Administration</span>
+                </Link>
               )}
             </div>
           </section>
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/[0.06] px-3 py-2 space-y-1.5">
+        <div className="border-t border-white/[0.06] p-3 space-y-2">
           {user && (
-            <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+            <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-foreground">{user.username}</div>
                 <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>
@@ -308,7 +200,7 @@ export function MobileMenu() {
             </div>
           )}
 
-          <div className="flex items-center gap-2.5 rounded-xl border border-up/20 bg-up/[0.08] px-3 py-2">
+          <div className="flex items-center gap-2.5 rounded-xl border border-up/20 bg-up/[0.08] px-3 py-2.5">
             <span className="relative flex h-2 w-2 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-up opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-up" />

@@ -290,8 +290,11 @@ export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): numbe
 // ─── Correlation ──────────────────────────────────────────────────────────────
 
 // Pairs that share high exposure — only one from each group should be active at a time.
+// All USD majors are one and the same dollar bet (directly or inversely correlated):
+// EURUSD PUT + AUDUSD PUT is a doubled stake on USD strength, not two independent trades.
 export const CORRELATION_GROUPS: string[][] = [
-  ["frxEURUSD", "frxGBPUSD"],
+  ["frxEURUSD", "frxGBPUSD", "frxAUDUSD", "frxUSDJPY", "frxUSDCAD", "frxUSDCHF"],
+  ["frxEURGBP", "frxEURJPY", "frxGBPJPY"],
   ["cryBTCUSD", "cryETHUSD", "cryLTCUSD"],
 ];
 

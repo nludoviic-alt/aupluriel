@@ -462,6 +462,9 @@ class ServerBotEngine {
         this.trackContract(openLog);
       } catch (e) {
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
+        // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
+        // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
+        this.symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
     }
 

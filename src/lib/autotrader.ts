@@ -71,9 +71,14 @@ async function proposeAndBuy(params: {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const proposal = await proposalContract(params);
-      return await buyContract(proposal.id, proposal.askPrice * 1.05);
+      // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
+      const maxPrice = Math.round(proposal.askPrice * 1.05 * 100) / 100;
+      return await buyContract(proposal.id, maxPrice);
     } catch (e) {
       lastError = e as Error;
+      // Validation errors (invalid price/stake/contract) fail identically on retry —
+      // only transient failures (proposal expired, network) are worth another attempt.
+      if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) break;
       if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
     }
   }
@@ -1301,6 +1306,9 @@ export function startAutoTrader(
         } catch (e) {
           emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
           activeSymbols.delete(symbol);
+          // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
+          // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
+          symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
         }
       }
     }

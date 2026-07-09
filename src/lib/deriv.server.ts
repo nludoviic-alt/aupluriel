@@ -220,12 +220,16 @@ export class DerivTradingConnection {
         if (!prop.proposal) throw new Error("Proposal failed");
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number; payout: number } }>({
           buy: prop.proposal.id,
-          price: Number(prop.proposal.ask_price) * 1.05,
+          // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
+          price: Math.round(Number(prop.proposal.ask_price) * 1.05 * 100) / 100,
         });
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price), payout: Number(buy.buy.payout) };
       } catch (e) {
         lastError = e as Error;
+        // Validation errors (invalid price/stake/contract) fail identically on retry —
+        // only transient failures (proposal expired, network) are worth another attempt.
+        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) break;
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
       }
     }
