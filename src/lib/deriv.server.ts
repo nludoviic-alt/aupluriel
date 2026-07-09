@@ -268,6 +268,60 @@ export class DerivTradingConnection {
     throw lastError ?? new Error("Échec achat");
   }
 
+  /**
+   * Open a Multiplier position (MULTUP/MULTDOWN) — no fixed expiry, stays open
+   * until stop_loss/take_profit triggers or it's sold manually. stop_loss and
+   * take_profit are ABSOLUTE loss/profit amounts in account currency (positive
+   * numbers — Deriv closes when the loss/profit reaches that amount), not a
+   * price or a percentage.
+   */
+  async proposeAndBuyMultiplier(params: {
+    symbol: string;
+    amount: number;
+    direction: "CALL" | "PUT";
+    multiplier: number;
+    stopLossUsd: number;
+    takeProfitUsd: number;
+  }, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number }> {
+    const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
+          proposal: 1,
+          amount: Math.round(params.amount * 100) / 100,
+          basis: "stake",
+          contract_type: contractType,
+          currency: this.currency,
+          symbol: params.symbol,
+          multiplier: params.multiplier,
+          limit_order: {
+            stop_loss: Math.round(params.stopLossUsd * 100) / 100,
+            take_profit: Math.round(params.takeProfitUsd * 100) / 100,
+          },
+        });
+        if (!prop.proposal) throw new Error("Proposal failed");
+        const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>({
+          buy: prop.proposal.id,
+          // Same >2-decimal rejection as binary buys — re-round after the slippage buffer.
+          price: Math.round(Number(prop.proposal.ask_price) * 1.05 * 100) / 100,
+        });
+        if (!buy.buy) throw new Error("Buy failed");
+        return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
+      } catch (e) {
+        lastError = e as Error;
+        if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier/i.test(lastError.message)) break;
+        if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
+      }
+    }
+    throw lastError ?? new Error("Échec achat multiplicateur");
+  }
+
+  /** Close an open position immediately at market price (used for the max-hold-time safety net). */
+  async sellContract(contractId: number): Promise<void> {
+    await this.socket.request({ sell: contractId, price: 0 });
+  }
+
   /** Subscribe to a contract's lifecycle; returns an unsubscribe function. */
   subscribeContract(contractId: number, onUpdate: (u: ServerContractUpdate) => void): () => void {
     let subId: string | undefined;

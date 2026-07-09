@@ -160,6 +160,12 @@ export interface AutoTraderConfig {
   vetoDaily: Veto4hMode;          // how strictly a contrarian Daily trend cancels a trade ("off" = Daily bias not fetched at all)
   minSymbolWinRate: number;       // pause a SYMBOL when its rolling win rate drops below this (0 = disabled)
   symbolWinRateLookback: number;  // how many of the symbol's last closed trades the rolling win rate above is computed over
+  // --- Instrument: binary (CALL/PUT, fixed expiry) or Multiplier (MULTUP/MULTDOWN, no expiry) ---
+  instrumentType: "binary" | "multiplier";
+  multiplierLevel: number;        // leverage level for Multiplier trades
+  stopLossPctOfStake: number;     // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary)
+  takeProfitPctOfStake: number;   // Multiplier take-profit, as % of the stake
+  maxHoldMinutes: number;         // force-close a Multiplier position after this long even if neither stop-loss nor take-profit triggered (avoids swap fees / stuck positions)
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
@@ -209,6 +215,15 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // win/loss) that a pure consecutive-loss streak counter never trips.
   minSymbolWinRate: 0.35,
   symbolWinRateLookback: 10,
+  // Multiplier replaces CALL/PUT as the shared default: no fixed expiry to
+  // misalign with the signal's timeframe (the whole class of bug fixed
+  // above becomes moot), loss still capped at the stake via stop-loss.
+  // x10 + 12h cap keep it conservative to start — see plan for full reasoning.
+  instrumentType: "multiplier",
+  multiplierLevel: 10,
+  stopLossPctOfStake: 100,
+  takeProfitPctOfStake: 150,
+  maxHoldMinutes: 720,
 };
 
 export const SCAN_INTERVAL_MS = 60_000;
@@ -219,7 +234,9 @@ export interface TradeLog {
   id: string;
   time: number;
   symbol: string;
-  direction: "CALL" | "PUT";
+  // MULTUP/MULTDOWN are the Multiplier equivalent of CALL/PUT (no fixed
+  // expiry — closes on stop-loss/take-profit/manual sell instead).
+  direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
   stake: number;
   payout: number;
   status: "pending" | "open" | "won" | "lost" | "error" | "cooldown" | "risk-stop";
@@ -230,9 +247,12 @@ export interface TradeLog {
   closedAt?: number;
   note?: string;
   entryPrice?: number;       // price at trade open (for live visual)
-  durationMinutes?: number;  // contract duration (for live countdown)
-  expiry?: number;           // epoch ms when the contract resolves
+  durationMinutes?: number;  // contract duration (for live countdown) — binary only
+  expiry?: number;           // epoch ms when the contract resolves — binary only
   components?: SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning on close
+  multiplier?: number;       // leverage level — Multiplier trades only
+  stopLossUsd?: number;      // absolute loss level that auto-closes the position — Multiplier trades only
+  takeProfitUsd?: number;    // absolute profit level that auto-closes the position — Multiplier trades only
 }
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;

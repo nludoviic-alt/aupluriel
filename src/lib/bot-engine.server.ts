@@ -39,6 +39,12 @@ import {
 
 const SCAN_MS = 60_000;
 
+/** Correlation/active-symbol tracking cares about the underlying bullish/bearish
+ * bias, not the contract mechanics — MULTUP is the same bias as CALL. */
+function biasOf(direction: TradeLog["direction"]): "CALL" | "PUT" {
+  return direction === "MULTDOWN" ? "PUT" : direction === "MULTUP" ? "CALL" : direction;
+}
+
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 
 interface BotTradeRow {
@@ -46,7 +52,7 @@ interface BotTradeRow {
   user_id: number;
   time: number;
   symbol: string;
-  direction: "CALL" | "PUT";
+  direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
   stake: number;
   payout: number;
   status: TradeLog["status"];
@@ -60,6 +66,9 @@ interface BotTradeRow {
   duration_minutes: number | null;
   expiry: number | null;
   components: string | null;
+  multiplier: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
 }
 
 function parseComponents(json: string | null): SignalComponent[] | undefined {
@@ -81,13 +90,14 @@ function logFromRow(r: BotTradeRow): TradeLog {
     entryPrice: r.entry_price ?? undefined, durationMinutes: r.duration_minutes ?? undefined,
     expiry: r.expiry ?? undefined,
     components: parseComponents(r.components),
+    multiplier: r.multiplier ?? undefined, stopLossUsd: r.stop_loss ?? undefined, takeProfitUsd: r.take_profit ?? undefined,
   };
 }
 
 function upsertTrade(userId: number, log: TradeLog) {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -98,6 +108,7 @@ function upsertTrade(userId: number, log: TradeLog) {
     contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null,
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
+    multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
   });
 }
 
@@ -216,6 +227,11 @@ class ServerBotEngine {
         const won = match.profit > 0;
         this.emit({ ...log, status: won ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
         try { recordComponentOutcomesServer(log.symbol, log.components, won); } catch { /* never break reconcile */ }
+      } else if (log.direction === "MULTUP" || log.direction === "MULTDOWN") {
+        // Multiplier positions don't expire — getProfitTable only lists SOLD
+        // contracts, so no match here just means it's still open. Re-subscribe
+        // rather than treating the missing expiry as staleness.
+        this.trackMultiplierPosition(log);
       } else if (log.expiry && Date.now() < log.expiry + 2 * 60_000) {
         this.trackContract(log); // probably still open — re-subscribe
       } else {
@@ -226,7 +242,7 @@ class ServerBotEngine {
 
   private trackContract(openLog: TradeLog) {
     const contractId = openLog.contractId!;
-    this.activeSymbols.set(openLog.symbol, openLog.direction);
+    this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
     let resolved = false;
 
     const resolve = (won: boolean, profit: number) => {
@@ -263,6 +279,55 @@ class ServerBotEngine {
       }
     }, msLeft);
     this.fallbackTimers.add(fallback);
+  }
+
+  /**
+   * Multiplier positions have no fixed expiry — they stay open until
+   * stop_loss/take_profit triggers or the max-hold timer force-closes them.
+   * Unlike trackContract, "open" updates aren't noise to discard: they carry
+   * the live floating profit, pushed through so it's visible in DB/UI while
+   * the position is still live, not just once it finally resolves.
+   */
+  private trackMultiplierPosition(openLog: TradeLog) {
+    const contractId = openLog.contractId!;
+    this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
+    let resolved = false;
+
+    const finalize = (profit: number) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(maxHoldTimer);
+      this.fallbackTimers.delete(maxHoldTimer);
+      this.contractUnsubs.get(contractId)?.();
+      this.contractUnsubs.delete(contractId);
+      this.activeSymbols.delete(openLog.symbol);
+      this.emit({ ...openLog, status: profit > 0 ? "won" : "lost", profit, closedAt: Date.now() });
+      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, profit > 0); } catch { /* never break resolution */ }
+    };
+
+    const unsub = this.conn.subscribeContract(contractId, (u) => {
+      if (u.status === "open") { this.emit({ ...openLog, status: "open", profit: u.profit }); return; }
+      finalize(u.profit);
+    });
+    this.contractUnsubs.set(contractId, unsub);
+
+    // Safety net: force-close after maxHoldMinutes even if neither stop_loss
+    // nor take_profit triggered — avoids swap-fee accumulation on positions
+    // held past the daily cutoff, and stops a stuck position from holding a
+    // correlation slot open indefinitely.
+    const maxHoldMs = Math.max(60_000, this.config.maxHoldMinutes * 60_000);
+    const maxHoldTimer = setTimeout(async () => {
+      if (resolved || this.stopped) return;
+      try {
+        await this.conn.sellContract(contractId);
+        // The subscription's next "is_sold" update calls finalize with the real profit.
+      } catch {
+        const records = await this.conn.getProfitTable(30);
+        const match = records.find((r) => r.contractId === contractId);
+        if (match) finalize(match.profit);
+      }
+    }, maxHoldMs);
+    this.fallbackTimers.add(maxHoldTimer);
   }
 
   start() {
@@ -441,21 +506,29 @@ class ServerBotEngine {
         continue;
       }
 
-      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+      const isMultiplier = config.instrumentType === "multiplier";
 
-      // Confidence alone doesn't guard against a thin payout — Deriv's actual
-      // payout varies by instrument/duration/volatility, and a low one raises
-      // the win rate needed just to break even. Read-only quote, no money
-      // committed; a null result (quote unavailable) doesn't block the trade.
-      const payoutRatio = await this.conn.getPayoutRatio({
-        symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
-      });
-      if (payoutRatio !== null && payoutRatio < config.minPayoutRatio) {
-        scanResults.push({
-          symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
-          note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
+      // Duration alignment and the payout-ratio floor are binary-only concepts
+      // (fixed expiry, and a "payout" that only exists for a fixed-odds
+      // contract). A Multiplier has neither — no expiry to misalign with the
+      // signal's timeframe, and its cost is a flat ~0.02% commission instead.
+      let tradeDuration = 0;
+      if (!isMultiplier) {
+        tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+        // Confidence alone doesn't guard against a thin payout — Deriv's actual
+        // payout varies by instrument/duration/volatility, and a low one raises
+        // the win rate needed just to break even. Read-only quote, no money
+        // committed; a null result (quote unavailable) doesn't block the trade.
+        const payoutRatio = await this.conn.getPayoutRatio({
+          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
         });
-        continue;
+        if (payoutRatio !== null && payoutRatio < config.minPayoutRatio) {
+          scanResults.push({
+            symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
+            note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
+          });
+          continue;
+        }
       }
 
       // ── Signal qualifies — place the trade ──
@@ -468,11 +541,16 @@ class ServerBotEngine {
         entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
       } catch { /* ignore */ }
 
+      // stop_loss/take_profit are absolute $ amounts Deriv expects, derived
+      // from the stake so they scale with adaptive/percent/Kelly sizing.
+      const stopLossUsd = Math.round(effectiveStake * (config.stopLossPctOfStake / 100) * 100) / 100;
+      const takeProfitUsd = Math.round(effectiveStake * (config.takeProfitPctOfStake / 100) * 100) / 100;
+
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),
         symbol,
-        direction: analysis.direction,
+        direction: isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction,
         stake: effectiveStake,
         payout: 0,
         status: "pending",
@@ -481,22 +559,33 @@ class ServerBotEngine {
         tfAgreement: analysis.agreement,
         note: `☁️ serveur · TAS ${analysis.trendAlignmentScore}/4`,
         entryPrice: entryPrice || undefined,
-        durationMinutes: tradeDuration,
-        expiry: Date.now() + tradeDuration * 60_000,
         components: analysis.components,
+        ...(isMultiplier
+          ? { multiplier: config.multiplierLevel, stopLossUsd, takeProfitUsd }
+          : { durationMinutes: tradeDuration, expiry: Date.now() + tradeDuration * 60_000 }),
       };
       this.emit(pendingLog);
 
       try {
-        const bought = await this.conn.proposeAndBuy({
-          symbol,
-          amount: effectiveStake,
-          contractType: analysis.direction,
-          durationMinutes: tradeDuration,
-        });
-        const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
-        this.emit(openLog);
-        this.trackContract(openLog);
+        if (isMultiplier) {
+          const bought = await this.conn.proposeAndBuyMultiplier({
+            symbol, amount: effectiveStake, direction: analysis.direction,
+            multiplier: config.multiplierLevel, stopLossUsd, takeProfitUsd,
+          });
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
+          this.emit(openLog);
+          this.trackMultiplierPosition(openLog);
+        } else {
+          const bought = await this.conn.proposeAndBuy({
+            symbol,
+            amount: effectiveStake,
+            contractType: analysis.direction,
+            durationMinutes: tradeDuration,
+          });
+          const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
+          this.emit(openLog);
+          this.trackContract(openLog);
+        }
       } catch (e) {
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
         // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de

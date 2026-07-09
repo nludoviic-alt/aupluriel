@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export interface LiveTradeLike {
   id: string;
   symbol: string;
-  direction: "CALL" | "PUT";
+  direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
   stake: number;
   confidence?: number;
   entryPrice?: number;
@@ -39,11 +39,11 @@ export function LiveTradeCard({ trade, onDismiss }: { trade: LiveTradeLike; onDi
   const isForex = trade.symbol.startsWith("frx");
   const decimals = isForex ? 5 : 2;
 
-  // Use real Deriv P&L when available, else binary estimate (CALL>entry / PUT<entry)
+  // Use real Deriv P&L when available, else binary estimate (CALL/MULTUP>entry / PUT/MULTDOWN<entry)
   const winning =
     trade.liveProfit !== undefined
       ? trade.liveProfit >= 0
-      : trade.direction === "CALL"
+      : trade.direction === "CALL" || trade.direction === "MULTUP"
         ? current > entry
         : current < entry;
   const deltaPct = entry > 0 ? ((current - entry) / entry) * 100 : 0;

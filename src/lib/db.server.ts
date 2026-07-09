@@ -113,7 +113,7 @@ function migrate(db: Database.Database) {
       user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       time             INTEGER NOT NULL,  -- epoch ms
       symbol           TEXT    NOT NULL,
-      direction        TEXT    NOT NULL,  -- CALL | PUT
+      direction        TEXT    NOT NULL,  -- CALL | PUT | MULTUP | MULTDOWN
       stake            REAL    NOT NULL,
       payout           REAL    NOT NULL DEFAULT 0,
       status           TEXT    NOT NULL,  -- pending | open | won | lost | error | cooldown | risk-stop
@@ -165,6 +165,13 @@ function migrate(db: Database.Database) {
     // JSON [{name, bias}] — the signal components that drove this trade,
     // credited/blamed against indicator_stats when the contract resolves.
     db.exec("ALTER TABLE bot_trades ADD COLUMN components TEXT");
+  }
+  if (!botTradeCols.has("multiplier")) {
+    // Multiplier (MULTUP/MULTDOWN) trades only — leverage level and the
+    // stop-loss/take-profit levels that auto-close the position.
+    db.exec("ALTER TABLE bot_trades ADD COLUMN multiplier INTEGER");
+    db.exec("ALTER TABLE bot_trades ADD COLUMN stop_loss REAL");
+    db.exec("ALTER TABLE bot_trades ADD COLUMN take_profit REAL");
   }
 
   // --- Additive column migrations on `user_settings` (idempotent) ---

@@ -780,8 +780,17 @@ function AutoTraderPage() {
                   <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs">
                     <span className="font-medium truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
                     <span className={cn("font-bold shrink-0 ml-2",
-                      t.status === "won" ? "text-up" : t.status === "lost" ? "text-down" : "text-muted-foreground")}>
-                      {t.direction} · {t.status === "won" ? `+$${t.profit.toFixed(2)}` : t.status === "lost" ? `-$${Math.abs(t.profit).toFixed(2)}` : t.status}
+                      t.status === "won" || (t.status === "open" && t.profit >= 0) ? "text-up"
+                        : t.status === "lost" || (t.status === "open" && t.profit < 0) ? "text-down" : "text-muted-foreground")}>
+                      {t.direction} · {
+                        // Multiplier positions push live floating P&L on every "open" tick
+                        // (trackMultiplierPosition) — binary "open" trades don't update profit
+                        // until they resolve, so t.profit is still 0 for those mid-flight.
+                        t.status === "won" ? `+$${t.profit.toFixed(2)}`
+                          : t.status === "lost" ? `-$${Math.abs(t.profit).toFixed(2)}`
+                          : t.status === "open" && t.profit !== 0 ? `${t.profit >= 0 ? "+" : ""}$${t.profit.toFixed(2)} (ouvert)`
+                          : t.status
+                      }
                     </span>
                   </div>
                 ))}
