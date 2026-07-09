@@ -30,7 +30,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LogoMark } from "@/components/logo";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
@@ -240,14 +239,14 @@ export function AppSidebar() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
           <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.7),oklch(0.85_0.20_70/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
         </div>
-        <RouterLink to="/" className="group/logo flex items-center gap-3.5">
+        <RouterLink to="/" className="group/logo flex items-center gap-3.5 relative p-2 rounded-xl transition-all duration-300 hover:bg-white/[0.05] hover:shadow-lg hover:shadow-orange-500/10 active:scale-95 before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-r before:from-orange-500/0 before:via-orange-500/5 before:to-orange-500/0 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300">
           <div className="relative shrink-0">
             {/* Glow behind logo */}
             <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-md opacity-60 group-hover/logo:opacity-90 transition-opacity duration-500" />
             
             {/* Glassmorphic container */}
             <div className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_1px_0_rgba(255,255,255,0.15)] backdrop-blur-md group-hover/logo:border-orange-500/30 group-hover/logo:bg-white/[0.08] transition-all duration-300">
-              <LogoMark className="h-8 w-8" />
+              <img src="/favicon.png" alt="Lio23" className="h-10 w-10 object-contain absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             </div>
             
             {/* Live dot */}

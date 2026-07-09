@@ -141,7 +141,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "manifest", href: "/manifest.json" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "icon", href: "/favicon.ico", sizes: "any" },
-      { rel: "icon", type: "image/png", href: "/favicon.png" },
+      { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "32x32" },
+      { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "64x64" },
+      { rel: "icon", type: "image/png", href: "/favicon.png", sizes: "128x128" },
+      { rel: "icon", type: "image/png", href: "/logo-192.png", sizes: "192x192" },
+      { rel: "icon", type: "image/png", href: "/logo-maskable-512.png", sizes: "512x512" },
       { rel: "preconnect", href: "https://rsms.me/" },
       { rel: "stylesheet", href: "https://rsms.me/inter/inter.css" },
       {
@@ -259,7 +263,7 @@ function RootComponent() {
   // full-screen without the app sidebar/header chrome.
   if (authLoading) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-black">
+      <div className="min-h-screen w-full flex items-center justify-center bg-black" suppressHydrationWarning={true}>
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
       </div>
     );

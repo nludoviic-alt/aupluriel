@@ -77,10 +77,25 @@ export function MobileMenu() {
 
         {/* Header */}
         <div className="relative flex items-center justify-between px-5 py-4 border-b border-white/[0.06] safe-area-top">
-          <Link to="/" onClick={close} className="flex items-center gap-3">
-            <div className="leading-none">
-              <div className="text-lg font-black tracking-tight brand-gradient-text">Lio23</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Quant Trading</div>
+          <Link to="/" onClick={close} className="flex items-center gap-3.5 relative p-2 rounded-xl transition-all duration-300 hover:bg-white/[0.05] hover:shadow-lg hover:shadow-orange-500/10 active:scale-95 before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-r before:from-orange-500/0 before:via-orange-500/5 before:to-orange-500/0 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300">
+            <div className="relative shrink-0">
+              {/* Glow behind logo */}
+              <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-md opacity-60 group-hover/logo:opacity-90 transition-opacity duration-500" />
+              
+              {/* Glassmorphic container */}
+              <div className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_1px_0_rgba(255,255,255,0.15)] backdrop-blur-md group-hover/logo:border-orange-500/30 group-hover/logo:bg-white/[0.08] transition-all duration-300">
+                <img src="/favicon.png" alt="Lio23" className="h-10 w-10 object-contain absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              </div>
+              
+              {/* Live dot */}
+              <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-gradient-to-r from-orange-400 to-amber-500 shadow-md shadow-orange-500/50" />
+              </span>
+            </div>
+            <div className="flex flex-col leading-none overflow-hidden">
+              <span className="text-[26px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">Lio23</span>
+              <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.24em] bg-gradient-to-r from-orange-400 to-amber-500 bg-clip-text text-transparent">Quant Trading</span>
             </div>
           </Link>
           <button

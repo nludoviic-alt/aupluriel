@@ -3,7 +3,6 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, Bot, Copy, KeyRound, Loader2, Mic, User, Volume2, VolumeX } from "lucide-react";
-import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useSpeech, speak, stopSpeaking } from "@/hooks/use-speech";
@@ -316,7 +315,6 @@ function AssistantPage() {
         <div className="pointer-events-none absolute left-0 top-0 h-full w-48 bg-gradient-to-r from-[color:var(--brand-cyan)]/8 to-transparent" />
 
         <div className="relative h-11 w-11 shrink-0">
-          <LogoMark className="h-11 w-11" />
           {hasKey && (
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background bg-[color:var(--bull)]" />
           )}
@@ -381,7 +379,6 @@ function AssistantPage() {
             <div className="relative mb-5">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] opacity-20 blur-xl" />
               <div className="relative flex h-16 w-16 items-center justify-center">
-                <LogoMark className="h-16 w-16" />
               </div>
             </div>
             <h3 className="text-xl font-bold tracking-tight">Comment puis-je t'aider ?</h3>
@@ -418,7 +415,7 @@ function AssistantPage() {
                     ? "bg-gradient-to-br from-[color:var(--brand-cyan)] to-[color:var(--brand-cyan)]/70 shadow-[color:var(--brand-cyan)]/20"
                     : "shadow-[color:var(--brand-violet)]/20"
                 )}>
-                  {isUser ? <User className="h-4 w-4" /> : <LogoMark className="h-9 w-9" />}
+                  {isUser ? <User className="h-4 w-4" /> : <Bot className="h-9 w-9" />}
                 </div>
 
                 {/* Bubble */}
@@ -453,9 +450,6 @@ function AssistantPage() {
           {/* Typing indicator */}
           {status === "submitted" && (
             <div className="flex gap-3">
-              <div className="h-9 w-9 shrink-0">
-                <LogoMark className="h-9 w-9" />
-              </div>
               <div className="rounded-2xl rounded-tl-sm border border-border/40 bg-card/60 px-5 py-4 backdrop-blur-sm">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[color:var(--brand-cyan)] animate-bounce [animation-delay:0ms]" />

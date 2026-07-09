@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { User, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { LogoMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { api, setToken, TOKEN_KEY } from "@/lib/api";
@@ -132,12 +131,7 @@ function LoginPage() {
           <div className="flex items-center justify-center w-full">
             <div className="relative group cursor-default">
               <div className="absolute -inset-4 rounded-full bg-orange-500/15 blur-2xl group-hover:bg-orange-500/25 transition-all duration-500" />
-              <LogoMark className="h-28 w-28 relative z-10 shadow-orange-500/10 shadow-2xl transition-transform duration-500 group-hover:scale-105" />
-              <span className="absolute top-1 right-1 z-20 flex h-3.5 w-3.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-orange-500 shadow-[0_0_15px_rgba(234,88,12,0.8)]" />
-              </span>
-            </div>
+                          </div>
           </div>
 
           <div className="w-full relative">

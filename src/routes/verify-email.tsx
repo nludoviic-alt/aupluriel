@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { LogoMark } from "@/components/logo";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/verify-email")({
@@ -70,7 +69,6 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center gap-3 mb-8">
-          <LogoMark className="h-16 w-16" />
           <div className="text-center">
             <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">Lio23</h1>
             <p className="text-sm text-muted-foreground">Quant Trading — Crypto & Forex</p>
