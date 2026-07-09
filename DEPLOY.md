@@ -1,45 +1,62 @@
-# Déploiement sur Railway
+# Déploiement sur le VPS OVH (lio23.com)
 
 Cette app est un **full-stack TanStack Start + Nitro** avec une base **SQLite**.
-Elle a besoin d'un serveur **Node.js avec un disque persistant** (pas Vercel/Netlify/Cloudflare).
+Elle tourne en production sur un **VPS OVH** derrière nginx, servie sur
+**https://lio23.com**.
 
-## Prérequis
-- Le code est sur GitHub (dépôt **privé** recommandé).
-- Un compte [Railway](https://railway.app) (connecte-toi avec GitHub).
+## Architecture du serveur
 
-## Étapes
+| Élément | Valeur |
+|---------|--------|
+| Hôte | `51.79.70.153` (OVH, hostname `vps-37f2b441`) |
+| Accès SSH | `ssh ubuntu@51.79.70.153` (clé publique) |
+| Code | `/home/ubuntu/app` (clone du dépôt GitHub, remote `github-lio23:nludoviic-alt/lio23-vortex.git`) |
+| Base SQLite | `/home/ubuntu/data/lio23.db` (hors du dépôt — survit aux déploiements) |
+| Service | `lio23.service` (systemd, `Restart=always`) → `node .output/server/index.mjs` sur le port 3000 |
+| Reverse proxy | nginx (`/etc/nginx/sites-enabled/lio23`) → proxy vers `127.0.0.1:3000`, WebSocket activé |
+| HTTPS | Let's Encrypt via certbot (renouvellement automatique) |
+| Node | v22 (aligné sur `engines` du package.json) |
+| Env | `/home/ubuntu/app/.env` : `JWT_SECRET`, `DB_PATH`, `ADMIN_EMAIL`, `INVITE_CODE`, `APP_URL`, `GROQ_API_KEY`, `NODE_ENV`, `PORT`, `RESEND_API_KEY`, `EMAIL_FROM` |
 
-### 1. Créer le projet
-1. Railway → **New Project** → **Deploy from GitHub repo**.
-2. Choisis ce dépôt. Railway détecte Node, lance `npm run build` puis `npm run start`.
+## Déployer une nouvelle version
 
-### 2. Ajouter un volume persistant (pour la base SQLite)
-1. Sur le service → onglet **Variables**/**Settings** → **Volumes** → **New Volume**.
-2. Mount path : `/data`
-   > Sans volume, la base (comptes, réglages) serait effacée à chaque redéploiement.
+Depuis la machine locale :
 
-### 3. Définir les variables d'environnement
-Service → **Variables** → ajoute :
+```sh
+# 1. Commiter et pousser sur GitHub
+git push origin main
 
-| Variable | Valeur |
-|----------|--------|
-| `JWT_SECRET` | une longue valeur aléatoire (`openssl rand -hex 32`) |
-| `DB_PATH` | `/data/lio23.db` |
-| `INVITE_CODE` | un code secret pour l'inscription (optionnel mais conseillé) |
+# 2. Sur le VPS : pull, build, restart
+ssh ubuntu@51.79.70.153 'cd ~/app \
+  && git pull --ff-only origin main \
+  && npm ci \
+  && npm run build \
+  && sudo systemctl restart lio23'
+```
 
-> `PORT` et `NODE_ENV=production` sont fournis automatiquement par Railway.
+> ⚠️ Ne jamais éditer les fichiers directement sur le VPS : tout passe par git.
+> Si `git pull` refuse à cause de modifs locales sur le serveur :
+> `git stash push -u -m "pre-deploy"` puis re-tenter le pull.
 
-### 4. Déployer
-Railway build et déploie automatiquement. Une URL publique HTTPS est générée
-(`https://<nom>.up.railway.app`) — c'est l'adresse à partager.
+## Vérifier après déploiement
 
-### 5. (Optionnel) Domaine perso
-Service → **Settings → Domains → Custom Domain**, puis crée le `CNAME` indiqué
-chez ton fournisseur de domaine (OVH, Cloudflare…). HTTPS automatique.
+```sh
+ssh ubuntu@51.79.70.153 'systemctl is-active lio23 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/'
+curl -s -o /dev/null -w "%{http_code}\n" https://lio23.com/
+```
 
-## Notes sécurité
-- Le dépôt doit rester **privé** : il contient la logique de trading.
-- Ne commite jamais `.env` ni `*.db` (déjà dans `.gitignore`).
-- Les tokens API Deriv des utilisateurs sont stockés en base : garde `JWT_SECRET`
-  secret et le dépôt privé. Recommande à chacun de rester en **DEMO**.
+Logs applicatifs :
+
+```sh
+ssh ubuntu@51.79.70.153 'sudo journalctl -u lio23 -f'
+```
+
+## Notes importantes
+
+- **Le bot serveur ne reprend au redémarrage que s'il était activé** (`bot_state.enabled = 1`).
+  Après un restart, vérifier sur la page Auto-Trader qu'il tourne toujours.
+- La base (`~/data/lio23.db`) contient les comptes et les **tokens API Deriv des
+  utilisateurs** : ne jamais la copier hors du serveur, ne jamais la commiter.
+- Le dépôt GitHub doit rester **privé** : il contient la logique de trading.
+- Ne jamais commiter `.env` ni `*.db` (déjà dans `.gitignore`).
 - En production, l'app **refuse de démarrer** l'authentification sans `JWT_SECRET` fort.
