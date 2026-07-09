@@ -325,7 +325,33 @@ function AutoTraderPage() {
     return { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake };
   }, [logs, config.adaptiveStake, config.stakeUsd]);
 
-  const { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake } = stats;
+  const {
+    pnl: localPnl, tradeCount: localTradeCount, wins: localWins, losses: localLosses, errors,
+    totalWon: localTotalWon, totalLost: localTotalLost,
+    openTradeList, consecutiveLosses, effectiveStake,
+  } = stats;
+
+  // The server bot's trades never touch the browser's localStorage rollup
+  // (loadDailyPnl/addToDailyPnl live in the LOCAL engine only) — so when the
+  // ☁️ server bot is the active engine, the KPI strip below would show a
+  // stuck/zero P&L even as real gains land server-side. Prefer the
+  // SQL-computed, never-trimmed cloud numbers whenever the server bot is on.
+  const cloudActive = !!cloud?.enabled;
+  const isToday = (ms: number) => new Date(ms).toDateString() === new Date().toDateString();
+  const cloudClosedToday = cloudActive
+    ? (cloud?.trades ?? []).filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
+    : [];
+  const pnl = cloudActive ? (cloud?.todayPnl ?? 0) : localPnl;
+  const tradeCount = cloudActive ? (cloud?.todayCount ?? 0) : localTradeCount;
+  const wins = cloudActive ? cloudClosedToday.filter((t) => t.status === "won").length : localWins;
+  const losses = cloudActive ? cloudClosedToday.filter((t) => t.status === "lost").length : localLosses;
+  const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
+  const totalWon = cloudActive
+    ? cloudClosedToday.filter((t) => t.status === "won").reduce((s, t) => s + t.profit, 0)
+    : localTotalWon;
+  const totalLost = cloudActive
+    ? cloudClosedToday.filter((t) => t.status === "lost").reduce((s, t) => s + t.profit, 0)
+    : localTotalLost;
   const openTrades = openTradeList.length;
 
   // Reads localStorage per configured symbol (indicator-weights.ts) — only recompute
