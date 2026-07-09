@@ -154,7 +154,7 @@ class ServerBotEngine {
   private ticking = false;
   private conn: DerivTradingConnection;
   private logs: TradeLog[];
-  private activeSymbols = new Set<string>();
+  private activeSymbols = new Map<string, "CALL" | "PUT">();
   private symbolCooldowns = new Map<string, number>();
   private contractUnsubs = new Map<number, () => void>();
   private fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -225,7 +225,7 @@ class ServerBotEngine {
 
   private trackContract(openLog: TradeLog) {
     const contractId = openLog.contractId!;
-    this.activeSymbols.add(openLog.symbol);
+    this.activeSymbols.set(openLog.symbol, openLog.direction);
     let resolved = false;
 
     const resolve = (won: boolean, profit: number) => {
@@ -394,10 +394,6 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "daily-limit", note: `Limite ${config.maxSimultaneousTrades} trades/cycle` });
         continue;
       }
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, this.activeSymbols)) {
-        scanResults.push({ symbol, action: "correlated" });
-        continue;
-      }
       if (analysis.volatilityPct > config.maxVolatilityPct) {
         scanResults.push({ symbol, action: "volatility", note: `ATR ${analysis.volatilityPct.toFixed(2)}% > max` });
         continue;
@@ -407,6 +403,10 @@ class ServerBotEngine {
         continue;
       }
       if (!analysis.direction) { scanResults.push({ symbol, action: "no-signal", confidence: analysis.confidence }); continue; }
+      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
+        scanResults.push({ symbol, action: "correlated" });
+        continue;
+      }
       if (analysis.confidence < config.minConfidence) {
         scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
         continue;

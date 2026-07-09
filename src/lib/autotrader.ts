@@ -880,7 +880,7 @@ export function startAutoTrader(
 ): () => void {
   let stopped = false;
   const logs = loadTradeLog();
-  const activeSymbols = new Set<string>();
+  const activeSymbols = new Map<string, "CALL" | "PUT">();
   let interval: ReturnType<typeof setInterval> | undefined;
   // Per-symbol cooldown (epoch ms) — a losing streak on ONE instrument no longer
   // has to pause every other symbol too (see countConsecutiveLosses(logs, symbol)).
@@ -1089,13 +1089,6 @@ export function startAutoTrader(
         continue;
       }
 
-      // Correlation can change mid-tick as earlier candidates open trades —
-      // must be rechecked here, not just in the pre-filter pass above.
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, activeSymbols)) {
-        scanResults.push({ symbol, action: "correlated" });
-        continue;
-      }
-
       // ── Extreme volatility → skip THIS symbol (one wild market shouldn't
       // shut down trading on every calm one — audit fix) ──────────
       if (analysis.volatilityPct > config.maxVolatilityPct) {
@@ -1116,6 +1109,13 @@ export function startAutoTrader(
       // ── FAVORABLE-ONLY FILTERS ────────────────────────────────
       if (!analysis.direction) {
         scanResults.push({ symbol, action: "no-signal", confidence: analysis.confidence });
+        continue;
+      }
+      // Correlation can change mid-tick as earlier candidates open trades —
+      // must be rechecked here, not just in the pre-filter pass above. Direction-
+      // aware: only the SAME direction on a correlated pair doubles the bet.
+      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, activeSymbols)) {
+        scanResults.push({ symbol, action: "correlated" });
         continue;
       }
       if (analysis.confidence < config.minConfidence) {
@@ -1193,7 +1193,7 @@ export function startAutoTrader(
 
       if (config.mode === "simulation") {
         // Local simulation - no real trades
-        activeSymbols.add(symbol);
+        activeSymbols.set(symbol, analysis.direction);
         emit({ ...pendingLog, status: "open" });
         // Real current payout quote (no money committed) instead of an assumed flat 85%.
         const payoutRatio = await fetchRealPayoutRatio(symbol, tradeDuration, stakeForTrade);
@@ -1239,7 +1239,7 @@ export function startAutoTrader(
         }
 
         try {
-          activeSymbols.add(symbol);
+          activeSymbols.set(symbol, analysis.direction);
           // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
           const bought = await proposeAndBuy({
             symbol,

@@ -298,10 +298,21 @@ export const CORRELATION_GROUPS: string[][] = [
   ["cryBTCUSD", "cryETHUSD", "cryLTCUSD"],
 ];
 
-export function isCorrelatedWithActive(symbol: string, activeSymbols: Set<string>): boolean {
+// Blocking is direction-aware: two correlated pairs traded in OPPOSITE
+// directions aren't a doubled bet (e.g. EURUSD CALL + USDJPY CALL roughly
+// cancel — one is long EUR/USD, the other long USD/JPY). Only the SAME
+// direction on both doubles the exposure (EURUSD PUT + AUDUSD PUT = both
+// long USD). Blanket-blocking regardless of direction was too aggressive
+// for a watchlist made up entirely of one correlation group — it collapsed
+// to a single concurrent trade for such users.
+export function isCorrelatedWithActive(
+  symbol: string,
+  direction: "CALL" | "PUT",
+  activeSymbols: Map<string, "CALL" | "PUT">,
+): boolean {
   const group = CORRELATION_GROUPS.find((g) => g.includes(symbol));
   if (!group) return false;
-  return group.some((s) => s !== symbol && activeSymbols.has(s));
+  return group.some((s) => s !== symbol && activeSymbols.get(s) === direction);
 }
 
 // ─── Adaptive stake ───────────────────────────────────────────────────────────
