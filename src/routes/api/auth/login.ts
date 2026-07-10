@@ -1,11 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { verifyPassword, createToken } from "@/lib/auth.server";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit.server";
+
+// Brute-force guard: 10 attempts/15min/IP is generous for a mistyped
+// password but stops a credential-stuffing script cold.
+const LOGIN_LIMIT = 10;
+const LOGIN_WINDOW_MS = 15 * 60_000;
 
 export const Route = createFileRoute("/api/auth/login")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const ip = getClientIp(request);
+        const limit = checkRateLimit(`login:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
+        if (!limit.allowed) return rateLimitResponse(limit.retryAfterMs);
+
         const { email, password } = (await request.json()) as {
           email?: string;
           password?: string;

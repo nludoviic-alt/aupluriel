@@ -2,19 +2,31 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { generateAuthToken } from "@/lib/auth.server";
 import { sendEmail, verificationEmail, getAppUrl } from "@/lib/email.server";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit.server";
 
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+const IP_LIMIT = 10;
+const IP_WINDOW_MS = 60 * 60_000;
+const EMAIL_LIMIT = 3;
+const EMAIL_WINDOW_MS = 60 * 60_000;
 
 export const Route = createFileRoute("/api/auth/resend-verification")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const ip = getClientIp(request);
+        const ipLimit = checkRateLimit(`resend-verify:ip:${ip}`, IP_LIMIT, IP_WINDOW_MS);
+        if (!ipLimit.allowed) return rateLimitResponse(ipLimit.retryAfterMs);
+
         const { email } = (await request.json()) as { email?: string };
         // Always return a generic message to avoid leaking which emails exist.
         const generic = {
           message: "Si un compte non vérifié existe pour cet email, un nouveau lien a été envoyé.",
         };
         if (!email) return json(generic);
+
+        const emailLimit = checkRateLimit(`resend-verify:email:${email.toLowerCase()}`, EMAIL_LIMIT, EMAIL_WINDOW_MS);
+        if (!emailLimit.allowed) return json(generic);
 
         const db = getDb();
         const user = db

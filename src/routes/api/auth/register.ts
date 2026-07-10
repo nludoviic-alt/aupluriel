@@ -2,13 +2,22 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { hashPassword, createToken, generateAuthToken } from "@/lib/auth.server";
 import { sendEmail, verificationEmail, getAppUrl } from "@/lib/email.server";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@/lib/rate-limit.server";
 
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+// A real user registers once. 5/hour/IP comfortably covers someone retrying
+// after a typo while still blocking a script from farming pending accounts.
+const REGISTER_LIMIT = 5;
+const REGISTER_WINDOW_MS = 60 * 60_000;
 
 export const Route = createFileRoute("/api/auth/register")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const ip = getClientIp(request);
+        const limit = checkRateLimit(`register:${ip}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
+        if (!limit.allowed) return rateLimitResponse(limit.retryAfterMs);
+
         const { email, username, password } = (await request.json()) as {
           email?: string;
           username?: string;
