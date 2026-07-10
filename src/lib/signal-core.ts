@@ -44,6 +44,18 @@ export function isCallPutAvailable(symbol: string): boolean {
   return !symbol.startsWith("cry") && !symbol.startsWith("BOOM") && !symbol.startsWith("CRASH");
 }
 
+/**
+ * True when the symbol can be traded with the given instrument type.
+ * Crypto is Multiplier-only on the Deriv Options API — the old blanket
+ * isCallPutAvailable() gate wrongly kept BTC/ETH out of the scan even after
+ * Multiplier became the default instrument, which also cost the bot its only
+ * 24/7 non-synthetic markets (forex sleeps outside London/NY sessions).
+ */
+export function isSymbolTradeable(symbol: string, instrumentType: "binary" | "multiplier"): boolean {
+  if (symbol.startsWith("cry")) return instrumentType === "multiplier";
+  return isCallPutAvailable(symbol);
+}
+
 /** Minimum CALL/PUT contract duration (minutes) allowed for this symbol. */
 export function minContractMinutes(symbol: string): number {
   return symbol.startsWith("frx") || symbol.startsWith("OTC_") ? 15 : 5;
@@ -209,16 +221,24 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   minTfAgreement: 2,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
-  // Forex uniquement : les indices synthétiques (R_*, 1HZ*…) sont générés
+  // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
   // aléatoirement par Deriv — aucun indicateur ne peut les prédire, winrate
-  // long terme ~50% = perte structurelle face au payout <100%.
-  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD"],
+  // long terme ~50% = perte structurelle face au payout <100%. BTC/ETH
+  // (Multiplier, 24/7) donnent au bot de vrais marchés à trader la nuit,
+  // quand les sessions forex Londres/NY sont fermées.
+  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "cryBTCUSD", "cryETHUSD"],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
-  premiumOnly: true,
+  // premiumOnly exigeait qu'au moins un timeframe note le signal ≥80 de
+  // confiance EN PLUS du seuil moyen (minConfidence 75) et de l'accord
+  // multi-timeframes — le deuxième plus gros tueur de fréquence après le
+  // veto 4H (déjà assoupli). minConfidence + minTfAgreement + veto 4H
+  // suffisent comme filtre qualité ; ce cran-là supprimait des journées
+  // entières de trades valides.
+  premiumOnly: false,
   stopOnRisk: true,
   maxVolatilityPct: 4,
   maxDailyProfitUsd: 0,

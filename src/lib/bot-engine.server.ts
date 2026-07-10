@@ -26,8 +26,8 @@ import {
   computeAtrStopUsd,
   countConsecutiveLosses,
   is24x7Symbol,
-  isCallPutAvailable,
   isCorrelatedWithActive,
+  isSymbolTradeable,
   isHighRiskWindow,
   isInTradingSession,
   minContractMinutes,
@@ -428,12 +428,12 @@ class ServerBotEngine {
 
     // ── Candidates + cheap pre-filters ──
     const candidateSymbols = config.symbolMode === "all-markets"
-      ? SYMBOLS.filter((s) => isCallPutAvailable(s.deriv)).map((s) => s.deriv)
+      ? SYMBOLS.filter((s) => isSymbolTradeable(s.deriv, config.instrumentType)).map((s) => s.deriv)
       : config.symbols;
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
-      if (!isCallPutAvailable(symbol)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
+      if (!isSymbolTradeable(symbol, config.instrumentType)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
       if (this.activeSymbols.has(symbol)) { scanResults.push({ symbol, action: "open-trade" }); continue; }
       if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
         scanResults.push({ symbol, action: "session-closed" });
