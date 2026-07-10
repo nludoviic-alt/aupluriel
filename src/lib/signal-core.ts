@@ -693,7 +693,12 @@ export async function analyzeSymbolCore(
           .filter((v): v is number => v !== null)
           .slice(0, -1); // exclude the current (possibly spiking) bar from its own baseline
         const baseline = median(atrPctSeries.slice(-100));
-        if (baseline > 0 && atrNow !== null) volatilityRatio = atrNow / baseline;
+        // Both sides must be in ATR-PERCENT: comparing the absolute ATR (price
+        // units) to a %-baseline made the ratio ~price-dependent — ~600x on
+        // BTC (64k$ price) so crypto was always "abnormally volatile", ~0.01x
+        // on forex so the gate never fired there. Dead on forex, spuriously
+        // blocking on crypto — normalized, it finally does its actual job.
+        if (baseline > 0 && atrNow !== null && price > 0) volatilityRatio = ((atrNow / price) * 100) / baseline;
       }
 
       tfSignals[tf] = generateSignal(candles, { weights: opts.weights });
