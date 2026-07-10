@@ -23,6 +23,7 @@ import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
   computeAdaptiveStake,
+  computeAtrStopUsd,
   countConsecutiveLosses,
   is24x7Symbol,
   isCallPutAvailable,
@@ -567,8 +568,14 @@ class ServerBotEngine {
 
       // stop_loss/take_profit are absolute $ amounts Deriv expects, derived
       // from the stake so they scale with adaptive/percent/Kelly sizing.
-      const stopLossUsd = Math.round(effectiveStake * (config.stopLossPctOfStake / 100) * 100) / 100;
-      const takeProfitUsd = Math.round(effectiveStake * (config.takeProfitPctOfStake / 100) * 100) / 100;
+      // ATR mode ties the distance to the symbol's actual current volatility
+      // instead of a flat % of stake that's blind to market conditions.
+      const { stopLossUsd, takeProfitUsd } = config.atrStopMode
+        ? computeAtrStopUsd(effectiveStake, config.multiplierLevel, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
+        : {
+            stopLossUsd: Math.round(effectiveStake * (config.stopLossPctOfStake / 100) * 100) / 100,
+            takeProfitUsd: Math.round(effectiveStake * (config.takeProfitPctOfStake / 100) * 100) / 100,
+          };
 
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,

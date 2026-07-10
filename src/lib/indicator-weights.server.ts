@@ -22,6 +22,10 @@ const MAX_WEIGHT = 1.5;
 // Virtual global-prior trades blended in before a symbol's own sample is
 // trusted — 2-3 lucky trades on a thin symbol can't swing its weights wildly.
 const PRIOR_STRENGTH = 10;
+// Recency decay — same reasoning as the browser version (indicator-weights.ts):
+// old outcomes fade so a component that stops working recently is down-weighted
+// faster than a huge stale history would otherwise allow. Half-life ~200 trades.
+const DECAY = Math.pow(0.5, 1 / 200);
 
 interface StatRow {
   component: string;
@@ -41,18 +45,27 @@ export function recordComponentOutcomesServer(
 ): void {
   if (!components?.length) return;
   const db = getDb();
+  const select = db.prepare(`SELECT wins, losses FROM indicator_stats WHERE symbol = ? AND component = ?`);
   const upsert = db.prepare(`
     INSERT INTO indicator_stats (symbol, component, wins, losses, updated_at)
     VALUES (?, ?, ?, ?, unixepoch())
     ON CONFLICT(symbol, component) DO UPDATE SET
-      wins = wins + excluded.wins,
-      losses = losses + excluded.losses,
+      wins = excluded.wins,
+      losses = excluded.losses,
       updated_at = unixepoch()
   `);
+  // Decay-then-add instead of a pure SQL increment — old outcomes need to fade
+  // (see DECAY above), which requires reading the current tally first.
+  const decayAndAdd = (key: string, component: string) => {
+    const row = select.get(key, component) as { wins: number; losses: number } | undefined;
+    const wins = (row?.wins ?? 0) * DECAY + (won ? 1 : 0);
+    const losses = (row?.losses ?? 0) * DECAY + (won ? 0 : 1);
+    upsert.run(key, component, wins, losses);
+  };
   const run = db.transaction(() => {
     for (const c of components) {
-      upsert.run(symbol, c.name, won ? 1 : 0, won ? 0 : 1);
-      upsert.run(GLOBAL_KEY, c.name, won ? 1 : 0, won ? 0 : 1);
+      decayAndAdd(symbol, c.name);
+      decayAndAdd(GLOBAL_KEY, c.name);
     }
   });
   run();

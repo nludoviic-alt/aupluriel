@@ -31,6 +31,13 @@ const MAX_WEIGHT = 1.5;
 // sample is trusted on its own — simple shrinkage so 2-3 lucky/unlucky trades
 // on a thinly-traded symbol can't swing its weights wildly.
 const PRIOR_STRENGTH = 10;
+// Recency decay: without this, a component's win/loss tally accumulates
+// forever, so a component that worked for its first 500 trades but has been
+// wrong for the last 50 (a regime change) is barely moved — the stale
+// majority drowns out the recent signal. Every new outcome first decays the
+// existing tally by this factor, giving old trades exponentially less say.
+// Half-life ~200 trades: DECAY^200 = 0.5.
+const DECAY = Math.pow(0.5, 1 / 200);
 
 function loadStore(): WeightStore {
   if (typeof window === "undefined") return {};
@@ -62,6 +69,8 @@ export function recordComponentOutcomes(symbol: string, components: SignalCompon
   for (const c of components) {
     const sym = symbolStats[c.name] ?? { wins: 0, losses: 0 };
     const glob = globalStats[c.name] ?? { wins: 0, losses: 0 };
+    sym.wins *= DECAY; sym.losses *= DECAY;
+    glob.wins *= DECAY; glob.losses *= DECAY;
     if (won) { sym.wins++; glob.wins++; } else { sym.losses++; glob.losses++; }
     symbolStats[c.name] = sym;
     globalStats[c.name] = glob;

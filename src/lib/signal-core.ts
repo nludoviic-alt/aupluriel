@@ -163,9 +163,41 @@ export interface AutoTraderConfig {
   // --- Instrument: binary (CALL/PUT, fixed expiry) or Multiplier (MULTUP/MULTDOWN, no expiry) ---
   instrumentType: "binary" | "multiplier";
   multiplierLevel: number;        // leverage level for Multiplier trades
-  stopLossPctOfStake: number;     // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary)
-  takeProfitPctOfStake: number;   // Multiplier take-profit, as % of the stake
+  stopLossPctOfStake: number;     // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary) — used when atrStopMode is off
+  takeProfitPctOfStake: number;   // Multiplier take-profit, as % of the stake — used when atrStopMode is off
   maxHoldMinutes: number;         // force-close a Multiplier position after this long even if neither stop-loss nor take-profit triggered (avoids swap fees / stuck positions)
+  // --- ATR-based dynamic stop-loss/take-profit (Multiplier only) ---
+  // A flat % of stake is blind to how much the instrument actually moves: at
+  // 10x leverage, losing 100% of the stake needs a ~10% price move — on major
+  // forex pairs (ATR% typically 0.05-0.2% per 15m candle) that almost never
+  // happens from normal price action, so the "stop-loss" rarely does its job.
+  // ATR mode ties the stop distance to the symbol's OWN current volatility
+  // instead, so it tightens on calm markets and widens on volatile ones.
+  atrStopMode: boolean;           // off by default — backtest before enabling on a live account
+  atrStopMultiple: number;        // stop distance = this many multiples of the 15m ATR%
+  riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
+}
+
+/**
+ * ATR-based stop-loss/take-profit for a Multiplier position, in absolute USD.
+ * Multiplier P&L ≈ stake × leverage × price-change%, so a stop distance of
+ * `atrMultiple` ATRs (in price %) translates linearly into a $ loss cap.
+ * Both legs are capped at the stake itself — Deriv can't take more than that
+ * on a Multiplier (deal cancellation / stop-out), so requesting more is a no-op
+ * at best and a rejected order at worst.
+ */
+export function computeAtrStopUsd(
+  stakeUsd: number,
+  multiplierLevel: number,
+  volatilityPct: number,
+  atrMultiple: number,
+  riskRewardRatio: number,
+): { stopLossUsd: number; takeProfitUsd: number } {
+  const stopDistancePct = Math.max(0.01, volatilityPct) * atrMultiple; // price % move that hits the stop
+  const rawStop = stakeUsd * (multiplierLevel * stopDistancePct) / 100;
+  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, rawStop)) * 100) / 100;
+  const takeProfitUsd = Math.round(stopLossUsd * riskRewardRatio * 100) / 100;
+  return { stopLossUsd, takeProfitUsd };
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
@@ -224,6 +256,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stopLossPctOfStake: 100,
   takeProfitPctOfStake: 150,
   maxHoldMinutes: 720,
+  // Off by default, same convention as veto4h/vetoDaily — backtest before
+  // flipping this on a live account. 1.5x ATR gives normal noise room to
+  // breathe without the stop being unreachable; 1.5:1 R:R matches the
+  // existing 100/150 fixed default so switching modes doesn't silently
+  // change the account's risk profile.
+  atrStopMode: false,
+  atrStopMultiple: 1.5,
+  riskRewardRatio: 1.5,
 };
 
 export const SCAN_INTERVAL_MS = 60_000;
