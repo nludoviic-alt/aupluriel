@@ -218,7 +218,12 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stakeUsd: 5,
   durationMinutes: 15,
   minConfidence: 75,
-  minTfAgreement: 2,
+  // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
+  // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
+  // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
+  // double presque l'espérance par trade. (Même harnais : les stops ATR
+  // n'améliorent PAS l'EV — atrStopMode reste off.)
+  minTfAgreement: 3,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
   // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
