@@ -123,6 +123,13 @@ function getPublicSocket(): DerivSocket {
   return publicSocket;
 }
 
+/** Process shutdown: the shared market-data socket would otherwise keep the
+ * event loop alive past SIGTERM (see shutdownAllEngines in bot-engine.server.ts). */
+export function closePublicSocket(): void {
+  publicSocket?.close();
+  publicSocket = null;
+}
+
 export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number): Promise<ServerCandle[]> {
   const res = await getPublicSocket().request<{
     candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;

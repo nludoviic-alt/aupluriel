@@ -7,6 +7,17 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
 
+// Prediction from the offline replay harness (52 days, 2717 trades, exact live
+// pipeline, neutral weights, no lookahead — commit 3629f36). Live trades are
+// only compared from the moment that config went to production.
+const BACKTEST_REFERENCE = {
+  evPerDollar: 0.013,        // at minTfAgreement 3 (the deployed setting)
+  binaryNote: "hors commissions/swap — l'EV réel attendu est un peu plus bas",
+  windowDays: 52,
+  simulatedTrades: 2717,
+  measuredFromMs: 1783690000000, // 2026-07-10 ~13:26 UTC — deploy of minTfAgreement 3
+};
+
 interface UserStatsRow {
   user_id: number;
   trades: number;
@@ -92,7 +103,30 @@ export const Route = createFileRoute("/api/admin/stats")({
         // the app so far (see indicator-weights.server.ts).
         const componentBreakdown = getComponentBreakdownServer();
 
-        return json({ recap, componentBreakdown });
+        // Backtest-vs-real: live EV per $ staked (fees included, since Deriv's
+        // profit already nets them) against the 52-day harness prediction
+        // (scratchpad/backtest-honest.ts, 2717 trades, neutral weights) so the
+        // demo period can be judged objectively instead of by feel.
+        const live = db
+          .prepare(
+            `SELECT COUNT(*) AS trades,
+                    COALESCE(SUM(profit), 0) AS pnl,
+                    COALESCE(SUM(stake), 0) AS staked,
+                    COUNT(*) FILTER (WHERE status = 'won') AS wins
+             FROM bot_trades WHERE status IN ('won','lost') AND time >= ?`,
+          )
+          .get(BACKTEST_REFERENCE.measuredFromMs) as { trades: number; pnl: number; staked: number; wins: number };
+        const backtestVsReal = {
+          reference: BACKTEST_REFERENCE,
+          live: {
+            trades: live.trades,
+            evPerDollar: live.staked > 0 ? Math.round((live.pnl / live.staked) * 10000) / 10000 : null,
+            winRate: live.trades > 0 ? Math.round((live.wins / live.trades) * 1000) / 10 : null,
+            netPnl: Math.round(live.pnl * 100) / 100,
+          },
+        };
+
+        return json({ recap, componentBreakdown, backtestVsReal });
       },
     },
   },

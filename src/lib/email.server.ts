@@ -117,6 +117,46 @@ export function welcomeEmail(
   };
 }
 
+export function tradeClosedEmail(params: {
+  symbol: string;
+  direction: string;
+  stake: number;
+  profit: number;
+  won: boolean;
+  mode: string;
+}): { subject: string; html: string } {
+  const { symbol, direction, stake, profit, won, mode } = params;
+  const sign = profit >= 0 ? "+" : "";
+  const color = won ? "#22c55e" : "#ef4444";
+  const modeTag = mode === "live" ? "💰 RÉEL" : "démo";
+  return {
+    subject: `${won ? "✅ Gagné" : "❌ Perdu"} ${sign}$${profit.toFixed(2)} — ${symbol} (${modeTag})`,
+    html: layout(
+      `Trade clôturé — ${symbol}`,
+      `<p style="margin:0 0 16px">Le bot serveur vient de clôturer une position (${modeTag}) :</p>
+       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">
+         Marché : <strong>${symbol}</strong> · ${direction}<br>
+         Mise : <strong>$${stake.toFixed(2)}</strong><br>
+         Résultat : <strong style="color:${color}">${sign}$${profit.toFixed(2)}</strong>
+       </p>
+       <p style="margin:0 0 20px"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
+    ),
+  };
+}
+
+export function riskPauseEmail(note: string, mode: string): { subject: string; html: string } {
+  const modeTag = mode === "live" ? "💰 RÉEL" : "démo";
+  return {
+    subject: `⏸️ Bot en pause (protection de risque) — ${modeTag}`,
+    html: layout(
+      "Le bot s'est mis en pause",
+      `<p style="margin:0 0 16px">Une limite de protection a été atteinte (${modeTag}) — le bot arrête de trader et reprendra automatiquement :</p>
+       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">${note}</p>
+       <p style="margin:0 0 20px"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
+    ),
+  };
+}
+
 export function resetEmail(link: string): { subject: string; html: string } {
   return {
     subject: "Réinitialise ton mot de passe — Lio23",

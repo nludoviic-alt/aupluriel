@@ -219,10 +219,34 @@ class ServerBotEngine {
 
   private emit(log: TradeLog) {
     const idx = this.logs.findIndex((l) => l.id === log.id);
+    const prevStatus = idx >= 0 ? this.logs[idx].status : null;
     if (idx >= 0) this.logs[idx] = log;
     else this.logs.unshift(log);
     if (this.logs.length > 60) this.logs.length = 60;
     upsertTrade(this.userId, log);
+    this.notify(log, prevStatus);
+  }
+
+  /** Email the user on the two events worth an interruption: a trade just
+   * closed (won/lost transition — not re-emits of an already-closed row,
+   * which reconcile() can produce) and a risk pause. Fire-and-forget: a mail
+   * provider hiccup must never break trade resolution. */
+  private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
+    const closed = (log.status === "won" || log.status === "lost") && prevStatus !== log.status;
+    const riskStop = log.status === "risk-stop" && prevStatus === null;
+    if (!closed && !riskStop) return;
+    void (async () => {
+      const { sendEmail, tradeClosedEmail, riskPauseEmail } = await import("./email.server");
+      const user = getDb().prepare("SELECT email FROM users WHERE id = ?").get(this.userId) as { email: string } | undefined;
+      if (!user) return;
+      const { subject, html } = closed
+        ? tradeClosedEmail({
+            symbol: log.symbol, direction: log.direction, stake: log.stake,
+            profit: log.profit, won: log.status === "won", mode: this.config.mode,
+          })
+        : riskPauseEmail(log.note ?? "Limite de risque atteinte", this.config.mode);
+      await sendEmail({ to: user.email, subject, html });
+    })().catch((e) => console.error(`[bot] Notification email échouée pour user ${this.userId}:`, (e as Error).message));
   }
 
   private riskPause(reasons: string[], untilTs: number) {
@@ -675,6 +699,20 @@ export function stopBotForUser(userId: number): void {
     engines.delete(userId);
     console.log(`[bot] Moteur serveur arrêté pour user ${userId}`);
   }
+}
+
+/**
+ * Process shutdown (SIGTERM at deploy/restart): stop every engine and close
+ * its Deriv socket WITHOUT touching bot_state.enabled — unlike stopBotForUser,
+ * these bots must come back via restoreBots() when the new process boots.
+ * Open WebSockets were what kept the old process alive ~90s past SIGTERM
+ * until systemd SIGKILLed it (a full 502 window on every deploy).
+ */
+export function shutdownAllEngines(): void {
+  for (const engine of engines.values()) {
+    try { engine.stop(); } catch { /* closing anyway */ }
+  }
+  engines.clear();
 }
 
 /** Called once at server boot: resume every bot that was enabled before the restart. */

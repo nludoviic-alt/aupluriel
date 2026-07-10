@@ -55,6 +55,11 @@ interface ComponentStat {
   weight: number;
 }
 
+interface BacktestVsReal {
+  reference: { evPerDollar: number; binaryNote: string; windowDays: number; simulatedTrades: number; measuredFromMs: number };
+  live: { trades: number; evPerDollar: number | null; winRate: number | null; netPnl: number };
+}
+
 interface JournalTrade {
   id: string;
   time: number;
@@ -80,6 +85,7 @@ function AdminPage() {
   const [createBusy, setCreateBusy] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
   const [recap, setRecap] = useState<UserRecap[]>([]);
+  const [backtestVsReal, setBacktestVsReal] = useState<BacktestVsReal | null>(null);
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
   const [recapLoading, setRecapLoading] = useState(true);
   const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
@@ -107,9 +113,10 @@ function AdminPage() {
   const loadRecap = useCallback(async () => {
     setRecapLoading(true);
     try {
-      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[] }>("/api/admin/stats");
+      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal }>("/api/admin/stats");
       setRecap(data.recap);
       setComponentBreakdown(data.componentBreakdown);
+      setBacktestVsReal(data.backtestVsReal ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du récap");
     } finally {
@@ -610,6 +617,41 @@ function AdminPage() {
           </tbody>
         </table>
       </div>
+
+      {/* ── BACKTEST vs RÉEL: le juge de paix de la période démo ── */}
+      {backtestVsReal && (
+        <div className="glass-panel rounded-xl p-5 space-y-3">
+          <h2 className="text-lg font-bold text-foreground">Backtest vs réel</h2>
+          <p className="text-xs text-muted-foreground">
+            Prédiction du harnais ({backtestVsReal.reference.windowDays} jours, {backtestVsReal.reference.simulatedTrades} trades simulés) face aux trades réels clos depuis le déploiement de la config actuelle ({new Date(backtestVsReal.reference.measuredFromMs).toLocaleDateString("fr-FR")}). EV = gain moyen par dollar misé.
+          </p>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">EV prédit</div>
+              <div className="text-xl font-bold text-foreground">+{(backtestVsReal.reference.evPerDollar * 100).toFixed(1)}%</div>
+              <div className="text-[10px] text-muted-foreground">{backtestVsReal.reference.binaryNote}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">EV réel</div>
+              <div className={`text-xl font-bold ${backtestVsReal.live.evPerDollar === null ? "text-muted-foreground" : backtestVsReal.live.evPerDollar >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"}`}>
+                {backtestVsReal.live.evPerDollar === null ? "—" : `${backtestVsReal.live.evPerDollar >= 0 ? "+" : ""}${(backtestVsReal.live.evPerDollar * 100).toFixed(1)}%`}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Trades réels clos</div>
+              <div className="text-xl font-bold text-foreground">{backtestVsReal.live.trades}</div>
+              <div className="text-[10px] text-muted-foreground">{backtestVsReal.live.trades < 30 ? "échantillon encore trop petit pour conclure" : "échantillon exploitable"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">P&L net réel</div>
+              <div className={`text-xl font-bold ${backtestVsReal.live.netPnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"}`}>
+                {backtestVsReal.live.netPnl >= 0 ? "+" : ""}{backtestVsReal.live.netPnl.toFixed(2)} $
+              </div>
+              {backtestVsReal.live.winRate !== null && <div className="text-[10px] text-muted-foreground">win rate {backtestVsReal.live.winRate}%</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── APPRENTISSAGE PARTAGÉ: ce que les trades des utilisateurs ont appris à l'app ── */}
       {componentBreakdown.length > 0 && (

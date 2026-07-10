@@ -19,6 +19,7 @@ import {
   backtestRsiMacd,
   type BacktestResult,
 } from "@/lib/indicators";
+import { backtestMultiTf, type MultiTfBacktestResult } from "@/lib/autotrader";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/backtest")({
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/backtest")({
 });
 
 const STRATS = [
+  { id: "real-engine", label: "🤖 Moteur réel (multi-timeframe)" },
   { id: "rsi-macd", label: "RSI + MACD (long-only)" },
   { id: "ema-cross", label: "EMA 50/200 Cross" },
   { id: "bb-mean-rev", label: "Bollinger Mean Reversion" },
@@ -40,6 +42,7 @@ function BacktestPage() {
   const [tf, setTf] = useState<(typeof TF)[number]>("1H");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
+  const [multiTfResult, setMultiTfResult] = useState<MultiTfBacktestResult | null>(null);
   const [showTrades, setShowTrades] = useState(false);
   const [derivConnected, setDerivConnected] = useState<boolean | null>(null);
 
@@ -64,12 +67,27 @@ function BacktestPage() {
   async function run() {
     setLoading(true);
     try {
+      if (strategy === "real-engine") {
+        // Replays the EXACT live pipeline (4 timeframes, mêmes seuils que le
+        // bot déployé) — pas une stratégie-jouet. Durée : ~300 points 15m ≈ 3 jours.
+        const r = await backtestMultiTf(symbol.deriv, {
+          minConfidence: 75,
+          minTfAgreement: 3,
+          testCandles: 300,
+        });
+        setMultiTfResult(r);
+        setResult(null);
+        setShowTrades(false);
+        toast.success(`Backtest moteur réel terminé · ${r.trades} trades qualifiés`);
+        return;
+      }
       const candles = await fetchCandles(symbol.deriv, GRANULARITY[tf], COUNTS[tf]);
       let r: BacktestResult;
       if (strategy === "ema-cross") r = backtestEmaCross(candles);
       else if (strategy === "bb-mean-rev") r = backtestBollinger(candles);
       else r = backtestRsiMacd(candles);
       setResult(r);
+      setMultiTfResult(null);
       setShowTrades(false);
       toast.success(`Backtest terminé · ${r.trades} trades`);
     } catch (e) {
@@ -172,11 +190,60 @@ function BacktestPage() {
         </div>
 
         <div className="mt-3 text-xs text-muted-foreground">
+          {strategy === "real-engine" && "Rejoue le pipeline EXACT du bot live (4 timeframes, confiance ≥75, accord ≥3/4, veto 4H, poids appris actuels) sur ~3 jours de données. Le timeframe sélectionné est ignoré — le moteur utilise toujours ses 4 TFs."}
           {strategy === "rsi-macd" && "Achète quand RSI < 40 + MACD cross haussier. Vend quand RSI > 70 ou MACD cross baissier."}
           {strategy === "ema-cross" && "Achète au golden cross EMA 50/200. Vend au death cross."}
           {strategy === "bb-mean-rev" && "Achète quand le prix touche la bande inférieure de Bollinger. Vend quand il revient à la moyenne."}
         </div>
       </div>
+
+      {multiTfResult && (
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="Win Rate"
+              value={`${(multiTfResult.winRate * 100).toFixed(1)}%`}
+              tone={multiTfResult.winRate > multiTfResult.breakEvenWinRate ? "bull" : "bear"}
+              delta={`${multiTfResult.wins}W / ${multiTfResult.losses}L / ${multiTfResult.trades} trades`}
+            />
+            <KpiCard
+              label="Seuil de rentabilité"
+              value={`${(multiTfResult.breakEvenWinRate * 100).toFixed(1)}%`}
+              tone="cyan"
+              delta={`Payout réel ${(multiTfResult.payoutPct * 100).toFixed(0)}% (binaire)`}
+            />
+            <KpiCard
+              label="P&L simulé"
+              value={`${multiTfResult.pnl >= 0 ? "+" : ""}$${multiTfResult.pnl.toFixed(2)}`}
+              tone={multiTfResult.pnl >= 0 ? "bull" : "bear"}
+              delta="Mise $5/trade, contrats binaires"
+            />
+            <KpiCard label="Confiance moyenne" value={`${multiTfResult.avgConfidence}%`} tone="violet" delta="Des trades qualifiés" />
+          </div>
+          <div className="glass-panel rounded-xl p-4">
+            <h2 className="text-base font-semibold">Win rate par accord de timeframes</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Plus les timeframes s'accordent, plus le trade devrait gagner — c'est le critère que le bot filtre (≥3 en config actuelle).</p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[1, 2, 3, 4].map((n) => {
+                const b = multiTfResult.byAgreement[n];
+                const wr = b && b.trades > 0 ? (b.wins / b.trades) * 100 : null;
+                return (
+                  <div key={n} className="rounded-lg border border-border/60 p-3 text-center">
+                    <div className="text-xs text-muted-foreground">{n} TF{n > 1 ? "s" : ""} d'accord</div>
+                    <div className={cn("mt-1 text-lg font-bold", wr === null ? "text-muted-foreground" : wr >= 55 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                      {wr === null ? "—" : `${wr.toFixed(0)}%`}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">{b ? `${b.trades} trades` : "0 trade"}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              ⚠️ Simulation en contrats binaires 15m — le bot live trade en Multiplier (sorties différentes). Fenêtre courte (~3 jours) : indicatif, pas une garantie. Utilise les poids appris actuels du navigateur.
+            </p>
+          </div>
+        </div>
+      )}
 
       {result && (
         <>

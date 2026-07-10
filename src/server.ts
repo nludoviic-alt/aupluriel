@@ -7,7 +7,7 @@ import { renderErrorPage } from "./lib/error-page";
 // bot keep trading with the user's phone locked / app closed. Deferred a few
 // seconds so DB and env are fully ready; guarded against dev-mode HMR
 // re-execution spawning duplicate engines.
-const g = globalThis as unknown as { __lio23_bot_boot__?: boolean };
+const g = globalThis as unknown as { __lio23_bot_boot__?: boolean; __lio23_shutdown__?: boolean };
 if (!g.__lio23_bot_boot__) {
   g.__lio23_bot_boot__ = true;
   setTimeout(() => {
@@ -15,6 +15,26 @@ if (!g.__lio23_bot_boot__) {
       .then((m) => m.restoreBots())
       .catch((e) => console.error("[bot] Restauration au boot échouée:", e));
   }, 3000);
+
+  // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
+  // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
+  // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so
+  // restoreBots() resumes them when the new process boots.
+  const shutdown = (signal: string) => {
+    if (g.__lio23_shutdown__) return;
+    g.__lio23_shutdown__ = true;
+    console.log(`[shutdown] ${signal} reçu — fermeture des moteurs et sockets Deriv`);
+    // Hard-exit backstop in case a handle still hangs; unref so IT never keeps us alive.
+    setTimeout(() => process.exit(0), 5000).unref();
+    Promise.all([
+      import("./lib/bot-engine.server").then((m) => m.shutdownAllEngines()),
+      import("./lib/deriv.server").then((m) => m.closePublicSocket()),
+    ])
+      .catch(() => { /* exiting regardless */ })
+      .finally(() => process.exit(0));
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 type ServerEntry = {
