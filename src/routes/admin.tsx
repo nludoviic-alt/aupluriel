@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound, ShieldOff, UserPlus, Dices } from "lucide-react";
+import { ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound, ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen, BrainCircuit } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,6 +32,44 @@ interface AdminUser {
   created_at: number;
 }
 
+interface UserRecap {
+  userId: number;
+  username: string;
+  email: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  open: number;
+  winRate: number;
+  netPnl: number;
+  profitFactor: number | null;
+  avgConfidence: number;
+  lastTradeAt: number | null;
+}
+
+interface ComponentStat {
+  symbol: string;
+  component: string;
+  wins: number;
+  losses: number;
+  weight: number;
+}
+
+interface JournalTrade {
+  id: string;
+  time: number;
+  symbol: string;
+  direction: string;
+  stake: number;
+  payout: number;
+  status: string;
+  profit: number;
+  confidence: number;
+  tf_agreement: number;
+  closed_at: number | null;
+  note: string | null;
+}
+
 function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -41,6 +79,12 @@ function AdminPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
+  const [recap, setRecap] = useState<UserRecap[]>([]);
+  const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
+  const [recapLoading, setRecapLoading] = useState(true);
+  const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
+  const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
+  const [journalLoading, setJournalLoading] = useState(false);
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -60,9 +104,35 @@ function AdminPage() {
     }
   }, []);
 
+  const loadRecap = useCallback(async () => {
+    setRecapLoading(true);
+    try {
+      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[] }>("/api/admin/stats");
+      setRecap(data.recap);
+      setComponentBreakdown(data.componentBreakdown);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement du récap");
+    } finally {
+      setRecapLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (user?.is_admin) load();
-  }, [user?.is_admin, load]);
+    if (user?.is_admin) { load(); loadRecap(); }
+  }, [user?.is_admin, load, loadRecap]);
+
+  async function openJournal(u: UserRecap) {
+    setJournalUser(u);
+    setJournalLoading(true);
+    try {
+      const data = await api.get<{ trades: JournalTrade[] }>(`/api/admin/stats?userId=${u.userId}`);
+      setJournalTrades(data.trades);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement du journal");
+    } finally {
+      setJournalLoading(false);
+    }
+  }
 
   async function act(userId: number, action: "approve" | "reject" | "revoke" | "delete" | "reset-password") {
     if (action === "delete" && !confirm("Supprimer définitivement ce compte ?")) return;
@@ -478,6 +548,150 @@ function AdminPage() {
           ))
         )}
       </div>
+
+      {/* ── TRADING RECAP: gains/pertes et journal par utilisateur ── */}
+      <div className="flex items-center justify-between gap-3 pt-4">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-[color:var(--brand-cyan)]" />
+          <h2 className="text-lg font-bold text-foreground">Récap trading par utilisateur</h2>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 text-sm">
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${recapLoading ? "animate-spin" : ""}`} />
+          Actualiser
+        </Button>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Utilisateur</th>
+              <th className="px-4 py-3 font-medium text-right">Trades</th>
+              <th className="px-4 py-3 font-medium text-right">Win rate</th>
+              <th className="px-4 py-3 font-medium text-right">P&amp;L net</th>
+              <th className="px-4 py-3 font-medium text-right">Profit factor</th>
+              <th className="px-4 py-3 font-medium text-right">Conf. moy.</th>
+              <th className="px-4 py-3 font-medium">Dernier trade</th>
+              <th className="px-4 py-3 font-medium text-right">Journal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recapLoading ? (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+            ) : recap.length === 0 ? (
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">Aucune donnée de trading pour l'instant.</td></tr>
+            ) : (
+              recap.map((r) => (
+                <tr key={r.userId} className="border-t border-border hover:bg-muted/5 transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground">{r.username}</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">
+                    {r.trades}{r.open ? <span className="text-xs text-amber-500"> (+{r.open} ouvert{r.open > 1 ? "s" : ""})</span> : null}
+                  </td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">{r.trades ? `${r.winRate}%` : "—"}</td>
+                  <td className={`px-4 py-3 text-right font-semibold ${r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
+                    {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+                  </td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">{r.profitFactor === null ? "—" : r.profitFactor === Infinity ? "∞" : r.profitFactor}</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">{r.trades ? `${r.avgConfidence}%` : "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.lastTradeAt ? new Date(r.lastTradeAt).toLocaleString("fr-FR") : "—"}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => openJournal(r)}
+                      disabled={!r.trades && !r.open}
+                      title="Voir le journal de trades"
+                      className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── APPRENTISSAGE PARTAGÉ: ce que les trades des utilisateurs ont appris à l'app ── */}
+      {componentBreakdown.length > 0 && (
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="h-5 w-5 text-[color:var(--brand-violet)]" />
+            <h2 className="text-lg font-bold text-foreground">Apprentissage partagé (poids appris par indicateur)</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Statistiques win/loss par (symbole, composant de signal), agrégées sur les trades réels de tous les comptes — c'est ce qui recalibre le moteur serveur au fil des trades.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Symbole</th>
+                  <th className="px-4 py-2.5 font-medium">Composant</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Wins</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Losses</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Poids appris</th>
+                </tr>
+              </thead>
+              <tbody>
+                {componentBreakdown.map((c, i) => (
+                  <tr key={`${c.symbol}-${c.component}-${i}`} className="border-t border-border/60">
+                    <td className="px-4 py-2 text-muted-foreground">{c.symbol === "_global" ? "toutes (global)" : c.symbol}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-foreground">{c.component}</td>
+                    <td className="px-4 py-2 text-right text-[color:var(--bull)]">{c.wins.toFixed(1)}</td>
+                    <td className="px-4 py-2 text-right text-[color:var(--bear)]">{c.losses.toFixed(1)}</td>
+                    <td className={`px-4 py-2 text-right font-semibold ${c.weight > 1 ? "text-[color:var(--bull)]" : c.weight < 1 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
+                      {c.weight.toFixed(2)}×
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── JOURNAL DRAWER: trades récents d'un utilisateur ── */}
+      <Dialog open={!!journalUser} onOpenChange={(open) => !open && setJournalUser(null)}>
+        <DialogContent className="glass-panel border-border/60 sm:rounded-2xl max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold uppercase tracking-wide">
+              Journal de {journalUser?.username}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {journalUser?.trades} trade{(journalUser?.trades ?? 0) > 1 ? "s" : ""} clos · P&amp;L net {journalUser && (journalUser.netPnl > 0 ? "+" : "")}{journalUser?.netPnl.toFixed(2)} $
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {journalLoading ? (
+              <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : journalTrades.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Aucun trade.</p>
+            ) : (
+              journalTrades.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {t.status === "won" ? (
+                      <TrendingUp className="h-3.5 w-3.5 shrink-0 text-[color:var(--bull)]" />
+                    ) : t.status === "lost" ? (
+                      <TrendingDown className="h-3.5 w-3.5 shrink-0 text-[color:var(--bear)]" />
+                    ) : (
+                      <span className="h-3.5 w-3.5 shrink-0 rounded-full bg-amber-500/60" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground truncate">{t.symbol} · {t.direction}</div>
+                      <div className="text-muted-foreground truncate">{new Date(t.time).toLocaleString("fr-FR")} · conf {t.confidence}% · TAS {t.tf_agreement}/4</div>
+                      {t.note && <div className="text-muted-foreground/70 truncate">{t.note}</div>}
+                    </div>
+                  </div>
+                  <div className={`shrink-0 text-right font-bold ${t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
+                    {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
