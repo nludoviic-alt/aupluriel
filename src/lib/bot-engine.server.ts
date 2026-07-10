@@ -237,7 +237,7 @@ class ServerBotEngine {
     if (!closed && !riskStop) return;
     void (async () => {
       const { sendEmail, tradeClosedEmail, riskPauseEmail } = await import("./email.server");
-      const user = getDb().prepare("SELECT email FROM users WHERE id = ?").get(this.userId) as { email: string } | undefined;
+      const user = getDb().prepare("SELECT email, username FROM users WHERE id = ?").get(this.userId) as { email: string; username: string } | undefined;
       if (!user) return;
       const { subject, html } = closed
         ? tradeClosedEmail({
@@ -245,7 +245,18 @@ class ServerBotEngine {
             profit: log.profit, won: log.status === "won", mode: this.config.mode,
           })
         : riskPauseEmail(log.note ?? "Limite de risque atteinte", this.config.mode);
-      await sendEmail({ to: user.email, subject, html });
+      // The trade's owner gets the email; the admin (ADMIN_EMAIL) gets a copy
+      // of every user's notifications — the friends' bots are training the
+      // shared learning, and the admin oversees all of it from one inbox.
+      const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
+      const recipients = [...new Set([user.email.toLowerCase(), ...(adminEmail ? [adminEmail] : [])])];
+      await Promise.allSettled(recipients.map((to) =>
+        sendEmail({
+          to,
+          subject: to === adminEmail && to !== user.email.toLowerCase() ? `[${user.username}] ${subject}` : subject,
+          html,
+        }),
+      ));
     })().catch((e) => console.error(`[bot] Notification email échouée pour user ${this.userId}:`, (e as Error).message));
   }
 
