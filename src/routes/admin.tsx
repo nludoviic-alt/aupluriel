@@ -247,19 +247,19 @@ function AdminPage() {
           <Button
             size="sm"
             onClick={() => setCreateOpen(true)}
-            className="flex-1 sm:flex-none h-10 text-sm sm:h-9 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold"
+            className="flex-1 sm:flex-none h-8.5 text-xs sm:h-8 px-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold"
           >
-            <UserPlus className="h-4 w-4 mr-1.5" />
+            <UserPlus className="h-3.5 w-3.5 mr-1.5" />
             Créer un compte
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => { load(); loadRecap(); }}
-            className="flex-1 sm:flex-none h-10 text-sm sm:h-9 border-white/5 hover:bg-white/[0.04]"
+            className="flex-1 sm:flex-none h-8.5 text-xs sm:h-8 px-3 border-white/5 hover:bg-white/[0.04]"
             disabled={loading || recapLoading}
           >
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", (loading || recapLoading) && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", (loading || recapLoading) && "animate-spin")} />
             Actualiser
           </Button>
         </div>
