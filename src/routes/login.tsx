@@ -53,6 +53,16 @@ function LoginPage() {
   const [showRegPw, setShowRegPw] = useState(false);
   const [regInviteCode, setRegInviteCode] = useState("");
 
+  // Prefill from an invite email link (?tab=register&email=...&code=...).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get("email");
+    const code = params.get("code");
+    if (params.get("tab") === "register" || code) setTab("register");
+    if (email) setRegEmail(email);
+    if (code) setRegInviteCode(code);
+  }, []);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);

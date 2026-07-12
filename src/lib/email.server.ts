@@ -157,6 +157,29 @@ export function riskPauseEmail(note: string, mode: string): { subject: string; h
   };
 }
 
+export function inviteEmail(
+  code: string,
+  email: string,
+  expiresAt: number,
+): { subject: string; html: string } {
+  const link = `${getAppUrl()}/login?tab=register&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
+  const expiryLabel = new Date(expiresAt).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+  });
+  return {
+    subject: "Tu es invité(e) sur Lio23",
+    html: layout(
+      "Invitation à rejoindre Lio23",
+      `<p style="margin:0 0 16px">Un administrateur t'invite à créer un compte sur Lio23 Quant Trading.</p>
+       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px;text-align:center">Code d'invitation<br><strong style="font-size:20px;letter-spacing:2px">${code}</strong></p>
+       <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Créer mon compte</a></p>
+       <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
+       <p style="font-size:12px;color:#71717a;margin:0">Ce code est valable uniquement pour l'adresse ${email} et expire le ${expiryLabel}.</p>`,
+    ),
+  };
+}
+
 export function resetEmail(link: string): { subject: string; html: string } {
   return {
     subject: "Réinitialise ton mot de passe — Lio23",

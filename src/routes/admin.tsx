@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
-  BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw
+  BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
+  Mail, Ban, Copy, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -45,6 +46,18 @@ interface BotStatus {
   hasToken: boolean;
   mode: "demo" | "live" | null;
   lastError: string | null;
+}
+
+interface InviteCode {
+  id: number;
+  code: string;
+  email: string;
+  usedByUsername: string | null;
+  usedAt: number | null;
+  revoked: boolean;
+  expiresAt: number;
+  createdAt: number;
+  status: "pending" | "used" | "revoked" | "expired";
 }
 
 interface UserRecap {
@@ -101,6 +114,11 @@ function AdminPage() {
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
   const [botStatus, setBotStatus] = useState<Record<number, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
+  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteActionId, setInviteActionId] = useState<number | null>(null);
   const [recap, setRecap] = useState<UserRecap[]>([]);
   const [backtestVsReal, setBacktestVsReal] = useState<BacktestVsReal | null>(null);
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
@@ -153,9 +171,21 @@ function AdminPage() {
     }
   }, []);
 
+  const loadInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    try {
+      const data = await api.get<{ invites: InviteCode[] }>("/api/admin/invites");
+      setInvites(data.invites);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement des invitations");
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (user?.is_admin) { load(); loadRecap(); loadBotStatus(); }
-  }, [user?.is_admin, load, loadRecap, loadBotStatus]);
+    if (user?.is_admin) { load(); loadRecap(); loadBotStatus(); loadInvites(); }
+  }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
   async function openJournal(u: UserRecap) {
     setJournalUser(u);
@@ -204,6 +234,47 @@ function AdminPage() {
     } finally {
       setBotBusyId(null);
     }
+  }
+
+  async function createInvite() {
+    if (!inviteEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())) {
+      toast.error("Email invalide.");
+      return;
+    }
+    setInviteBusy(true);
+    try {
+      await api.post("/api/admin/invites", { action: "create", email: inviteEmail.trim() });
+      toast.success("Invitation envoyée par email ✓");
+      setInviteEmail("");
+      await loadInvites();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function inviteAction(id: number, action: "revoke" | "resend" | "delete") {
+    if (action === "delete" && !confirm("Supprimer cette invitation ?")) return;
+    setInviteActionId(id);
+    try {
+      await api.post("/api/admin/invites", { id, action });
+      const msg: Record<string, string> = {
+        revoke: "Invitation révoquée",
+        resend: "Email renvoyé ✓",
+        delete: "Invitation supprimée",
+      };
+      toast.success(msg[action]);
+      await loadInvites();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setInviteActionId(null);
+    }
+  }
+
+  function copyInviteCode(code: string) {
+    navigator.clipboard.writeText(code).then(() => toast.success("Code copié"));
   }
 
   function generatePassword() {
@@ -290,7 +361,7 @@ function AdminPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { load(); loadRecap(); loadBotStatus(); }}
+            onClick={() => { load(); loadRecap(); loadBotStatus(); loadInvites(); }}
             className="flex-1 sm:flex-none h-8.5 text-xs sm:h-8 px-3 border-white/5 hover:bg-white/[0.04]"
             disabled={loading || recapLoading}
           >
@@ -591,6 +662,120 @@ function AdminPage() {
               );
             })
           )}
+        </div>
+      </div>
+
+      {/* ── INVITE CODES SECTION ── */}
+      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-foreground">Codes d'invitation</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Génère un code lié à un email et envoie-le automatiquement.</p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-64 group">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && createInvite()}
+                placeholder="email@destinataire.com"
+                className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={createInvite}
+              disabled={inviteBusy}
+              className="h-9 px-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold text-xs shrink-0"
+            >
+              {inviteBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Send className="h-3.5 w-3.5 mr-1.5" />Envoyer</>}
+            </Button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+          <table className="w-full text-sm">
+            <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Expire</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invitesLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+                  </td>
+                </tr>
+              ) : invites.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                    Aucune invitation envoyée.
+                  </td>
+                </tr>
+              ) : (
+                invites.map((inv) => (
+                  <tr key={inv.id} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                    <td className="px-4 py-3 font-semibold text-foreground">{inv.email}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => copyInviteCode(inv.code)}
+                        title="Copier le code"
+                        className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-white transition-colors"
+                      >
+                        {inv.code}
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <InviteStatusBadge status={inv.status} usedByUsername={inv.usedByUsername} />
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground font-semibold text-xs">
+                      {new Date(inv.expiresAt).toLocaleDateString("fr-FR")}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {inv.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => inviteAction(inv.id, "resend")}
+                              disabled={inviteActionId === inv.id}
+                              title="Renvoyer l'email"
+                              className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-2 text-indigo-400 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <RefreshCcw className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => inviteAction(inv.id, "revoke")}
+                              disabled={inviteActionId === inv.id}
+                              title="Révoquer"
+                              className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-amber-500 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <Ban className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => inviteAction(inv.id, "delete")}
+                          disabled={inviteActionId === inv.id}
+                          title="Supprimer"
+                          className="rounded-xl border border-white/5 bg-white/[0.02] p-2 text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -985,6 +1170,32 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status] ?? ""}`}>
       {label[status] ?? status}
+    </span>
+  );
+}
+
+function InviteStatusBadge({
+  status,
+  usedByUsername,
+}: {
+  status: InviteCode["status"];
+  usedByUsername: string | null;
+}) {
+  const map: Record<InviteCode["status"], string> = {
+    pending:  "border-amber-500/30 bg-amber-500/5 text-amber-500",
+    used:     "border-[color:var(--bull)]/30 bg-[color:var(--bull)]/5 text-[color:var(--bull)]",
+    revoked:  "border-[color:var(--bear)]/30 bg-[color:var(--bear)]/5 text-[color:var(--bear)]",
+    expired:  "border-white/10 bg-white/[0.03] text-muted-foreground",
+  };
+  const label: Record<InviteCode["status"], string> = {
+    pending: "en attente",
+    used: usedByUsername ? `utilisé par ${usedByUsername}` : "utilisé",
+    revoked: "révoqué",
+    expired: "expiré",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status]}`}>
+      {label[status]}
     </span>
   );
 }

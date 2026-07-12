@@ -29,14 +29,6 @@ export const Route = createFileRoute("/api/auth/register")({
           return json({ error: "Email, nom d'utilisateur et mot de passe requis." }, 400);
         }
 
-        // Block spambots with an invitation code check if configured
-        const requiredInvite = process.env.INVITE_CODE;
-        if (requiredInvite && requiredInvite.trim() !== "") {
-          if (!inviteCode || inviteCode.trim() !== requiredInvite.trim()) {
-            return json({ error: "Code d'invitation requis ou invalide." }, 403);
-          }
-        }
-
         const normalizedEmail = email.toLowerCase();
         const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
         const isAdmin = !!adminEmail && normalizedEmail === adminEmail;
@@ -49,6 +41,30 @@ export const Route = createFileRoute("/api/auth/register")({
         }
 
         const db = getDb();
+
+        // Block spambots with an invitation code check if configured. Accepts
+        // either the legacy shared INVITE_CODE, or a per-recipient code an
+        // admin generated and emailed (bound to this exact address) — see
+        // /api/admin/invites.
+        const requiredInvite = process.env.INVITE_CODE;
+        let matchedInviteId: number | null = null;
+        if (requiredInvite && requiredInvite.trim() !== "") {
+          const submitted = inviteCode?.trim() ?? "";
+          const staticMatch = submitted !== "" && submitted === requiredInvite.trim();
+          if (!staticMatch) {
+            const row = db
+              .prepare(
+                "SELECT id, expires_at FROM invite_codes WHERE code = ? AND email = ? AND revoked = 0 AND used_by IS NULL",
+              )
+              .get(submitted.toUpperCase(), normalizedEmail) as { id: number; expires_at: number } | undefined;
+            if (row && row.expires_at > Date.now()) {
+              matchedInviteId = row.id;
+            } else {
+              return json({ error: "Code d'invitation requis ou invalide." }, 403);
+            }
+          }
+        }
+
         const existing = db
           .prepare("SELECT id FROM users WHERE email = ? OR username = ?")
           .get(normalizedEmail, username);
@@ -75,6 +91,13 @@ export const Route = createFileRoute("/api/auth/register")({
 
         const userId = result.lastInsertRowid as number;
         db.prepare("INSERT INTO user_settings (user_id) VALUES (?)").run(userId);
+
+        if (matchedInviteId) {
+          db.prepare("UPDATE invite_codes SET used_by = ?, used_at = unixepoch() * 1000 WHERE id = ?").run(
+            userId,
+            matchedInviteId,
+          );
+        }
 
         // Admin account: log in immediately.
         if (isAdmin) {

@@ -97,6 +97,21 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
+    -- Admin-generated, per-recipient invite codes emailed to a prospective
+    -- user. Independent of the legacy static INVITE_CODE env var (still
+    -- honored in register.ts as a fallback master code).
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      code       TEXT    UNIQUE NOT NULL,
+      email      TEXT    NOT NULL,          -- bound to one recipient; only that email may redeem it
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      used_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      used_at    INTEGER,
+      revoked    INTEGER NOT NULL DEFAULT 0,
+      expires_at INTEGER NOT NULL,          -- epoch ms
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     -- Server-side auto-trader: one row per user; the engine restores enabled
     -- bots at server boot so trading continues with the app/phone closed.
     CREATE TABLE IF NOT EXISTS bot_state (
