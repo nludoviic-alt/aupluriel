@@ -45,6 +45,7 @@ import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api/auth/forgot-password'
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
+import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
@@ -227,6 +228,11 @@ const ApiAdminStatsRoute = ApiAdminStatsRouteImport.update({
   path: '/api/admin/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminBotRoute = ApiAdminBotRouteImport.update({
+  id: '/api/admin/bot',
+  path: '/api/admin/bot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -256,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
@@ -294,6 +301,7 @@ export interface FileRoutesByTo {
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
@@ -373,6 +382,7 @@ export interface FileRouteTypes {
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
+    | '/api/admin/bot'
     | '/api/admin/stats'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
@@ -411,6 +421,7 @@ export interface FileRouteTypes {
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
+    | '/api/admin/bot'
     | '/api/admin/stats'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
@@ -449,6 +460,7 @@ export interface FileRouteTypes {
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
+    | '/api/admin/bot'
     | '/api/admin/stats'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
@@ -488,6 +500,7 @@ export interface RootRouteChildren {
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
+  ApiAdminBotRoute: typeof ApiAdminBotRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
@@ -753,6 +766,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/bot': {
+      id: '/api/admin/bot'
+      path: '/api/admin/bot'
+      fullPath: '/api/admin/bot'
+      preLoaderRoute: typeof ApiAdminBotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -784,6 +804,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,
+  ApiAdminBotRoute: ApiAdminBotRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,

@@ -162,7 +162,7 @@ export function getAllTimeStats(userId: number): { trades: number; wins: number;
   return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
 }
 
-function loadBotConfig(userId: number): AutoTraderConfig | null {
+export function loadBotConfig(userId: number): AutoTraderConfig | null {
   const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ?").get(userId) as { config: string } | undefined;
   if (!row) return null;
   // Config verrouillée : seuls la mise (stakeUsd, maxDailyLossUsd) et le mode

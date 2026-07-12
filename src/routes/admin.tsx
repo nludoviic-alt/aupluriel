@@ -38,6 +38,15 @@ interface AdminUser {
   created_at: number;
 }
 
+interface BotStatus {
+  userId: number;
+  enabled: boolean;
+  running: boolean;
+  hasToken: boolean;
+  mode: "demo" | "live" | null;
+  lastError: string | null;
+}
+
 interface UserRecap {
   userId: number;
   username: string;
@@ -90,6 +99,8 @@ function AdminPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
+  const [botStatus, setBotStatus] = useState<Record<number, BotStatus>>({});
+  const [botBusyId, setBotBusyId] = useState<number | null>(null);
   const [recap, setRecap] = useState<UserRecap[]>([]);
   const [backtestVsReal, setBacktestVsReal] = useState<BacktestVsReal | null>(null);
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
@@ -131,9 +142,20 @@ function AdminPage() {
     }
   }, []);
 
+  const loadBotStatus = useCallback(async () => {
+    try {
+      const data = await api.get<{ statuses: BotStatus[] }>("/api/admin/bot");
+      const map: Record<number, BotStatus> = {};
+      for (const s of data.statuses) map[s.userId] = s;
+      setBotStatus(map);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement du statut auto-trader");
+    }
+  }, []);
+
   useEffect(() => {
-    if (user?.is_admin) { load(); loadRecap(); }
-  }, [user?.is_admin, load, loadRecap]);
+    if (user?.is_admin) { load(); loadRecap(); loadBotStatus(); }
+  }, [user?.is_admin, load, loadRecap, loadBotStatus]);
 
   async function openJournal(u: UserRecap) {
     setJournalUser(u);
@@ -168,6 +190,19 @@ function AdminPage() {
       toast.error(err instanceof Error ? err.message : "Erreur");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function toggleBot(userId: number, action: "start" | "stop") {
+    setBotBusyId(userId);
+    try {
+      await api.post("/api/admin/bot", { userId, action });
+      toast.success(action === "start" ? "Auto-trader activé ✓" : "Auto-trader désactivé");
+      await loadBotStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setBotBusyId(null);
     }
   }
 
@@ -255,7 +290,7 @@ function AdminPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => { load(); loadRecap(); }}
+            onClick={() => { load(); loadRecap(); loadBotStatus(); }}
             className="flex-1 sm:flex-none h-8.5 text-xs sm:h-8 px-3 border-white/5 hover:bg-white/[0.04]"
             disabled={loading || recapLoading}
           >
@@ -325,6 +360,7 @@ function AdminPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Vérifié</th>
                 <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Auto-Trader</th>
                 <th className="px-4 py-3">Inscrit</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -332,13 +368,13 @@ function AdminPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground font-semibold">
                     Aucun utilisateur trouvé.
                   </td>
                 </tr>
@@ -379,6 +415,17 @@ function AdminPage() {
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={u.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {isAdmin ? (
+                          <span className="text-xs text-muted-foreground/40 font-mono">—</span>
+                        ) : (
+                          <BotStatusCell
+                            status={botStatus[u.id]}
+                            busy={botBusyId === u.id}
+                            onToggle={(action) => toggleBot(u.id, action)}
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-semibold">
                         {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
@@ -485,6 +532,16 @@ function AdminPage() {
                       <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
                     </div>
                   </div>
+                  {!isAdmin && (
+                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Auto-Trader</span>
+                      <BotStatusCell
+                        status={botStatus[u.id]}
+                        busy={botBusyId === u.id}
+                        onToggle={(action) => toggleBot(u.id, action)}
+                      />
+                    </div>
+                  )}
                   {!isAdmin && (
                     <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/[0.04]">
                       {u.status !== "approved" && (
@@ -929,6 +986,48 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status] ?? ""}`}>
       {label[status] ?? status}
     </span>
+  );
+}
+
+function BotStatusCell({
+  status,
+  busy,
+  onToggle,
+}: {
+  status?: BotStatus;
+  busy: boolean;
+  onToggle: (action: "start" | "stop") => void;
+}) {
+  const running = status?.running ?? false;
+  const enabled = status?.enabled ?? false;
+  const hasToken = status?.hasToken ?? false;
+  const blocked = !enabled && !hasToken;
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <span
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+          running
+            ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
+            : "bg-white/[0.03] text-muted-foreground",
+        )}
+      >
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            running ? "bg-[color:var(--bull)] animate-pulse" : "bg-muted-foreground/40",
+          )}
+        />
+        {running ? "live" : enabled ? "en attente" : "arrêté"}
+      </span>
+      <Switch
+        checked={enabled}
+        disabled={busy || blocked}
+        onCheckedChange={(checked) => onToggle(checked ? "start" : "stop")}
+        title={blocked ? "Aucun token Deriv enregistré pour cet utilisateur" : undefined}
+      />
+    </div>
   );
 }
 
