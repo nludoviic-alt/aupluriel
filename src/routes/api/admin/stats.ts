@@ -126,7 +126,44 @@ export const Route = createFileRoute("/api/admin/stats")({
           },
         };
 
-        return json({ recap, componentBreakdown, backtestVsReal });
+        // Confidence calibration: does a higher confidence score actually win
+        // more often? Buckets closed trades by their confidence at entry —
+        // if win rate doesn't rise with the bucket, the score isn't informative
+        // regardless of how good the backtest EV looks in aggregate.
+        const calibrationRows = db
+          .prepare(
+            `SELECT
+               CASE
+                 WHEN confidence < 60 THEN '<60'
+                 WHEN confidence < 70 THEN '60-69'
+                 WHEN confidence < 80 THEN '70-79'
+                 WHEN confidence < 90 THEN '80-89'
+                 ELSE '90-100'
+               END AS bucket,
+               COUNT(*) AS trades,
+               COUNT(*) FILTER (WHERE status = 'won') AS wins,
+               AVG(confidence) AS avg_confidence
+             FROM bot_trades
+             WHERE status IN ('won','lost')
+             GROUP BY bucket`,
+          )
+          .all() as { bucket: string; trades: number; wins: number; avg_confidence: number }[];
+        const bucketOrder = ["<60", "60-69", "70-79", "80-89", "90-100"];
+        const byBucket = new Map(calibrationRows.map((r) => [r.bucket, r]));
+        const calibration = bucketOrder
+          .map((bucket) => {
+            const r = byBucket.get(bucket);
+            const trades = r?.trades ?? 0;
+            return {
+              bucket,
+              trades,
+              winRate: trades ? Math.round((r!.wins / trades) * 1000) / 10 : null,
+              avgConfidence: trades ? Math.round(r!.avg_confidence) : null,
+            };
+          })
+          .filter((b) => b.trades > 0);
+
+        return json({ recap, componentBreakdown, backtestVsReal, calibration });
       },
     },
   },

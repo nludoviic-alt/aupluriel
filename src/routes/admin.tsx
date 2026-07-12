@@ -88,6 +88,13 @@ interface BacktestVsReal {
   live: { trades: number; evPerDollar: number | null; winRate: number | null; netPnl: number };
 }
 
+interface CalibrationBucket {
+  bucket: string;
+  trades: number;
+  winRate: number | null;
+  avgConfidence: number | null;
+}
+
 interface JournalTrade {
   id: string;
   time: number;
@@ -122,6 +129,7 @@ function AdminPage() {
   const [recap, setRecap] = useState<UserRecap[]>([]);
   const [backtestVsReal, setBacktestVsReal] = useState<BacktestVsReal | null>(null);
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
+  const [calibration, setCalibration] = useState<CalibrationBucket[]>([]);
   const [recapLoading, setRecapLoading] = useState(true);
   const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
@@ -149,10 +157,11 @@ function AdminPage() {
   const loadRecap = useCallback(async () => {
     setRecapLoading(true);
     try {
-      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal }>("/api/admin/stats");
+      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal; calibration?: CalibrationBucket[] }>("/api/admin/stats");
       setRecap(data.recap);
       setComponentBreakdown(data.componentBreakdown);
       setBacktestVsReal(data.backtestVsReal ?? null);
+      setCalibration(data.calibration ?? []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du récap");
     } finally {
@@ -917,6 +926,53 @@ function AdminPage() {
                 <span className="text-[9px] text-muted-foreground/60 block">Taux live {backtestVsReal.live.winRate}%</span>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIDENCE CALIBRATION ── */}
+      {calibration.length > 0 && (
+        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-foreground">Calibration de la Confiance</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+            <table className="w-full text-sm">
+              <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Confiance</th>
+                  <th className="px-4 py-3 text-right">Trades</th>
+                  <th className="px-4 py-3 text-right">Taux de Victoire</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calibration.map((b, i) => {
+                  const prev = calibration[i - 1];
+                  const regressed = i > 0 && prev.winRate !== null && b.winRate !== null && b.winRate < prev.winRate;
+                  return (
+                    <tr key={b.bucket} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                      <td className="px-4 py-3 font-mono text-xs text-foreground font-bold">{b.bucket}</td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {b.trades}
+                        {b.trades < 20 && <span className="ml-1.5 text-[9px] text-muted-foreground/50">(peu de données)</span>}
+                      </td>
+                      <td
+                        className={cn(
+                          "px-4 py-3 text-right font-semibold",
+                          b.winRate === null ? "text-muted-foreground" : b.winRate >= 50 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]",
+                        )}
+                      >
+                        {b.winRate === null ? "—" : `${b.winRate}%`}
+                        {regressed && <span className="ml-1.5 text-[9px] text-amber-400" title="Taux inférieur au palier de confiance précédent">⚠</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
