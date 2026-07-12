@@ -1,6 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound, ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen, BrainCircuit } from "lucide-react";
+import {
+  ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
+  ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
+  BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -8,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { KpiCard } from "@/components/kpi-card";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Administration — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Administration — Lio23" }] }),
   component: AdminPage,
 });
 
@@ -91,6 +97,7 @@ function AdminPage() {
   const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -156,6 +163,7 @@ function AdminPage() {
       };
       toast.success(msg[action] ?? "Action effectuée");
       await load();
+      await loadRecap();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur");
     } finally {
@@ -203,25 +211,43 @@ function AdminPage() {
   if (authLoading || !user?.is_admin) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
       </div>
     );
   }
 
   const pending = users.filter((u) => u.status === "pending");
+  const totalNetPnl = recap.reduce((sum, r) => sum + r.netPnl, 0);
+  const activeUsers = recap.filter((r) => r.trades > 0);
+  const avgWinRate = activeUsers.length
+    ? activeUsers.reduce((sum, r) => sum + r.winRate, 0) / activeUsers.length
+    : 0;
+
+  const filteredUsers = users.filter(
+    (u) =>
+      u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 space-y-6">
+    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+      
+      {/* ── HEADER ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="h-6 w-6 text-[color:var(--brand-cyan)]" />
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Administration</h1>
+          <div className="h-10 w-10 flex items-center justify-center rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.15)]">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground leading-none">Administration</h1>
+            <p className="text-xs text-muted-foreground mt-1">Gérez les terminaux, approuvez les comptes et suivez la télémétrie.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
             size="sm"
             onClick={() => setCreateOpen(true)}
-            className="flex-1 sm:flex-none h-10 text-sm sm:h-9"
+            className="flex-1 sm:flex-none h-10 text-sm sm:h-9 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold"
           >
             <UserPlus className="h-4 w-4 mr-1.5" />
             Créer un compte
@@ -229,35 +255,513 @@ function AdminPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={load}
-            className="flex-1 sm:flex-none h-10 text-sm sm:h-9"
-            disabled={loading}
+            onClick={() => { load(); loadRecap(); }}
+            className="flex-1 sm:flex-none h-10 text-sm sm:h-9 border-white/5 hover:bg-white/[0.04]"
+            disabled={loading || recapLoading}
           >
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={cn("h-4 w-4 mr-1.5", (loading || recapLoading) && "animate-spin")} />
             Actualiser
           </Button>
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="glass-panel border-border/60 sm:rounded-2xl">
-          <DialogHeader>
-            <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]">
-                <UserPlus className="h-5 w-5" />
-              </div>
-              <div className="text-left">
-                <DialogTitle className="text-sm font-bold uppercase tracking-wide">Créer un compte</DialogTitle>
-                <DialogDescription className="mt-1 text-xs leading-relaxed">
-                  Le compte est créé directement approuvé et vérifié. Les identifiants sont envoyés par email.
-                </DialogDescription>
-              </div>
+      {/* ── KPI STATS GRID ── */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <KpiCard
+          label="Total Utilisateurs"
+          value={users.length}
+          delta={`${users.filter(u => u.email_verified).length} vérifiés`}
+          icon={<Users className="h-5 w-5 text-cyan-400" />}
+          tone="cyan"
+        />
+        <KpiCard
+          label="En attente"
+          value={pending.length}
+          delta={pending.length > 0 ? "Action requise !" : "Aucune attente"}
+          icon={<ShieldAlert className={cn("h-5 w-5", pending.length > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground")} />}
+          tone={pending.length > 0 ? "amber" : "default"}
+        />
+        <KpiCard
+          label="P&L Cumulé (Tous)"
+          value={`${totalNetPnl >= 0 ? "+" : ""}${totalNetPnl.toFixed(2)} $`}
+          delta={`${recap.reduce((sum, r) => sum + r.trades, 0)} trades totaux`}
+          icon={totalNetPnl >= 0 ? <TrendingUp className="h-5 w-5 text-[color:var(--bull)]" /> : <TrendingDown className="h-5 w-5 text-[color:var(--bear)]" />}
+          tone={totalNetPnl >= 0 ? "bull" : "bear"}
+        />
+        <KpiCard
+          label="Taux de Réussite Moyen"
+          value={`${avgWinRate.toFixed(1)}%`}
+          delta={`${activeUsers.length} compte(s) actif(s)`}
+          icon={<Award className="h-5 w-5 text-indigo-400" />}
+          tone={avgWinRate >= 54.1 ? "bull" : "default"}
+        />
+      </div>
+
+      {/* ── USER MANAGEMENT SECTION ── */}
+      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-foreground">Gestion des Utilisateurs</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Approuvez, révoquez ou supprimez des comptes.</p>
+          </div>
+          <div className="relative w-full sm:w-64 group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher pseudo / email..."
+              className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Desktop View Table */}
+        <div className="hidden md:block overflow-x-auto rounded-xl border border-white/[0.06]">
+          <table className="w-full text-sm">
+            <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Utilisateur</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Vérifié</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Inscrit</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+                  </td>
+                </tr>
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                    Aucun utilisateur trouvé.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                  const initials = u.username.slice(0, 2).toUpperCase();
+                  const isAdmin = u.is_admin === 1;
+                  return (
+                    <tr key={u.id} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                      <td className="px-4 py-3 font-semibold text-foreground">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-xs font-bold border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="font-bold text-foreground flex items-center gap-1.5">
+                              {u.username}
+                              {isAdmin ? (
+                                <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[9px] text-cyan-400 font-bold uppercase tracking-wider shadow-[0_0_8px_rgba(6,182,212,0.1)]">
+                                  admin
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 text-[9px] text-muted-foreground font-bold uppercase tracking-wider">
+                                  trader
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground font-medium">{u.email}</td>
+                      <td className="px-4 py-3">
+                        {u.email_verified ? (
+                          <span className="text-[color:var(--bull)] font-bold bg-[color:var(--bull)]/10 px-2.5 py-0.5 rounded-full text-xs">oui</span>
+                        ) : (
+                          <span className="text-muted-foreground bg-white/[0.03] px-2.5 py-0.5 rounded-full text-xs">non</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={u.status} />
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground font-semibold">
+                        {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isAdmin ? (
+                          <span className="block text-right text-xs text-muted-foreground/40 font-mono">—</span>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {u.status !== "approved" && (
+                              <button
+                                onClick={() => act(u.id, "approve")}
+                                disabled={busyId === u.id}
+                                title="Approuver l'accès"
+                                className="rounded-xl border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 p-2 text-[color:var(--bull)] hover:bg-[color:var(--bull)]/20 transition-colors disabled:opacity-50"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                            )}
+                            {u.status === "pending" && (
+                              <button
+                                onClick={() => act(u.id, "reject")}
+                                disabled={busyId === u.id}
+                                title="Refuser la demande"
+                                className="rounded-xl border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 p-2 text-[color:var(--bear)] hover:bg-[color:var(--bear)]/20 transition-colors disabled:opacity-50"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                            {u.status === "approved" && (
+                              <button
+                                onClick={() => act(u.id, "revoke")}
+                                disabled={busyId === u.id}
+                                title="Révoquer l'accès"
+                                className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-amber-500 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                              >
+                                <ShieldOff className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => act(u.id, "reset-password")}
+                              disabled={busyId === u.id}
+                              title="Envoyer un lien de réinitialisation du mot de passe"
+                              className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-2 text-indigo-400 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => act(u.id, "delete")}
+                              disabled={busyId === u.id}
+                              title="Supprimer définitivement"
+                              className="rounded-xl border border-white/5 bg-white/[0.02] p-2 text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile View Cards */}
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
             </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground font-semibold">
+              Aucun utilisateur trouvé.
+            </div>
+          ) : (
+            filteredUsers.map((u) => {
+              const initials = u.username.slice(0, 2).toUpperCase();
+              const isAdmin = u.is_admin === 1;
+              return (
+                <div key={u.id} className="border border-white/[0.06] rounded-xl p-4 bg-white/[0.01] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-[10px] font-bold border border-cyan-500/20">
+                        {initials}
+                      </div>
+                      <span className="font-bold text-foreground text-sm">{u.username}</span>
+                      {isAdmin && (
+                        <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[8px] text-cyan-400 font-bold uppercase tracking-wider">
+                          admin
+                        </span>
+                      )}
+                    </div>
+                    <StatusBadge status={u.status} />
+                  </div>
+                  <div className="space-y-1 text-xs border-t border-white/[0.04] pt-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="text-foreground font-mono truncate max-w-[170px]">{u.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Inscrit</span>
+                      <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
+                    </div>
+                  </div>
+                  {!isAdmin && (
+                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/[0.04]">
+                      {u.status !== "approved" && (
+                        <button
+                          onClick={() => act(u.id, "approve")}
+                          disabled={busyId === u.id}
+                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 py-1.5 text-xs text-[color:var(--bull)] font-bold"
+                        >
+                          <Check className="h-3.5 w-3.5" /> Activer
+                        </button>
+                      )}
+                      {u.status === "pending" && (
+                        <button
+                          onClick={() => act(u.id, "reject")}
+                          disabled={busyId === u.id}
+                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 py-1.5 text-xs text-[color:var(--bear)] font-bold"
+                        >
+                          <X className="h-3.5 w-3.5" /> Rejeter
+                        </button>
+                      )}
+                      {u.status === "approved" && (
+                        <button
+                          onClick={() => act(u.id, "revoke")}
+                          disabled={busyId === u.id}
+                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 py-1.5 text-xs text-amber-500 font-bold"
+                        >
+                          <ShieldOff className="h-3.5 w-3.5" /> Révoquer
+                        </button>
+                      )}
+                      <button
+                        onClick={() => act(u.id, "reset-password")}
+                        disabled={busyId === u.id}
+                        className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-500/10 py-1.5 text-xs text-indigo-400 font-bold"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" /> MDP
+                      </button>
+                      <button
+                        onClick={() => act(u.id, "delete")}
+                        disabled={busyId === u.id}
+                        className="flex items-center justify-center rounded-lg border border-white/5 bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ── TRADING RECAP BY USER ── */}
+      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-foreground">Récapitulatif de Trading</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04]">
+            <RefreshCw className={cn("h-4 w-4 mr-1.5", recapLoading && "animate-spin")} />
+            Actualiser
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+          <table className="w-full text-sm">
+            <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Utilisateur</th>
+                <th className="px-4 py-3 text-right">Trades</th>
+                <th className="px-4 py-3 text-right">Win Rate</th>
+                <th className="px-4 py-3 text-right">P&amp;L Net</th>
+                <th className="px-4 py-3 text-right">Profit Factor</th>
+                <th className="px-4 py-3 text-right">Conf. Moy.</th>
+                <th className="px-4 py-3">Dernier Trade</th>
+                <th className="px-4 py-3 text-right">Journal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recapLoading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+                  </td>
+                </tr>
+              ) : recap.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                    Aucune statistique de trading disponible.
+                  </td>
+                </tr>
+              ) : (
+                recap.map((r) => (
+                  <tr key={r.userId} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                    <td className="px-4 py-3 font-bold text-foreground">{r.username}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground font-semibold">
+                      {r.trades}
+                      {r.open > 0 && (
+                        <span className="ml-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded-full border border-amber-500/20">
+                          +{r.open} en cours
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {r.trades ? (
+                        <span className={cn("font-bold text-xs px-2.5 py-0.5 rounded-full", r.winRate >= 55 ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]" : "bg-white/[0.03] text-muted-foreground")}>
+                          {r.winRate}%
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td className={cn(
+                      "px-4 py-3 text-right font-black font-mono",
+                      r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+                    )}>
+                      {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+                    </td>
+                    <td className="px-4 py-3 text-right text-muted-foreground font-bold">
+                      {r.profitFactor === null ? "—" : r.profitFactor === Infinity ? "∞" : r.profitFactor.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-muted-foreground font-semibold">
+                      {r.trades ? `${r.avgConfidence.toFixed(0)}%` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground font-semibold text-xs">
+                      {r.lastTradeAt ? new Date(r.lastTradeAt).toLocaleString("fr-FR") : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => openJournal(r)}
+                        disabled={!r.trades && !r.open}
+                        title="Consulter le journal"
+                        className="rounded-xl border border-white/5 bg-white/[0.02] p-2 text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-30"
+                      >
+                        <BookOpen className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── BACKTEST vs REAL GAUGE ── */}
+      {backtestVsReal && (
+        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 border border-white/[0.06] rounded-xl p-4 bg-white/[0.01]">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">EV Théorique</span>
+              <div className="text-xl font-black text-cyan-400">
+                +{(backtestVsReal.reference.evPerDollar * 100).toFixed(1)}%
+              </div>
+              <span className="text-[9px] text-muted-foreground/60 block">{backtestVsReal.reference.binaryNote}</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">EV Réel</span>
+              <div className={cn(
+                "text-xl font-black",
+                backtestVsReal.live.evPerDollar === null ? "text-muted-foreground" : backtestVsReal.live.evPerDollar >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"
+              )}>
+                {backtestVsReal.live.evPerDollar === null ? "—" : `${backtestVsReal.live.evPerDollar >= 0 ? "+" : ""}${(backtestVsReal.live.evPerDollar * 100).toFixed(1)}%`}
+              </div>
+              <span className="text-[9px] text-muted-foreground/60 block">Calculé sur live trades</span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Échantillon</span>
+              <div className="text-xl font-black text-foreground">
+                {backtestVsReal.live.trades} trades
+              </div>
+              <span className="text-[9px] text-muted-foreground/60 block">
+                {backtestVsReal.live.trades < 30 ? "Trop peu de données" : "Données significatives"}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Rentabilité Réelle</span>
+              <div className={cn(
+                "text-xl font-black",
+                backtestVsReal.live.netPnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"
+              )}>
+                {backtestVsReal.live.netPnl >= 0 ? "+" : ""}{backtestVsReal.live.netPnl.toFixed(2)} $
+              </div>
+              {backtestVsReal.live.winRate !== null && (
+                <span className="text-[9px] text-muted-foreground/60 block">Taux live {backtestVsReal.live.winRate}%</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SHARED BRAIN METER ── */}
+      {componentBreakdown.length > 0 && (
+        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
+              <BrainCircuit className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Formule adaptative du cerveau de trading partagé entre tous les utilisateurs.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+            <table className="w-full text-sm">
+              <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Marché</th>
+                  <th className="px-4 py-3">Indicateur</th>
+                  <th className="px-4 py-3 text-right">Victoires (Wins)</th>
+                  <th className="px-4 py-3 text-right">Défaites (Losses)</th>
+                  <th className="px-4 py-3 text-right">Ajustement du Poids</th>
+                </tr>
+              </thead>
+              <tbody>
+                {componentBreakdown.map((c, i) => {
+                  const weightPct = ((c.weight - 0.6) / (1.5 - 0.6)) * 100;
+                  const isPositive = c.weight > 1.0;
+                  const isNegative = c.weight < 1.0;
+                  return (
+                    <tr key={`${c.symbol}-${c.component}-${i}`} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                      <td className="px-4 py-3 font-bold text-muted-foreground">{c.symbol === "_global" ? "Global" : c.symbol}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-foreground font-bold">{c.component}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-[color:var(--bull)]">{c.wins.toFixed(1)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-[color:var(--bear)]">{c.losses.toFixed(1)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-3">
+                          <span className={cn(
+                            "font-mono text-xs font-black",
+                            isPositive ? "text-cyan-400" : isNegative ? "text-rose-400" : "text-muted-foreground"
+                          )}>
+                            {c.weight.toFixed(2)}×
+                          </span>
+                          <div className="relative h-2 w-20 rounded-full bg-white/[0.04] overflow-hidden border border-white/[0.05]">
+                            <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white/20 z-10" />
+                            <div
+                              className={cn(
+                                "absolute h-full rounded-full transition-all duration-500",
+                                isPositive ? "bg-gradient-to-r from-cyan-500 to-indigo-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]" : "bg-gradient-to-r from-rose-500 to-orange-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
+                              )}
+                              style={{
+                                left: isPositive ? "50%" : `${weightPct}%`,
+                                right: isPositive ? `${100 - weightPct}%` : "50%",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── CREATE USER DIALOG ── */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
+              <UserPlus className="h-4.5 w-4.5 text-orange-500" />
+              Créer un Compte
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground/80 leading-relaxed mt-1">
+              Les identifiants seront créés et immédiatement valides. Le mot de passe peut être généré aléatoirement.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="new-username" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Nom d'utilisateur
+              <Label htmlFor="new-username" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                Pseudo
               </Label>
               <Input
                 id="new-username"
@@ -265,11 +769,11 @@ function AdminPage() {
                 onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                 placeholder="jdupont"
                 autoComplete="off"
-                className="bg-background"
+                className="bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm text-white placeholder:text-gray-700"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="new-email" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              <Label htmlFor="new-email" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
                 Email
               </Label>
               <Input
@@ -279,11 +783,11 @@ function AdminPage() {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 placeholder="jean.dupont@exemple.com"
                 autoComplete="off"
-                className="bg-background"
+                className="bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm text-white placeholder:text-gray-700"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="new-password" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              <Label htmlFor="new-password" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
                 Mot de passe
               </Label>
               <div className="flex gap-2">
@@ -291,18 +795,25 @@ function AdminPage() {
                   id="new-password"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  placeholder="Au moins 6 caractères"
+                  placeholder="Min. 6 caractères"
                   autoComplete="new-password"
-                  className="bg-background font-mono"
+                  className="flex-1 bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm font-mono text-white placeholder:text-gray-700"
                 />
-                <Button type="button" variant="outline" size="icon" onClick={generatePassword} title="Générer un mot de passe">
-                  <Dices className="h-4 w-4" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={generatePassword}
+                  title="Générer mot de passe"
+                  className="h-10 w-10 shrink-0 border-white/5 hover:bg-white/[0.04]"
+                >
+                  <Dices className="h-4 w-4 text-orange-400" />
                 </Button>
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-border bg-background/40 px-3 py-2.5">
-              <Label htmlFor="new-is-admin" className="cursor-pointer text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Compte administrateur
+            <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.01] px-3.5 py-3 mt-2">
+              <Label htmlFor="new-is-admin" className="cursor-pointer text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                Accès administrateur
               </Label>
               <Switch
                 id="new-is-admin"
@@ -311,425 +822,88 @@ function AdminPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)} disabled={createBusy}>
+          <DialogFooter className="mt-4 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCreateOpen(false)}
+              disabled={createBusy}
+              className="flex-1 border-white/5 hover:bg-white/[0.04] text-xs h-9"
+            >
               Annuler
             </Button>
             <Button
               size="sm"
               onClick={createAccount}
               disabled={createBusy}
-              className="bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)] font-bold"
+              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold text-xs h-9"
             >
-              {createBusy ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5 mr-1.5" />}
-              Créer le compte
+              {createBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <p className="text-sm text-muted-foreground">
-        {users.length} compte{users.length > 1 ? "s" : ""} · {pending.length} en attente d'approbation
-      </p>
 
-      {/* ── DESKTOP VIEW: Table ── */}
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">Utilisateur</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Vérifié</th>
-              <th className="px-4 py-3 font-medium">Statut</th>
-              <th className="px-4 py-3 font-medium">Inscrit</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                  <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                </td>
-              </tr>
-            ) : users.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                  Aucun compte.
-                </td>
-              </tr>
-            ) : (
-              users.map((u) => (
-                <tr key={u.id} className="border-t border-border hover:bg-muted/5 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    {u.username}
-                    {u.is_admin ? (
-                      <span className="ml-1.5 rounded bg-[color:var(--brand-cyan)]/15 px-1.5 py-0.5 text-[10px] text-[color:var(--brand-cyan)]">
-                        admin
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
-                  <td className="px-4 py-3">
-                    {u.email_verified ? (
-                      <span className="text-[color:var(--bull)] font-semibold">oui</span>
-                    ) : (
-                      <span className="text-muted-foreground">non</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={u.status} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.is_admin ? (
-                      <span className="block text-right text-xs text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* Approuver : visible si pas encore approuvé */}
-                        {u.status !== "approved" && (
-                          <button
-                            onClick={() => act(u.id, "approve")}
-                            disabled={busyId === u.id}
-                            title="Approuver l'accès"
-                            className="rounded-md border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 p-1.5 text-[color:var(--bull)] hover:bg-[color:var(--bull)]/20 disabled:opacity-50"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                        )}
-                        {/* Rejeter : seulement pour les comptes en attente */}
-                        {u.status === "pending" && (
-                          <button
-                            onClick={() => act(u.id, "reject")}
-                            disabled={busyId === u.id}
-                            title="Refuser la demande"
-                            className="rounded-md border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 p-1.5 text-[color:var(--bear)] hover:bg-[color:var(--bear)]/20 disabled:opacity-50"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                        {/* Révoquer : seulement pour les comptes approuvés */}
-                        {u.status === "approved" && (
-                          <button
-                            onClick={() => act(u.id, "revoke")}
-                            disabled={busyId === u.id}
-                            title="Révoquer l'accès"
-                            className="rounded-md border border-amber-500/40 bg-amber-500/10 p-1.5 text-amber-500 hover:bg-amber-500/20 disabled:opacity-50"
-                          >
-                            <ShieldOff className="h-4 w-4" />
-                          </button>
-                        )}
-                        {/* Reset MDP : toujours disponible */}
-                        <button
-                          onClick={() => act(u.id, "reset-password")}
-                          disabled={busyId === u.id}
-                          title="Envoyer un lien de réinitialisation du mot de passe"
-                          className="rounded-md border border-[color:var(--brand-violet)]/40 bg-[color:var(--brand-violet)]/10 p-1.5 text-[color:var(--brand-violet)] hover:bg-[color:var(--brand-violet)]/20 disabled:opacity-50"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </button>
-                        {/* Supprimer */}
-                        <button
-                          onClick={() => act(u.id, "delete")}
-                          disabled={busyId === u.id}
-                          title="Supprimer définitivement"
-                          className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── MOBILE VIEW: Card layout ── */}
-      <div className="md:hidden space-y-4">
-        {loading ? (
-          <div className="glass-panel rounded-2xl p-10 text-center text-muted-foreground">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-[color:var(--brand-cyan)]" />
-            <p className="mt-2 text-sm">Chargement des utilisateurs…</p>
-          </div>
-        ) : users.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-10 text-center text-muted-foreground">
-            Aucun compte trouvé.
-          </div>
-        ) : (
-          users.map((u) => (
-            <div key={u.id} className="glass-panel rounded-xl p-5 space-y-4">
-              {/* Card Header: Username + Admin Status + Status Badge */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-base font-bold text-foreground">{u.username}</span>
-                  {u.is_admin ? (
-                    <span className="rounded bg-[color:var(--brand-cyan)]/15 px-2 py-0.5 text-xs text-[color:var(--brand-cyan)] font-semibold">
-                      admin
-                    </span>
-                  ) : null}
-                </div>
-                <StatusBadge status={u.status} />
-              </div>
-
-              {/* Card Body: Email, Verified, Registered date */}
-              <div className="space-y-2 text-sm border-t border-border/40 pt-3">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground font-medium">Email</span>
-                  <span className="text-foreground font-mono select-all truncate max-w-[200px]">{u.email}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground font-medium">Email vérifié</span>
-                  <span>
-                    {u.email_verified ? (
-                      <span className="text-[color:var(--bull)] font-bold bg-[color:var(--bull)]/10 px-2 py-0.5 rounded text-xs">oui</span>
-                    ) : (
-                      <span className="text-muted-foreground bg-muted/15 px-2 py-0.5 rounded text-xs">non</span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground font-medium">Inscrit le</span>
-                  <span className="text-muted-foreground font-semibold">
-                    {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
-                  </span>
-                </div>
-              </div>
-
-              {/* Card Actions (Only for non-admins) */}
-              {!u.is_admin && (
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-border/40">
-                  {/* Approuver */}
-                  {u.status !== "approved" && (
-                    <button
-                      onClick={() => act(u.id, "approve")}
-                      disabled={busyId === u.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 py-2 text-sm text-[color:var(--bull)] hover:bg-[color:var(--bull)]/20 font-bold disabled:opacity-50"
-                    >
-                      <Check className="h-4 w-4" /> Approuver
-                    </button>
-                  )}
-                  {/* Rejeter */}
-                  {u.status === "pending" && (
-                    <button
-                      onClick={() => act(u.id, "reject")}
-                      disabled={busyId === u.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 py-2 text-sm text-[color:var(--bear)] hover:bg-[color:var(--bear)]/20 font-bold disabled:opacity-50"
-                    >
-                      <X className="h-4 w-4" /> Rejeter
-                    </button>
-                  )}
-                  {/* Révoquer */}
-                  {u.status === "approved" && (
-                    <button
-                      onClick={() => act(u.id, "revoke")}
-                      disabled={busyId === u.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 py-2 text-sm text-amber-500 hover:bg-amber-500/20 font-bold disabled:opacity-50"
-                    >
-                      <ShieldOff className="h-4 w-4" /> Révoquer
-                    </button>
-                  )}
-                  {/* Reset MDP */}
-                  <button
-                    onClick={() => act(u.id, "reset-password")}
-                    disabled={busyId === u.id}
-                    title="Envoyer un lien de réinitialisation"
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--brand-violet)]/40 bg-[color:var(--brand-violet)]/10 py-2 text-sm text-[color:var(--brand-violet)] hover:bg-[color:var(--brand-violet)]/20 font-bold disabled:opacity-50"
-                  >
-                    <KeyRound className="h-4 w-4" /> Code
-                  </button>
-                  {/* Supprimer */}
-                  <button
-                    onClick={() => act(u.id, "delete")}
-                    disabled={busyId === u.id}
-                    className="flex items-center justify-center rounded-lg border border-border px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* ── TRADING RECAP: gains/pertes et journal par utilisateur ── */}
-      <div className="flex items-center justify-between gap-3 pt-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-[color:var(--brand-cyan)]" />
-          <h2 className="text-lg font-bold text-foreground">Récap trading par utilisateur</h2>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 text-sm">
-          <RefreshCw className={`h-4 w-4 mr-1.5 ${recapLoading ? "animate-spin" : ""}`} />
-          Actualiser
-        </Button>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">Utilisateur</th>
-              <th className="px-4 py-3 font-medium text-right">Trades</th>
-              <th className="px-4 py-3 font-medium text-right">Win rate</th>
-              <th className="px-4 py-3 font-medium text-right">P&amp;L net</th>
-              <th className="px-4 py-3 font-medium text-right">Profit factor</th>
-              <th className="px-4 py-3 font-medium text-right">Conf. moy.</th>
-              <th className="px-4 py-3 font-medium">Dernier trade</th>
-              <th className="px-4 py-3 font-medium text-right">Journal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recapLoading ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
-            ) : recap.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">Aucune donnée de trading pour l'instant.</td></tr>
-            ) : (
-              recap.map((r) => (
-                <tr key={r.userId} className="border-t border-border hover:bg-muted/5 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{r.username}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">
-                    {r.trades}{r.open ? <span className="text-xs text-amber-500"> (+{r.open} ouvert{r.open > 1 ? "s" : ""})</span> : null}
-                  </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{r.trades ? `${r.winRate}%` : "—"}</td>
-                  <td className={`px-4 py-3 text-right font-semibold ${r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
-                    {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
-                  </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{r.profitFactor === null ? "—" : r.profitFactor === Infinity ? "∞" : r.profitFactor}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{r.trades ? `${r.avgConfidence}%` : "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.lastTradeAt ? new Date(r.lastTradeAt).toLocaleString("fr-FR") : "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => openJournal(r)}
-                      disabled={!r.trades && !r.open}
-                      title="Voir le journal de trades"
-                      className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── BACKTEST vs RÉEL: le juge de paix de la période démo ── */}
-      {backtestVsReal && (
-        <div className="glass-panel rounded-xl p-5 space-y-3">
-          <h2 className="text-lg font-bold text-foreground">Backtest vs réel</h2>
-          <p className="text-xs text-muted-foreground">
-            Prédiction du harnais ({backtestVsReal.reference.windowDays} jours, {backtestVsReal.reference.simulatedTrades} trades simulés) face aux trades réels clos depuis le déploiement de la config actuelle ({new Date(backtestVsReal.reference.measuredFromMs).toLocaleDateString("fr-FR")}). EV = gain moyen par dollar misé.
-          </p>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div>
-              <div className="text-xs text-muted-foreground">EV prédit</div>
-              <div className="text-xl font-bold text-foreground">+{(backtestVsReal.reference.evPerDollar * 100).toFixed(1)}%</div>
-              <div className="text-[10px] text-muted-foreground">{backtestVsReal.reference.binaryNote}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">EV réel</div>
-              <div className={`text-xl font-bold ${backtestVsReal.live.evPerDollar === null ? "text-muted-foreground" : backtestVsReal.live.evPerDollar >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"}`}>
-                {backtestVsReal.live.evPerDollar === null ? "—" : `${backtestVsReal.live.evPerDollar >= 0 ? "+" : ""}${(backtestVsReal.live.evPerDollar * 100).toFixed(1)}%`}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Trades réels clos</div>
-              <div className="text-xl font-bold text-foreground">{backtestVsReal.live.trades}</div>
-              <div className="text-[10px] text-muted-foreground">{backtestVsReal.live.trades < 30 ? "échantillon encore trop petit pour conclure" : "échantillon exploitable"}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">P&L net réel</div>
-              <div className={`text-xl font-bold ${backtestVsReal.live.netPnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"}`}>
-                {backtestVsReal.live.netPnl >= 0 ? "+" : ""}{backtestVsReal.live.netPnl.toFixed(2)} $
-              </div>
-              {backtestVsReal.live.winRate !== null && <div className="text-[10px] text-muted-foreground">win rate {backtestVsReal.live.winRate}%</div>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── APPRENTISSAGE PARTAGÉ: ce que les trades des utilisateurs ont appris à l'app ── */}
-      {componentBreakdown.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center gap-2">
-            <BrainCircuit className="h-5 w-5 text-[color:var(--brand-violet)]" />
-            <h2 className="text-lg font-bold text-foreground">Apprentissage partagé (poids appris par indicateur)</h2>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Statistiques win/loss par (symbole, composant de signal), agrégées sur les trades réels de tous les comptes — c'est ce qui recalibre le moteur serveur au fil des trades.
-          </p>
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Symbole</th>
-                  <th className="px-4 py-2.5 font-medium">Composant</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Wins</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Losses</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Poids appris</th>
-                </tr>
-              </thead>
-              <tbody>
-                {componentBreakdown.map((c, i) => (
-                  <tr key={`${c.symbol}-${c.component}-${i}`} className="border-t border-border/60">
-                    <td className="px-4 py-2 text-muted-foreground">{c.symbol === "_global" ? "toutes (global)" : c.symbol}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-foreground">{c.component}</td>
-                    <td className="px-4 py-2 text-right text-[color:var(--bull)]">{c.wins.toFixed(1)}</td>
-                    <td className="px-4 py-2 text-right text-[color:var(--bear)]">{c.losses.toFixed(1)}</td>
-                    <td className={`px-4 py-2 text-right font-semibold ${c.weight > 1 ? "text-[color:var(--bull)]" : c.weight < 1 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
-                      {c.weight.toFixed(2)}×
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── JOURNAL DRAWER: trades récents d'un utilisateur ── */}
+      {/* ── USER JOURNAL DIALOG ── */}
       <Dialog open={!!journalUser} onOpenChange={(open) => !open && setJournalUser(null)}>
-        <DialogContent className="glass-panel border-border/60 sm:rounded-2xl max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold uppercase tracking-wide">
+            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
+              <BookOpen className="h-4.5 w-4.5 text-indigo-400" />
               Journal de {journalUser?.username}
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              {journalUser?.trades} trade{(journalUser?.trades ?? 0) > 1 ? "s" : ""} clos · P&amp;L net {journalUser && (journalUser.netPnl > 0 ? "+" : "")}{journalUser?.netPnl.toFixed(2)} $
+            <DialogDescription className="text-xs text-muted-foreground mt-1">
+              {journalUser?.trades} trade{(journalUser?.trades ?? 0) > 1 ? "s" : ""} clos · P&amp;L Net cumulé : {journalUser && (journalUser.netPnl >= 0 ? "+" : "")}{journalUser?.netPnl.toFixed(2)} $
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-2 py-2">
             {journalLoading ? (
-              <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></div>
+              <div className="py-12 text-center">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+              </div>
             ) : journalTrades.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Aucun trade.</p>
+              <p className="py-12 text-center text-sm text-muted-foreground font-semibold">
+                Aucun trade enregistré pour cet utilisateur.
+              </p>
             ) : (
-              journalTrades.map((t) => (
-                <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {t.status === "won" ? (
-                      <TrendingUp className="h-3.5 w-3.5 shrink-0 text-[color:var(--bull)]" />
-                    ) : t.status === "lost" ? (
-                      <TrendingDown className="h-3.5 w-3.5 shrink-0 text-[color:var(--bear)]" />
-                    ) : (
-                      <span className="h-3.5 w-3.5 shrink-0 rounded-full bg-amber-500/60" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold text-foreground truncate">{t.symbol} · {t.direction}</div>
-                      <div className="text-muted-foreground truncate">{new Date(t.time).toLocaleString("fr-FR")} · conf {t.confidence}% · TAS {t.tf_agreement}/4</div>
-                      {t.note && <div className="text-muted-foreground/70 truncate">{t.note}</div>}
+              <div className="space-y-1.5">
+                {journalTrades.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5 hover:bg-white/[0.02] transition-colors text-xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {t.status === "won" ? (
+                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bull)]/10 text-[color:var(--bull)]">
+                          <TrendingUp className="h-4 w-4" />
+                        </div>
+                      ) : t.status === "lost" ? (
+                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bear)]/10 text-[color:var(--bear)]">
+                          <TrendingDown className="h-4 w-4" />
+                        </div>
+                      ) : (
+                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 animate-pulse">
+                          <Clock className="h-4 w-4" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-bold text-foreground">{t.symbol} · {t.direction}</div>
+                        <div className="text-muted-foreground/60 text-[10px] mt-0.5">
+                          {new Date(t.time).toLocaleString("fr-FR")} · Confiance {t.confidence}% · TFs {t.tf_agreement}/4
+                        </div>
+                        {t.note && (
+                          <div className="text-muted-foreground/50 text-[9px] mt-0.5 border-l border-white/10 pl-1.5 italic truncate max-w-[280px]">
+                            {t.note}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "shrink-0 text-right font-black font-mono text-sm",
+                      t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+                    )}>
+                      {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
                     </div>
                   </div>
-                  <div className={`shrink-0 text-right font-bold ${t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"}`}>
-                    {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </DialogContent>
@@ -740,10 +914,10 @@ function AdminPage() {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    approved:  "border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 text-[color:var(--bull)]",
-    pending:   "border-amber-500/40 bg-amber-500/10 text-amber-500",
-    rejected:  "border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
-    suspended: "border-orange-500/40 bg-orange-500/10 text-orange-400",
+    approved:  "border-[color:var(--bull)]/30 bg-[color:var(--bull)]/5 text-[color:var(--bull)] shadow-[0_0_10px_rgba(34,197,94,0.05)]",
+    pending:   "border-amber-500/30 bg-amber-500/5 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.05)]",
+    rejected:  "border-[color:var(--bear)]/30 bg-[color:var(--bear)]/5 text-[color:var(--bear)] shadow-[0_0_10px_rgba(239,68,68,0.05)]",
+    suspended: "border-orange-500/30 bg-orange-500/5 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.05)]",
   };
   const label: Record<string, string> = {
     approved:  "approuvé",
@@ -752,8 +926,10 @@ function StatusBadge({ status }: { status: string }) {
     suspended: "révoqué",
   };
   return (
-    <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${map[status] ?? ""}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${map[status] ?? ""}`}>
       {label[status] ?? status}
     </span>
   );
 }
+
+import { Clock } from "lucide-react";
