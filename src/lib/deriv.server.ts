@@ -13,6 +13,10 @@ const PUBLIC_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
 const DERIV_REST_APP_ID = "33zECGFcSA3ZubKPdQJqm";
 
+function round2(num: number): number {
+  return Number(num.toFixed(2));
+}
+
 type Msg = Record<string, unknown>;
 type Listener = (msg: Msg) => void;
 
@@ -221,7 +225,7 @@ export class DerivTradingConnection {
     try {
       const prop = await this.socket.request<{ proposal?: { ask_price: number; payout: number } }>({
         proposal: 1,
-        amount: Math.round(params.amount * 100) / 100,
+        amount: round2(params.amount),
         basis: "stake",
         contract_type: params.contractType,
         currency: this.currency,
@@ -248,7 +252,7 @@ export class DerivTradingConnection {
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number; payout: number } }>({
           proposal: 1,
-          amount: Math.round(params.amount * 100) / 100,
+          amount: round2(params.amount),
           basis: "stake",
           contract_type: params.contractType,
           currency: this.currency,
@@ -260,7 +264,7 @@ export class DerivTradingConnection {
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number; payout: number } }>({
           buy: prop.proposal.id,
           // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
-          price: Math.round(Number(prop.proposal.ask_price) * 1.05 * 100) / 100,
+          price: round2(Number(prop.proposal.ask_price) * 1.05),
         });
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price), payout: Number(buy.buy.payout) };
@@ -289,35 +293,73 @@ export class DerivTradingConnection {
     multiplier: number;
     stopLossUsd: number;
     takeProfitUsd: number;
-  }, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number }> {
+  }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     let lastError: Error | null = null;
+    let currentMultiplier = params.multiplier;
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
           proposal: 1,
-          amount: Math.round(params.amount * 100) / 100,
+          amount: round2(params.amount),
           basis: "stake",
           contract_type: contractType,
           currency: this.currency,
-          symbol: params.symbol,
-          multiplier: params.multiplier,
+          underlying_symbol: params.symbol,
+          multiplier: currentMultiplier,
           limit_order: {
-            stop_loss: Math.round(params.stopLossUsd * 100) / 100,
-            take_profit: Math.round(params.takeProfitUsd * 100) / 100,
+            stop_loss: round2(params.stopLossUsd),
+            take_profit: round2(params.takeProfitUsd),
           },
         });
         if (!prop.proposal) throw new Error("Proposal failed");
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>({
           buy: prop.proposal.id,
           // Same >2-decimal rejection as binary buys — re-round after the slippage buffer.
-          price: Math.round(Number(prop.proposal.ask_price) * 1.05 * 100) / 100,
+          price: round2(Number(prop.proposal.ask_price) * 1.05),
         });
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
       } catch (e) {
         lastError = e as Error;
-        if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier/i.test(lastError.message)) break;
+        const errMsg = lastError.message;
+        
+        // Auto-guérison : si le multiplicateur ou la limit_order est invalide
+        if (errMsg.toLowerCase().includes("multiplier") || errMsg.toLowerCase().includes("limit_order")) {
+          // Extraction des multiplicateurs autorisés dans le message d'erreur
+          const numbers = errMsg.match(/\b\d+\b/g)?.map(Number).filter(n => n >= 1 && n <= 1000);
+          if (numbers && numbers.length > 0) {
+            const closest = numbers.reduce((prev, curr) => 
+              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+            );
+            if (closest !== currentMultiplier) {
+              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via message d'erreur)`);
+              currentMultiplier = closest;
+              continue; // Réessayer immédiatement
+            }
+          } else {
+            // Fallback en dur si aucun chiffre n'est extrait
+            let fallbackMultipliers = [20, 50, 100];
+            if (params.symbol.startsWith("cry")) {
+              fallbackMultipliers = [10, 20, 50, 100];
+            } else if (!params.symbol.startsWith("frx")) {
+              fallbackMultipliers = [100, 200, 500];
+            }
+            const closest = fallbackMultipliers.reduce((prev, curr) => 
+              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+            );
+            if (closest !== currentMultiplier) {
+              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via fallback)`);
+              currentMultiplier = closest;
+              continue; // Réessayer immédiatement
+            }
+          }
+        }
+        
+        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) {
+          break;
+        }
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
       }
     }

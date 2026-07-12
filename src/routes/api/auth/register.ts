@@ -18,14 +18,23 @@ export const Route = createFileRoute("/api/auth/register")({
         const limit = checkRateLimit(`register:${ip}`, REGISTER_LIMIT, REGISTER_WINDOW_MS);
         if (!limit.allowed) return rateLimitResponse(limit.retryAfterMs);
 
-        const { email, username, password } = (await request.json()) as {
+        const { email, username, password, inviteCode } = (await request.json()) as {
           email?: string;
           username?: string;
           password?: string;
+          inviteCode?: string;
         };
 
         if (!email || !username || !password) {
           return json({ error: "Email, nom d'utilisateur et mot de passe requis." }, 400);
+        }
+
+        // Block spambots with an invitation code check if configured
+        const requiredInvite = process.env.INVITE_CODE;
+        if (requiredInvite && requiredInvite.trim() !== "") {
+          if (!inviteCode || inviteCode.trim() !== requiredInvite.trim()) {
+            return json({ error: "Code d'invitation requis ou invalide." }, 403);
+          }
         }
 
         const normalizedEmail = email.toLowerCase();

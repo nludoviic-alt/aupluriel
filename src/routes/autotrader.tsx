@@ -138,14 +138,6 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 
-// Crypto pairs only offer multiplier contracts on the Deriv Options API —
-// migrate saved watchlists to the equivalent Volatility indices (tradables 24/7).
-const CRYPTO_MIGRATION: Record<string, string> = {
-  cryBTCUSD: "R_100",
-  cryETHUSD: "R_75",
-  cryLTCUSD: "R_50",
-};
-
 function loadConfig(): AutoTraderConfig {
   try {
     const cfg: AutoTraderConfig = {
@@ -153,12 +145,6 @@ function loadConfig(): AutoTraderConfig {
       stakeUsd: loadDefaultStake(),
       ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}"),
     };
-    const migrated = [...new Set(cfg.symbols.map((s) => CRYPTO_MIGRATION[s] ?? s))];
-    if (migrated.some((s, i) => s !== cfg.symbols[i]) || migrated.length !== cfg.symbols.length) {
-      cfg.symbols = migrated;
-      saveConfig(cfg);
-      toast.info("Paires crypto remplacées par les indices Volatility — CALL/PUT indisponible sur crypto");
-    }
     return cfg;
   } catch {
     return DEFAULT_CONFIG;

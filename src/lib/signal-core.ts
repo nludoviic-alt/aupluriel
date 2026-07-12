@@ -217,13 +217,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  minConfidence: 75,
+  minConfidence: 80,
   // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
   // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
   // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
   // double presque l'espérance par trade. (Même harnais : les stops ATR
   // n'améliorent PAS l'EV — atrStopMode reste off.)
-  minTfAgreement: 3,
+  minTfAgreement: 4,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
   // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
@@ -231,7 +231,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // long terme ~50% = perte structurelle face au payout <100%. BTC/ETH
   // (Multiplier, 24/7) donnent au bot de vrais marchés à trader la nuit,
   // quand les sessions forex Londres/NY sont fermées.
-  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "cryBTCUSD", "cryETHUSD"],
+  symbols: [
+    "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
+    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "frxXAGUSD", "cryBTCUSD", "cryETHUSD"
+  ],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
@@ -243,14 +246,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // veto 4H (déjà assoupli). minConfidence + minTfAgreement + veto 4H
   // suffisent comme filtre qualité ; ce cran-là supprimait des journées
   // entières de trades valides.
-  premiumOnly: false,
+  premiumOnly: true,
   stopOnRisk: true,
-  maxVolatilityPct: 4,
+  maxVolatilityPct: 3,
   maxDailyProfitUsd: 0,
   stakeMode: "fixed",
   stakePercent: 1,
   kellyFraction: 0.5,
-  sessionEdgeMinutes: 0,
+  sessionEdgeMinutes: 15,
   trailingStopUsd: 0,
   blockCorrelated: true,
   symbolMode: "watchlist",
@@ -259,14 +262,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
   // confident (good/premium) 4H veto is honored by default now.
-  veto4h: "strong-only",
+  veto4h: "always",
   // Break-even win rate at 65% payout is ~60.6% — below that, even a
   // reasonably confident signal can have negative expected value.
-  minPayoutRatio: 0.65,
+  minPayoutRatio: 0.70,
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
-  vetoDaily: "off",
+  vetoDaily: "strong-only",
   // Same 35% floor computeAdaptiveStake already uses to cut stake by 75% —
   // here it fully pauses the SYMBOL instead, catching a slow bleed (alternating
   // win/loss) that a pure consecutive-loss streak counter never trips.
@@ -277,7 +280,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // above becomes moot), loss still capped at the stake via stop-loss.
   // x10 + 12h cap keep it conservative to start — see plan for full reasoning.
   instrumentType: "multiplier",
-  multiplierLevel: 10,
+  multiplierLevel: 100,
   stopLossPctOfStake: 100,
   takeProfitPctOfStake: 150,
   maxHoldMinutes: 720,
@@ -286,7 +289,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // breathe without the stop being unreachable; 1.5:1 R:R matches the
   // existing 100/150 fixed default so switching modes doesn't silently
   // change the account's risk profile.
-  atrStopMode: false,
+  atrStopMode: true,
   atrStopMultiple: 1.5,
   riskRewardRatio: 1.5,
 };

@@ -45,6 +45,17 @@ function BacktestPage() {
   const [multiTfResult, setMultiTfResult] = useState<MultiTfBacktestResult | null>(null);
   const [showTrades, setShowTrades] = useState(false);
   const [derivConnected, setDerivConnected] = useState<boolean | null>(null);
+  const [minConfidence, setMinConfidence] = useState(80);
+  const [minTfAgreement, setMinTfAgreement] = useState(4);
+
+  // Load configured thresholds from the autotrader settings
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("lio23.autotrader_config") ?? "{}");
+      if (saved.minConfidence !== undefined) setMinConfidence(saved.minConfidence);
+      if (saved.minTfAgreement !== undefined) setMinTfAgreement(saved.minTfAgreement);
+    } catch {}
+  }, []);
 
   // Check Deriv connection on mount
   useEffect(() => {
@@ -71,8 +82,8 @@ function BacktestPage() {
         // Replays the EXACT live pipeline (4 timeframes, mêmes seuils que le
         // bot déployé) — pas une stratégie-jouet. Durée : ~300 points 15m ≈ 3 jours.
         const r = await backtestMultiTf(symbol.deriv, {
-          minConfidence: 75,
-          minTfAgreement: 3,
+          minConfidence,
+          minTfAgreement,
           testCandles: 300,
         });
         setMultiTfResult(r);
@@ -190,7 +201,7 @@ function BacktestPage() {
         </div>
 
         <div className="mt-3 text-xs text-muted-foreground">
-          {strategy === "real-engine" && "Rejoue le pipeline EXACT du bot live (4 timeframes, confiance ≥75, accord ≥3/4, veto 4H, poids appris actuels) sur ~3 jours de données. Le timeframe sélectionné est ignoré — le moteur utilise toujours ses 4 TFs."}
+          {strategy === "real-engine" && `Rejoue le pipeline EXACT du bot live (4 timeframes, confiance ≥${minConfidence}, accord ≥${minTfAgreement}/4, veto 4H, poids appris actuels) sur ~3 jours de données. Le timeframe sélectionné est ignoré — le moteur utilise toujours ses 4 TFs.`}
           {strategy === "rsi-macd" && "Achète quand RSI < 40 + MACD cross haussier. Vend quand RSI > 70 ou MACD cross baissier."}
           {strategy === "ema-cross" && "Achète au golden cross EMA 50/200. Vend au death cross."}
           {strategy === "bb-mean-rev" && "Achète quand le prix touche la bande inférieure de Bollinger. Vend quand il revient à la moyenne."}

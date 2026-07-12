@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { User, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { api, setToken, TOKEN_KEY } from "@/lib/api";
@@ -51,6 +51,7 @@ function LoginPage() {
   const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [showRegPw, setShowRegPw] = useState(false);
+  const [regInviteCode, setRegInviteCode] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +81,7 @@ function LoginPage() {
         email: regEmail,
         username: regUsername,
         password: regPassword,
+        inviteCode: regInviteCode,
       });
       // Admin accounts log in immediately; everyone else must verify + await approval.
       if (data.token && data.user) {
@@ -282,6 +284,20 @@ function LoginPage() {
                       >
                         {showRegPw ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Code d'Invitation</label>
+                    <div className="relative group">
+                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
+                      <input
+                        type="text"
+                        value={regInviteCode}
+                        onChange={(e) => setRegInviteCode(e.target.value)}
+                        placeholder="Requis si configuré"
+                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
+                      />
                     </div>
                   </div>
 
