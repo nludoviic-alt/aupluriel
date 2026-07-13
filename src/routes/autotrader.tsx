@@ -548,7 +548,7 @@ function AutoTraderPage() {
   // Power button: green when EITHER engine is running (local or server bot),
   // gold on hover when both are stopped. Previously only reflected the local
   // engine, so activating "Bot serveur" alone left the button looking idle.
-  const anyRunning = running || !!(cloud?.enabled && cloud?.running);
+  const anyRunning = running || !!cloud?.enabled;
   const modeGlow = anyRunning
     ? "shadow-[0_0_56px_rgba(34,197,94,0.45)]"
     : "shadow-[0_0_32px_rgba(255,215,0,0.18)] hover:shadow-[0_0_60px_rgba(255,215,0,0.35)]";
@@ -635,37 +635,7 @@ function AutoTraderPage() {
 
       <CooldownBanner lastScan={lastScan} />
 
-      {/* ── KPI strip — pleine largeur ── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiCard
-          label="Fonds disponibles"
-          value={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-            ? `$${derivSession.balance.toFixed(2)}`
-            : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
-          tone={cumulativePnl >= 0 ? "bull" : "bear"}
-          delta={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-            ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
-            : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
-        />
-        <KpiCard
-          label="P&L Aujourd'hui"
-          value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
-          tone={pnl >= 0 ? "bull" : "bear"}
-          delta={`Gains $${totalWon.toFixed(2)} · Pertes $${Math.abs(totalLost).toFixed(2)}`}
-        />
-        <KpiCard
-          label="Win Rate"
-          value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
-          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
-          delta={`${wins} gagnés · ${losses} perdus · ${tradeCount} total`}
-        />
-        <KpiCard
-          label="Limite de perte"
-          value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
-          tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
-          delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} utilisés / $${config.maxDailyLossUsd} max`}
-        />
-      </div>
+
 
       {/* ── Mobile section switcher — one focused screen instead of every
           panel stacked. Desktop ignores this entirely (md:block below always
@@ -787,16 +757,16 @@ function AutoTraderPage() {
             "glass-panel rounded-xl px-4 py-4 border transition-all duration-300",
             cloud?.enabled ? "border-[color:var(--brand-cyan)]/40" : "border-border/60",
           )}>
-            <div className="flex items-center justify-between gap-3">
+             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-base leading-none">☁️</span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">Bot serveur</span>
+                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Bot serveur</span>
                   {cloud?.enabled && (
                     <span className={cn("h-2 w-2 rounded-full", cloud.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
                   )}
                 </div>
-                <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
+                <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
                   Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée.
                 </p>
               </div>
@@ -811,26 +781,26 @@ function AutoTraderPage() {
 
             {cloud?.enabled && (
               <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground font-semibold uppercase tracking-wider">Statut</span>
-                  <span className={cn("font-bold", cloud.pausedUntil ? "text-amber-400" : "text-up")}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">Statut</span>
+                  <span className={cn("font-extrabold", cloud.pausedUntil ? "text-amber-400" : "text-up")}>
                     {cloud.pausedUntil
                       ? `⏸ Pause — reprise ${new Date(cloud.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
                       : cloud.running ? "● Actif sur le serveur" : "Démarrage…"}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground font-semibold uppercase tracking-wider">P&L jour (serveur)</span>
-                  <span className={cn("font-bold font-mono-tabular", cloud.todayPnl >= 0 ? "text-up" : "text-down")}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">P&L jour (serveur)</span>
+                  <span className={cn("font-extrabold font-mono-tabular", cloud.todayPnl >= 0 ? "text-up" : "text-down")}>
                     {cloud.todayPnl >= 0 ? "+" : ""}${cloud.todayPnl.toFixed(2)} · {cloud.todayCount} trade{cloud.todayCount > 1 ? "s" : ""}
                   </span>
                 </div>
                 {cloud.lastError && (
-                  <p className="text-[10px] text-down">⚠ {cloud.lastError}</p>
+                  <p className="text-xs font-semibold text-down">⚠ {cloud.lastError}</p>
                 )}
                 {cloud.trades.filter((t) => t.stake > 0).slice(0, 5).map((t) => (
-                  <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs">
-                    <span className="font-medium truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
+                  <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs font-semibold text-neutral-200">
+                    <span className="truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
                     <span className={cn("font-bold shrink-0 ml-2",
                       t.status === "won" || (t.status === "open" && t.profit >= 0) ? "text-up"
                         : t.status === "lost" || (t.status === "open" && t.profit < 0) ? "text-down" : "text-muted-foreground")}>
@@ -849,7 +819,6 @@ function AutoTraderPage() {
               </div>
             )}
           </div>
-
           {/* Force Trade panel — a debug/QA tool (manually fire a trade to verify
               the Deriv pipeline), not a core action — desktop-only on mobile to
               cut clutter. Toujours visible en mode demo/live pour éviter les
@@ -859,14 +828,14 @@ function AutoTraderPage() {
               !derivSession.connected && "opacity-60")}>
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
-                  <Zap className="h-3 w-3 text-amber-400" />
-                  <span className="text-[10px] uppercase tracking-widest text-amber-400 font-semibold">Test pipeline Deriv</span>
+                  <Zap className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Test pipeline Deriv</span>
                 </div>
                 {!derivSession.connected && (
-                  <span className="text-[9px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-medium animate-pulse">Déconnecté</span>
+                  <span className="text-[10px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-bold animate-pulse">Déconnecté</span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
+              <p className="text-[11px] text-muted-foreground/80 mb-3 leading-relaxed font-medium">
                 Ouvre un vrai trade immédiatement, sans vérification de signal. Vérifie que la connexion Deriv fonctionne de bout en bout.
               </p>
               <div className="space-y-2">
@@ -875,7 +844,7 @@ function AutoTraderPage() {
                     value={forceSymbol}
                     disabled={!derivSession.connected || forcingTrade}
                     onChange={(e) => setForceSymbol(e.target.value)}
-                    className="w-full sm:flex-1 h-9 rounded-lg border border-border bg-background px-2 py-1.5 text-xs disabled:opacity-50"
+                    className="w-full sm:flex-1 h-9 rounded-lg border border-border bg-background px-2 py-1.5 text-sm disabled:opacity-50 font-semibold"
                   >
                     {config.symbols.map((s) => (
                       <option key={s} value={s}>{SYMBOLS.find((x) => x.deriv === s)?.label ?? s}</option>
@@ -886,7 +855,7 @@ function AutoTraderPage() {
                       <button key={d}
                         disabled={!derivSession.connected || forcingTrade}
                         onClick={() => setForceDir(d)}
-                        className={cn("flex-1 sm:flex-none sm:px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                        className={cn("flex-1 sm:flex-none sm:px-3 py-1.5 text-sm font-extrabold transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
                           forceDir === d
                             ? d === "CALL" ? "bg-up/20 text-up" : "bg-down/20 text-down"
                             : "text-muted-foreground hover:text-foreground")}>
@@ -907,7 +876,6 @@ function AutoTraderPage() {
                     }} />
                 </Field>
                 <Button
-                  size="sm"
                   disabled={!derivSession.connected || forcingTrade}
                   onClick={async () => {
                     if (!forceSymbol) return;
@@ -925,7 +893,7 @@ function AutoTraderPage() {
                       setForcingTrade(false);
                     }
                   }}
-                  className="w-full gap-1.5 text-xs h-8 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed">
+                  className="w-full gap-1.5 text-sm h-9 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed font-bold">
                   {forcingTrade
                     ? <><Activity className="h-3.5 w-3.5 animate-pulse" /> Envoi en cours…</>
                     : !derivSession.connected
@@ -935,7 +903,6 @@ function AutoTraderPage() {
               </div>
             </div>
           )}
-
           {/* Mise Kelly réduite — affects the actual stake in play, so it stays
               visible on mobile even though the sessions panel below doesn't. */}
           {config.adaptiveStake && effectiveStake < config.stakeUsd && (
@@ -945,115 +912,306 @@ function AutoTraderPage() {
             </div>
           )}
 
-          {/* Sessions marchés — informational only (not actionable), so it's
-              desktop-only on mobile to keep the screen focused. */}
-          <div className="hidden md:block glass-panel rounded-xl px-4 py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Globe className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Sessions marchés</span>
-            </div>
-            <div className="space-y-2">
-              {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
-                const isActive = activeSessions.includes(s);
-                const inCfg = config.tradingSessions.includes(s);
-                return (
-                  <div key={s} className="flex items-center justify-between rounded-lg bg-muted/10 px-4 py-2.5">
-                    <span className="text-sm text-muted-foreground font-medium">{SESSION_HOURS[s].label}</span>
-                    <span className={cn("text-xs font-bold",
-                      isActive && inCfg ? "text-up" : isActive ? "text-muted-foreground" : "text-muted-foreground/40")}>
-                      {isActive && inCfg ? "● Ouverte & active" : isActive ? "● Ouverte" : "○ Fermée"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+
         </div>
 
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
-          {/* Always rendered — visibility is handled one level up by the
-              mobile tab switcher (desktop: always in the "dashboard" column). */}
-          <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
-
-          {/* Positions en direct + derniers trades côte à côte sur grand écran,
-              au lieu de la liste de positions seule en pleine largeur. */}
-          <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
-            <div className="xl:col-span-2">
-              {openTradeList.length > 0 ? (
-                <div>
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="h-2.5 w-2.5 rounded-full bg-up animate-pulse" />
-                    <h2 className="text-sm font-bold uppercase tracking-wider text-up">Positions en direct ({openTradeList.length})</h2>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {openTradeList.map((t) => (
-                      <LiveTradeCard key={t.id} trade={t}
-                        onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
-                    ))}
-                  </div>
-                </div>
-              ) : running ? (
-                <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-5 text-center min-h-[200px]">
-                  <div className="relative">
-                    <div className="h-14 w-14 rounded-full border-2 border-up/30 border-t-up animate-spin" />
-                    <Activity className="absolute inset-0 m-auto h-6 w-6 text-up" />
-                  </div>
-                  <div>
-                    <div className="text-base font-semibold text-foreground">En attente de signal</div>
-                    <div className="text-sm text-muted-foreground mt-1.5">
-                      <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center min-h-[200px]">
-                  <Power className="h-10 w-10 text-muted-foreground/20" />
-                  <div className="text-sm text-muted-foreground">Lance le bot pour voir les positions en direct</div>
-                </div>
-              )}
+            
+            {/* KPI strip — inside the right column */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
+              <KpiCard
+                label="Fonds disponibles"
+                value={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                  ? `$${derivSession.balance.toFixed(2)}`
+                  : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
+                tone={cumulativePnl >= 0 ? "bull" : "bear"}
+                delta={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                  ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
+                  : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
+              />
+              <KpiCard
+                label="P&L Aujourd'hui"
+                value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
+                tone={pnl >= 0 ? "bull" : "bear"}
+                delta={`Gains $${totalWon.toFixed(2)} · Pertes $${Math.abs(totalLost).toFixed(2)}`}
+              />
+              <KpiCard
+                label="Win Rate"
+                value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
+                tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
+                delta={`${wins} gagnés · ${losses} perdus · ${tradeCount} total`}
+              />
+              <KpiCard
+                label="Limite de perte"
+                value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
+                tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
+                delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} utilisés / $${config.maxDailyLossUsd} max`}
+              />
             </div>
 
-            {/* Derniers trades — historique récent condensé */}
-            <div className="glass-panel rounded-2xl p-5 border border-border/40 shadow-sm flex flex-col">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-300 mb-4 flex items-center gap-1.5 border-b border-border/40 pb-3">
-                <Clock className="h-4 w-4 text-violet-400" /> derniers trades
-              </h2>
-              {recentClosedTrades.length === 0 ? (
-                <p className="text-sm text-neutral-400 py-6 text-center">Aucun trade clôturé.</p>
-              ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {recentClosedTrades.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-white/[0.01] hover:bg-white/[0.02] border border-white/5 transition-all text-sm shadow-sm"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={cn(
-                          "h-2.5 w-2.5 rounded-full shrink-0",
-                          t.status === "won" ? "bg-up animate-pulse" : "bg-down"
-                        )} />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-neutral-200 truncate">
-                            {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+
+          {/* Positions en direct + derniers trades côte à côte sur grand écran */}
+          {openTradeList.length > 0 || running ? (
+            <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
+              <div className="xl:col-span-2 animate-fade-in space-y-4">
+                {openTradeList.length > 0 ? (
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="h-2 w-2 rounded-full bg-up animate-pulse shadow-[0_0_8px_var(--up)]" />
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200">Positions en direct ({openTradeList.length})</h2>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {openTradeList.map((t) => (
+                        <LiveTradeCard key={t.id} trade={t}
+                          onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-8 flex flex-col items-center justify-center gap-5 text-center min-h-[210px] backdrop-blur-sm before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.01),transparent_70%)]">
+                    {/* Radar / scan sweep */}
+                    <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-up/20 bg-up/5">
+                      <span className="absolute inline-flex h-full w-full rounded-full border border-up/25 animate-ping opacity-30" style={{ animationDuration: "2.5s" }} />
+                      <span className="absolute inline-flex h-[70%] w-[70%] rounded-full border border-up/30 animate-pulse opacity-40" />
+                      <Activity className="h-5 w-5 text-up animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm font-bold uppercase tracking-wider text-neutral-200">Scan des marchés en cours</div>
+                      <p className="text-xs text-muted-foreground/80 max-w-[280px] leading-relaxed mb-3">
+                        Surveillance des signaux et configurations techniques CALL/PUT en temps réel.
+                      </p>
+                      {/* Live stopwatch style countdown */}
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-neutral-900/60 px-3 py-1 text-xs font-mono font-bold tracking-wider text-cyan shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
+                        <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sessions marchés — grid 4 capsules */}
+                <div className="hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Globe className="h-4 w-4 text-neutral-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
+                      const isActive = activeSessions.includes(s);
+                      const inCfg = config.tradingSessions.includes(s);
+                      return (
+                        (() => {
+                          const isMainActive = isActive && inCfg;
+                          const isOpenOnly = isActive && !inCfg;
+                          const containerClass = isMainActive
+                            ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
+                            : isOpenOnly
+                              ? "bg-up/5 border-up/15 text-up/90"
+                              : "bg-down/5 border-down/15 text-down/80";
+                          const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
+                          const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
+                          const badgeClass = isMainActive
+                            ? "bg-up/20 border-up/45 text-up text-glow-green"
+                            : isOpenOnly
+                              ? "bg-up/10 border-up/25 text-up/90"
+                              : "bg-down/10 border-down/20 text-down/90";
+
+                          return (
+                            <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
+                              <div className="space-y-0.5">
+                                <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
+                                <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
+                              </div>
+                              <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
+                                {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
+                              </span>
+                            </div>
+                          );
+                        })()
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Journal des Trades (Right side, col-span-1) */}
+              <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-5 shadow-inner flex flex-col animate-fade-in">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200 mb-4 flex items-center gap-2 border-b border-white/5 pb-3">
+                  <Clock className="h-4 w-4 text-violet-400" /> Journal des Trades
+                </h2>
+                {recentClosedTrades.length === 0 ? (
+                  <div className="space-y-2 py-2">
+                    {/* Dotted skeleton logs */}
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-dashed border-white/[0.03] bg-white/[0.002] opacity-50 select-none">
+                        <div className="flex items-center gap-2.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
+                          <div className="space-y-1">
+                            <div className="h-3 w-16 bg-neutral-900 rounded animate-pulse" />
+                            <div className="h-2 w-10 bg-neutral-950 rounded animate-pulse" />
                           </div>
                         </div>
+                        <div className="h-5 w-12 bg-neutral-900 rounded animate-pulse" />
                       </div>
-                      <div className={cn(
-                        "font-mono font-bold text-xs px-2 py-0.5 rounded bg-neutral-900 border border-white/5 shrink-0",
-                        t.status === "won" ? "text-up" : "text-down"
-                      )}>
-                        {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
+                    ))}
+                    <p className="text-xs text-muted-foreground/60 text-center uppercase font-bold tracking-wider pt-2">
+                      Aucun trade clôturé
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                    {recentClosedTrades.map((t) => (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          "relative overflow-hidden flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 text-sm shadow-sm",
+                          t.status === "won" 
+                            ? "border-up/10 bg-up/[0.02] hover:bg-up/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-up/60" 
+                            : "border-down/10 bg-down/[0.02] hover:bg-down/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-down/60"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pl-1">
+                          <span className={cn(
+                            "h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor]",
+                            t.status === "won" ? "text-up bg-up" : "text-down bg-down"
+                          )} />
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-neutral-100 text-sm">
+                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                            </div>
+                            <div className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wider mt-0.5">
+                              {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "font-mono-tabular font-black text-xs px-2.5 py-1 rounded bg-black/40 border shrink-0 shadow-inner",
+                          t.status === "won" 
+                            ? "text-up border-up/20 text-glow-green" 
+                            : "text-down border-down/20 text-glow-orange"
+                        )}>
+                          {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Standby State: Stacked vertically to fill space cleanly and avoid layout gaps */
+            <div className="space-y-5 animate-fade-in">
+              {/* Sessions marchés (Spans full-width inside the right column) */}
+              <div className="hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Globe className="h-4 w-4 text-neutral-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
+                    const isActive = activeSessions.includes(s);
+                    const inCfg = config.tradingSessions.includes(s);
+                    return (
+                      (() => {
+                        const isMainActive = isActive && inCfg;
+                        const isOpenOnly = isActive && !inCfg;
+                        const containerClass = isMainActive
+                          ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
+                          : isOpenOnly
+                            ? "bg-up/5 border-up/15 text-up/90"
+                            : "bg-down/5 border-down/15 text-down/80";
+                        const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
+                        const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
+                        const badgeClass = isMainActive
+                          ? "bg-up/20 border-up/45 text-up text-glow-green"
+                          : isOpenOnly
+                            ? "bg-up/10 border-up/25 text-up/90"
+                            : "bg-down/10 border-down/20 text-down/90";
+
+                        return (
+                          <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
+                            <div className="space-y-0.5">
+                              <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
+                              <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
+                            </div>
+                            <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
+                              {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
+                            </span>
+                          </div>
+                        );
+                      })()
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Journal des Trades (Spans full-width inside the right column) */}
+              <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-5 shadow-inner flex flex-col animate-fade-in">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200 mb-4 flex items-center gap-2 border-b border-white/5 pb-3">
+                  <Clock className="h-4 w-4 text-violet-400" /> Journal des Trades
+                </h2>
+                {recentClosedTrades.length === 0 ? (
+                  <div className="space-y-2 py-2">
+                    {/* Dotted skeleton logs */}
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-dashed border-white/[0.03] bg-white/[0.002] opacity-50 select-none">
+                        <div className="flex items-center gap-2.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
+                          <div className="space-y-1">
+                            <div className="h-3 w-16 bg-neutral-900 rounded animate-pulse" />
+                            <div className="h-2 w-10 bg-neutral-950 rounded animate-pulse" />
+                          </div>
+                        </div>
+                        <div className="h-5 w-12 bg-neutral-900 rounded animate-pulse" />
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground/60 text-center uppercase font-bold tracking-wider pt-2">
+                      Aucun trade clôturé
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                    {recentClosedTrades.map((t) => (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          "relative overflow-hidden flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 text-sm shadow-sm",
+                          t.status === "won" 
+                            ? "border-up/10 bg-up/[0.02] hover:bg-up/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-up/60" 
+                            : "border-down/10 bg-down/[0.02] hover:bg-down/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-down/60"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pl-1">
+                          <span className={cn(
+                            "h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor]",
+                            t.status === "won" ? "text-up bg-up" : "text-down bg-down"
+                          )} />
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-neutral-100 text-sm">
+                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                            </div>
+                            <div className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wider mt-0.5">
+                              {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "font-mono-tabular font-black text-xs px-2.5 py-1 rounded bg-black/40 border shrink-0 shadow-inner",
+                          t.status === "won" 
+                            ? "text-up border-up/20 text-glow-green" 
+                            : "text-down border-down/20 text-glow-orange"
+                        )}>
+                          {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1063,51 +1221,53 @@ function AutoTraderPage() {
       {/* ── Config panel (collapsible + tabbed) ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
         <button
-          className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
+          className="flex w-full items-center justify-between px-6 py-5 hover:bg-muted/10 transition-colors"
           onClick={() => setShowConfig((v) => !v)}
         >
-          <div className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-semibold">Configuration</span>
-            {running && <span className="text-[10px] text-muted-foreground bg-muted/30 rounded-md px-2 py-0.5">Arrête le bot pour modifier</span>}
+          <div className="flex items-center gap-2.5">
+            <Settings2 className="h-5 w-5 text-muted-foreground" />
+            <span className="text-base font-black uppercase tracking-wider text-neutral-200">Configuration</span>
+            {running && <span className="text-xs text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1 font-bold">Arrête le bot pour modifier</span>}
           </div>
-          {showConfig ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          {showConfig ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
         </button>
 
         {showConfig && (
           <div className="border-t border-border/40">
             {/* Tab nav */}
-            <div className="flex flex-col gap-3 border-b border-border/40 px-5 pt-3 pb-3 sm:flex-row sm:items-center sm:gap-2 sm:pt-2 sm:pb-0">
-              <div className="flex overflow-x-auto scrollbar-none gap-1 -mb-px">
-                {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["backtest","Backtest"]] as const).map(([t, label]) => (
-                  <button key={t} onClick={() => setConfigTab(t)}
-                    className={cn("px-4 py-3 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2",
-                      configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
-                    {label}
+            <div className="border-b border-border/40">
+              <div className="max-w-6xl mx-auto flex flex-col gap-4 px-6 pt-4 pb-4 sm:flex-row sm:items-center sm:gap-3 sm:pt-3 sm:pb-0">
+                <div className="flex overflow-x-auto scrollbar-none gap-1.5 -mb-px">
+                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["backtest","Backtest"]] as const).map(([t, label]) => (
+                    <button key={t} onClick={() => setConfigTab(t)}
+                      className={cn("px-5 py-3.5 text-sm font-black uppercase tracking-wider rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2.5",
+                        configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="sm:ml-auto pb-1 sm:pb-2.5 self-center w-full sm:w-auto">
+                  <button onClick={() => setShowSavePreset(true)} disabled={running}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary/20 text-primary hover:bg-primary/30 border border-primary/20 transition-all font-black text-sm px-4 py-2 w-full sm:w-auto disabled:opacity-40 disabled:cursor-not-allowed sm:text-xs sm:px-3 sm:py-1.5">
+                    <Save className="h-4 w-4" /> Sauvegarder config
                   </button>
-                ))}
-              </div>
-              <div className="sm:ml-auto pb-1 sm:pb-2 self-center w-full sm:w-auto">
-                <button onClick={() => setShowSavePreset(true)} disabled={running}
-                  className="flex items-center justify-center gap-1.5 text-xs px-3 py-2.5 w-full sm:w-auto rounded-lg bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40 font-bold sm:text-[10px] sm:px-2 sm:py-1 sm:font-semibold">
-                  <Save className="h-4 w-4 sm:h-3 sm:w-3" /> Sauvegarder config
-                </button>
+                </div>
               </div>
             </div>
 
-            <div className="p-5">
+            <div className="max-w-6xl mx-auto w-full p-5">
               {/* TAB: Profils */}
               {configTab === "profiles" && (
                 <div className="space-y-4">
                   {/* Test rapide — bouton dédié pour tester le pipeline en démo */}
-                  <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-base">🧪</span>
-                        <span className="text-sm font-bold">Mode Test Démo</span>
+                  <div className="relative overflow-hidden rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 transition-all duration-300 hover:border-amber-500/50 hover:bg-amber-500/[0.07] before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.03),transparent_60%)]">
+                    <div className="flex-1 relative z-10">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm shadow-[0_0_10px_rgba(245,158,11,0.1)]">🧪</span>
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-400">Mode Test Démo</span>
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Seuils très bas (confiance ≥60%, 2/4 TF) pour tester le pipeline Deriv. Utilise uniquement en démo.
+                      <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[480px]">
+                        Configuration d'évaluation rapide (confiance ≥60%, 2/4 TF) pour tester le flux de signaux. Réservé exclusivement à un compte de test démo.
                       </p>
                     </div>
                     <button disabled={running}
@@ -1117,17 +1277,47 @@ function AutoTraderPage() {
                         setDraftMaxTrades(20);
                         toast.success("🧪 Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
                       }}
-                      className={cn("w-full sm:w-auto shrink-0 rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 py-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/25 transition-all sm:py-2 sm:font-semibold",
+                      className={cn("relative z-10 w-full sm:w-auto shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-300 transition-all shadow-[0_2px_10px_rgba(245,158,11,0.05)] disabled:opacity-40 disabled:cursor-not-allowed",
                         running && "opacity-40 cursor-not-allowed")}>
-                      Appliquer
+                      Appliquer le Test
                     </button>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-3">
                     {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
                       const preset = PRESETS[key];
                       const isActive = config.minConfidence === preset.minConfidence && config.minTfAgreement === preset.minTfAgreement
                         && config.premiumOnly === preset.premiumOnly && config.maxTradesPerDay === preset.maxTradesPerDay
                         && config.maxConsecutiveLosses === preset.maxConsecutiveLosses;
+
+                      const themeMap: Record<RiskProfile, { border: string; glow: string; text: string; badge: string; dot: string; indicator: string }> = {
+                        conservative: {
+                          border: "border-white/5 bg-neutral-950/40 hover:border-amber-500/40 hover:bg-neutral-950/60",
+                          glow: "shadow-[0_0_24px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(255,255,255,0.05)] border-amber-500/60 bg-amber-950/20 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-amber-500",
+                          text: "text-amber-400",
+                          badge: "bg-amber-500/10 border-amber-500/20 text-amber-300",
+                          dot: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]",
+                          indicator: "bg-amber-500/10 border-amber-500/25"
+                        },
+                        moderate: {
+                          border: "border-white/5 bg-neutral-950/40 hover:border-cyan/40 hover:bg-neutral-950/60",
+                          glow: "shadow-[0_0_24px_rgba(141,230,250,0.12),inset_0_1px_0_rgba(255,255,255,0.05)] border-cyan/60 bg-cyan/5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-cyan",
+                          text: "text-cyan",
+                          badge: "bg-cyan/10 border-cyan/20 text-cyan",
+                          dot: "bg-cyan shadow-[0_0_8px_rgba(141,230,250,0.8)]",
+                          indicator: "bg-cyan/10 border-cyan/25"
+                        },
+                        aggressive: {
+                          border: "border-white/5 bg-neutral-950/40 hover:border-up/40 hover:bg-neutral-950/60",
+                          glow: "shadow-[0_0_24px_rgba(16,185,129,0.12),inset_0_1px_0_rgba(255,255,255,0.05)] border-up/60 bg-up/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-up",
+                          text: "text-up",
+                          badge: "bg-up/10 border-up/20 text-up",
+                          dot: "bg-up shadow-[0_0_8px_rgba(16,185,129,0.8)]",
+                          indicator: "bg-up/10 border-up/25"
+                        }
+                      };
+
+                      const th = themeMap[key];
+
                       return (
                         <button key={key} disabled={running}
                           onClick={() => {
@@ -1138,21 +1328,49 @@ function AutoTraderPage() {
                             setDraftMaxTrades(next.maxTradesPerDay);
                             toast.success(`${preset.emoji} Profil ${preset.name} appliqué`, { description: `Mise conservée: $${config.stakeUsd}` });
                           }}
-                          className={cn("relative rounded-xl border p-4 text-left transition-all",
-                            isActive ? key === "conservative" ? "border-yellow-500/60 bg-yellow-500/8"
-                              : key === "moderate" ? "border-blue-500/60 bg-blue-500/8" : "border-green-500/60 bg-green-500/8"
-                              : "border-border bg-muted/10 hover:border-muted-foreground/40 hover:bg-muted/20",
+                          className={cn("relative overflow-hidden rounded-xl border p-4.5 text-left transition-all duration-300 flex flex-col justify-between min-h-[220px] disabled:opacity-40 disabled:cursor-not-allowed",
+                            isActive ? th.glow : th.border,
                             running && "opacity-40 cursor-not-allowed")}>
-                          <div className="text-xl mb-2">{preset.emoji}</div>
-                          <div className="text-sm font-bold mb-1">{preset.name}</div>
-                          <p className="text-xs text-muted-foreground leading-snug mb-3">{preset.description}</p>
-                          <div className="flex flex-wrap gap-1">
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.recommendedCapital}</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.targetWinRate}</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-medium">{preset.expectedTradesPerDay}/j</span>
+                          
+                          <div className="w-full relative z-10">
+                            {/* Top bar: Icon + Active Dot */}
+                            <div className="flex items-center justify-between mb-3">
+                              <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg border text-base shadow-sm", isActive ? th.badge : "bg-neutral-900/50 border-white/5")}>
+                                {preset.emoji}
+                              </span>
+                              {isActive && (
+                                <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-neutral-300">
+                                  <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", th.dot)} />
+                                  Actif
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Name & description */}
+                            <div className="space-y-1 mb-4">
+                              <div className="text-xs font-black uppercase tracking-widest text-neutral-200">{preset.name}</div>
+                              <p className="text-[11px] text-muted-foreground/80 leading-relaxed font-medium line-clamp-3">
+                                {preset.description}
+                              </p>
+                            </div>
                           </div>
-                          {isActive && <div className={cn("absolute top-2 right-2 h-2 w-2 rounded-full",
-                            key === "conservative" ? "bg-yellow-500" : key === "moderate" ? "bg-blue-500" : "bg-green-500")} />}
+
+                          {/* Labeled Micro-Metrics Grid (Scorecard Style) */}
+                          <div className="w-full border-t border-white/5 pt-3 relative z-10 grid grid-cols-3 gap-2">
+                            <div className="space-y-0.5">
+                              <span className="block text-[8px] font-bold text-muted-foreground/60 uppercase tracking-widest leading-none">CAPITAL</span>
+                              <span className="block text-[10px] font-black text-neutral-200 tracking-tight leading-normal">{preset.recommendedCapital}</span>
+                            </div>
+                            <div className="space-y-0.5 border-l border-white/5 pl-2">
+                              <span className="block text-[8px] font-bold text-muted-foreground/60 uppercase tracking-widest leading-none">CIBLE W/R</span>
+                              <span className="block text-[10px] font-black text-neutral-200 tracking-tight leading-normal">{preset.targetWinRate}</span>
+                            </div>
+                            <div className="space-y-0.5 border-l border-white/5 pl-2">
+                              <span className="block text-[8px] font-bold text-muted-foreground/60 uppercase tracking-widest leading-none">TRADES/J</span>
+                              <span className="block text-[10px] font-black text-neutral-200 tracking-tight leading-normal">{preset.expectedTradesPerDay}</span>
+                            </div>
+                          </div>
+
                         </button>
                       );
                     })}
@@ -1215,8 +1433,8 @@ function AutoTraderPage() {
                       <p className="mt-1.5 text-xs text-muted-foreground">Base de calcul des fonds disponibles.</p>
                     </div>
                     <div className="text-left sm:text-right w-full sm:w-auto pt-3 border-t border-border/40 sm:pt-0 sm:border-t-0">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Gains cumulés</div>
-                      <div className={cn("font-mono-tabular text-2xl font-bold", cumulativePnl >= 0 ? "text-up" : "text-down")}>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-bold">Gains cumulés</div>
+                      <div className={cn("font-mono-tabular text-3xl font-black", cumulativePnl >= 0 ? "text-up" : "text-down")}>
                         {cumulativePnl >= 0 ? "+" : ""}${cumulativePnl.toFixed(2)}
                       </div>
                       <button onClick={async () => {
@@ -1229,7 +1447,7 @@ function AutoTraderPage() {
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Stake mode toggle */}
                     <div className="sm:col-span-2 lg:col-span-3">
-                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Mode de mise</label>
+                      <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Mode de mise</label>
                       <div className="flex rounded-xl border border-border overflow-hidden w-fit">
                         {(["fixed", "percent", "kelly"] as const).map((m) => (
                           <button key={m} disabled={running} onClick={() => patchConfig("stakeMode", m)}
@@ -1246,14 +1464,14 @@ function AutoTraderPage() {
                         <div>
                           <input type="range" min={0.5} max={5} step={0.5} value={config.stakePercent} disabled={running}
                             onChange={(e) => patchConfig("stakePercent", Number(e.target.value))} className="w-full accent-primary" />
-                          <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                          <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5">
                             <span>0.5%</span>
                             {derivSession.balance !== null && (
                               <span className="text-primary font-semibold">≈ ${((derivSession.balance * config.stakePercent) / 100).toFixed(2)}</span>
                             )}
                             <span>5%</span>
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-1">Recommandé : 1–2% du capital par trade</p>
+                          <p className="text-xs font-semibold text-muted-foreground/90 mt-1">Recommandé : 1–2% du capital par trade</p>
                         </div>
                       ) : (
                         <AmountInput value={config.stakeUsd} min={1} max={100} step={1} disabled={running}
@@ -1266,16 +1484,16 @@ function AutoTraderPage() {
                     </Field>
                     {config.stakeMode === "kelly" && (
                       <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-border/60 bg-muted/10 p-3.5">
-                        <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">
+                        <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">
                           Fraction de Kelly ({(config.kellyFraction * 100).toFixed(0)}%)
                         </label>
                         <input type="range" min={0.1} max={1} step={0.05} value={config.kellyFraction} disabled={running}
                           onChange={(e) => patchConfig("kellyFraction", Number(e.target.value))} className="w-full accent-primary" />
-                        <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                        <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5 leading-relaxed">
                           Mise = fraction de Kelly (f* = gain − perte/payout) calculée à partir du win rate et du payout
                           <strong> réellement mesurés au backtest</strong> pour chaque paire — pas une estimation. 50%
                           (demi-Kelly) est recommandé pour amortir l'incertitude d'échantillon. Sans backtest récent
-                          (≥20 trades) pour une paire, la mise de secours ($ Fixe) est utilisée à la place.
+                          (≥20 trades) pour une paire, la mise de secours ($ Fixe) is utilisée à la place.
                         </p>
                       </div>
                     )}
@@ -1292,7 +1510,7 @@ function AutoTraderPage() {
                         <option value={60}>1 heure</option>
                       </select>
                       {draftDuration !== config.durationMinutes && (
-                        <span className="text-[10px] text-amber-400 mt-1 block">
+                        <span className="text-xs font-semibold text-amber-400 mt-1 block">
                           Actuellement sauvegardé : {config.durationMinutes} min
                         </span>
                       )}
@@ -1308,7 +1526,7 @@ function AutoTraderPage() {
                         />
                       </div>
                       {draftMaxTrades !== config.maxTradesPerDay && (
-                        <span className="text-[10px] text-amber-400 mt-1 block">
+                        <span className="text-xs font-semibold text-amber-400 mt-1 block">
                           Actuellement sauvegardé : {config.maxTradesPerDay}
                         </span>
                       )}
@@ -1316,15 +1534,15 @@ function AutoTraderPage() {
                     <Field label={`Confiance min (${config.minConfidence}%)`}>
                       <input type="range" min={55} max={95} step={5} value={config.minConfidence} disabled={running}
                         onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
-                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
+                      <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
                     </Field>
                     <Field label={`Accord TF min (${config.minTfAgreement}/4)`}>
                       <input type="range" min={1} max={4} step={1} value={config.minTfAgreement} disabled={running}
                         onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
-                      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
+                      <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
                     </Field>
                     <div className="sm:col-span-2 lg:col-span-3">
-                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Mode de scan</label>
+                      <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Mode de scan</label>
                       <div className="flex rounded-xl border border-border overflow-hidden w-fit">
                         {(["watchlist", "all-markets"] as const).map((m) => (
                           <button key={m} disabled={running} onClick={() => patchConfig("symbolMode", m)}
@@ -1335,7 +1553,7 @@ function AutoTraderPage() {
                           </button>
                         ))}
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                      <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5 leading-relaxed">
                         {config.symbolMode === "all-markets"
                           ? "Analyse toutes les paires CALL/PUT en parallèle à chaque cycle et trade les meilleures opportunités classées par confiance — les filtres de qualité ci-dessus s'appliquent toujours."
                           : "Ne trade que les paires cochées ci-dessous."}
@@ -1345,11 +1563,11 @@ function AutoTraderPage() {
                       <Field label={`Trades max par cycle (${config.maxSimultaneousTrades})`}>
                         <input type="range" min={1} max={10} step={1} value={config.maxSimultaneousTrades} disabled={running}
                           onChange={(e) => patchConfig("maxSimultaneousTrades", Number(e.target.value))} className="w-full accent-primary" />
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Limite les nouvelles positions ouvertes en un seul cycle de scan.</p>
+                        <p className="text-xs font-semibold text-muted-foreground/90 mt-0.5">Limite les nouvelles positions ouvertes en un seul cycle de scan.</p>
                       </Field>
                     )}
                     <div className={cn("sm:col-span-2 lg:col-span-1", config.symbolMode === "all-markets" && "opacity-40 pointer-events-none")}>
-                      <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">Paires surveillées</label>
+                      <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Paires surveillées</label>
                       <div className="flex flex-wrap gap-1.5">
                         {SYMBOLS.map((s) => {
                           const active = config.symbols.includes(s.deriv);
@@ -1392,6 +1610,7 @@ function AutoTraderPage() {
                       </div>
                     </div>
                   )}
+
                 </div>
               )}
 
@@ -2012,7 +2231,7 @@ function Kpi({ label, value, tone, sub }: { label: string; value: string; tone: 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-muted-foreground uppercase tracking-widest font-medium">{label}</span>
+      <span className="mb-1.5 block text-xs font-extrabold uppercase tracking-widest text-neutral-200">{label}</span>
       {children}
     </label>
   );
