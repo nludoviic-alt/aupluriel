@@ -21,16 +21,51 @@ import {
   Zap,
 } from "lucide-react";
 
-function playWinSound() {
+let sharedAudioCtx: AudioContext | null = null;
+
+function initAudio() {
+  if (sharedAudioCtx) return;
   try {
     const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx() as AudioContext;
+    const activeCtx = new Ctx() as AudioContext;
+    sharedAudioCtx = activeCtx;
+    // Play short silence to warm up AudioContext
+    const buffer = activeCtx.createBuffer(1, 1, 22050);
+    const node = activeCtx.createBufferSource();
+    node.buffer = buffer;
+    node.connect(activeCtx.destination);
+    node.start(0);
+  } catch (e) {
+    console.error("Audio initialization failed:", e);
+  }
+}
+
+if (typeof window !== "undefined") {
+  const resumeAudio = () => {
+    initAudio();
+    if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume().then(() => {
+        window.removeEventListener("click", resumeAudio);
+        window.removeEventListener("keydown", resumeAudio);
+        window.removeEventListener("touchstart", resumeAudio);
+      });
+    }
+  };
+  window.addEventListener("click", resumeAudio);
+  window.addEventListener("keydown", resumeAudio);
+  window.addEventListener("touchstart", resumeAudio);
+}
+
+function playWinSound() {
+  try {
+    initAudio();
+    const ctx = sharedAudioCtx;
+    if (!ctx) return;
     if (ctx.state === "suspended") {
       ctx.resume();
     }
     
-    // Notes : C5, E5, G5, C6 (Arpège ascendant avec un carillon métallique scintillant)
     const notes = [
       { freq: 523.25, delay: 0, dur: 0.4 },   // C5
       { freq: 659.25, delay: 0.08, dur: 0.4 }, // E5
@@ -39,7 +74,6 @@ function playWinSound() {
     ];
     
     notes.forEach(({ freq, delay, dur }) => {
-      // 1. Oscillateur principal sinusoïdal pour un son pur
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -47,7 +81,6 @@ function playWinSound() {
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
       
-      // 2. Oscillateur secondaire triangulaire (une octave plus haut, gain très faible pour l'attaque "clochette/pièce")
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.connect(gain2);
@@ -62,13 +95,80 @@ function playWinSound() {
       
       gain2.gain.setValueAtTime(0, t);
       gain2.gain.linearRampToValueAtTime(0.04, t + 0.005);
-      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15); // décroissance ultra rapide pour l'attaque métallique
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
       
       osc.start(t);
       osc.stop(t + dur + 0.1);
       
       osc2.start(t);
       osc2.stop(t + dur + 0.1);
+    });
+  } catch {}
+}
+
+function playLossSound() {
+  try {
+    initAudio();
+    const ctx = sharedAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    
+    const notes = [
+      { freq: 392.00, delay: 0, dur: 0.3 },   // G4
+      { freq: 329.63, delay: 0.1, dur: 0.3 }, // E4
+      { freq: 261.63, delay: 0.2, dur: 0.5 }, // C4
+    ];
+    
+    notes.forEach(({ freq, delay, dur }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      
+      const t = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.08, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      
+      osc.start(t);
+      osc.stop(t + dur + 0.1);
+    });
+  } catch {}
+}
+
+function playOpenSound() {
+  try {
+    initAudio();
+    const ctx = sharedAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    
+    const notes = [
+      { freq: 880.00, delay: 0, dur: 0.15 },   // A5
+      { freq: 1318.51, delay: 0.05, dur: 0.25 } // E6
+    ];
+    
+    notes.forEach(({ freq, delay, dur }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      
+      const t = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.12, t + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      
+      osc.start(t);
+      osc.stop(t + dur + 0.1);
     });
   } catch {}
 }
@@ -407,9 +507,27 @@ function AutoTraderPage() {
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
     if (log.status === "lost") {
+      playLossSound();
       toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
+      
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`❌ PLURIEL : Trade PERDU ! (- $${Math.abs(log.profit).toFixed(2)})`, {
+          body: `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
+        });
+      }
+      
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
+    }
+    if (log.status === "open") {
+      playOpenSound();
+      toast.info(`🚀 Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
+      
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`🚀 PLURIEL : Position ouverte !`, {
+          body: `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
+        });
+      }
     }
     if (log.status === "error") toast.error(`⚠️ Erreur sur ${log.symbol}`);
     if (log.status === "pending") {
