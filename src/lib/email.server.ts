@@ -87,7 +87,8 @@ function layout(title: string, body: string): string {
 }
 
 const buttonStyle =
-  "display:inline-block;background:linear-gradient(90deg,#06b6d4,#8b5cf6);color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:800;font-size:14px;text-align:center;box-shadow:0 4px 12px rgba(6,182,212,0.15);transition:all 0.2s ease-in-out";
+  "display:inline-block;background:linear-gradient(90deg,#ff6900,#e17100);color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:800;font-size:14px;text-align:center;box-shadow:0 4px 12px rgba(255,105,0,0.2);transition:all 0.2s ease-in-out";
+const linkColor = "#ff8a3d";
 
 export function verificationEmail(link: string): { subject: string; html: string } {
   return {
@@ -96,7 +97,7 @@ export function verificationEmail(link: string): { subject: string; html: string
       "Active ton compte",
       `<p style="margin:0 0 16px;text-align:center">Bienvenue ! Confirme ton adresse email pour activer ton compte Pluriel.</p>
        <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Vérifier mon email</a></p>
-       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:${linkColor};text-decoration:none;word-break:break-all">${link}</a></p>
        <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
     ),
   };
@@ -188,7 +189,7 @@ export function inviteEmail(
          <div style="font-size:24px;font-weight:900;letter-spacing:4px;color:#ffffff;margin-top:6px;font-family:monospace">${code}</div>
        </div>
        <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Créer mon compte</a></p>
-       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:${linkColor};text-decoration:none;word-break:break-all">${link}</a></p>
        <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce code est valable uniquement pour l'adresse ${email} et expire le ${expiryLabel}.</p>`,
     ),
   };
@@ -201,7 +202,7 @@ export function resetEmail(link: string): { subject: string; html: string } {
       "Réinitialisation du mot de passe",
       `<p style="margin:0 0 16px;text-align:center">Tu as demandé à réinitialiser ton mot de passe.</p>
        <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Choisir un nouveau mot de passe</a></p>
-       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:${linkColor};text-decoration:none;word-break:break-all">${link}</a></p>
        <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce lien expire dans 1 h.</p>`,
     ),
   };
