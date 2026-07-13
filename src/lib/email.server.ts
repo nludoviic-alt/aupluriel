@@ -54,26 +54,29 @@ function stripHtml(html: string): string {
 
 /** Branded wrapper for transactional emails. */
 function layout(title: string, body: string): string {
-  const logoUrl = `${getAppUrl()}/logo-lio23-banner.jpg`;
-  return `<body style="margin:0;padding:0;background-color:#050505">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050505;padding:32px 16px">
+  const logoUrl = `${getAppUrl()}/favicon.png`;
+  return `<body style="margin:0;padding:0;background-color:#050505;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050505;padding:40px 16px">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#0f0f0f;border:1px solid rgba(249,115,22,0.25);border-radius:16px;overflow:hidden;font-family:Inter,Arial,sans-serif">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;background:linear-gradient(135deg,#0d0d11 0%,#08080a 100%);border:1px solid rgba(255,255,255,0.06);border-radius:24px;overflow:hidden;box-shadow:0 10px 40px -10px rgba(0,0,0,0.5)">
+          <!-- Centered Favicon Logo Header -->
           <tr>
-            <td>
-              <img src="${logoUrl}" alt="${APP_NAME}" width="480" style="display:block;width:100%;height:auto;border:0" />
+            <td align="center" style="padding:40px 40px 0">
+              <img src="${logoUrl}" alt="${APP_NAME}" width="64" height="64" style="display:block;width:64px;height:64px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 15px rgba(0,0,0,0.3)" />
             </td>
           </tr>
+          <!-- Title & Content -->
           <tr>
-            <td style="padding:32px">
-              <h2 style="font-size:18px;font-weight:800;color:#ffffff;margin:0 0 16px">${title}</h2>
-              <div style="font-size:14px;line-height:1.6;color:#cbd5e1">${body}</div>
+            <td style="padding:32px 40px 40px">
+              <h2 style="font-size:22px;font-weight:900;color:#ffffff;margin:0 0 20px;text-align:center;letter-spacing:-0.02em;line-height:1.3">${title}</h2>
+              <div style="font-size:14px;line-height:1.65;color:#a1a1aa;margin:0">${body}</div>
             </td>
           </tr>
+          <!-- Footer -->
           <tr>
-            <td style="padding:0 32px 28px">
-              <p style="font-size:11px;color:#71717a;margin:0">${APP_NAME} — Quant Trading. Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>
+            <td style="padding:0 40px 40px;border-top:1px solid rgba(255,255,255,0.04)">
+              <p style="font-size:11px;color:#52525b;margin:0;line-height:1.5;text-align:center">${APP_NAME} Quant Trading. Si tu n'es pas à l'origine de cette demande, tu peux ignorer cet email en toute sécurité.</p>
             </td>
           </tr>
         </table>
@@ -84,17 +87,17 @@ function layout(title: string, body: string): string {
 }
 
 const buttonStyle =
-  "display:inline-block;background:linear-gradient(90deg,#f97316,#ea580c);color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:14px";
+  "display:inline-block;background:linear-gradient(90deg,#06b6d4,#8b5cf6);color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:800;font-size:14px;text-align:center;box-shadow:0 4px 12px rgba(6,182,212,0.15);transition:all 0.2s ease-in-out";
 
 export function verificationEmail(link: string): { subject: string; html: string } {
   return {
     subject: "Vérifie ton adresse email — Pluriel",
     html: layout(
       "Active ton compte",
-      `<p style="margin:0 0 16px">Bienvenue ! Confirme ton adresse email pour activer ton compte Pluriel.</p>
-       <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Vérifier mon email</a></p>
-       <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
-       <p style="font-size:12px;color:#71717a;margin:0">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
+      `<p style="margin:0 0 16px;text-align:center">Bienvenue ! Confirme ton adresse email pour activer ton compte Pluriel.</p>
+       <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Vérifier mon email</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
     ),
   };
 }
@@ -109,10 +112,16 @@ export function welcomeEmail(
     subject: "Ton compte Pluriel a été créé",
     html: layout(
       "Bienvenue sur Pluriel",
-      `<p style="margin:0 0 16px">Un administrateur vient de créer ton compte. Voici tes identifiants de connexion :</p>
-       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">Identifiant : <strong>${username}</strong><br>Email : <strong>${email}</strong><br>Mot de passe : <strong>${password}</strong></p>
-       <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Se connecter</a></p>
-       <p style="font-size:12px;color:#71717a;margin:0">Nous te recommandons de changer ce mot de passe après ta première connexion.</p>`,
+      `<p style="margin:0 0 16px;text-align:center">Un administrateur vient de créer ton compte. Voici tes identifiants de connexion :</p>
+       <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px">
+         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+           <tr><td style="padding:4px 0;color:#71717a">Identifiant :</td><td style="padding:4px 0;text-align:right;color:#ffffff;font-weight:700">${username}</td></tr>
+           <tr><td style="padding:4px 0;color:#71717a">Email :</td><td style="padding:4px 0;text-align:right;color:#ffffff;font-weight:700">${email}</td></tr>
+           <tr><td style="padding:4px 0;color:#71717a">Mot de passe :</td><td style="padding:4px 0;text-align:right;color:#ffffff;font-weight:700;font-family:monospace">${password}</td></tr>
+         </table>
+       </div>
+       <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Se connecter</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Nous te recommandons de changer ce mot de passe temporaire après ta première connexion.</p>`,
     ),
   };
 }
@@ -134,12 +143,14 @@ export function tradeClosedEmail(params: {
     html: layout(
       `Trade clôturé — ${symbol}`,
       `<p style="margin:0 0 16px">Le bot serveur vient de clôturer une position (${modeTag}) :</p>
-       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">
-         Marché : <strong>${symbol}</strong> · ${direction}<br>
-         Mise : <strong>$${stake.toFixed(2)}</strong><br>
-         Résultat : <strong style="color:${color}">${sign}$${profit.toFixed(2)}</strong>
-       </p>
-       <p style="margin:0 0 20px"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
+       <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px">
+         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+           <tr><td style="padding:6px 0;color:#71717a">Marché :</td><td style="padding:6px 0;text-align:right;color:#ffffff;font-weight:700">${symbol} · ${direction}</td></tr>
+           <tr><td style="padding:6px 0;color:#71717a">Mise :</td><td style="padding:6px 0;text-align:right;color:#ffffff;font-weight:700">$${stake.toFixed(2)}</td></tr>
+           <tr><td style="padding:6px 0;color:#71717a">Résultat :</td><td style="padding:6px 0;text-align:right;color:${color};font-weight:900;font-size:16px">${sign}$${profit.toFixed(2)}</td></tr>
+         </table>
+       </div>
+       <p style="margin:0 0 12px;text-align:center"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
     ),
   };
 }
@@ -151,8 +162,8 @@ export function riskPauseEmail(note: string, mode: string): { subject: string; h
     html: layout(
       "Le bot s'est mis en pause",
       `<p style="margin:0 0 16px">Une limite de protection a été atteinte (${modeTag}) — le bot arrête de trader et reprendra automatiquement :</p>
-       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">${note}</p>
-       <p style="margin:0 0 20px"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
+       <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px;font-weight:700;color:#f59e0b;text-align:center">${note}</div>
+       <p style="margin:0 0 12px;text-align:center"><a href="${getAppUrl()}/autotrader" style="${buttonStyle}">Voir l'Auto-Trader</a></p>`,
     ),
   };
 }
@@ -171,11 +182,14 @@ export function inviteEmail(
     subject: "Tu es invité(e) sur Pluriel",
     html: layout(
       "Invitation à rejoindre Pluriel",
-      `<p style="margin:0 0 16px">Un administrateur t'invite à créer un compte sur Pluriel Quant Trading.</p>
-       <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px;text-align:center">Code d'invitation<br><strong style="font-size:20px;letter-spacing:2px">${code}</strong></p>
-       <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Créer mon compte</a></p>
-       <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
-       <p style="font-size:12px;color:#71717a;margin:0">Ce code est valable uniquement pour l'adresse ${email} et expire le ${expiryLabel}.</p>`,
+      `<p style="margin:0 0 16px;text-align:center">Un administrateur t'invite à créer un compte sur Pluriel Quant Trading.</p>
+       <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px;text-align:center">
+         <span style="font-size:11px;text-transform:uppercase;color:#71717a;font-weight:700;letter-spacing:0.1em">Code d'invitation</span>
+         <div style="font-size:24px;font-weight:900;letter-spacing:4px;color:#ffffff;margin-top:6px;font-family:monospace">${code}</div>
+       </div>
+       <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Créer mon compte</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce code est valable uniquement pour l'adresse ${email} et expire le ${expiryLabel}.</p>`,
     ),
   };
 }
@@ -185,10 +199,10 @@ export function resetEmail(link: string): { subject: string; html: string } {
     subject: "Réinitialise ton mot de passe — Pluriel",
     html: layout(
       "Réinitialisation du mot de passe",
-      `<p style="margin:0 0 16px">Tu as demandé à réinitialiser ton mot de passe.</p>
-       <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Choisir un nouveau mot de passe</a></p>
-       <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
-       <p style="font-size:12px;color:#71717a;margin:0">Ce lien expire dans 1 h.</p>`,
+      `<p style="margin:0 0 16px;text-align:center">Tu as demandé à réinitialiser ton mot de passe.</p>
+       <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Choisir un nouveau mot de passe</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:#06b6d4;text-decoration:none;word-break:break-all">${link}</a></p>
+       <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce lien expire dans 1 h.</p>`,
     ),
   };
 }
