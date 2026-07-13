@@ -37,6 +37,12 @@ function useDerivAuth() {
     ready: session.connected,
     balance: session.balance,
     currency: session.currency,
+    // The session itself already knows whether the server has a token on
+    // file (it never reads localStorage) — trust that instead of a raw
+    // localStorage check, which goes stale the moment the token is only
+    // saved server-side (new device, cleared storage, etc.) even though
+    // the account is actually connected everywhere else in the app.
+    noToken: !session.connecting && session.error === "Aucun token Deriv configuré",
   };
 }
 
@@ -129,15 +135,13 @@ function pnlToday(profits: ProfitRecord[]) {
 }
 
 export default function PortfolioPage() {
-  const { ready, balance, currency } = useDerivAuth();
+  const { ready, balance, currency, noToken } = useDerivAuth();
   const { positions, profits, loading, refresh, close } = usePortfolio();
   const { confirmState, confirm } = useConfirm();
 
   const todayPnl = pnlToday(profits);
   const openPnl = positions.reduce((acc, p) => acc + p.profit, 0);
   const totalPnl = todayPnl + openPnl;
-
-  const noToken = !localStorage.getItem("lio23.deriv_token");
 
   return (
     <div className="p-4 md:p-6 space-y-5">

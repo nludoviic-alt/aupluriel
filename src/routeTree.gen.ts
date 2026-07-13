@@ -35,6 +35,7 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
+import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
 import { Route as ApiAuthResetPasswordRouteImport } from './routes/api/auth/reset-password'
@@ -178,6 +179,11 @@ const ApiBotRoute = ApiBotRouteImport.update({
   path: '/api/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAutoBacktestRoute = ApiAutoBacktestRouteImport.update({
+  id: '/api/auto-backtest',
+  path: '/api/auto-backtest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAlertsRoute = ApiAlertsRouteImport.update({
   id: '/api/alerts',
   path: '/api/alerts',
@@ -259,6 +265,7 @@ export interface FileRoutesByFullPath {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
@@ -340,6 +348,7 @@ export interface FileRoutesById {
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
+  '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
@@ -382,6 +391,7 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/auto-backtest'
     | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
@@ -422,6 +432,7 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/auto-backtest'
     | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
@@ -462,6 +473,7 @@ export interface FileRouteTypes {
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
+    | '/api/auto-backtest'
     | '/api/bot'
     | '/api/chat'
     | '/api/deriv-session'
@@ -503,6 +515,7 @@ export interface RootRouteChildren {
   StrategiesRoute: typeof StrategiesRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
+  ApiAutoBacktestRoute: typeof ApiAutoBacktestRoute
   ApiBotRoute: typeof ApiBotRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
@@ -709,6 +722,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auto-backtest': {
+      id: '/api/auto-backtest'
+      path: '/api/auto-backtest'
+      fullPath: '/api/auto-backtest'
+      preLoaderRoute: typeof ApiAutoBacktestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/alerts': {
       id: '/api/alerts'
       path: '/api/alerts'
@@ -815,6 +835,7 @@ const rootRouteChildren: RootRouteChildren = {
   StrategiesRoute: StrategiesRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,
+  ApiAutoBacktestRoute: ApiAutoBacktestRoute,
   ApiBotRoute: ApiBotRoute,
   ApiChatRoute: ApiChatRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,

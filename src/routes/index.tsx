@@ -32,12 +32,16 @@ function useDerivBalance() {
 }
 
 function useRealStats() {
+  // getProfitTable talks over the already-authenticated Deriv WS session, so
+  // gate on the session actually being connected — a raw localStorage token
+  // check goes stale the moment the token is only saved server-side (new
+  // device, cleared storage) even though the session connects fine.
+  const { connected } = useDerivSession();
   const [winRate, setWinRate] = useState<number | null>(null);
   const [todayPnl, setTodayPnl] = useState<number | null>(null);
   const [tradeCount, setTradeCount] = useState<number | null>(null);
   useEffect(() => {
-    const token = localStorage.getItem("lio23.deriv_token");
-    if (!token) return;
+    if (!connected) return;
     getProfitTable(200).then((records) => {
       if (records.length === 0) return;
       const wins = records.filter((r) => r.profit > 0).length;
@@ -49,7 +53,7 @@ function useRealStats() {
       const todayRecords = records.filter((r) => r.sellTime >= ts);
       setTodayPnl(todayRecords.reduce((acc, r) => acc + r.profit, 0));
     }).catch(() => {});
-  }, []);
+  }, [connected]);
   return { winRate, todayPnl, tradeCount };
 }
 

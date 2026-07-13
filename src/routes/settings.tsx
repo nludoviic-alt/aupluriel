@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, clearToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
+import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -271,6 +272,8 @@ function SettingsPage() {
               </div>
               <Switch checked={autoBacktestEnabled} disabled={autoBacktestSaving} onCheckedChange={toggleAutoBacktest} />
             </div>
+
+            {autoBacktestEnabled && <AutoBacktestStatus />}
           </div>
         </div>
 

@@ -122,6 +122,7 @@ import { activeStrategySymbols } from "@/lib/strategies";
 import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard } from "@/components/bot-dashboard";
+import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
 import {
   useAutoTraderEngine,
@@ -443,13 +444,15 @@ function AutoTraderPage() {
         setShowDisclaimer(true);
         return;
       }
-      if ((config.mode === "demo" || config.mode === "live") && !localStorage.getItem("lio23.deriv_token")) {
-        toast.error("Configure un token API Deriv dans Paramètres d'abord (requis pour demo et live)");
-        return;
-      }
+      // derivSession.connected is the real signal here — it's backed by the
+      // server-persisted token, not this browser's localStorage, so it stays
+      // accurate even when the token was only ever configured on another
+      // device/session.
       if ((config.mode === "demo" || config.mode === "live") && !derivSession.connected) {
         if (derivSession.connecting) {
           toast.info("Connexion Deriv en cours, réessaie dans quelques secondes…");
+        } else if (derivSession.error === "Aucun token Deriv configuré") {
+          toast.error("Configure un token API Deriv dans Paramètres d'abord (requis pour demo et live)");
         } else {
           toast.error("Session Deriv non connectée — clique 'Reconnecter' dans le panneau de configuration");
           reinitDerivSession();
@@ -803,6 +806,8 @@ function AutoTraderPage() {
                 onCheckedChange={toggleCloud}
               />
             </div>
+
+            <AutoBacktestStatus className="mt-3" />
 
             {cloud?.enabled && (
               <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
