@@ -10,7 +10,7 @@ import { type Strategy } from "@/lib/strategies";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/strategies")({
-  head: () => ({ meta: [{ title: "Stratégies — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Stratégies — PLURIEL" }] }),
   component: StrategiesPage,
 });
 

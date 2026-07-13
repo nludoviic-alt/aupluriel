@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/journal")({
-  head: () => ({ meta: [{ title: "Journal de performance — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Journal de performance — PLURIEL" }] }),
   component: JournalPage,
 });
 

@@ -27,7 +27,7 @@ import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { LiveTradeCard } from "@/components/live-trade-card";
 
 export const Route = createFileRoute("/portfolio")({
-  head: () => ({ meta: [{ title: "Portfolio — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Portfolio — PLURIEL" }] }),
   component: PortfolioPage,
 });
 

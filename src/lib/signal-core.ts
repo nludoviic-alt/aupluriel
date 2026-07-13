@@ -217,13 +217,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  minConfidence: 80,
+  minConfidence: 75,
   // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
   // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
   // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
   // double presque l'espérance par trade. (Même harnais : les stops ATR
   // n'améliorent PAS l'EV — atrStopMode reste off.)
-  minTfAgreement: 4,
+  minTfAgreement: 3,
   maxDailyLossUsd: 20,
   maxTradesPerDay: 10,
   // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
@@ -246,7 +246,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // veto 4H (déjà assoupli). minConfidence + minTfAgreement + veto 4H
   // suffisent comme filtre qualité ; ce cran-là supprimait des journées
   // entières de trades valides.
-  premiumOnly: true,
+  premiumOnly: false,
   stopOnRisk: true,
   maxVolatilityPct: 3,
   maxDailyProfitUsd: 0,
@@ -256,13 +256,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   sessionEdgeMinutes: 15,
   trailingStopUsd: 0,
   blockCorrelated: true,
-  symbolMode: "watchlist",
+  symbolMode: "all-markets",
   maxSimultaneousTrades: 3,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
   // confident (good/premium) 4H veto is honored by default now.
-  veto4h: "always",
+  veto4h: "strong-only",
   // Break-even win rate at 65% payout is ~60.6% — below that, even a
   // reasonably confident signal can have negative expected value.
   minPayoutRatio: 0.70,

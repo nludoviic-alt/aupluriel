@@ -4,7 +4,7 @@ import { Calculator, Info, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/risk-calculator")({
-  head: () => ({ meta: [{ title: "Calculateur de Risk — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Calculateur de Risk — PLURIEL" }] }),
   component: RiskCalculatorPage,
 });
 

@@ -1,5 +1,5 @@
 import { memo, useMemo, useEffect, useState } from "react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { Activity, Gauge, ShieldAlert, TrendingUp, TrendingDown, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SYMBOLS } from "@/lib/deriv";
 import type { TradeLog, AutoTraderConfig, ScanResult } from "@/lib/autotrader";
@@ -122,34 +122,46 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
     : null;
 
   return (
-    <div className="rounded-xl border border-border bg-panel/30 p-5 space-y-5">
+    <div className="glass-panel rounded-2xl p-5 md:p-6 space-y-6 shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Dashboard Bot
-        </h2>
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
+        <div className="flex items-center gap-2.5">
+          <Activity className="h-5 w-5 text-[color:var(--brand-cyan)]" />
+          <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">
+            Dashboard Bot
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
           {winRate !== null && (
-            <span className={cn("text-sm font-bold", winRate >= 55 ? "text-up" : winRate >= 45 ? "text-amber-400" : "text-down")}>
+            <span className={cn(
+              "text-xs font-bold rounded-full border px-2.5 py-1",
+              winRate >= 55 ? "text-up border-up/25 bg-up/5" : winRate >= 45 ? "text-amber-400 border-amber-500/25 bg-amber-500/5" : "text-down border-down/25 bg-down/5"
+            )}>
               {winRate.toFixed(0)}% win
             </span>
           )}
           {avgProfit !== null && (
-            <span className={cn("text-sm font-bold", avgProfit >= 0 ? "text-up" : "text-down")}>
+            <span className={cn(
+              "text-xs font-bold rounded-full border px-2.5 py-1",
+              avgProfit >= 0 ? "text-up border-up/25 bg-up/5" : "text-down border-down/25 bg-down/5"
+            )}>
               {avgProfit >= 0 ? "+" : ""}${avgProfit.toFixed(2)} moy.
             </span>
           )}
           <span className={cn(
-            "flex items-center gap-1.5 text-sm rounded-lg px-3 py-1 font-semibold",
-            running ? "bg-up/10 text-up" : "bg-muted/30 text-muted-foreground"
+            "flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-full border px-3 py-1",
+            running ? "bg-up/10 text-up border-up/25" : "bg-white/[0.02] text-muted-foreground border-white/5"
           )}>
-            <span className={cn("h-2 w-2 rounded-full", running ? "bg-up animate-pulse" : "bg-muted-foreground")} />
+            <span className={cn("h-1.5 w-1.5 rounded-full", running ? "bg-up animate-pulse" : "bg-muted-foreground")} />
             {running ? "Actif" : "Arrêté"}
           </span>
         </div>
       </div>
 
-      {/* ── Equity curve ── */}
+      {/* ── Equity curve + risk gauges: side by side on wide screens instead
+          of stacked full-width blocks, so the card uses its space instead
+          of reading as a sparse vertical list. ── */}
+      <div className="grid gap-4 lg:grid-cols-[1fr_260px] lg:items-stretch">
       <div>
         <div className="flex items-baseline justify-between mb-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Courbe P&L aujourd'hui</span>
@@ -157,8 +169,8 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
             {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
           </span>
         </div>
-        <div className="rounded-lg overflow-hidden border border-border/40 bg-muted/8">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-24" preserveAspectRatio="none">
+        <div className="relative rounded-xl overflow-hidden border border-white/5 bg-neutral-950/40 lg:h-[calc(100%-1.75rem)]">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 lg:h-full" preserveAspectRatio="none">
             <defs>
               <linearGradient id="equity-grad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={lineColor} stopOpacity={0.25} />
@@ -221,35 +233,42 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
               <circle key={i} cx={toX(p.time)} cy={toY(p.pnl)} r="2" fill={p.pnl >= (equityPoints[i]?.pnl ?? 0) ? "var(--bull)" : "var(--bear)"} opacity="0.8" />
             ))}
 
-            {equityPoints.length <= 1 && (
-              <text x={W / 2} y={H / 2 + 4} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)" opacity="0.5">
-                En attente du premier trade…
-              </text>
-            )}
           </svg>
+          {equityPoints.length <= 1 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center pointer-events-none">
+              <div className="relative flex h-6 w-6 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-muted-foreground/10 animate-ping" />
+                <Activity className="relative h-4 w-4 text-muted-foreground/40" />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground/60">En attente du premier trade…</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Risk gauges ── */}
-      <div className={cn("grid gap-4", profitRatio !== null ? "sm:grid-cols-2" : "grid-cols-1")}>
+      {/* ── Risk gauges — narrow sidebar next to the chart on wide screens ── */}
+      <div className="flex flex-col gap-4">
         {/* Loss limit */}
-        <div>
+        <div className="rounded-xl bg-neutral-950/40 border border-white/5 p-3.5">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground/70" />
+            <span className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">Limite perte</span>
+          </div>
           <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-muted-foreground font-semibold uppercase tracking-wider">Limite perte</span>
-            <span className={cn("font-bold", lossRatio > 0.7 ? "text-down" : lossRatio > 0.4 ? "text-amber-400" : "text-muted-foreground")}>
+            <span className={cn("font-bold font-mono-tabular", lossRatio > 0.7 ? "text-down" : lossRatio > 0.4 ? "text-amber-400" : "text-foreground")}>
               ${Math.abs(Math.min(0, pnl)).toFixed(2)} / ${config.maxDailyLossUsd}
               {lossRatio > 0 && ` · ${(lossRatio * 100).toFixed(0)}%`}
             </span>
           </div>
-          <div className="h-3 rounded-full bg-muted/30 overflow-hidden">
+          <div className="h-2.5 rounded-full bg-neutral-900 border border-white/5 overflow-hidden">
             <div
               className={cn("h-full rounded-full transition-all duration-500",
-                lossRatio > 0.7 ? "bg-down" : lossRatio > 0.4 ? "bg-amber-500" : "bg-muted-foreground/40"
+                lossRatio > 0.7 ? "bg-down shadow-[0_0_8px_rgba(239,68,68,0.5)]" : lossRatio > 0.4 ? "bg-amber-500" : "bg-muted-foreground/40"
               )}
               style={{ width: `${lossRatio * 100}%` }}
             />
           </div>
-          <div className="flex justify-between text-[11px] text-muted-foreground/50 mt-1">
+          <div className="flex justify-between text-[11px] text-muted-foreground/50 mt-1.5">
             <span>$0</span>
             <span className="text-down/70">Max -${config.maxDailyLossUsd}</span>
           </div>
@@ -257,33 +276,38 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
 
         {/* Profit target */}
         {profitRatio !== null && (
-          <div>
+          <div className="rounded-xl bg-neutral-950/40 border border-white/5 p-3.5">
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <Gauge className="h-3.5 w-3.5 text-muted-foreground/70" />
+              <span className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">Objectif gain</span>
+            </div>
             <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-muted-foreground font-semibold uppercase tracking-wider">Objectif gain</span>
-              <span className={cn("font-bold", profitRatio >= 1 ? "text-up" : "text-muted-foreground")}>
+              <span className={cn("font-bold font-mono-tabular", profitRatio >= 1 ? "text-up" : "text-foreground")}>
                 ${Math.max(0, pnl).toFixed(2)} / ${config.maxDailyProfitUsd}
                 {profitRatio > 0 && ` · ${(profitRatio * 100).toFixed(0)}%`}
               </span>
             </div>
-            <div className="h-3 rounded-full bg-muted/30 overflow-hidden">
+            <div className="h-2.5 rounded-full bg-neutral-900 border border-white/5 overflow-hidden">
               <div
-                className="h-full rounded-full bg-up transition-all duration-500"
+                className="h-full rounded-full bg-up shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-500"
                 style={{ width: `${profitRatio * 100}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground/50 mt-1">
+            <div className="flex justify-between text-[11px] text-muted-foreground/50 mt-1.5">
               <span>$0</span>
               <span className="text-up/70">Cible +${config.maxDailyProfitUsd}</span>
             </div>
           </div>
         )}
       </div>
+      </div>
 
       {/* ── Signal grid ── */}
       {lastScan ? (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-amber-400" />
               Signaux · {new Date(lastScan.time).toLocaleTimeString()}
             </span>
             <span className="text-xs text-muted-foreground/70">
@@ -300,8 +324,8 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
 
               return (
                 <div key={r.symbol} className={cn(
-                  "flex flex-col gap-1.5 rounded-lg px-4 py-3",
-                  traded ? "border border-up/30 bg-up/8" : "bg-muted/10"
+                  "flex flex-col gap-1.5 rounded-xl px-4 py-3 border transition-all",
+                  traded ? "border-up/30 bg-up/8" : "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.02]"
                 )}>
                   {/* Row 1: symbol + direction + status */}
                   <div className="flex items-center justify-between gap-3">
@@ -375,11 +399,11 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
             })}
           </div>
         </div>
-      ) : (
-        <div className="rounded-lg bg-muted/10 py-8 text-center text-sm text-muted-foreground">
-          {running ? "Première analyse en cours…" : "Démarre le bot pour voir les signaux en direct"}
+      ) : running ? (
+        <div className="rounded-xl bg-neutral-950/40 border border-white/5 py-8 text-center text-sm text-muted-foreground">
+          Première analyse en cours…
         </div>
-      )}
+      ) : null}
     </div>
   );
 });

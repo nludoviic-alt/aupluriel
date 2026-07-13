@@ -6,7 +6,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 
-const SYSTEM_PROMPT = `Tu es Lio23, un assistant de trading expert et conversationnel.
+const SYSTEM_PROMPT = `Tu es Pluriel, un assistant de trading expert et conversationnel.
 Tu réponds UNIQUEMENT à ce que l'utilisateur te demande, de façon naturelle et directe.
 Tu ne génères pas de contenu non sollicité : pas de structure imposée, pas de rappels de risque automatiques, pas d'analyse complète si on ne t'en a pas demandé.
 Tu réponds TOUJOURS en français.

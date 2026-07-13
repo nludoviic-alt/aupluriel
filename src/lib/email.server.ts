@@ -9,7 +9,7 @@ interface SendEmailInput {
   html: string;
 }
 
-const APP_NAME = "Lio23";
+const APP_NAME = "Pluriel";
 
 export function getAppUrl(): string {
   // Public base URL used to build links in emails.
@@ -88,10 +88,10 @@ const buttonStyle =
 
 export function verificationEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Vérifie ton adresse email — Lio23",
+    subject: "Vérifie ton adresse email — Pluriel",
     html: layout(
       "Active ton compte",
-      `<p style="margin:0 0 16px">Bienvenue ! Confirme ton adresse email pour activer ton compte Lio23.</p>
+      `<p style="margin:0 0 16px">Bienvenue ! Confirme ton adresse email pour activer ton compte Pluriel.</p>
        <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Vérifier mon email</a></p>
        <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
        <p style="font-size:12px;color:#71717a;margin:0">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
@@ -106,9 +106,9 @@ export function welcomeEmail(
 ): { subject: string; html: string } {
   const link = `${getAppUrl()}/login`;
   return {
-    subject: "Ton compte Lio23 a été créé",
+    subject: "Ton compte Pluriel a été créé",
     html: layout(
-      "Bienvenue sur Lio23",
+      "Bienvenue sur Pluriel",
       `<p style="margin:0 0 16px">Un administrateur vient de créer ton compte. Voici tes identifiants de connexion :</p>
        <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px">Identifiant : <strong>${username}</strong><br>Email : <strong>${email}</strong><br>Mot de passe : <strong>${password}</strong></p>
        <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Se connecter</a></p>
@@ -168,10 +168,10 @@ export function inviteEmail(
     month: "long",
   });
   return {
-    subject: "Tu es invité(e) sur Lio23",
+    subject: "Tu es invité(e) sur Pluriel",
     html: layout(
-      "Invitation à rejoindre Lio23",
-      `<p style="margin:0 0 16px">Un administrateur t'invite à créer un compte sur Lio23 Quant Trading.</p>
+      "Invitation à rejoindre Pluriel",
+      `<p style="margin:0 0 16px">Un administrateur t'invite à créer un compte sur Pluriel Quant Trading.</p>
        <p style="font-size:13px;color:#e4e4e7;background:#18181b;border-radius:8px;padding:14px 16px;margin:0 0 20px;text-align:center">Code d'invitation<br><strong style="font-size:20px;letter-spacing:2px">${code}</strong></p>
        <p style="margin:0 0 20px"><a href="${link}" style="${buttonStyle}">Créer mon compte</a></p>
        <p style="font-size:12px;color:#71717a;margin:0 0 8px">Ou copie ce lien : <br>${link}</p>
@@ -182,7 +182,7 @@ export function inviteEmail(
 
 export function resetEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Réinitialise ton mot de passe — Lio23",
+    subject: "Réinitialise ton mot de passe — Pluriel",
     html: layout(
       "Réinitialisation du mot de passe",
       `<p style="margin:0 0 16px">Tu as demandé à réinitialiser ton mot de passe.</p>

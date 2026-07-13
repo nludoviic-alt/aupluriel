@@ -132,7 +132,7 @@ import {
 } from "@/hooks/use-autotrader-engine";
 
 export const Route = createFileRoute("/autotrader")({
-  head: () => ({ meta: [{ title: "Auto-Trader — Lio23" }] }),
+  head: () => ({ meta: [{ title: "Auto-Trader — Pluriel" }] }),
   component: AutoTraderPage,
 });
 
@@ -166,8 +166,7 @@ function AutoTraderPage() {
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [showLogs, setShowLogs] = useState(true);
-  const [showWeights, setShowWeights] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showWeights, setShowWeights] = useState(true);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showSavePreset, setShowSavePreset] = useState(false);
@@ -183,7 +182,11 @@ function AutoTraderPage() {
   const [draftMaxTrades, setDraftMaxTrades] = useState(DEFAULT_CONFIG.maxTradesPerDay);
   const [showSaveParams, setShowSaveParams] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
+  // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
+  // below md, showing every section stacked at once was too dense, so mobile
+  // sees one focused section at a time instead.
+  const [mobileTab, setMobileTab] = useState<"control" | "dashboard" | "config" | "journal">("control");
   const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "backtest">("profiles");
   const [backtestRunning, setBacktestRunning] = useState(false);
   const [backtestResults, setBacktestResults] = useState<Record<string, MultiTfBacktestResult & { symbol: string }>>({});
@@ -335,15 +338,16 @@ function AutoTraderPage() {
     const totalWon = closedLogs.filter((l) => l.status === "won").reduce((s, l) => s + l.profit, 0);
     const totalLost = closedLogs.filter((l) => l.status === "lost").reduce((s, l) => s + l.profit, 0);
     const openTradeList = logs.filter((l) => l.status === "open");
+    const recentClosedTrades = [...closedLogs].sort((a, b) => b.time - a.time).slice(0, 6);
     const consecutiveLosses = countConsecutiveLosses(logs);
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(config.stakeUsd, logs) : config.stakeUsd;
-    return { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, consecutiveLosses, effectiveStake };
+    return { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, recentClosedTrades, consecutiveLosses, effectiveStake };
   }, [logs, config.adaptiveStake, config.stakeUsd]);
 
   const {
     pnl: localPnl, tradeCount: localTradeCount, wins: localWins, losses: localLosses, errors,
     totalWon: localTotalWon, totalLost: localTotalLost,
-    openTradeList, consecutiveLosses, effectiveStake,
+    openTradeList, recentClosedTrades, consecutiveLosses, effectiveStake,
   } = stats;
 
   // The server bot's trades never touch the browser's localStorage rollup
@@ -393,7 +397,7 @@ function AutoTraderPage() {
       
       // Notification de bureau native (HTML5 API) pour alerter en tâche de fond
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`🎯 LIO23 : Trade GAGNANT ! (+ $${log.profit.toFixed(2)})`, {
+        new Notification(`🎯 PLURIEL : Trade GAGNANT ! (+ $${log.profit.toFixed(2)})`, {
           body: `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
         });
       }
@@ -660,11 +664,39 @@ function AutoTraderPage() {
         />
       </div>
 
+      {/* ── Mobile section switcher — one focused screen instead of every
+          panel stacked. Desktop ignores this entirely (md:block below always
+          shows every section). ── */}
+      <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
+        {([
+          { id: "control", label: "Contrôle", icon: Power },
+          { id: "dashboard", label: "Dashboard", icon: Activity },
+          { id: "config", label: "Config", icon: Settings2 },
+          { id: "journal", label: "Journal", icon: Clock },
+        ] as const).map((t) => {
+          const Icon = t.icon;
+          const active = mobileTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setMobileTab(t.id)}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold uppercase tracking-wide transition-all",
+                active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Main 2-col layout ── */}
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
 
         {/* ── LEFT: Control panel ── */}
-        <div className="space-y-4">
+        <div className={cn(mobileTab === "control" ? "block" : "hidden", "md:block space-y-4")}>
 
           {/* Bloc contrôle principal */}
           <div className="glass-panel rounded-2xl overflow-hidden">
@@ -934,62 +966,94 @@ function AutoTraderPage() {
         </div>
 
         {/* ── RIGHT: Dashboard + positions ── */}
-        <div className="space-y-5 min-w-0">
-          {/* Desktop: always visible. Mobile: collapsed by default behind a
-              toggle — the equity curve + full signal grid is monitoring detail,
-              not needed to see the bot is running. */}
-          <div className="hidden md:block">
-            <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
-          </div>
-          <div className="md:hidden">
-            <button
-              onClick={() => setShowDashboard((s) => !s)}
-              className="w-full flex items-center justify-between rounded-xl glass-panel px-4 py-3"
-            >
-              <span className="text-sm font-semibold">Tableau de bord détaillé</span>
-              {showDashboard ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-            </button>
-            {showDashboard && (
-              <div className="mt-3">
-                <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
-              </div>
-            )}
-          </div>
+        <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
+          {/* Always rendered — visibility is handled one level up by the
+              mobile tab switcher (desktop: always in the "dashboard" column). */}
+          <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
 
-          {openTradeList.length > 0 ? (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="h-2.5 w-2.5 rounded-full bg-up animate-pulse" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-up">Positions en direct ({openTradeList.length})</h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {openTradeList.map((t) => (
-                  <LiveTradeCard key={t.id} trade={t}
-                    onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
-                ))}
-              </div>
-            </div>
-          ) : running ? (
-            <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-5 text-center min-h-[200px]">
-              <div className="relative">
-                <div className="h-14 w-14 rounded-full border-2 border-up/30 border-t-up animate-spin" />
-                <Activity className="absolute inset-0 m-auto h-6 w-6 text-up" />
-              </div>
-              <div>
-                <div className="text-base font-semibold text-foreground">En attente de signal</div>
-                <div className="text-sm text-muted-foreground mt-1.5">
-                  <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
+          {/* Positions en direct + derniers trades côte à côte sur grand écran,
+              au lieu de la liste de positions seule en pleine largeur. */}
+          <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
+            <div className="xl:col-span-2">
+              {openTradeList.length > 0 ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="h-2.5 w-2.5 rounded-full bg-up animate-pulse" />
+                    <h2 className="text-sm font-bold uppercase tracking-wider text-up">Positions en direct ({openTradeList.length})</h2>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {openTradeList.map((t) => (
+                      <LiveTradeCard key={t.id} trade={t}
+                        onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : running ? (
+                <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-5 text-center min-h-[200px]">
+                  <div className="relative">
+                    <div className="h-14 w-14 rounded-full border-2 border-up/30 border-t-up animate-spin" />
+                    <Activity className="absolute inset-0 m-auto h-6 w-6 text-up" />
+                  </div>
+                  <div>
+                    <div className="text-base font-semibold text-foreground">En attente de signal</div>
+                    <div className="text-sm text-muted-foreground mt-1.5">
+                      <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center min-h-[200px]">
+                  <Power className="h-10 w-10 text-muted-foreground/20" />
+                  <div className="text-sm text-muted-foreground">Lance le bot pour voir les positions en direct</div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center min-h-[200px]">
-              <Power className="h-10 w-10 text-muted-foreground/20" />
-              <div className="text-sm text-muted-foreground">Lance le bot pour voir les positions en direct</div>
+
+            {/* Derniers trades — historique récent condensé */}
+            <div className="glass-panel rounded-2xl p-5 border border-border/40 shadow-sm flex flex-col">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-300 mb-4 flex items-center gap-1.5 border-b border-border/40 pb-3">
+                <Clock className="h-4 w-4 text-violet-400" /> derniers trades
+              </h2>
+              {recentClosedTrades.length === 0 ? (
+                <p className="text-sm text-neutral-400 py-6 text-center">Aucun trade clôturé.</p>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {recentClosedTrades.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between p-3 rounded-xl bg-white/[0.01] hover:bg-white/[0.02] border border-white/5 transition-all text-sm shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={cn(
+                          "h-2.5 w-2.5 rounded-full shrink-0",
+                          t.status === "won" ? "bg-up animate-pulse" : "bg-down"
+                        )} />
+                        <div className="min-w-0">
+                          <div className="font-semibold text-neutral-200 truncate">
+                            {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={cn(
+                        "font-mono font-bold text-xs px-2 py-0.5 rounded bg-neutral-900 border border-white/5 shrink-0",
+                        t.status === "won" ? "text-up" : "text-down"
+                      )}>
+                        {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
+
+      {/* ── Config + adaptive weights: grouped under the mobile "Config" tab ── */}
+      <div className={cn(mobileTab === "config" ? "block" : "hidden", "md:block space-y-6")}>
 
       {/* ── Config panel (collapsible + tabbed) ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
@@ -1663,7 +1727,10 @@ function AutoTraderPage() {
         );
       })()}
 
-      {/* ── Trade Journal ── */}
+      </div>
+
+      {/* ── Trade Journal — its own mobile tab ── */}
+      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
       <div className="glass-panel rounded-2xl overflow-hidden">
         <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
           onClick={() => setShowLogs((v) => !v)}>
@@ -1766,6 +1833,7 @@ function AutoTraderPage() {
           </div>
         )}
       </div>
+      </div>
 
       {/* ── Disclaimer modal ── */}
       {/* ── Save params popup ── */}
@@ -1845,7 +1913,7 @@ function AutoTraderPage() {
                 "Les signaux sont basés sur des indicateurs passés, pas sur le futur.",
                 "Le circuit-breaker limite les pertes mais ne les élimine pas.",
                 "En mode LIVE, du vrai argent est engagé à chaque trade.",
-                "Lio23 est un outil d'analyse, pas un conseiller financier agréé."
+                "Pluriel est un outil d'analyse, pas un conseiller financier agréé."
               ].map((t, i) => (
                 <li key={i} className="flex gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-down" />

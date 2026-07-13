@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { AuthShell } from "./verify-email";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Réinitialisation — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Réinitialisation — PLURIEL" }] }),
   component: ResetPasswordPage,
 });
 

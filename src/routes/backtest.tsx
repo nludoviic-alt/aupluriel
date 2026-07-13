@@ -23,7 +23,7 @@ import { backtestMultiTf, type MultiTfBacktestResult } from "@/lib/autotrader";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/backtest")({
-  head: () => ({ meta: [{ title: "Backtest — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Backtest — PLURIEL" }] }),
   component: BacktestPage,
 });
 

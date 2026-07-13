@@ -6,7 +6,7 @@
 // navigations and only cache-first for immutable/static files, with old-cache
 // cleanup + immediate takeover on update.
 // v3 bumps the cache name so returning visitors — whose v2 cache still holds
-// the pre-rebrand icons — get evicted and re-fetch the current Lio23 assets
+// the pre-rebrand icons — get evicted and re-fetch the current Pluriel assets
 // instead of being stuck with stale icons forever (cache-first never expires).
 const CACHE_NAME = 'lio23-v3';
 const STATIC_ASSETS = [
@@ -83,7 +83,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Lio23';
+  const title = data.title || 'Pluriel';
   const options = {
     body: data.body || 'Nouveaux signaux disponibles.',
     icon: '/logo-192.png',

@@ -462,8 +462,12 @@ class ServerBotEngine {
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(baseStake, logs) : baseStake;
 
     // ── Candidates + cheap pre-filters ──
+    // Synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR) are excluded even
+    // in all-markets mode: Deriv generates them by RNG, no indicator has a real
+    // edge on them, and long-term winrate ~50% is a structural loss against the
+    // payout (see DEFAULT_CONFIG.symbols comment).
     const candidateSymbols = config.symbolMode === "all-markets"
-      ? SYMBOLS.filter((s) => isSymbolTradeable(s.deriv, config.instrumentType)).map((s) => s.deriv)
+      ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, config.instrumentType)).map((s) => s.deriv)
       : config.symbols;
 
     const toAnalyze: string[] = [];

@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { AuthShell } from "./verify-email";
 
 export const Route = createFileRoute("/forgot-password")({
-  head: () => ({ meta: [{ title: "Mot de passe oublié — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Mot de passe oublié — PLURIEL" }] }),
   component: ForgotPasswordPage,
 });
 

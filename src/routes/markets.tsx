@@ -17,7 +17,7 @@ import { bollinger, ema, macd, rsi, stochastic } from "@/lib/indicators";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/markets")({
-  head: () => ({ meta: [{ title: "Marchés — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Marchés — PLURIEL" }] }),
   component: MarketsPage,
 });
 

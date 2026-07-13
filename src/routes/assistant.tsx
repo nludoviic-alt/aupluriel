@@ -20,7 +20,7 @@ function getAiConfig(): { apiKey: string; provider: string } {
 }
 
 export const Route = createFileRoute("/assistant")({
-  head: () => ({ meta: [{ title: "Assistant — Lio23" }] }),
+  head: () => ({ meta: [{ title: "Assistant — Pluriel" }] }),
   component: DisabledAssistantPage,
 });
 
@@ -321,7 +321,7 @@ function AssistantPage() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-bold tracking-tight">Talk to Lio23</h1>
+          <h1 className="text-base font-bold tracking-tight">Talk to Pluriel</h1>
           <p className="text-xs text-muted-foreground truncate">
             {hasKey ? "Analyse, signaux, stratégies — pose ta question" : "⚠️ Clé API non configurée — configure dans Paramètres"}
           </p>

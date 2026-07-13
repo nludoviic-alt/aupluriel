@@ -16,6 +16,14 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[bot] Restauration au boot échouée:", e));
   }, 3000);
 
+  // Periodic auto-backtest: starts/stops opted-in users' demo bots based on
+  // a recurring replay of the live pipeline (see auto-backtest.server.ts).
+  setTimeout(() => {
+    import("./lib/auto-backtest.server")
+      .then((m) => m.startAutoBacktestScheduler())
+      .catch((e) => console.error("[auto-backtest] Démarrage échoué:", e));
+  }, 5000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so

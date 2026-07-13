@@ -155,6 +155,20 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
       PRIMARY KEY (symbol, component)
     );
+
+    -- Single-row cache of the periodic auto-backtest verdict (see
+    -- auto-backtest.server.ts). The strategy config the server bot trades
+    -- with is identical for every user (DEFAULT_CONFIG, locked), so the
+    -- backtest itself only needs to run once globally every 6h; each
+    -- opted-in user's bot is then started/stopped against this shared
+    -- verdict on a faster sweep.
+    CREATE TABLE IF NOT EXISTS auto_backtest_state (
+      id                  INTEGER PRIMARY KEY CHECK (id = 1),
+      favorable           INTEGER NOT NULL DEFAULT 0,
+      win_rate            REAL,
+      break_even_win_rate REAL,
+      checked_at          INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---
@@ -195,6 +209,12 @@ function migrate(db: Database.Database) {
   );
   if (!settingsCols.has("default_stake_usd")) {
     db.exec("ALTER TABLE user_settings ADD COLUMN default_stake_usd REAL DEFAULT 5");
+  }
+  if (!settingsCols.has("auto_backtest_enabled")) {
+    // When set, the demo-mode server bot is auto-started/stopped by the
+    // periodic auto-backtest verdict instead of purely manual control —
+    // never applies to a "live" mode bot (see auto-backtest.server.ts).
+    db.exec("ALTER TABLE user_settings ADD COLUMN auto_backtest_enabled INTEGER NOT NULL DEFAULT 0");
   }
 
   // Promote the configured admin email if that account already exists.

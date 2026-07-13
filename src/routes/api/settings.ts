@@ -29,6 +29,7 @@ export const Route = createFileRoute("/api/settings")({
           risk_per_trade?: number;
           max_drawdown?: number;
           default_stake_usd?: number;
+          auto_backtest_enabled?: boolean;
         };
 
         const db = getDb();
@@ -40,7 +41,8 @@ export const Route = createFileRoute("/api/settings")({
               ai_api_key = COALESCE(?, ai_api_key),
               risk_per_trade = COALESCE(?, risk_per_trade),
               max_drawdown = COALESCE(?, max_drawdown),
-              default_stake_usd = COALESCE(?, default_stake_usd)
+              default_stake_usd = COALESCE(?, default_stake_usd),
+              auto_backtest_enabled = COALESCE(?, auto_backtest_enabled)
           WHERE user_id = ?
         `).run(
           body.deriv_token ?? null,
@@ -50,6 +52,7 @@ export const Route = createFileRoute("/api/settings")({
           body.risk_per_trade ?? null,
           body.max_drawdown ?? null,
           body.default_stake_usd ?? null,
+          body.auto_backtest_enabled === undefined ? null : (body.auto_backtest_enabled ? 1 : 0),
           auth.userId,
         );
 

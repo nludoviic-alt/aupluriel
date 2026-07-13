@@ -9,7 +9,7 @@ import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/alerts")({
-  head: () => ({ meta: [{ title: "Alertes — LIO23" }] }),
+  head: () => ({ meta: [{ title: "Alertes — PLURIEL" }] }),
   component: AlertsPage,
 });
 

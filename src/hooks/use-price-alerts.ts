@@ -89,7 +89,7 @@ export function usePriceAlerts(enabled = true) {
             const msg = `${alert.pair} ${alert.condition === ">" ? "a dépassé" : "est passé sous"} ${alert.value.toLocaleString()}`;
             toast.success(`${emoji} Alerte prix — ${msg}`, { duration: 8000 });
             sendNotification(
-              `${emoji} LIO23 — Alerte prix ${alert.pair}`,
+              `${emoji} PLURIEL — Alerte prix ${alert.pair}`,
               `Prix actuel: ${tick.quote.toLocaleString()} · Condition: ${alert.condition} ${alert.value.toLocaleString()}`,
               `alert-price-${alert.id}`,
             );
@@ -117,7 +117,7 @@ export function usePriceAlerts(enabled = true) {
           saveFired(firedRef.current);
           toast.warning(`🛑 Drawdown ${drawdownPct.toFixed(2)}% dépassé (seuil: ${alert.value}%)`, { duration: 10_000 });
           sendNotification(
-            "🛑 LIO23 — Drawdown dépassé",
+            "🛑 PLURIEL — Drawdown dépassé",
             `Perte journalière: $${Math.abs(pnl).toFixed(2)} · Seuil: ${alert.value}%`,
             `alert-drawdown-${alert.id}`,
           );
