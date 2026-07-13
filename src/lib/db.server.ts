@@ -202,6 +202,13 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE bot_trades ADD COLUMN stop_loss REAL");
     db.exec("ALTER TABLE bot_trades ADD COLUMN take_profit REAL");
   }
+  if (!botTradeCols.has("mode")) {
+    // 'demo' | 'live' — which Deriv account the trade ran on. Without this,
+    // today/all-time stats summed demo test trades and real money together;
+    // NULL on rows written before this migration (filtered as a wildcard, see
+    // getTodayStats/getAllTimeStats) so old history doesn't just vanish.
+    db.exec("ALTER TABLE bot_trades ADD COLUMN mode TEXT");
+  }
 
   // --- Additive column migrations on `user_settings` (idempotent) ---
   const settingsCols = new Set(

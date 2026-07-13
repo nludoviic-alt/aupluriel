@@ -160,7 +160,11 @@ export const CONSERVATIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 4,
   maxConsecutiveLosses: 2,
   maxVolatilityPct: 2,
-  symbols: ["R_25", "R_50", "frxEURUSD"],
+  // Paires forex majeures uniquement — pas d'indices synthétiques (R_*) : ce
+  // sont des séries générées par RNG chez Deriv, aucun edge réel possible,
+  // winrate long terme ~50% = perte structurelle face au payout (voir
+  // DEFAULT_CONFIG.symbols dans signal-core.ts).
+  symbols: ["frxEURUSD", "frxUSDCHF"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: true,
@@ -192,7 +196,9 @@ export const MODERATE_PRESET: PresetConfig = {
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  symbols: ["R_100", "R_50", "frxEURUSD"],
+  // Pas d'indices synthétiques (R_*) — mêmes raisons que le preset
+  // Conservateur. cryBTCUSD couvre les heures hors session forex (Multiplier).
+  symbols: ["frxEURUSD", "frxGBPUSD", "cryBTCUSD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -224,7 +230,9 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  symbols: ["R_100", "R_75", "R_50", "1HZ100V", "frxEURUSD", "frxGBPUSD"],
+  // Pas d'indices synthétiques (R_*, 1HZ*) — mêmes raisons que les autres
+  // presets. Panier élargi forex + or + crypto pour le volume visé.
+  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxXAUUSD", "cryBTCUSD", "cryETHUSD"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -1246,9 +1254,22 @@ export function startAutoTrader(
           try {
             const exitCandles = await fetchCandles(symbol, GRANULARITY["1m"], 2);
             const exitPrice = exitCandles[exitCandles.length - 1]?.close ?? 0;
-            const won = entryPrice > 0 && exitPrice > 0
-              ? (analysis.direction === "CALL" ? exitPrice > entryPrice : exitPrice < entryPrice)
-              : Math.random() < Math.min(0.65, analysis.confidence / 100);
+            // Simulation must reflect a real price move — no Deriv contract actually
+            // resolved. Without both prices there's nothing honest to score, so the
+            // trade is voided (not counted in P&L/win-rate) instead of coin-flipping
+            // a result: a fabricated win/loss here used to inflate simulated stats
+            // with outcomes that never happened.
+            if (entryPrice <= 0 || exitPrice <= 0) {
+              emit({
+                ...pendingLog,
+                status: "error",
+                profit: 0,
+                closedAt: Date.now(),
+                note: "Simulation annulée — prix indisponible pour évaluer le résultat",
+              });
+              return;
+            }
+            const won = analysis.direction === "CALL" ? exitPrice > entryPrice : exitPrice < entryPrice;
             const profit = won ? stakeForTrade * payoutRatio : -stakeForTrade;
             emit({
               ...pendingLog,
@@ -1258,16 +1279,12 @@ export function startAutoTrader(
               closedAt: Date.now(),
             });
           } catch {
-            const winProb = Math.min(0.65, analysis.confidence / 100);
-            const won = Math.random() < winProb;
-            const profit = won ? stakeForTrade * payoutRatio : -stakeForTrade;
             emit({
               ...pendingLog,
-              status: won ? "won" : "lost",
-              profit,
-              payout: won ? stakeForTrade + profit : 0,
+              status: "error",
+              profit: 0,
               closedAt: Date.now(),
-              note: "Simulation (prix temps réel indisponible)",
+              note: "Simulation annulée — prix temps réel indisponible",
             });
           } finally {
             activeSymbols.delete(symbol);

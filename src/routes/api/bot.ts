@@ -26,16 +26,27 @@ export const Route = createFileRoute("/api/bot")({
           .get(user.id) as { enabled: number; config: string } | undefined;
         const runtime = getBotRuntime(user.id);
         const trades = getBotTrades(user.id, 20);
+        // Scope stats to the account currently configured (demo vs live) —
+        // otherwise demo test trades and real-money trades summed into the
+        // same total, making the numbers look wrong/inconsistent to the user.
+        const mode: "demo" | "live" = (() => {
+          try {
+            return JSON.parse(state?.config ?? "{}").mode === "live" ? "live" : "demo";
+          } catch {
+            return "demo";
+          }
+        })();
         // SQL over ALL of today's rows — summing the 20-trade window instead
         // made early wins vanish from the display as new events pushed them out.
-        const today = getTodayStats(user.id);
+        const today = getTodayStats(user.id, mode);
         // All-time record — shown before a live-mode start so that decision is
         // informed by this user's actual track record, not a guess.
-        const allTime = getAllTimeStats(user.id);
+        const allTime = getAllTimeStats(user.id, mode);
 
         return json({
           enabled: !!state?.enabled,
           running: runtime.running,
+          mode,
           pausedUntil: runtime.pausedUntil,
           lastScan: runtime.lastScan,
           lastError: runtime.lastError,

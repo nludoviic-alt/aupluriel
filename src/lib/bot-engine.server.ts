@@ -9,7 +9,9 @@
 // - Learned indicator weights come from indicator_stats in SQLite — SHARED
 //   across all users, so every user's closed trades train the same weights
 //   (the browser engine's localStorage learning stays per-user).
-// - stakeMode "kelly" falls back to fixed/percent (backtest stats are client-side).
+// - stakeMode "kelly" is measured off this user's own bot_trades history for
+//   the symbol+mode (see computeKellyStakeServer), not the browser's
+//   localStorage backtest sample — same formula and 5%-of-balance cap.
 // - Trades are persisted to bot_trades; risk pauses to bot_state.paused_until,
 //   so a Railway restart resumes exactly where it left off.
 
@@ -24,6 +26,7 @@ import {
   analyzeSymbolCore,
   computeAdaptiveStake,
   computeAtrStopUsd,
+  computeKellyFraction,
   countConsecutiveLosses,
   is24x7Symbol,
   isCorrelatedWithActive,
@@ -95,10 +98,10 @@ function logFromRow(r: BotTradeRow): TradeLog {
   };
 }
 
-function upsertTrade(userId: number, log: TradeLog) {
+function upsertTrade(userId: number, log: TradeLog, mode: "demo" | "live") {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -110,6 +113,7 @@ function upsertTrade(userId: number, log: TradeLog) {
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
+    mode,
   });
 }
 
@@ -126,7 +130,7 @@ function loadRecentTrades(userId: number, limit = 50): TradeLog[] {
  * them silently drops the day's earlier wins once enough events accumulate
  * (the "my gain disappeared" bug).
  */
-export function getTodayStats(userId: number): { pnl: number; count: number } {
+export function getTodayStats(userId: number, mode?: "demo" | "live"): { pnl: number; count: number } {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const row = getDb()
@@ -134,9 +138,9 @@ export function getTodayStats(userId: number): { pnl: number; count: number } {
       `SELECT
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl,
          COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count
-       FROM bot_trades WHERE user_id = ? AND time >= ?`,
+       FROM bot_trades WHERE user_id = @userId AND time >= @start AND (@mode IS NULL OR mode = @mode OR mode IS NULL)`,
     )
-    .get(userId, start.getTime()) as { pnl: number; count: number };
+    .get({ userId, start: start.getTime(), mode: mode ?? null }) as { pnl: number; count: number };
   return row;
 }
 
@@ -148,18 +152,55 @@ export function getTodayStats(userId: number): { pnl: number; count: number } {
  * showing someone else's win rate to justify THEIR real-money risk would be
  * misleading — this stays scoped to the user's own trades.
  */
-export function getAllTimeStats(userId: number): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
+export function getAllTimeStats(userId: number, mode?: "demo" | "live"): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
   const row = getDb()
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
          COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl
-       FROM bot_trades WHERE user_id = ?`,
+       FROM bot_trades WHERE user_id = @userId AND (@mode IS NULL OR mode = @mode OR mode IS NULL)`,
     )
-    .get(userId) as { wins: number; losses: number; pnl: number };
+    .get({ userId, mode: mode ?? null }) as { wins: number; losses: number; pnl: number };
   const trades = row.wins + row.losses;
   return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
+}
+
+/**
+ * Server-side counterpart to the browser's computeKellyStake (autotrader.ts) —
+ * same formula and 5%-of-balance cap, but measured off this user's own closed
+ * bot_trades for the symbol+mode instead of a browser-local backtest sample
+ * (the server has no access to localStorage). Previously stakeMode "kelly"
+ * silently fell back to fixed/percent sizing on the server; this is that gap.
+ * Returns null (caller falls back to fixed/percent) below a 20-trade sample.
+ */
+function computeKellyStakeServer(
+  userId: number,
+  symbol: string,
+  mode: "demo" | "live",
+  balance: number,
+  kellyFraction: number,
+): number | null {
+  const rows = getDb()
+    .prepare(
+      `SELECT status, stake, profit FROM bot_trades
+       WHERE user_id = @userId AND symbol = @symbol AND mode = @mode AND status IN ('won','lost')
+       ORDER BY time DESC LIMIT 200`,
+    )
+    .all({ userId, symbol, mode }) as { status: string; stake: number; profit: number }[];
+  if (rows.length < 20) return null;
+
+  const wins = rows.filter((r) => r.status === "won");
+  const winRate = wins.length / rows.length;
+  const avgPayoutRatio = wins.length
+    ? wins.reduce((sum, r) => sum + (r.stake > 0 ? r.profit / r.stake : 0), 0) / wins.length
+    : 0;
+
+  const kelly = computeKellyFraction(winRate, avgPayoutRatio);
+  if (kelly <= 0) return null; // measured edge is flat/negative — don't size up
+
+  const pct = Math.min(kelly * kellyFraction, 0.05);
+  return Math.max(1, balance * pct);
 }
 
 export function loadBotConfig(userId: number): AutoTraderConfig | null {
@@ -223,7 +264,7 @@ class ServerBotEngine {
     if (idx >= 0) this.logs[idx] = log;
     else this.logs.unshift(log);
     if (this.logs.length > 60) this.logs.length = 60;
-    upsertTrade(this.userId, log);
+    upsertTrade(this.userId, log, this.config.mode === "live" ? "live" : "demo");
     this.notify(log, prevStatus);
   }
 
@@ -570,6 +611,20 @@ class ServerBotEngine {
         continue;
       }
 
+      // Stake for THIS trade: Kelly (per-symbol measured edge from this user's
+      // own bot_trades history) when enabled and enough of a sample exists,
+      // otherwise the fixed/percent/adaptive stake already computed above.
+      let stakeForTrade = effectiveStake;
+      if (config.stakeMode === "kelly") {
+        const kellyStake = computeKellyStakeServer(
+          this.userId, symbol, this.config.mode === "live" ? "live" : "demo",
+          currentBalance ?? effectiveStake, config.kellyFraction,
+        );
+        if (kellyStake !== null) {
+          stakeForTrade = config.adaptiveStake ? computeAdaptiveStake(kellyStake, logs) : kellyStake;
+        }
+      }
+
       const isMultiplier = config.instrumentType === "multiplier";
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
@@ -584,7 +639,7 @@ class ServerBotEngine {
         // the win rate needed just to break even. Read-only quote, no money
         // committed; a null result (quote unavailable) doesn't block the trade.
         const payoutRatio = await this.conn.getPayoutRatio({
-          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
+          symbol, amount: stakeForTrade, contractType: analysis.direction, durationMinutes: tradeDuration,
         });
         if (payoutRatio !== null && payoutRatio < config.minPayoutRatio) {
           scanResults.push({
@@ -610,10 +665,10 @@ class ServerBotEngine {
       // ATR mode ties the distance to the symbol's actual current volatility
       // instead of a flat % of stake that's blind to market conditions.
       const { stopLossUsd, takeProfitUsd } = config.atrStopMode
-        ? computeAtrStopUsd(effectiveStake, config.multiplierLevel, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
+        ? computeAtrStopUsd(stakeForTrade, config.multiplierLevel, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
         : {
-            stopLossUsd: Math.round(effectiveStake * (config.stopLossPctOfStake / 100) * 100) / 100,
-            takeProfitUsd: Math.round(effectiveStake * (config.takeProfitPctOfStake / 100) * 100) / 100,
+            stopLossUsd: Math.round(stakeForTrade * (config.stopLossPctOfStake / 100) * 100) / 100,
+            takeProfitUsd: Math.round(stakeForTrade * (config.takeProfitPctOfStake / 100) * 100) / 100,
           };
 
       const pendingLog: TradeLog = {
@@ -621,7 +676,7 @@ class ServerBotEngine {
         time: Date.now(),
         symbol,
         direction: isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction,
-        stake: effectiveStake,
+        stake: stakeForTrade,
         payout: 0,
         status: "pending",
         profit: 0,
@@ -639,7 +694,7 @@ class ServerBotEngine {
       try {
         if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
-            symbol, amount: effectiveStake, direction: analysis.direction,
+            symbol, amount: stakeForTrade, direction: analysis.direction,
             multiplier: config.multiplierLevel, stopLossUsd, takeProfitUsd,
           });
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
@@ -648,7 +703,7 @@ class ServerBotEngine {
         } else {
           const bought = await this.conn.proposeAndBuy({
             symbol,
-            amount: effectiveStake,
+            amount: stakeForTrade,
             contractType: analysis.direction,
             durationMinutes: tradeDuration,
           });

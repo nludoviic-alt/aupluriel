@@ -299,6 +299,7 @@ function AutoTraderPage() {
   interface CloudStatus {
     enabled: boolean;
     running: boolean;
+    mode: "demo" | "live";
     pausedUntil: number | null;
     lastError?: string | null;
     todayPnl: number;
@@ -414,7 +415,7 @@ function AutoTraderPage() {
     setConfig(loaded);
     setDraftDuration(loaded.durationMinutes);
     setDraftMaxTrades(loaded.maxTradesPerDay);
-    setForceSymbol(loaded.symbols[0] ?? "R_100");
+    setForceSymbol(loaded.symbols[0] ?? "frxEURUSD");
     setForceStake(loaded.stakeUsd);
     setCumulativePnl(loadCumulativePnl());
     const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
