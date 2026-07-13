@@ -119,7 +119,7 @@ function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto pb-24">
+    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24">
       {/* Header Panel */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-white/[0.01] border border-white/5 p-4.5 rounded-2xl shadow-sm">
         <div>
