@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3, CheckCircle2, Download, Info, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { loadTradeLog, type TradeLog } from "@/lib/autotrader";
 import {
   bySession,
@@ -43,7 +44,7 @@ function JournalPage() {
   const hasData = s.trades > 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -75,7 +76,7 @@ function JournalPage() {
       {hasData && (
         <>
           {/* Summary KPIs */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Stat label="Trades clôturés" value={String(s.trades)} sub={`${s.wins}W / ${s.losses}L`} />
             <Stat label="Win Rate" value={`${s.winRate.toFixed(1)}%`} tone={s.winRate >= 55 ? "bull" : "bear"} />
             <Stat
@@ -91,7 +92,7 @@ function JournalPage() {
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Stat label="Gain moyen" value={`+$${s.avgWin.toFixed(2)}`} tone="bull" />
             <Stat label="Perte moyenne" value={`-$${s.avgLoss.toFixed(2)}`} tone="bear" />
             <Stat
@@ -162,13 +163,33 @@ function JournalPage() {
           {/* Heatmap */}
           {days.length > 0 && <PerfHeatmap days={days} />}
 
-          {/* Breakdowns */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          {/* Breakdowns — 4 tables stacked eat a lot of mobile scroll for info
+              that's secondary to the KPIs/curve above, so they collapse into
+              an accordion there; desktop keeps the always-visible 2-col grid. */}
+          <div className="hidden md:grid gap-4 lg:grid-cols-2">
             <BreakdownTable title="Par paire" buckets={symbols} />
             <BreakdownTable title="Par session" buckets={sessions} />
             <BreakdownTable title="Par niveau de confiance" buckets={confidence} />
             <BreakdownTable title="Par heure (locale)" buckets={hours} />
           </div>
+          <Accordion type="single" collapsible className="md:hidden glass-panel rounded-xl px-4">
+            <AccordionItem value="symbol" className="border-border/40">
+              <AccordionTrigger>Par paire</AccordionTrigger>
+              <AccordionContent><BreakdownTable buckets={symbols} bare /></AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="session" className="border-border/40">
+              <AccordionTrigger>Par session</AccordionTrigger>
+              <AccordionContent><BreakdownTable buckets={sessions} bare /></AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="confidence" className="border-border/40">
+              <AccordionTrigger>Par niveau de confiance</AccordionTrigger>
+              <AccordionContent><BreakdownTable buckets={confidence} bare /></AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="hour" className="border-none">
+              <AccordionTrigger>Par heure (locale)</AccordionTrigger>
+              <AccordionContent><BreakdownTable buckets={hours} bare /></AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </>
       )}
     </div>
@@ -250,12 +271,9 @@ function PerfHeatmap({ days }: { days: DayBucket[] }) {
   );
 }
 
-function BreakdownTable({ title, buckets }: { title: string; buckets: Bucket[] }) {
-  return (
-    <div className="glass-panel rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-border/40">
-        <h3 className="text-sm font-semibold">{title}</h3>
-      </div>
+function BreakdownTable({ title, buckets, bare = false }: { title?: string; buckets: Bucket[]; bare?: boolean }) {
+  const content = (
+    <>
       {buckets.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">Aucune donnée</div>
       ) : (
@@ -294,6 +312,17 @@ function BreakdownTable({ title, buckets }: { title: string; buckets: Bucket[] }
           </tbody>
         </table>
       )}
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <div className="glass-panel rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border/40">
+        <h3 className="text-sm font-semibold">{title}</h3>
+      </div>
+      {content}
     </div>
   );
 }

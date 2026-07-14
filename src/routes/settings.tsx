@@ -8,6 +8,7 @@ import { api, clearToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
+import { CollapsibleSection } from "@/components/collapsible-section";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -143,17 +144,13 @@ function SettingsPage() {
 
         {/* LEFT COLUMN: Connection & Broker */}
         <div className="space-y-6">
-          <div className="glass-panel rounded-2xl p-6 border border-red-500/25 bg-gradient-to-b from-red-500/[0.02] to-transparent shadow-sm space-y-5">
-            <div className="flex items-start gap-3">
-              <KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-red-400" />
-              <div>
-                <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">Connexion Broker</h2>
-                <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                  Associez votre compte réel ou de démonstration pour l'exécution des ordres.
-                </p>
-              </div>
-            </div>
-
+          <CollapsibleSection
+            icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-red-400" />}
+            title="Connexion Broker"
+            description="Associez votre compte réel ou de démonstration pour l'exécution des ordres."
+            defaultOpen
+            accentClassName="border-red-500/25 bg-gradient-to-b from-red-500/[0.02] to-transparent"
+          >
             <div className="space-y-4">
               <div className="text-xs md:text-sm text-muted-foreground leading-relaxed">
                 Créez une clé d'accès sur{" "}
@@ -243,21 +240,14 @@ function SettingsPage() {
                 </div>
               )}
             </div>
-          </div>
+          </CollapsibleSection>
 
           {/* Auto-Backtest Card */}
-          <div className="glass-panel rounded-2xl p-6 border border-border/40 shadow-sm space-y-5">
-            <div className="flex items-start gap-3">
-              <FlaskConical className="mt-1 h-5.5 w-5.5 text-cyan-400 shrink-0" />
-              <div>
-                <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">Backtest automatique</h2>
-                <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                  Rejoue le pipeline live toutes les 6h. Si le win rate mesuré dépasse le seuil de rentabilité,
-                  le bot serveur démarre en Démo ; sinon il s'arrête. Le mode Live n'est jamais touché.
-                </p>
-              </div>
-            </div>
-
+          <CollapsibleSection
+            icon={<FlaskConical className="mt-1 h-5.5 w-5.5 text-cyan-400 shrink-0" />}
+            title="Backtest automatique"
+            description="Rejoue le pipeline live toutes les 6h. Si le win rate mesuré dépasse le seuil de rentabilité, le bot serveur démarre en Démo ; sinon il s'arrête. Le mode Live n'est jamais touché."
+          >
             <div
               className={cn(
                 "flex items-center justify-between p-3.5 rounded-xl border transition-all",
@@ -274,23 +264,18 @@ function SettingsPage() {
             </div>
 
             {autoBacktestEnabled && <AutoBacktestStatus />}
-          </div>
+          </CollapsibleSection>
         </div>
 
         {/* RIGHT COLUMN: Risk & AI */}
         <div className="space-y-6">
           {/* Risk Management Card */}
-          <div className="glass-panel rounded-2xl p-6 border border-border/40 shadow-sm space-y-5">
-            <div className="flex items-start gap-3">
-              <ShieldAlert className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />
-              <div>
-                <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">Gestion du risque</h2>
-                <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                  Appliqué automatiquement à tous les signaux et ordres.
-                </p>
-              </div>
-            </div>
-
+          <CollapsibleSection
+            icon={<ShieldAlert className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
+            title="Gestion du risque"
+            description="Appliqué automatiquement à tous les signaux et ordres."
+            defaultOpen
+          >
             <div className="space-y-4">
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">
@@ -353,20 +338,14 @@ function SettingsPage() {
                 </div>
               )}
             </div>
-          </div>
+          </CollapsibleSection>
 
           {/* AI Assistant Card */}
-          <div className="glass-panel rounded-2xl p-6 border border-border/40 shadow-sm space-y-5">
-            <div className="flex items-start gap-3">
-              <Bot className="mt-1 h-5.5 w-5.5 text-violet-400 shrink-0" />
-              <div>
-                <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">Assistant IA</h2>
-                <p className="text-xs md:text-sm text-muted-foreground mt-1">
-                  Choisis ton fournisseur IA et entre ta clé API. Elle est stockée localement.
-                </p>
-              </div>
-            </div>
-
+          <CollapsibleSection
+            icon={<Bot className="mt-1 h-5.5 w-5.5 text-violet-400 shrink-0" />}
+            title="Assistant IA"
+            description="Choisis ton fournisseur IA et entre ta clé API. Elle est stockée localement."
+          >
             <div className="space-y-4">
               {/* Provider selector */}
               <div className="space-y-2">
@@ -458,7 +437,7 @@ function SettingsPage() {
                 </p>
               )}
             </div>
-          </div>
+          </CollapsibleSection>
         </div>
       </div>
 

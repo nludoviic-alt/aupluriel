@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { KpiCard } from "@/components/kpi-card";
+import { CollapsibleBlock } from "@/components/collapsible-section";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -413,24 +414,28 @@ function AdminPage() {
       </div>
 
       {/* ── USER MANAGEMENT SECTION ── */}
-      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-foreground">Gestion des Utilisateurs</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Approuvez, révoquez ou supprimez des comptes.</p>
+      <CollapsibleBlock
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+        defaultOpen
+        header={
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Gestion des Utilisateurs</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Approuvez, révoquez ou supprimez des comptes.</p>
+            </div>
+            <div className="relative w-full sm:w-64 group">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher pseudo / email..."
+                className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
+              />
+            </div>
           </div>
-          <div className="relative w-full sm:w-64 group">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher pseudo / email..."
-              className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
-            />
-          </div>
-        </div>
-
+        }
+      >
         {/* Desktop View Table */}
         <div className="hidden md:block overflow-x-auto rounded-xl border border-white/[0.06]">
           <table className="w-full text-sm">
@@ -672,16 +677,18 @@ function AdminPage() {
             })
           )}
         </div>
-      </div>
+      </CollapsibleBlock>
 
       {/* ── INVITE CODES SECTION ── */}
-      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-foreground">Codes d'invitation</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Génère un code lié à un email et envoie-le automatiquement.</p>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto">
+      <CollapsibleBlock
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+        header={
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Codes d'invitation</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Génère un code lié à un email et envoie-le automatiquement.</p>
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64 group">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
               <input
@@ -703,7 +710,8 @@ function AdminPage() {
             </Button>
           </div>
         </div>
-
+        }
+      >
         <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
@@ -786,21 +794,24 @@ function AdminPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </CollapsibleBlock>
 
       {/* ── TRADING RECAP BY USER ── */}
-      <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-foreground">Récapitulatif de Trading</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
+      <CollapsibleBlock
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+        header={
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Récapitulatif de Trading</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04]">
+              <RefreshCw className={cn("h-4 w-4 mr-1.5", recapLoading && "animate-spin")} />
+              Actualiser
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04]">
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", recapLoading && "animate-spin")} />
-            Actualiser
-          </Button>
-        </div>
-
+        }
+      >
         <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
@@ -878,15 +889,19 @@ function AdminPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </CollapsibleBlock>
 
       {/* ── BACKTEST vs REAL GAUGE ── */}
       {backtestVsReal && (
-        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
-          </div>
+        <CollapsibleBlock
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          header={
+            <div>
+              <h2 className="text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
+            </div>
+          }
+        >
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 border border-white/[0.06] rounded-xl p-4 bg-white/[0.01]">
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">EV Théorique</span>
@@ -927,18 +942,22 @@ function AdminPage() {
               )}
             </div>
           </div>
-        </div>
+        </CollapsibleBlock>
       )}
 
       {/* ── CONFIDENCE CALIBRATION ── */}
       {calibration.length > 0 && (
-        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-foreground">Calibration de la Confiance</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
-            </p>
-          </div>
+        <CollapsibleBlock
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          header={
+            <div>
+              <h2 className="text-base font-bold text-foreground">Calibration de la Confiance</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
+              </p>
+            </div>
+          }
+        >
           <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
@@ -974,22 +993,25 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </CollapsibleBlock>
       )}
 
       {/* ── SHARED BRAIN METER ── */}
       {componentBreakdown.length > 0 && (
-        <div className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
-              <BrainCircuit className="h-4.5 w-4.5" />
+        <CollapsibleBlock
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          header={
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
+                <BrainCircuit className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Formule adaptative du cerveau de trading partagé entre tous les utilisateurs.</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Formule adaptative du cerveau de trading partagé entre tous les utilisateurs.</p>
-            </div>
-          </div>
-
+          }
+        >
           <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
             <table className="w-full text-sm">
               <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
@@ -1041,7 +1063,7 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </CollapsibleBlock>
       )}
 
       {/* ── CREATE USER DIALOG ── */}

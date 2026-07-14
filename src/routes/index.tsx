@@ -1,19 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowUpRight, Bot, BriefcaseBusiness,
   Radar, Wallet, Zap, TrendingUp, TrendingDown,
-  BarChart2, Sparkles, Trophy, ChevronRight,
+  BarChart2, Sparkles, Trophy, ChevronRight, Power, Settings2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { PriceChart } from "@/components/price-chart";
 import { SignalCard, type SignalItem } from "@/components/signal-card";
+import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { useDerivCandles, useDerivTicks } from "@/hooks/use-deriv";
 import { generateSignal } from "@/lib/indicators";
 import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -164,6 +167,9 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* ── BOT STATUS (mobile only — Auto-Trader isn't in the bottom nav) ── */}
+      <BotStatusCard />
+
       {/* ── 4 KPI CARDS ── */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
@@ -289,8 +295,9 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Sessions marchés */}
-          <div className="glass-panel rounded-2xl p-4">
+          {/* Sessions marchés — desktop only, secondary info that ate mobile
+              scroll space without being actionable there. */}
+          <div className="hidden md:block glass-panel rounded-2xl p-4">
             <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60 mb-3">Sessions marchés</div>
             <div className="space-y-3">
               {[
@@ -382,6 +389,139 @@ function Dashboard() {
         <p className="text-xs text-muted-foreground/60 leading-relaxed">
           Le trading comporte des risques significatifs. Pluriel fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Bot status card (mobile only) ───────────────────────────────────────────────
+// Auto-Trader lost its bottom-nav slot in the app-like mobile redesign — this
+// keeps bot control one tap away from the Dashboard instead of two. Start
+// always reuses the user's last SAVED config (from /autotrader) rather than
+// blind-defaulting, so a quick tap here can't silently reset their stake or
+// flip live back to demo (see savedConfig in routes/api/bot.ts).
+
+interface CloudBotStatus {
+  enabled: boolean;
+  running: boolean;
+  mode: "demo" | "live";
+  pausedUntil: number | null;
+  todayPnl: number;
+  todayCount: number;
+  allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
+  savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+}
+
+function BotStatusCard() {
+  const [status, setStatus] = useState<CloudBotStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { confirmState, confirm } = useConfirm();
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api.get<CloudBotStatus>("/api/bot");
+      setStatus(data);
+    } catch { /* signed out or server unreachable — leave as-is */ }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 20_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  async function toggle() {
+    if (busy || !status) return;
+    setBusy(true);
+    try {
+      if (status.enabled) {
+        await api.post("/api/bot", { action: "stop" });
+        toast.info("Bot serveur arrêté");
+      } else if (status.savedConfig) {
+        if (status.savedConfig.mode === "live") {
+          const { trades, winRate } = status.allTimeStats;
+          const sampleLine = trades < 20
+            ? `⚠️ Seulement ${trades} trade(s) enregistré(s) — échantillon trop faible pour juger la fiabilité.`
+            : `Historique : ${trades} trades, ${Math.round(winRate * 100)}% de réussite.`;
+          const ok = await confirm({
+            title: "Démarrer le bot en mode LIVE ?",
+            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${status.savedConfig.stakeUsd} par trade. Limite journalière : $${status.savedConfig.maxDailyLossUsd}.\n\n${sampleLine}`,
+            confirmLabel: "Démarrer en réel",
+            danger: true,
+          });
+          if (!ok) return;
+        }
+        await api.post("/api/bot", { action: "start", config: status.savedConfig });
+        toast.success(status.savedConfig.mode === "live" ? "☁️ Bot démarré en LIVE — argent réel" : "☁️ Bot démarré");
+      }
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur bot serveur");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!status) return null;
+
+  const isLive = status.mode === "live";
+  const paused = !!status.pausedUntil && status.pausedUntil > Date.now();
+  const canToggle = status.enabled || !!status.savedConfig;
+
+  return (
+    <div className="md:hidden glass-panel rounded-2xl p-4 flex items-center justify-between gap-3">
+      <ConfirmDialog state={confirmState} />
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+          status.enabled ? (isLive ? "bg-[color:var(--down)]/15" : "bg-[color:var(--up)]/15") : "bg-muted/15",
+        )}>
+          <Zap className={cn("h-5 w-5", status.enabled ? (isLive ? "text-[color:var(--down)]" : "text-[color:var(--up)]") : "text-muted-foreground")} />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-bold text-foreground">Bot Auto-Trader</span>
+            <span className={cn(
+              "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+              isLive ? "bg-[color:var(--down)]/15 text-[color:var(--down)]" : "bg-[color:var(--up)]/15 text-[color:var(--up)]",
+            )}>
+              {isLive ? "Live" : "Démo"}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            {paused ? "En pause (risque)" : status.enabled ? "Actif" : "Arrêté"}
+            {status.enabled && !paused && ` · ${status.todayPnl >= 0 ? "+" : ""}$${status.todayPnl.toFixed(2)} auj.`}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Link
+          to="/autotrader"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Link>
+        {canToggle ? (
+          <button
+            onClick={toggle}
+            disabled={busy}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:opacity-50",
+              status.enabled
+                ? "bg-[color:var(--down)]/15 text-[color:var(--down)] hover:bg-[color:var(--down)]/25"
+                : "bg-[color:var(--up)]/15 text-[color:var(--up)] hover:bg-[color:var(--up)]/25",
+            )}
+          >
+            <Power className="h-4 w-4" />
+          </button>
+        ) : (
+          <Link
+            to="/autotrader"
+            className="rounded-xl bg-orange-500/15 px-3 py-2 text-xs font-bold text-orange-400 transition-colors hover:bg-orange-500/25"
+          >
+            Configurer
+          </Link>
+        )}
       </div>
     </div>
   );

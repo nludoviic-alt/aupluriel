@@ -1,25 +1,34 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, Radar, BriefcaseBusiness, X, Menu } from "lucide-react";
+import { LayoutDashboard, LineChart, NotebookText, Settings, ShieldCheck, X, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
+// App-like mobile nav: only the destinations someone taps every session.
+// Signaux/Auto-Trader/Portfolio/Marchés/etc. moved to the header drawer
+// (still one tap away) — Auto-Trader's status/toggle now lives on the
+// Dashboard instead so bot control stays a single tap, just not a nav slot.
 const PRIMARY_ITEMS = [
-  { title: "Accueil",      url: "/",           icon: LayoutDashboard },
-  { title: "Signaux",      url: "/signals",    icon: Radar },
-  { title: "Auto-Trader",  url: "/autotrader", icon: Zap },
-  { title: "Portfolio",    url: "/portfolio",  icon: BriefcaseBusiness },
+  { title: "Dashboard",  url: "/",          icon: LayoutDashboard },
+  { title: "Backtest",   url: "/backtest",  icon: LineChart },
+  { title: "Journal",    url: "/journal",   icon: NotebookText },
+  { title: "Paramètres", url: "/settings",  icon: Settings },
 ] as const;
+
+const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const;
 
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const { toggleSidebar, openMobile } = useSidebar();
+  const { user } = useAuth();
+  const items = user?.is_admin ? [...PRIMARY_ITEMS, ADMIN_ITEM] : PRIMARY_ITEMS;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border/60 bg-background/95 backdrop-blur-xl safe-area-bottom">
       <div className="flex items-stretch h-16">
-        {PRIMARY_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = isActive(item.url);
           return (
             <Link

@@ -29,13 +29,20 @@ export const Route = createFileRoute("/api/bot")({
         // Scope stats to the account currently configured (demo vs live) —
         // otherwise demo test trades and real-money trades summed into the
         // same total, making the numbers look wrong/inconsistent to the user.
-        const mode: "demo" | "live" = (() => {
+        const savedConfig = (() => {
+          if (!state?.config) return null;
           try {
-            return JSON.parse(state?.config ?? "{}").mode === "live" ? "live" : "demo";
+            const saved = JSON.parse(state.config) as Partial<AutoTraderConfig>;
+            return {
+              stakeUsd: Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd,
+              maxDailyLossUsd: Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
+              mode: saved.mode === "live" ? "live" as const : "demo" as const,
+            };
           } catch {
-            return "demo";
+            return null;
           }
         })();
+        const mode: "demo" | "live" = savedConfig?.mode ?? "demo";
         // SQL over ALL of today's rows — summing the 20-trade window instead
         // made early wins vanish from the display as new events pushed them out.
         const today = getTodayStats(user.id, mode);
@@ -47,6 +54,7 @@ export const Route = createFileRoute("/api/bot")({
           enabled: !!state?.enabled,
           running: runtime.running,
           mode,
+          savedConfig,
           pausedUntil: runtime.pausedUntil,
           lastScan: runtime.lastScan,
           lastError: runtime.lastError,
