@@ -9,13 +9,29 @@ export function isPushSupported(): boolean {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window;
 }
 
-/** iOS only allows Web Push for an installed (Home Screen) PWA, not a Safari tab. */
+function isIos(): boolean {
+  return typeof window !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+/**
+ * Every iOS browser (Chrome, Firefox, Edge…) is Safari/WebKit underneath —
+ * Apple requires it — but Apple only grants Web Push capability to sites
+ * added to the Home Screen THROUGH SAFARI specifically. Chrome-on-iOS's own
+ * "Add to Home Screen" just creates a bookmark that still opens inside
+ * Chrome (never reaches standalone display mode), so push can never work
+ * there no matter what the user does — this isn't fixable client-side.
+ * CriOS/FxiOS/EdgiOS markers only appear in non-Safari iOS browsers.
+ */
+export function isIosNonSafari(): boolean {
+  return isIos() && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
+}
+
+/** iOS Safari only allows Web Push for an installed (Home Screen) PWA, not a regular tab. */
 export function isIosNonStandalone(): boolean {
   if (typeof window === "undefined") return false;
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches
     || (navigator as unknown as { standalone?: boolean }).standalone === true;
-  return isIos && !isStandalone;
+  return isIos() && !isStandalone;
 }
 
 // BufferSource return type sidesteps a TS/DOM lib mismatch where

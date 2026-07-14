@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
-import { getExistingPushSubscription, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
+import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -301,7 +301,11 @@ function SettingsPage() {
             title="Notifications push"
             description="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
           >
-            {!isPushSupported() ? (
+            {isIosNonSafari() ? (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 leading-relaxed">
+                Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple, même en l'ajoutant à l'écran d'accueil ça ne marchera pas depuis Chrome. Ouvre <span className="font-bold">lio23.com dans Safari</span>, puis Partager → « Sur l'écran d'accueil ».
+              </div>
+            ) : !isPushSupported() ? (
               <div className="rounded-xl border border-white/5 bg-white/[0.005] p-3.5 text-xs text-muted-foreground leading-relaxed">
                 Notifications push non supportées par ce navigateur.
               </div>
