@@ -169,6 +169,20 @@ function migrate(db: Database.Database) {
       break_even_win_rate REAL,
       checked_at          INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    -- Web Push subscriptions — one row per browser/device a user opted in
+    -- from (a phone and a laptop are two rows). endpoint is the push
+    -- service's unique URL for that subscription, so it doubles as the
+    -- natural primary key; p256dh/auth are the encryption keys Web Push
+    -- requires to encrypt the payload for that specific subscription.
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint   TEXT    PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      p256dh     TEXT    NOT NULL,
+      auth       TEXT    NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---

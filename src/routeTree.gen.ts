@@ -30,6 +30,7 @@ import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
+import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
@@ -154,6 +155,11 @@ const ApiSettingsRoute = ApiSettingsRouteImport.update({
   path: '/api/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPushRoute = ApiPushRouteImport.update({
+  id: '/api/push',
+  path: '/api/push',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLearningRoute = ApiLearningRouteImport.update({
   id: '/api/learning',
   path: '/api/learning',
@@ -271,6 +277,7 @@ export interface FileRoutesByFullPath {
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -312,6 +319,7 @@ export interface FileRoutesByTo {
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -354,6 +362,7 @@ export interface FileRoutesById {
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -397,6 +406,7 @@ export interface FileRouteTypes {
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/push'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -438,6 +448,7 @@ export interface FileRouteTypes {
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/push'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/push'
     | '/api/settings'
     | '/api/strategies'
     | '/api/trades'
@@ -521,6 +533,7 @@ export interface RootRouteChildren {
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
+  ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
@@ -687,6 +700,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/push': {
+      id: '/api/push'
+      path: '/api/push'
+      fullPath: '/api/push'
+      preLoaderRoute: typeof ApiPushRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/learning': {
       id: '/api/learning'
       path: '/api/learning'
@@ -841,6 +861,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
+  ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,

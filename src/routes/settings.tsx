@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
+import { Bell, Bot, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
+import { getExistingPushSubscription, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -39,6 +40,9 @@ function SettingsPage() {
   const [aiProvider, setAiProvider] = useState<"google" | "groq" | "openrouter">("groq");
   const [autoBacktestEnabled, setAutoBacktestEnabled] = useState(false);
   const [autoBacktestSaving, setAutoBacktestSaving] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [pushChecked, setPushChecked] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -61,7 +65,32 @@ function SettingsPage() {
       if (s.ai_api_key) setAiKey(s.ai_api_key as string);
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
+    // Reflects the browser's actual subscription, not a saved preference —
+    // permission can be revoked (iOS Settings, site data cleared) outside
+    // the app, and the toggle should always show the real current state.
+    getExistingPushSubscription()
+      .then((sub) => setPushEnabled(!!sub))
+      .catch(() => {})
+      .finally(() => setPushChecked(true));
   }, []);
+
+  async function togglePush(v: boolean) {
+    setPushSaving(true);
+    try {
+      if (v) {
+        await subscribeToPush();
+        toast.success("Notifications push activées");
+      } else {
+        await unsubscribeFromPush();
+        toast.info("Notifications push désactivées");
+      }
+      setPushEnabled(v);
+    } catch (e) {
+      toast.error((e as Error).message || "Échec de l'activation des notifications");
+    } finally {
+      setPushSaving(false);
+    }
+  }
 
   async function toggleAutoBacktest(v: boolean) {
     setAutoBacktestSaving(true);
@@ -264,6 +293,38 @@ function SettingsPage() {
             </div>
 
             {autoBacktestEnabled && <AutoBacktestStatus />}
+          </CollapsibleSection>
+
+          {/* Push Notifications Card */}
+          <CollapsibleSection
+            icon={<Bell className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
+            title="Notifications push"
+            description="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
+          >
+            {!isPushSupported() ? (
+              <div className="rounded-xl border border-white/5 bg-white/[0.005] p-3.5 text-xs text-muted-foreground leading-relaxed">
+                Notifications push non supportées par ce navigateur.
+              </div>
+            ) : isIosNonStandalone() ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-xs text-amber-400 leading-relaxed">
+                Sur iPhone, ajoute Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé.
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center justify-between p-3.5 rounded-xl border transition-all",
+                  pushEnabled ? "bg-amber-500/5 border-amber-500/20" : "bg-white/[0.005] border-white/5",
+                )}
+              >
+                <div>
+                  <h4 className="text-xs md:text-sm text-neutral-200 font-bold">Activer les notifications</h4>
+                  <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
+                    Trade clôturé, bot en pause (protection de risque).
+                  </p>
+                </div>
+                <Switch checked={pushEnabled} disabled={pushSaving || !pushChecked} onCheckedChange={togglePush} />
+              </div>
+            )}
           </CollapsibleSection>
         </div>
 
