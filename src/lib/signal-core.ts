@@ -418,11 +418,30 @@ export function symbolRollingStats(logs: TradeLog[], symbol: string, lookback = 
 // Pairs that share high exposure — only one from each group should be active at a time.
 // All USD majors are one and the same dollar bet (directly or inversely correlated):
 // EURUSD PUT + AUDUSD PUT is a doubled stake on USD strength, not two independent trades.
+// Gold/silver trade in near-lockstep (both precious metals, same USD-strength
+// and risk-sentiment drivers) — same-direction XAUUSD + XAGUSD is a doubled bet.
 export const CORRELATION_GROUPS: string[][] = [
   ["frxEURUSD", "frxGBPUSD", "frxAUDUSD", "frxUSDJPY", "frxUSDCAD", "frxUSDCHF"],
   ["frxEURGBP", "frxEURJPY", "frxGBPJPY"],
   ["cryBTCUSD", "cryETHUSD", "cryLTCUSD"],
+  ["frxXAUUSD", "frxXAGUSD"],
 ];
+
+// USD is the BASE currency for these three (price = how many JPY/CAD/CHF per
+// USD), so CALL means USD strengthens — the opposite convention from
+// EURUSD/GBPUSD/AUDUSD, where USD is the QUOTE currency and CALL means USD
+// *weakens*. Comparing raw CALL/PUT across the whole USD-majors group without
+// correcting for this mixed convention gets the polarity backwards for any
+// cross-type pair: EURUSD CALL + USDCHF PUT are BOTH bets on USD weakness
+// (doubled exposure) but look like opposite raw directions, so they used to
+// sail past the filter; EURUSD CALL + USDJPY CALL "roughly cancel" (per the
+// comment below) but share the same raw direction, so they used to get
+// blocked instead — exactly backwards in both cases.
+const USD_BASE_PAIRS = new Set(["frxUSDJPY", "frxUSDCAD", "frxUSDCHF"]);
+
+function usdBias(symbol: string, direction: "CALL" | "PUT"): "CALL" | "PUT" {
+  return USD_BASE_PAIRS.has(symbol) ? (direction === "CALL" ? "PUT" : "CALL") : direction;
+}
 
 // Blocking is direction-aware: two correlated pairs traded in OPPOSITE
 // directions aren't a doubled bet (e.g. EURUSD CALL + USDJPY CALL roughly
@@ -438,7 +457,11 @@ export function isCorrelatedWithActive(
 ): boolean {
   const group = CORRELATION_GROUPS.find((g) => g.includes(symbol));
   if (!group) return false;
-  return group.some((s) => s !== symbol && activeSymbols.get(s) === direction);
+  const bias = usdBias(symbol, direction);
+  return group.some((s) => {
+    const activeDir = activeSymbols.get(s);
+    return s !== symbol && activeDir !== undefined && usdBias(s, activeDir) === bias;
+  });
 }
 
 // ─── Adaptive stake ───────────────────────────────────────────────────────────
