@@ -516,22 +516,7 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
   }
 
   // ── 6. Stochastic confirmation ───────────────────────────────
-  const stoch = stochastic(highs, lows, closes, 14, 3);
-  const kNow = stoch.k[last];
-  const dNow = stoch.d[last];
-  maxPoints += 2;
-  if (kNow !== null) {
-    if (kNow < 20) { vote("STOCH", "bull", 1); triggers.push(`Stoch K ${kNow.toFixed(0)} (survendu)`); }
-    else if (kNow > 80) { vote("STOCH", "bear", 1); triggers.push(`Stoch K ${kNow.toFixed(0)} (suracheté)`); }
-    // K crosses D = confirmation signal
-    if (dNow !== null) {
-      const kPrev = stoch.k[last - 1], dPrev = stoch.d[last - 1];
-      if (kPrev !== null && dPrev !== null) {
-        if (kPrev < dPrev && kNow > dNow) { vote("STOCH_CROSS", "bull", 1); triggers.push("Stoch K cross D (haussier)"); }
-        else if (kPrev > dPrev && kNow < dNow) { vote("STOCH_CROSS", "bear", 1); triggers.push("Stoch K cross D (baissier)"); }
-      }
-    }
-  }
+  // REMOVED: Stochastic validations (STOCH and STOCH_CROSS) are removed due to poor performance (0-16% win rate).
 
   // ── 7. Momentum bougie (dernière bougie fermée) ───────────────
   // La bougie précédente doit confirmer la direction — filtre clé
@@ -592,6 +577,15 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
   const dominance = total > 0 ? Math.max(bull, bear) / total : 0;
   if (net >= 2 && dominance >= 0.6) direction = "BUY";
   else if (net <= -2 && dominance >= 0.6) direction = "SELL";
+
+  // Mean-reversion filter: block buying at the very top of trends (overbought/oversold)
+  if (direction === "BUY" && rNow !== null && rNow > 70) {
+    blockers.push(`RSI ${rNow.toFixed(1)} > 70 (suracheté) — achat bloqué`);
+    direction = "HOLD";
+  } else if (direction === "SELL" && rNow !== null && rNow < 30) {
+    blockers.push(`RSI ${rNow.toFixed(1)} < 30 (survendu) — vente bloquée`);
+    direction = "HOLD";
+  }
 
   // Calibrated confidence: agreement ratio × strength, penalized by conflict
   let confidence = 0;

@@ -316,7 +316,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // existing 100/150 fixed default so switching modes doesn't silently
   // change the account's risk profile.
   atrStopMode: true,
-  atrStopMultiple: 2.5,
+  atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
 };
 

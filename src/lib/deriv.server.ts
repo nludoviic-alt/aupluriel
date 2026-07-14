@@ -309,6 +309,11 @@ export class DerivTradingConnection {
     let lastError: Error | null = null;
     let currentMultiplier = params.multiplier;
 
+    // Cap leverage for high volatility crypto assets
+    if (params.symbol.startsWith("cry")) {
+      currentMultiplier = Math.min(currentMultiplier, 10);
+    }
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
