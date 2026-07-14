@@ -16,7 +16,7 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { DerivTradingConnection, fetchCandlesServer } from "./deriv.server";
+import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer } from "./deriv.server";
 import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indicator-weights.server";
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
@@ -717,8 +717,13 @@ class ServerBotEngine {
       // from the stake so they scale with adaptive/percent/Kelly sizing.
       // ATR mode ties the distance to the symbol's actual current volatility
       // instead of a flat % of stake that's blind to market conditions.
+      // Uses the EFFECTIVE multiplier (post crypto cap), not the raw config
+      // value — computing the stop off the uncapped level while the order
+      // opens at the capped one silently doubled the intended stop distance
+      // for crypto (20 assumed vs 10 actually applied on the wire).
+      const effMultiplier = effectiveMultiplier(symbol, config.multiplierLevel);
       const { stopLossUsd, takeProfitUsd } = config.atrStopMode
-        ? computeAtrStopUsd(stakeForTrade, config.multiplierLevel, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
+        ? computeAtrStopUsd(stakeForTrade, effMultiplier, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
         : {
             stopLossUsd: Math.round(stakeForTrade * (config.stopLossPctOfStake / 100) * 100) / 100,
             takeProfitUsd: Math.round(stakeForTrade * (config.takeProfitPctOfStake / 100) * 100) / 100,
@@ -739,7 +744,7 @@ class ServerBotEngine {
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(isMultiplier
-          ? { multiplier: config.multiplierLevel, stopLossUsd, takeProfitUsd }
+          ? { multiplier: effMultiplier, stopLossUsd, takeProfitUsd }
           : { durationMinutes: tradeDuration, expiry: Date.now() + tradeDuration * 60_000 }),
       };
       this.emit(pendingLog);
@@ -748,7 +753,7 @@ class ServerBotEngine {
         if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
             symbol, amount: stakeForTrade, direction: analysis.direction,
-            multiplier: config.multiplierLevel, stopLossUsd, takeProfitUsd,
+            multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
           });
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
           this.emit(openLog);

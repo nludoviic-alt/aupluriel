@@ -311,11 +311,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   takeProfitPctOfStake: 150,
   maxHoldMinutes: 720,
   // Off by default, same convention as veto4h/vetoDaily — backtest before
-  // flipping this on a live account. 2.5x ATR gives normal noise room to
-  // breathe without the stop being unreachable; 1.5:1 R:R matches the
-  // existing 100/150 fixed default so switching modes doesn't silently
-  // change the account's risk profile.
-  atrStopMode: true,
+  // flipping this on a live account. A prior 52-day/2717-trade backtest
+  // found ATR stops did NOT improve EV over the flat stopLossPctOfStake/
+  // takeProfitPctOfStake default (see minTfAgreement comment above); this
+  // was briefly flipped to true without a new backtest to justify
+  // reversing that finding — reverted. atrStopMultiple stays at 3.0
+  // (up from 1.5) so re-enabling later starts from the wider, less
+  // trigger-happy distance rather than the old value.
+  atrStopMode: false,
   atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
 };

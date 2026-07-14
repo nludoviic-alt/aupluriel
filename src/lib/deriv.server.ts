@@ -28,6 +28,19 @@ function roundToCurrency(num: number, currency = "USD"): number {
   return Math.round((num + Number.EPSILON) * factor) / factor;
 }
 
+/**
+ * The multiplier actually used for a Multiplier order — crypto is capped at
+ * x10 regardless of the configured level, since its volatility makes higher
+ * leverage disproportionately risky. Exported so the stop-loss/take-profit
+ * $ calc (bot-engine.server.ts, computeAtrStopUsd) can use the SAME number
+ * that ends up on the wire: computing the stop off the uncapped config value
+ * while the order opens at the capped one miscalibrates the stop distance
+ * (was silently 2x off for crypto — 20 assumed vs 10 actually applied).
+ */
+export function effectiveMultiplier(symbol: string, requestedMultiplier: number): number {
+  return symbol.startsWith("cry") ? Math.min(requestedMultiplier, 10) : requestedMultiplier;
+}
+
 type Msg = Record<string, unknown>;
 type Listener = (msg: Msg) => void;
 
@@ -307,12 +320,7 @@ export class DerivTradingConnection {
   }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     let lastError: Error | null = null;
-    let currentMultiplier = params.multiplier;
-
-    // Cap leverage for high volatility crypto assets
-    if (params.symbol.startsWith("cry")) {
-      currentMultiplier = Math.min(currentMultiplier, 10);
-    }
+    let currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
