@@ -130,6 +130,19 @@ function loadRecentTrades(userId: number, limit = 50): TradeLog[] {
  * them silently drops the day's earlier wins once enough events accumulate
  * (the "my gain disappeared" bug).
  */
+/**
+ * Floating P&L across currently-open positions — the `profit` column is kept
+ * live for open Multiplier positions by the proposal_open_contract stream.
+ * Used so the daily-loss cap sees losses as they build, not only once the
+ * stop-loss actually realizes them.
+ */
+function getOpenFloatingPnl(userId: number): number {
+  const row = getDb()
+    .prepare("SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND status = 'open'")
+    .get(userId) as { floating: number };
+  return row.floating;
+}
+
 export function getTodayStats(userId: number, mode?: "demo" | "live"): { pnl: number; count: number } {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -500,8 +513,19 @@ class ServerBotEngine {
       this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextUtcMidnight());
       return finishScan();
     }
-    if (pnl <= -Math.abs(config.maxDailyLossUsd)) {
-      if (config.stopOnRisk) this.riskPause([`Perte journalière atteinte : $${Math.abs(pnl).toFixed(2)} / $${config.maxDailyLossUsd}`], this.nextUtcMidnight());
+    // Realized-only pnl let the bot keep opening positions while already deep
+    // underwater on OPEN ones — the loss only "existed" once a stop actually
+    // hit. Floating LOSSES count toward the cap; floating gains don't (they
+    // can evaporate, and must not mask realized losses).
+    const floatingLoss = Math.min(0, getOpenFloatingPnl(this.userId));
+    const riskPnl = pnl + floatingLoss;
+    if (riskPnl <= -Math.abs(config.maxDailyLossUsd)) {
+      if (config.stopOnRisk) {
+        const detail = floatingLoss < 0
+          ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
+          : `$${Math.abs(pnl).toFixed(2)}`;
+        this.riskPause([`Perte journalière atteinte : ${detail} / $${config.maxDailyLossUsd}`], this.nextUtcMidnight());
+      }
       return finishScan();
     }
     if (config.maxDailyProfitUsd > 0 && pnl >= config.maxDailyProfitUsd) {
@@ -510,6 +534,16 @@ class ServerBotEngine {
     }
     if (count >= config.maxTradesPerDay) {
       for (const symbol of config.symbols) scanResults.push({ symbol, action: "daily-limit" });
+      return finishScan();
+    }
+    // Global cap on TOTAL open positions — maxSimultaneousTrades only limits
+    // NEW trades per tick, so successive ticks stacked positions without
+    // bound (6 observed live on 2026-07-14) while only per-symbol/correlation
+    // gates applied. activeSymbols survives restarts (rebuilt by reconcile()).
+    if (this.activeSymbols.size >= config.maxOpenPositions) {
+      for (const symbol of config.symbols) {
+        if (!this.activeSymbols.has(symbol)) scanResults.push({ symbol, action: "daily-limit", note: `${this.activeSymbols.size} positions ouvertes — plafond ${config.maxOpenPositions}` });
+      }
       return finishScan();
     }
 

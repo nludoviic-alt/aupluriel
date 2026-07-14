@@ -84,7 +84,14 @@ export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
 };
 
 export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
-  // Crypto and synthetic indices trade 24/7 — no session filter
+  // Crypto MARKETS trade 24/7, but this bot's crypto edge doesn't: live
+  // results split sharply by session — trades opened 21h-02h UTC (forex
+  // sessions closed, thin flow, indicator signals over noise) account for
+  // the bulk of realized losses, while London/NY hours sit near break-even.
+  // So crypto follows the configured session windows like forex does.
+  if (symbol.startsWith("cry")) return sessions.some((s) => isSessionActive(s, edgeMinutes));
+
+  // Synthetic indices are genuinely sessionless (RNG-generated) — no filter.
   if (is24x7Symbol(symbol)) return true;
 
   // Stock indices: their home exchange must be open AND enabled in the config
@@ -173,6 +180,7 @@ export interface AutoTraderConfig {
   blockCorrelated: boolean;       // skip correlated pairs when one is already active
   symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
   maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
+  maxOpenPositions: number;       // hard cap on TOTAL concurrently open positions (across all scan ticks) — maxSimultaneousTrades is per-tick only, so successive ticks used to stack positions without bound
   newsFilter: boolean;            // block session-open / macro-event windows on session-bound markets
   veto4h: Veto4hMode;             // how strictly a contrarian 4H cancels a trade
   minPayoutRatio: number;         // skip a trade if the live quoted payout (profit/stake) is below this — a thin payout raises the win rate needed to break even, independent of signal confidence
@@ -224,7 +232,12 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  minConfidence: 75,
+  // 80 (au lieu de 75) : sur les 18 premiers trades live, la tranche 75-77
+  // concentrait la moitié des trades et l'essentiel des pertes (2/9 gagnés,
+  // -$38), tandis que les tranches ≥82 étaient quasi à l'équilibre. Petit
+  // échantillon — à réévaluer vers 50-100 trades — mais couper la tranche
+  // la plus faible réduit la fréquence au profit de la qualité.
+  minConfidence: 80,
   // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
   // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
   // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
@@ -236,8 +249,9 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
   // aléatoirement par Deriv — aucun indicateur ne peut les prédire, winrate
   // long terme ~50% = perte structurelle face au payout <100%. BTC/ETH
-  // (Multiplier, 24/7) donnent au bot de vrais marchés à trader la nuit,
-  // quand les sessions forex Londres/NY sont fermées.
+  // (Multiplier) restent au panier mais suivent désormais les sessions
+  // Londres/NY comme le forex (voir isInTradingSession) — le trading crypto
+  // de nuit concentrait l'essentiel des pertes réalisées.
   symbols: [
     "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
     "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "frxXAGUSD", "cryBTCUSD", "cryETHUSD"
@@ -265,6 +279,11 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   blockCorrelated: true,
   symbolMode: "all-markets",
   maxSimultaneousTrades: 3,
+  // 4 : observé en live — 6 positions empilées en 4 cycles de scan (12h23 →
+  // 14h45), chacune sous maxSimultaneousTrades mais sans borne cumulée. La
+  // limite de perte journalière ne compte que les trades CLÔTURÉS, donc
+  // l'exposition flottante non plafonnée contournait le garde-fou.
+  maxOpenPositions: 4,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a

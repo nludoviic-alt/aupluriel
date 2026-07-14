@@ -971,10 +971,19 @@ export function startAutoTrader(
     }
 
     // ── RISK CHECKS ────────────────────────────────────────────
-    // Daily loss limit — always enforced
-    if (pnl <= -Math.abs(config.maxDailyLossUsd)) {
+    // Daily loss limit — always enforced. Floating LOSSES on open positions
+    // count too (realized-only pnl let the bot keep stacking positions while
+    // already underwater on open ones); floating gains don't — they can
+    // evaporate and must not mask realized losses.
+    const floatingLoss = Math.min(0, logs
+      .filter((l) => l.status === "open")
+      .reduce((sum, l) => sum + l.profit, 0));
+    if (pnl + floatingLoss <= -Math.abs(config.maxDailyLossUsd)) {
       if (config.stopOnRisk) {
-        riskPause([`Perte journalière atteinte : $${Math.abs(pnl).toFixed(2)} / $${config.maxDailyLossUsd}`], nextMidnight());
+        const detail = floatingLoss < 0
+          ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
+          : `$${Math.abs(pnl).toFixed(2)}`;
+        riskPause([`Perte journalière atteinte : ${detail} / $${config.maxDailyLossUsd}`], nextMidnight());
       } else {
         onScanResult?.({ time: Date.now(), results: config.symbols.map((s) => ({ symbol: s, action: "daily-limit" as const })) });
       }
@@ -992,6 +1001,16 @@ export function startAutoTrader(
     if (count >= config.maxTradesPerDay) {
       for (const symbol of config.symbols) {
         scanResults.push({ symbol, action: "daily-limit" });
+      }
+      onScanResult?.({ time: Date.now(), results: scanResults });
+      return;
+    }
+
+    // Global cap on TOTAL open positions — maxSimultaneousTrades only limits
+    // NEW trades per tick, so successive ticks stacked positions without bound.
+    if (activeSymbols.size >= config.maxOpenPositions) {
+      for (const symbol of config.symbols) {
+        if (!activeSymbols.has(symbol)) scanResults.push({ symbol, action: "daily-limit", note: `${activeSymbols.size} positions ouvertes — plafond ${config.maxOpenPositions}` });
       }
       onScanResult?.({ time: Date.now(), results: scanResults });
       return;
