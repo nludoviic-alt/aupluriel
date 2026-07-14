@@ -450,6 +450,14 @@ function BotStatusCard() {
             danger: true,
           });
           if (!ok) return;
+        } else {
+          // Demo — lighter confirmation so a stray tap can't start the bot.
+          const ok = await confirm({
+            title: "Démarrer le bot serveur (Démo) ?",
+            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${status.savedConfig.stakeUsd} par trade.`,
+            confirmLabel: "Démarrer",
+          });
+          if (!ok) return;
         }
         await api.post("/api/bot", { action: "start", config: status.savedConfig });
         toast.success(status.savedConfig.mode === "live" ? "☁️ Bot démarré en LIVE — argent réel" : "☁️ Bot démarré");

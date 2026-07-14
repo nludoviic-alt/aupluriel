@@ -197,8 +197,10 @@ export function MobileMenu() {
           </section>
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-white/[0.06] p-3 space-y-2">
+        {/* Footer — safe-area-bottom keeps the username/email row clear of the
+            iPhone home-indicator bar, which otherwise overlaps it since this
+            drawer is a fixed-height flex column pinned to the viewport edge. */}
+        <div className="border-t border-white/[0.06] p-3 space-y-2 safe-area-bottom">
           {user && (
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
               <div className="min-w-0 flex-1">

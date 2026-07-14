@@ -360,6 +360,14 @@ function AutoTraderPage() {
             danger: true,
           });
           if (!ok) return;
+        } else {
+          // Demo — lighter confirmation so a stray tap can't start the bot.
+          const ok = await confirm({
+            title: "Démarrer le bot serveur (Démo) ?",
+            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.`,
+            confirmLabel: "Démarrer",
+          });
+          if (!ok) return;
         }
         // Never run both engines at once — same account, duplicate trades.
         if (running) {
@@ -578,13 +586,17 @@ function AutoTraderPage() {
         }
         return;
       }
-      // Confirm ONLY when real money is at stake (LIVE mode)
-      if (config.mode === "live") {
+      // Always confirm before launching — live gets the full risk dialog,
+      // demo/simulation get a lighter one so a stray tap can't start the bot.
+      {
+        const isLive = config.mode === "live";
         const ok = await confirm({
-          title: "Démarrer en mode LIVE ?",
-          description: `Le bot va trader avec du VRAI argent. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.`,
-          confirmLabel: "Démarrer en réel",
-          danger: true,
+          title: isLive ? "Démarrer en mode LIVE ?" : `Démarrer l'auto-trader (${config.mode === "demo" ? "Démo" : "Simulation"}) ?`,
+          description: isLive
+            ? `Le bot va trader avec du VRAI argent. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.`
+            : `Le bot va scanner les marchés et ouvrir des positions automatiquement (${config.mode === "demo" ? "compte de démonstration Deriv" : "simulation locale, aucun ordre réel"}). Mise : $${config.stakeUsd} par trade.`,
+          confirmLabel: isLive ? "Démarrer en réel" : "Démarrer",
+          danger: isLive,
         });
         if (!ok) return;
       }
