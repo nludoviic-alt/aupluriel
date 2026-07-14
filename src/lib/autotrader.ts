@@ -326,7 +326,7 @@ export function updatePresetPerformance(
 export function notifyRiskStop(reasons: string[]) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
-  const n = new Notification("🛑 PLURIEL — Auto-trader ARRÊTÉ (risque détecté)", {
+  const n = new Notification("Pluriel — Auto-trader arrêté (risque détecté)", {
     body: reasons.join("\n"),
     icon: "/favicon.ico",
     tag: "lio23-risk-stop",
@@ -338,7 +338,7 @@ export function notifyRiskStop(reasons: string[]) {
 export function notifyTradeTaken(symbol: string, direction: string, confidence: number) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
-  const n = new Notification(`✅ PLURIEL — Trade pris sur ${symbol}`, {
+  const n = new Notification(`Pluriel — Trade pris sur ${symbol}`, {
     body: `${direction} · Confiance ${confidence}% · Position favorable (PREMIUM)`,
     icon: "/favicon.ico",
     tag: `lio23-trade-${symbol}`,

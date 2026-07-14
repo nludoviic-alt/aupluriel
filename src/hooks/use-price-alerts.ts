@@ -85,11 +85,10 @@ export function usePriceAlerts(enabled = true) {
             firedRef.current[alert.id] = now;
             saveFired(firedRef.current);
 
-            const emoji = alert.condition === ">" ? "📈" : "📉";
             const msg = `${alert.pair} ${alert.condition === ">" ? "a dépassé" : "est passé sous"} ${alert.value.toLocaleString()}`;
-            toast.success(`${emoji} Alerte prix — ${msg}`, { duration: 8000 });
+            toast.success(`Alerte prix — ${msg}`, { duration: 8000 });
             sendNotification(
-              `${emoji} PLURIEL — Alerte prix ${alert.pair}`,
+              `Pluriel — Alerte prix ${alert.pair}`,
               `Prix actuel: ${tick.quote.toLocaleString()} · Condition: ${alert.condition} ${alert.value.toLocaleString()}`,
               `alert-price-${alert.id}`,
             );
@@ -115,9 +114,9 @@ export function usePriceAlerts(enabled = true) {
         if (drawdownPct > alert.value) {
           firedRef.current[alert.id] = now;
           saveFired(firedRef.current);
-          toast.warning(`🛑 Drawdown ${drawdownPct.toFixed(2)}% dépassé (seuil: ${alert.value}%)`, { duration: 10_000 });
+          toast.warning(`Drawdown ${drawdownPct.toFixed(2)}% dépassé (seuil: ${alert.value}%)`, { duration: 10_000 });
           sendNotification(
-            "🛑 PLURIEL — Drawdown dépassé",
+            "Pluriel — Drawdown dépassé",
             `Perte journalière: $${Math.abs(pnl).toFixed(2)} · Seuil: ${alert.value}%`,
             `alert-drawdown-${alert.id}`,
           );

@@ -32,18 +32,18 @@ export function VoiceControl() {
       case "navigate":
         if (cmd.route) {
           router.navigate({ to: cmd.route });
-          toast.success(`📍 ${cmd.label}`);
+          toast.success(cmd.label);
         }
         break;
       case "start-bot":
         router.navigate({ to: "/autotrader" });
         setTimeout(() => dispatchVoiceAction("start-bot"), 300);
-        toast.info("🎤 Démarrage de l'auto-trader…");
+        toast.info("Démarrage de l'auto-trader…");
         break;
       case "stop-bot":
         router.navigate({ to: "/autotrader" });
         setTimeout(() => dispatchVoiceAction("stop-bot"), 300);
-        toast.info("🎤 Arrêt de l'auto-trader…");
+        toast.info("Arrêt de l'auto-trader…");
         break;
       case "new-chat":
         router.navigate({ to: "/assistant" });
@@ -51,7 +51,7 @@ export function VoiceControl() {
         break;
       case "refresh":
         router.invalidate();
-        toast.success("🔄 Actualisé");
+        toast.success("Actualisé");
         break;
       default:
         toast.error(`Commande non reconnue : "${cmd.raw}"`);

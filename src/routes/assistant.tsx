@@ -333,7 +333,7 @@ function AssistantPage() {
               const next = !voiceReply;
               setVoiceReply(next);
               if (!next) stopSpeaking();
-              else toast.success("🔊 Réponses vocales activées");
+              else toast.success("Réponses vocales activées");
             }}
             title={voiceReply ? "Désactiver la lecture vocale" : "Lire les réponses à voix haute"}
             className={cn(

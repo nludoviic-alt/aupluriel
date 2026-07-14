@@ -307,12 +307,12 @@ class ServerBotEngine {
       const sign = log.profit >= 0 ? "+" : "";
       const payload = closed
         ? {
-            title: `${log.status === "won" ? "✅ Gagné" : "❌ Perdu"} ${sign}$${log.profit.toFixed(2)}`,
+            title: log.status === "won" ? `🎉 Gagné ${sign}$${log.profit.toFixed(2)}` : `Perdu ${sign}$${log.profit.toFixed(2)}`,
             body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "réel" : "démo"}`,
             url: "/autotrader",
           }
         : {
-            title: "⏸️ Bot en pause (protection de risque)",
+            title: "Bot en pause (protection de risque)",
             body: log.note ?? "Limite de risque atteinte",
             url: "/autotrader",
           };

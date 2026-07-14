@@ -39,11 +39,11 @@ function minutesSinceOpen(session: TradingSession): number {
 
 function notifyMarketOpen(session: TradingSession) {
   const label = SESSION_HOURS[session].label;
-  toast.info(`🔔 Marché ouvert — session ${label}`, {
+  toast.info(`Marché ouvert — session ${label}`, {
     description: "Nouvelle fenêtre de trading disponible.",
   });
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-    const n = new Notification(`🔔 PLURIEL — Session ${label} ouverte`, {
+    const n = new Notification(`Pluriel — Session ${label} ouverte`, {
       body: "Une nouvelle session de marché vient de démarrer.",
       icon: "/favicon.ico",
       tag: `lio23-market-open-${session}`,

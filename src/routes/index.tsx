@@ -460,7 +460,7 @@ function BotStatusCard() {
           if (!ok) return;
         }
         await api.post("/api/bot", { action: "start", config: status.savedConfig });
-        toast.success(status.savedConfig.mode === "live" ? "☁️ Bot démarré en LIVE — argent réel" : "☁️ Bot démarré");
+        toast.success(status.savedConfig.mode === "live" ? "Bot démarré en LIVE — argent réel" : "Bot démarré");
       }
       await refresh();
     } catch (err) {

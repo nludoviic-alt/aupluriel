@@ -376,8 +376,8 @@ function AutoTraderPage() {
         }
         await api.post("/api/bot", { action: "start", config });
         toast.success(config.mode === "live"
-          ? "☁️ Bot serveur démarré en LIVE — argent réel"
-          : "☁️ Bot serveur démarré — il tourne même téléphone verrouillé");
+          ? "Bot serveur démarré en LIVE — argent réel"
+          : "Bot serveur démarré — il tourne même téléphone verrouillé");
       }
       await refreshCloud();
     } catch (err) {
@@ -503,63 +503,63 @@ function AutoTraderPage() {
     // only needs to handle side effects (toasts, sounds, notifications).
     if (log.status === "won") {
       playWinSound();
-      toast.success(`✅ ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
-      
+      toast.success(`🎉 ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
+
       // Notification de bureau native (HTML5 API) pour alerter en tâche de fond
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`🎯 PLURIEL : Trade GAGNANT ! (+ $${log.profit.toFixed(2)})`, {
+        new Notification(`🎉 Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`, {
           body: `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
         });
       }
-      
+
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
     if (log.status === "lost") {
       playLossSound();
-      toast.error(`❌ ${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
-      
+      toast.error(`${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
+
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`❌ PLURIEL : Trade PERDU ! (- $${Math.abs(log.profit).toFixed(2)})`, {
+        new Notification(`Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`, {
           body: `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
         });
       }
-      
+
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
     }
     if (log.status === "open") {
       playOpenSound();
-      toast.info(`🚀 Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
-      
+      toast.info(`Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
+
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`🚀 PLURIEL : Position ouverte !`, {
+        new Notification(`Pluriel — Position ouverte`, {
           body: `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
         });
       }
     }
-    if (log.status === "error") toast.error(`⚠️ Erreur sur ${log.symbol}`);
+    if (log.status === "error") toast.error(`Erreur sur ${log.symbol}`);
     if (log.status === "pending") {
       // Throttle pending toasts - max 1 per 5 seconds to prevent spam
       const now = Date.now();
       if (now - lastPendingToastRef.current > 5000) {
         lastPendingToastRef.current = now;
-        toast.info(`🎯 ${log.symbol} ${log.direction} — Trade détecté`);
+        toast.info(`${log.symbol} ${log.direction} — Trade détecté`);
       }
     }
     if (log.status === "cooldown") {
-      toast.warning(`⏸ ${log.note}`);
+      toast.warning(log.note ?? "Auto-trader en pause");
     }
   }, [config.mode]);
 
   const handleRiskStop = useCallback((reasons: string[]) => {
     // running/riskStopReasons are updated by the engine store itself.
-    toast.error(`🛑 Auto-trader ARRÊTÉ — ${reasons[0]}`, { duration: 10000 });
+    toast.error(`Auto-trader arrêté — ${reasons[0]}`, { duration: 10000 });
   }, []);
 
   async function toggleEngine() {
     if (cloud?.enabled) {
-      toast.error("☁️ Le bot serveur est actif — désactive-le pour utiliser le moteur local (sinon trades en double)");
+      toast.error("Le bot serveur est actif — désactive-le pour utiliser le moteur local (sinon trades en double)");
       return;
     }
     if (running) {
@@ -714,7 +714,7 @@ function AutoTraderPage() {
           <Button variant="outline" size="sm" disabled={running}
             onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
               setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
-              toast.success("🛡️ Mode Prudent activé", { description: "DEMO · PREMIUM · 4/4 TF · confiance ≥82% · max 5 trades/jour" }); }}
+              toast.success("Mode Prudent activé", { description: "DEMO · PREMIUM · 4/4 TF · confiance ≥82% · max 5 trades/jour" }); }}
             className="gap-2 text-sm border-up/40 text-up hover:bg-up/10 h-9 px-4">
             <ShieldCheck className="h-4 w-4" /> Mode Prudent
           </Button>
@@ -724,7 +724,7 @@ function AutoTraderPage() {
               const openSymbols = new Set(openTradeList.map((t) => t.symbol));
               const sym = config.symbols.find((s) => !openSymbols.has(s));
               if (!sym) { toast.error("Toutes les paires ont déjà une position ouverte."); return; }
-              toast.info(`🎬 Aperçu — ${SYMBOLS.find((x) => x.deriv === sym)?.label ?? sym}…`);
+              toast.info(`Aperçu — ${SYMBOLS.find((x) => x.deriv === sym)?.label ?? sym}…`);
               await openPreviewTrade(sym, config.durationMinutes, config.stakeUsd, handleEvent);
             }}
             className="gap-2 text-sm h-9 px-4">
@@ -1012,11 +1012,11 @@ function AutoTraderPage() {
                     if (!forceSymbol) return;
                     setForcingTrade(true);
                     const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
-                    toast.info(`🚀 Trade forcé en cours — ${label} ${forceDir}…`);
+                    toast.info(`Trade forcé en cours — ${label} ${forceDir}…`);
                     try {
                       await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
                         handleEvent(log);
-                        if (log.status === "open") toast.success(`✅ Contrat ouvert — ${label} ${forceDir} · ID ${log.contractId}`);
+                        if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir} · ID ${log.contractId}`);
                       });
                     } catch (e) {
                       toast.error(`Échec: ${(e as Error).message}`);
@@ -1406,7 +1406,7 @@ function AutoTraderPage() {
                         const next = { ...config, mode: "demo" as TradingMode, minConfidence: 60, minTfAgreement: 2, maxTradesPerDay: 20, premiumOnly: false, stopOnRisk: false, maxConsecutiveLosses: 10 };
                         setConfig(next); saveConfig(next);
                         setDraftMaxTrades(20);
-                        toast.success("🧪 Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
+                        toast.success("Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
                       }}
                       className={cn("relative z-10 w-full sm:w-auto shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-300 transition-all shadow-[0_2px_10px_rgba(245,158,11,0.05)] disabled:opacity-40 disabled:cursor-not-allowed",
                         running && "opacity-40 cursor-not-allowed")}>
