@@ -58,10 +58,14 @@ export function MobileMenu() {
         )}
       />
 
-      {/* Drawer */}
+      {/* Drawer — bottom stops above BottomNav (same z-50, later in the DOM,
+          so it paints over anything the drawer extends behind) instead of
+          inset-y-0's full viewport height. h-16 (4rem) matches BottomNav's
+          own height; its trailing safe-area-bottom padding is added the
+          same way here so both edges line up on notched phones. */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col",
+          "fixed top-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] left-0 z-50 flex w-72 flex-col",
           "border-r border-white/[0.06]",
           "bg-[oklch(0.13_0.035_255)]",
           "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] md:hidden",
@@ -106,8 +110,12 @@ export function MobileMenu() {
           </button>
         </div>
 
-        {/* Scrollable nav */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+        {/* Scrollable nav — min-h-0 is required here: a flex item's default
+            min-height is its content size, which on a long nav list (12
+            links) is taller than the drawer itself, so without this the
+            list refuses to shrink/scroll and pushes the footer (username,
+            email) below the visible viewport instead. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-6">
 
           {/* Primary */}
           <section>
@@ -197,10 +205,9 @@ export function MobileMenu() {
           </section>
         </div>
 
-        {/* Footer — safe-area-bottom keeps the username/email row clear of the
-            iPhone home-indicator bar, which otherwise overlaps it since this
-            drawer is a fixed-height flex column pinned to the viewport edge. */}
-        <div className="border-t border-white/[0.06] p-3 space-y-2 safe-area-bottom">
+        {/* Footer — no safe-area padding needed here: the drawer now stops
+            above BottomNav (which already reserves that space itself). */}
+        <div className="border-t border-white/[0.06] p-3 space-y-2">
           {user && (
             <div className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
               <div className="min-w-0 flex-1">
