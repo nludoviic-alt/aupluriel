@@ -50,9 +50,16 @@ export function isCallPutAvailable(symbol: string): boolean {
  * isCallPutAvailable() gate wrongly kept BTC/ETH out of the scan even after
  * Multiplier became the default instrument, which also cost the bot its only
  * 24/7 non-synthetic markets (forex sleeps outside London/NY sessions).
+ * Stock indices (OTC_*) are the opposite case: Deriv offers them as CALL/PUT
+ * but never as Multiplier — falling through to isCallPutAvailable() here
+ * used to say "yes" for Multiplier mode too, so the bot would scan, signal,
+ * and attempt real orders on OTC_* that Deriv always rejects with "Trading
+ * is not offered for this duration" (a wasted cycle, not a loss, but a
+ * symbol that can never actually fill in Multiplier mode).
  */
 export function isSymbolTradeable(symbol: string, instrumentType: "binary" | "multiplier"): boolean {
   if (symbol.startsWith("cry")) return instrumentType === "multiplier";
+  if (symbol.startsWith("OTC_") && instrumentType === "multiplier") return false;
   return isCallPutAvailable(symbol);
 }
 
