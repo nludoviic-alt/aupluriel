@@ -31,6 +31,38 @@ interface UserStatsRow {
   last_trade_at: number | null;
 }
 
+const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
+
+async function fetchUserBalance(token: string, preferredType: "demo" | "live"): Promise<{ balance: number; currency: string } | null> {
+  try {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Deriv-App-ID": "33zECGFcSA3ZubKPdQJqm",
+      "Content-Type": "application/json",
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const accRes = await fetch(`${TRADING_V1}/accounts`, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!accRes.ok) return null;
+    const accData = (await accRes.json()) as { data?: any[] };
+    const accounts = accData.data ?? [];
+    const wantedType = preferredType === "live" ? "real" : "demo";
+    const chosen =
+      accounts.find((a) => a.account_type === wantedType && a.status === "active") ??
+      accounts.find((a) => a.status === "active");
+
+    if (!chosen) return null;
+    return {
+      balance: parseFloat(chosen.balance) || 0,
+      currency: chosen.currency || "USD",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute("/api/admin/stats")({
   server: {
     handlers: {
@@ -80,7 +112,14 @@ export const Route = createFileRoute("/api/admin/stats")({
         }[];
         const statsByUser = new Map(rows.map((r) => [r.user_id, r]));
 
-        const recap = users.map((u) => {
+        const settingsList = db.prepare("SELECT user_id, deriv_token, account_type FROM user_settings").all() as {
+          user_id: number;
+          deriv_token: string | null;
+          account_type: string | null;
+        }[];
+        const settingsByUser = new Map(settingsList.map((s) => [s.user_id, s]));
+
+        const recapBase = users.map((u) => {
           const s = statsByUser.get(u.id);
           const trades = s?.trades ?? 0;
           return {
@@ -97,7 +136,28 @@ export const Route = createFileRoute("/api/admin/stats")({
             avgConfidence: Math.round(s?.avg_confidence ?? 0),
             lastTradeAt: s?.last_trade_at ?? null,
           };
-        }).sort((a, b) => b.trades - a.trades);
+        });
+
+        const recap = (await Promise.all(
+          recapBase.map(async (item) => {
+            const set = settingsByUser.get(item.userId);
+            if (set?.deriv_token) {
+              const res = await fetchUserBalance(set.deriv_token, (set.account_type as "demo" | "live") ?? "demo");
+              if (res) {
+                return {
+                  ...item,
+                  balance: res.balance,
+                  currency: res.currency,
+                };
+              }
+            }
+            return {
+              ...item,
+              balance: null,
+              currency: null,
+            };
+          })
+        )).sort((a, b) => b.trades - a.trades);
 
         // Shared learning data — what the friends' trades have actually taught
         // the app so far (see indicator-weights.server.ts).

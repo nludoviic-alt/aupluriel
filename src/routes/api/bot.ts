@@ -100,7 +100,7 @@ export const Route = createFileRoute("/api/bot")({
         }
 
         if (body.action === "stop") {
-          stopBotForUser(user.id);
+          stopBotForUser(user.id, "Arrêté manuellement par l'utilisateur");
           return json({ ok: true, running: false });
         }
 

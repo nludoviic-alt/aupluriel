@@ -74,7 +74,7 @@ export const Route = createFileRoute("/api/admin/bot")({
         }
 
         if (action === "stop") {
-          stopBotForUser(userId);
+          stopBotForUser(userId, "Arrêté par l'administrateur depuis la console");
           return json({ ok: true, running: false });
         }
 

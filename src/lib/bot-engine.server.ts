@@ -814,13 +814,35 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   console.log(`[bot] Moteur serveur démarré pour user ${userId} (mode ${config.mode})`);
 }
 
-export function stopBotForUser(userId: number): void {
+export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
   getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ?").run(userId);
   const engine = engines.get(userId);
   if (engine) {
     engine.stop();
     engines.delete(userId);
-    console.log(`[bot] Moteur serveur arrêté pour user ${userId}`);
+    console.log(`[bot] Moteur serveur arrêté pour user ${userId} (${reason})`);
+
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail) {
+      void (async () => {
+        try {
+          const user = getDb().prepare("SELECT username, email FROM users WHERE id = ?").get(userId) as { username: string; email: string } | undefined;
+          if (!user) return;
+          const { sendEmail } = await import("./email.server");
+          const subject = `⚠️ [Pluriel] Bot arrêté pour ${user.username}`;
+          const html = `
+            <h3>Arrêt du Bot Auto-Trader</h3>
+            <p>Le bot de trading de l'utilisateur <strong>${user.username}</strong> (${user.email}) s'est arrêté.</p>
+            <p><strong>Raison de l'arrêt :</strong> ${reason}</p>
+            <hr/>
+            <p>Cet e-mail est envoyé automatiquement à l'administrateur.</p>
+          `;
+          await sendEmail({ to: adminEmail, subject, html });
+        } catch (e) {
+          console.error(`[bot] Notification d'arrêt admin échouée pour user ${userId}:`, (e as Error).message);
+        }
+      })();
+    }
   }
 }
 

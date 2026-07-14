@@ -74,6 +74,8 @@ interface UserRecap {
   profitFactor: number | null;
   avgConfidence: number;
   lastTradeAt: number | null;
+  balance: number | null;
+  currency: string | null;
 }
 
 interface ComponentStat {
@@ -817,6 +819,7 @@ function AdminPage() {
             <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
               <tr>
                 <th className="px-4 py-3">Utilisateur</th>
+                <th className="px-4 py-3 text-right">Solde Deriv</th>
                 <th className="px-4 py-3 text-right">Trades</th>
                 <th className="px-4 py-3 text-right">Win Rate</th>
                 <th className="px-4 py-3 text-right">P&amp;L Net</th>
@@ -829,13 +832,13 @@ function AdminPage() {
             <tbody>
               {recapLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                   </td>
                 </tr>
               ) : recap.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground font-semibold">
                     Aucune statistique de trading disponible.
                   </td>
                 </tr>
@@ -843,6 +846,15 @@ function AdminPage() {
                 recap.map((r) => (
                   <tr key={r.userId} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
                     <td className="px-4 py-3 font-bold text-foreground">{r.username}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                      {r.balance !== null && r.balance !== undefined ? (
+                        <span className="font-bold text-orange-400">
+                          {r.currency} {r.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      ) : (
+                        <span className="text-gray-600">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-muted-foreground font-semibold">
                       {r.trades}
                       {r.open > 0 && (

@@ -93,7 +93,7 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         await startBotForUser(user_id, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {
-        stopBotForUser(user_id);
+        stopBotForUser(user_id, "Verdict de backtest automatique défavorable");
         console.log(`[auto-backtest] bot arrêté pour user ${user_id} (verdict défavorable)`);
       }
     } catch (e) {
