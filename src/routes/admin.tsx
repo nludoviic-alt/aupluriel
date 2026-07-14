@@ -47,6 +47,7 @@ interface BotStatus {
   hasToken: boolean;
   mode: "demo" | "live" | null;
   lastError: string | null;
+  autoBacktestEnabled: boolean;
 }
 
 interface InviteCode {
@@ -124,6 +125,7 @@ function AdminPage() {
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
   const [botStatus, setBotStatus] = useState<Record<number, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
+  const [backtestBusyId, setBacktestBusyId] = useState<number | null>(null);
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -245,6 +247,19 @@ function AdminPage() {
       toast.error(err instanceof Error ? err.message : "Erreur");
     } finally {
       setBotBusyId(null);
+    }
+  }
+
+  async function toggleBacktest(userId: number, autoBacktestEnabled: boolean) {
+    setBacktestBusyId(userId);
+    try {
+      await api.post("/api/admin/bot", { userId, action: "toggle-backtest", autoBacktestEnabled });
+      toast.success(autoBacktestEnabled ? "Backtest automatique activé ✓" : "Backtest automatique désactivé");
+      await loadBotStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setBacktestBusyId(null);
     }
   }
 
@@ -448,6 +463,7 @@ function AdminPage() {
                 <th className="px-4 py-3">Vérifié</th>
                 <th className="px-4 py-3">Statut</th>
                 <th className="px-4 py-3">Auto-Trader</th>
+                <th className="px-4 py-3">Backtest Auto</th>
                 <th className="px-4 py-3">Inscrit</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -455,13 +471,13 @@ function AdminPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground font-semibold">
                     Aucun utilisateur trouvé.
                   </td>
                 </tr>
@@ -511,6 +527,17 @@ function AdminPage() {
                             status={botStatus[u.id]}
                             busy={botBusyId === u.id}
                             onToggle={(action) => toggleBot(u.id, action)}
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isAdmin ? (
+                          <span className="text-xs text-muted-foreground/40 font-mono">—</span>
+                        ) : (
+                          <BacktestStatusCell
+                            status={botStatus[u.id]}
+                            busy={backtestBusyId === u.id}
+                            onToggle={(checked) => toggleBacktest(u.id, checked)}
                           />
                         )}
                       </td>
@@ -626,6 +653,16 @@ function AdminPage() {
                         status={botStatus[u.id]}
                         busy={botBusyId === u.id}
                         onToggle={(action) => toggleBot(u.id, action)}
+                      />
+                    </div>
+                  )}
+                  {!isAdmin && (
+                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Backtest Auto</span>
+                      <BacktestStatusCell
+                        status={botStatus[u.id]}
+                        busy={backtestBusyId === u.id}
+                        onToggle={(checked) => toggleBacktest(u.id, checked)}
                       />
                     </div>
                   )}
@@ -1327,6 +1364,40 @@ function BotStatusCell({
         disabled={busy || blocked}
         onCheckedChange={(checked) => onToggle(checked ? "start" : "stop")}
         title={blocked ? "Aucun token Deriv enregistré pour cet utilisateur" : undefined}
+      />
+    </div>
+  );
+}
+
+function BacktestStatusCell({
+  status,
+  busy,
+  onToggle,
+}: {
+  status?: BotStatus;
+  busy: boolean;
+  onToggle: (checked: boolean) => void;
+}) {
+  const autoBacktestEnabled = status?.autoBacktestEnabled ?? false;
+  const hasToken = status?.hasToken ?? false;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+          autoBacktestEnabled
+            ? "bg-amber-500/10 text-amber-500"
+            : "bg-white/[0.03] text-muted-foreground",
+        )}
+      >
+        {autoBacktestEnabled ? "actif" : "inactif"}
+      </span>
+      <Switch
+        checked={autoBacktestEnabled}
+        disabled={busy || !hasToken}
+        onCheckedChange={onToggle}
+        title={!hasToken ? "Aucun token Deriv enregistré pour cet utilisateur" : undefined}
       />
     </div>
   );

@@ -17,13 +17,14 @@ export const Route = createFileRoute("/api/admin/bot")({
         const rows = getDb()
           .prepare(
             `SELECT u.id AS userId, bs.enabled AS enabled, bs.config AS config,
-                    CASE WHEN us.deriv_token IS NOT NULL AND us.deriv_token != '' THEN 1 ELSE 0 END AS hasToken
+                    CASE WHEN us.deriv_token IS NOT NULL AND us.deriv_token != '' THEN 1 ELSE 0 END AS hasToken,
+                    COALESCE(us.auto_backtest_enabled, 0) AS autoBacktestEnabled
              FROM users u
              LEFT JOIN bot_state bs ON bs.user_id = u.id
              LEFT JOIN user_settings us ON us.user_id = u.id
              WHERE u.is_admin = 0`,
           )
-          .all() as { userId: number; enabled: number | null; config: string | null; hasToken: number }[];
+          .all() as { userId: number; enabled: number | null; config: string | null; hasToken: number; autoBacktestEnabled: number }[];
 
         const statuses = rows.map((r) => {
           const runtime = getBotRuntime(r.userId);
@@ -42,23 +43,27 @@ export const Route = createFileRoute("/api/admin/bot")({
             hasToken: !!r.hasToken,
             mode,
             lastError: runtime.lastError,
+            autoBacktestEnabled: !!r.autoBacktestEnabled,
           };
         });
 
         return json({ statuses });
       },
 
-      // Force-start / force-stop a user's bot (admin only).
+      // Force-start / force-stop a user's bot / toggle auto backtest (admin only).
       POST: async ({ request }) => {
         const admin = await requireAdmin(request);
         if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
 
         const body = (await request.json().catch(() => ({}))) as {
           userId?: number;
-          action?: "start" | "stop";
+          action?: "start" | "stop" | "toggle-backtest";
+          autoBacktestEnabled?: boolean;
         };
         const { userId, action } = body;
         if (!userId || !action) return json({ error: "userId et action requis." }, 400);
+
+        const db = getDb();
 
         if (action === "start") {
           // Reprend la config du dernier run de CET utilisateur (mise, mode…) —
@@ -78,7 +83,14 @@ export const Route = createFileRoute("/api/admin/bot")({
           return json({ ok: true, running: false });
         }
 
-        return json({ error: "action start|stop requise" }, 400);
+        if (action === "toggle-backtest") {
+          const { autoBacktestEnabled } = body;
+          if (autoBacktestEnabled === undefined) return json({ error: "autoBacktestEnabled requis." }, 400);
+          db.prepare("UPDATE user_settings SET auto_backtest_enabled = ? WHERE user_id = ?").run(autoBacktestEnabled ? 1 : 0, userId);
+          return json({ ok: true, autoBacktestEnabled });
+        }
+
+        return json({ error: "action start|stop|toggle-backtest requise" }, 400);
       },
     },
   },
