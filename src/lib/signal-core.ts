@@ -304,19 +304,19 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Multiplier replaces CALL/PUT as the shared default: no fixed expiry to
   // misalign with the signal's timeframe (the whole class of bug fixed
   // above becomes moot), loss still capped at the stake via stop-loss.
-  // x10 + 12h cap keep it conservative to start — see plan for full reasoning.
+  // x20 + 12h cap keep it conservative to start — see plan for full reasoning.
   instrumentType: "multiplier",
-  multiplierLevel: 100,
+  multiplierLevel: 20,
   stopLossPctOfStake: 100,
   takeProfitPctOfStake: 150,
   maxHoldMinutes: 720,
   // Off by default, same convention as veto4h/vetoDaily — backtest before
-  // flipping this on a live account. 1.5x ATR gives normal noise room to
+  // flipping this on a live account. 2.5x ATR gives normal noise room to
   // breathe without the stop being unreachable; 1.5:1 R:R matches the
   // existing 100/150 fixed default so switching modes doesn't silently
   // change the account's risk profile.
   atrStopMode: true,
-  atrStopMultiple: 1.5,
+  atrStopMultiple: 2.5,
   riskRewardRatio: 1.5,
 };
 

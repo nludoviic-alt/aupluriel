@@ -13,8 +13,19 @@ const PUBLIC_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
 const DERIV_REST_APP_ID = "33zECGFcSA3ZubKPdQJqm";
 
-function round2(num: number): number {
-  return Number(num.toFixed(2));
+function getCurrencyDecimals(currency = "USD"): number {
+  const c = currency.toUpperCase();
+  if (c === "BTC") return 8;
+  if (c === "ETH") return 6;
+  if (c === "LTC") return 5;
+  if (c === "USD" || c === "EUR" || c === "GBP" || c === "AUD" || c === "CAD" || c === "CHF" || c === "JPY") return 2;
+  return 2;
+}
+
+function roundToCurrency(num: number, currency = "USD"): number {
+  const dec = getCurrencyDecimals(currency);
+  const factor = Math.pow(10, dec);
+  return Math.round((num + Number.EPSILON) * factor) / factor;
 }
 
 type Msg = Record<string, unknown>;
@@ -225,7 +236,7 @@ export class DerivTradingConnection {
     try {
       const prop = await this.socket.request<{ proposal?: { ask_price: number; payout: number } }>({
         proposal: 1,
-        amount: round2(params.amount),
+        amount: roundToCurrency(params.amount, this.currency),
         basis: "stake",
         contract_type: params.contractType,
         currency: this.currency,
@@ -252,7 +263,7 @@ export class DerivTradingConnection {
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number; payout: number } }>({
           proposal: 1,
-          amount: round2(params.amount),
+          amount: roundToCurrency(params.amount, this.currency),
           basis: "stake",
           contract_type: params.contractType,
           currency: this.currency,
@@ -264,7 +275,7 @@ export class DerivTradingConnection {
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number; payout: number } }>({
           buy: prop.proposal.id,
           // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
-          price: round2(Number(prop.proposal.ask_price) * 1.05),
+          price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
         });
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price), payout: Number(buy.buy.payout) };
@@ -302,22 +313,22 @@ export class DerivTradingConnection {
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
           proposal: 1,
-          amount: round2(params.amount),
+          amount: roundToCurrency(params.amount, this.currency),
           basis: "stake",
           contract_type: contractType,
           currency: this.currency,
           underlying_symbol: params.symbol,
           multiplier: currentMultiplier,
           limit_order: {
-            stop_loss: round2(params.stopLossUsd),
-            take_profit: round2(params.takeProfitUsd),
+            stop_loss: roundToCurrency(params.stopLossUsd, this.currency),
+            take_profit: roundToCurrency(params.takeProfitUsd, this.currency),
           },
         });
         if (!prop.proposal) throw new Error("Proposal failed");
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>({
           buy: prop.proposal.id,
           // Same >2-decimal rejection as binary buys — re-round after the slippage buffer.
-          price: round2(Number(prop.proposal.ask_price) * 1.05),
+          price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
         });
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
