@@ -843,6 +843,25 @@ export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
         }
       })();
     }
+
+    void (async () => {
+      try {
+        const admins = getDb().prepare("SELECT id FROM users WHERE is_admin = 1").all() as { id: number }[];
+        if (!admins.length) return;
+        const user = getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as { username: string } | undefined;
+        if (!user) return;
+
+        const { sendPushToUser } = await import("./push.server");
+        const payload = {
+          title: `⚠️ Bot arrêté : ${user.username}`,
+          body: reason,
+          url: "/admin",
+        };
+        await Promise.allSettled(admins.map((admin) => sendPushToUser(admin.id, payload)));
+      } catch (e) {
+        console.error(`[bot] Notification Push admin échouée pour user ${userId}:`, (e as Error).message);
+      }
+    })();
   }
 }
 
