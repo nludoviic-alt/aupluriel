@@ -1,19 +1,19 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LineChart, NotebookText, Settings, ShieldCheck, X, Menu } from "lucide-react";
+import { LayoutDashboard, LineChart, Zap, Settings, ShieldCheck, X, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
 // App-like mobile nav: only the destinations someone taps every session.
-// Signaux/Auto-Trader/Portfolio/Marchés/etc. moved to the header drawer
-// (still one tap away) — Auto-Trader's status/toggle now lives on the
-// Dashboard instead so bot control stays a single tap, just not a nav slot.
+// Signaux/Portfolio/Marchés/Journal/etc. moved to the header drawer (still
+// one tap away) — Auto-Trader keeps its own nav slot since it's the bot
+// control surface, the app's core loop.
 const PRIMARY_ITEMS = [
-  { title: "Dashboard",  url: "/",          icon: LayoutDashboard },
-  { title: "Backtest",   url: "/backtest",  icon: LineChart },
-  { title: "Journal",    url: "/journal",   icon: NotebookText },
-  { title: "Paramètres", url: "/settings",  icon: Settings },
+  { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
+  { title: "Backtest",    url: "/backtest",   icon: LineChart },
+  { title: "Auto-Trader", url: "/autotrader", icon: Zap },
+  { title: "Paramètres",  url: "/settings",   icon: Settings },
 ] as const;
 
 const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const;
