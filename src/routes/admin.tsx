@@ -200,7 +200,19 @@ function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (user?.is_admin) { load(); loadRecap(); loadBotStatus(); loadInvites(); }
+    if (!user?.is_admin) return;
+    load();
+    loadRecap();
+    loadBotStatus();
+    loadInvites();
+    // Ran once on mount and never again — an admin watching another user's
+    // bot (status, today's P&L, open positions) saw a frozen snapshot from
+    // whenever the page loaded, not what's actually happening now. Bot
+    // status and the trading recap are the two that actually change minute
+    // to minute; users/invites barely move, so they stay on the manual
+    // "Actualiser" button instead of adding load for no benefit.
+    const id = setInterval(() => { loadBotStatus(); loadRecap(); }, 20_000);
+    return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
   async function openJournal(u: UserRecap) {
