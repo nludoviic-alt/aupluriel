@@ -61,7 +61,11 @@ export function ChangelogPanel() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, [load]);
 
   async function addEntry() {
     if (!form.title.trim()) { toast.error("Titre requis"); return; }
