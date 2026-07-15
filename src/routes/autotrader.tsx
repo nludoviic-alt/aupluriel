@@ -306,14 +306,31 @@ function AutoTraderPage() {
     todayCount: number;
     trades: TradeLog[];
     allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
+    savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
   }
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
+  const syncedFromServerRef = useRef(false);
 
   const refreshCloud = useCallback(async () => {
     try {
       const data = await api.get<CloudStatus>("/api/bot");
       setCloud(data);
+      // This browser's saved draft (stakeUsd/maxDailyLossUsd) can silently
+      // fall behind whatever was last changed server-side (support fix, or
+      // another device) — the START action always sends THIS draft, so a
+      // stale one quietly overwrites the server's value the next time
+      // anyone hits start. Sync once per page load, before the user can
+      // touch anything, so opening this page is always enough to catch up —
+      // never overwrites a value the user is actively editing this session.
+      if (!syncedFromServerRef.current && data.savedConfig) {
+        syncedFromServerRef.current = true;
+        setConfig((prev) => {
+          const next = { ...prev, stakeUsd: data.savedConfig!.stakeUsd, maxDailyLossUsd: data.savedConfig!.maxDailyLossUsd };
+          saveConfig(next);
+          return next;
+        });
+      }
     } catch { /* signed out or server unreachable — leave as-is */ }
   }, []);
 

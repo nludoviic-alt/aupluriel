@@ -842,6 +842,22 @@ export function isBotRunning(userId: number): boolean {
   return engines.has(userId);
 }
 
+/**
+ * True if this user has any position still open on Deriv. Used to hold off
+ * stopping a bot (auto-backtest sweep) until those positions actually clear
+ * — stop() tears down every contract subscription and timer, orphaning any
+ * open position: no more live P&L updates, and the maxHoldMinutes force-
+ * close never fires because nothing is left running to fire it. Observed
+ * live 2026-07-15: a bot got stopped by an unfavorable verdict with 3 open
+ * positions (one +$30+ floating), frozen mid-flight with no tracking.
+ */
+export function hasOpenPositions(userId: number): boolean {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND status = 'open'")
+    .get(userId) as { n: number };
+  return row.n > 0;
+}
+
 export function getBotRuntime(userId: number): { running: boolean; pausedUntil: number | null; lastScan: ScanResult | null; lastError: string | null } {
   const engine = engines.get(userId);
   if (!engine) return { running: false, pausedUntil: null, lastScan: null, lastError: null };

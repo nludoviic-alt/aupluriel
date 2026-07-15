@@ -7,7 +7,7 @@ import { getDb } from "./db.server";
 import { backtestMultiTfServer } from "./backtest.server";
 import { DEFAULT_CONFIG } from "./signal-core";
 import { mapWithConcurrency } from "./utils";
-import { isBotRunning, loadBotConfig, startBotForUser, stopBotForUser } from "./bot-engine.server";
+import { hasOpenPositions, isBotRunning, loadBotConfig, startBotForUser, stopBotForUser } from "./bot-engine.server";
 
 const BACKTEST_INTERVAL_MS = 6 * 60 * 60 * 1000; // recompute the global verdict every 6h
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;         // apply the cached verdict to opted-in users every 15min
@@ -93,6 +93,15 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         await startBotForUser(user_id, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {
+        // stop() tears down every open position's live tracking (P&L updates,
+        // the maxHoldMinutes force-close) with nothing left to resume it —
+        // wait for them to close naturally instead of orphaning them. Next
+        // sweep (15min) re-checks; the bot won't open anything new in the
+        // meantime since the verdict is already unfavorable.
+        if (hasOpenPositions(user_id)) {
+          console.log(`[auto-backtest] user ${user_id} : verdict défavorable mais positions encore ouvertes — arrêt reporté`);
+          continue;
+        }
         stopBotForUser(user_id, "Verdict de backtest automatique défavorable");
         console.log(`[auto-backtest] bot arrêté pour user ${user_id} (verdict défavorable)`);
       }
