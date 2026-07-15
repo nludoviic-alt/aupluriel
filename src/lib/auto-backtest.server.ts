@@ -48,6 +48,7 @@ function saveVerdict(v: Omit<AutoBacktestVerdict, "checkedAt">) {
 /** Replays the server bot's locked strategy across all its symbols and caches the go/no-go verdict. */
 async function recomputeVerdict(): Promise<void> {
   try {
+    const previous = loadVerdict();
     const results = await mapWithConcurrency(DEFAULT_CONFIG.symbols, 3, (symbol) =>
       backtestMultiTfServer(symbol, {
         minConfidence: DEFAULT_CONFIG.minConfidence,
@@ -70,8 +71,31 @@ async function recomputeVerdict(): Promise<void> {
       `[auto-backtest] verdict: ${favorable ? "FAVORABLE" : "défavorable"} — ` +
       `${(winRate * 100).toFixed(1)}% win rate (seuil ${(breakEvenWinRate * 100).toFixed(1)}%), ${totalTrades} trades`,
     );
+
+    // The single most useful alert in this whole system: tell the admin the
+    // moment the edge actually turns real, instead of them polling the admin
+    // page hoping to catch it. Only fires on an actual flip, not every 6h tick.
+    if (previous && previous.favorable !== favorable) {
+      void notifyVerdictChange(favorable, winRate, breakEvenWinRate);
+    }
   } catch (e) {
     console.error("[auto-backtest] recompute échoué:", (e as Error).message);
+  }
+}
+
+async function notifyVerdictChange(favorable: boolean, winRate: number, breakEvenWinRate: number): Promise<void> {
+  try {
+    const admins = getDb().prepare("SELECT id FROM users WHERE is_admin = 1").all() as { id: number }[];
+    if (!admins.length) return;
+    const { sendPushToUser } = await import("./push.server");
+    const payload = {
+      title: favorable ? "✅ Backtest devenu favorable" : "🔴 Backtest redevenu défavorable",
+      body: `${(winRate * 100).toFixed(1)}% de réussite mesurée (seuil de rentabilité ${(breakEvenWinRate * 100).toFixed(1)}%).`,
+      url: "/admin",
+    };
+    await Promise.allSettled(admins.map((a) => sendPushToUser(a.id, payload)));
+  } catch (e) {
+    console.error("[auto-backtest] Notification de changement de verdict échouée:", (e as Error).message);
   }
 }
 
