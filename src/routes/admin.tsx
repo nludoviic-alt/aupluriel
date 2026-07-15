@@ -1131,6 +1131,7 @@ function AdminPage() {
       {/* ── SHARED BRAIN METER ── */}
       {componentBreakdown.length > 0 && (
         <CollapsibleBlock
+          alwaysCollapsible
           className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
           header={
             <div className="flex items-center gap-2.5">

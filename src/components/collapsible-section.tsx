@@ -44,9 +44,11 @@ export function CollapsibleSection({
  * wrapper, and the caller keeps full control of the outer wrapper's classes.
  */
 export function CollapsibleBlock({
-  header, defaultOpen = false, className, children,
+  header, defaultOpen = false, className, children, alwaysCollapsible = false,
 }: {
   header: ReactNode; defaultOpen?: boolean; className?: string; children: ReactNode;
+  /** Collapses on desktop too, not just mobile — a real dropdown instead of the usual "always open past md" sections. */
+  alwaysCollapsible?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -57,12 +59,12 @@ export function CollapsibleBlock({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? "Réduire" : "Développer"}
-          className="md:hidden shrink-0 mt-1 text-muted-foreground hover:text-foreground transition-colors"
+          className={cn("shrink-0 mt-1 text-muted-foreground hover:text-foreground transition-colors", !alwaysCollapsible && "md:hidden")}
         >
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
         </button>
       </div>
-      <div className={cn(open ? "block" : "hidden", "md:block")}>{children}</div>
+      <div className={cn(open ? "block" : "hidden", !alwaysCollapsible && "md:block")}>{children}</div>
     </div>
   );
 }
