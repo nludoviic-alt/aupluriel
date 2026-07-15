@@ -89,6 +89,11 @@ export const Route = createFileRoute("/api/admin/stats")({
           return json({ trades });
         }
 
+        // Démo et live ne doivent jamais être additionnés dans un même total —
+        // le P&L "Cumulé" affiché en haut de l'admin doit rester un chiffre de
+        // test, pas un mélange avec de l'argent réel. NULL (lignes d'avant la
+        // colonne mode) est traité comme démo, comme dans getTodayStats/
+        // getAllTimeStats côté bot-engine.
         const rows = db
           .prepare(
             `SELECT
@@ -103,9 +108,25 @@ export const Route = createFileRoute("/api/admin/stats")({
                COALESCE(AVG(confidence) FILTER (WHERE status IN ('won','lost')), 0) AS avg_confidence,
                MAX(time) AS last_trade_at
              FROM bot_trades
+             WHERE mode = 'demo' OR mode IS NULL
              GROUP BY user_id`,
           )
           .all() as UserStatsRow[];
+
+        // Live totals kept fully separate — surfaced per-user instead of
+        // silently folded into (or dropped from) the demo recap above.
+        const liveRows = db
+          .prepare(
+            `SELECT
+               user_id,
+               COUNT(*) FILTER (WHERE status IN ('won','lost')) AS trades,
+               COALESCE(SUM(profit) FILTER (WHERE status IN ('won','lost')), 0) AS net_pnl
+             FROM bot_trades
+             WHERE mode = 'live'
+             GROUP BY user_id`,
+          )
+          .all() as { user_id: number; trades: number; net_pnl: number }[];
+        const liveByUser = new Map(liveRows.map((r) => [r.user_id, r]));
 
         const users = db.prepare("SELECT id, username, email FROM users").all() as {
           id: number; username: string; email: string;
@@ -122,6 +143,7 @@ export const Route = createFileRoute("/api/admin/stats")({
         const recapBase = users.map((u) => {
           const s = statsByUser.get(u.id);
           const trades = s?.trades ?? 0;
+          const live = liveByUser.get(u.id);
           return {
             userId: u.id,
             username: u.username,
@@ -135,6 +157,9 @@ export const Route = createFileRoute("/api/admin/stats")({
             profitFactor: (s?.gross_loss ?? 0) > 0 ? Math.round(((s?.gross_win ?? 0) / (s?.gross_loss ?? 1)) * 100) / 100 : null,
             avgConfidence: Math.round(s?.avg_confidence ?? 0),
             lastTradeAt: s?.last_trade_at ?? null,
+            // Real-money totals — always separate, never folded into netPnl above.
+            tradesLive: live?.trades ?? 0,
+            netPnlLive: live ? Math.round(live.net_pnl * 100) / 100 : 0,
           };
         });
 

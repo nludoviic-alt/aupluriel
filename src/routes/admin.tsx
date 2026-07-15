@@ -80,6 +80,8 @@ interface UserRecap {
   lastTradeAt: number | null;
   balance: number | null;
   currency: string | null;
+  tradesLive: number;
+  netPnlLive: number;
 }
 
 interface ComponentStat {
@@ -995,6 +997,11 @@ function AdminPage() {
                       r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
                     )}>
                       {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+                      {r.tradesLive > 0 && (
+                        <div className="text-[9px] font-bold text-amber-400 mt-0.5">
+                          Live : {r.netPnlLive > 0 ? "+" : ""}{r.netPnlLive.toFixed(2)} $ ({r.tradesLive})
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground font-bold">
                       {r.profitFactor === null ? "—" : r.profitFactor === Infinity ? "∞" : r.profitFactor.toFixed(2)}
