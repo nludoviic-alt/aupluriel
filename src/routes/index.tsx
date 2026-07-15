@@ -45,17 +45,26 @@ function useRealStats() {
   const [tradeCount, setTradeCount] = useState<number | null>(null);
   useEffect(() => {
     if (!connected) return;
-    getProfitTable(200).then((records) => {
-      if (records.length === 0) return;
-      const wins = records.filter((r) => r.profit > 0).length;
-      setWinRate((wins / records.length) * 100);
-      setTradeCount(records.length);
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const ts = todayStart.getTime() / 1000;
-      const todayRecords = records.filter((r) => r.sellTime >= ts);
-      setTodayPnl(todayRecords.reduce((acc, r) => acc + r.profit, 0));
-    }).catch(() => {});
+    const refresh = () => {
+      getProfitTable(200).then((records) => {
+        if (records.length === 0) return;
+        const wins = records.filter((r) => r.profit > 0).length;
+        setWinRate((wins / records.length) * 100);
+        setTradeCount(records.length);
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const ts = todayStart.getTime() / 1000;
+        const todayRecords = records.filter((r) => r.sellTime >= ts);
+        setTodayPnl(todayRecords.reduce((acc, r) => acc + r.profit, 0));
+      }).catch(() => {});
+    };
+    // Ran once on connect and never again — a trade placed manually or by
+    // the LOCAL browser engine (neither touches this app's own server state)
+    // could close minutes or hours later and "P&L Aujourd'hui" would still
+    // show whatever it was at page load, with no way to tell it was stale.
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
   }, [connected]);
   return { winRate, todayPnl, tradeCount };
 }
