@@ -33,13 +33,11 @@ import {
   FlaskConical,
   BarChart3,
   Workflow,
-  Calculator,
+  NotebookPen,
   Settings,
   ShieldCheck,
-  MessageSquare,
   Compass,
 } from "lucide-react";
-import { VoiceControl } from "@/components/voice-control";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
@@ -203,11 +201,10 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
   "/strategies": { label: "Stratégies", icon: Workflow },
-  "/risk-calculator": { label: "Risk Calculator", icon: Calculator },
+  "/notes": { label: "Notes", icon: NotebookPen },
   "/alerts": { label: "Alertes", icon: Bell },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
-  "/assistant": { label: "Assistant", icon: MessageSquare },
 };
 
 function getPageMeta(pathname: string) {
@@ -332,9 +329,6 @@ function RootComponent() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2 md:gap-2.5">
-                <div className="hidden sm:flex">
-                  <VoiceControl />
-                </div>
                 {/* Market alert indicator — redundant with the full-detail banner
                     shown below the header on every page when hasAlerts, so it's
                     desktop-only to keep the mobile title from being crowded out. */}

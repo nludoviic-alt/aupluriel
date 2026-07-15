@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
   LayoutDashboard, Radar, Zap, BriefcaseBusiness, FlaskConical,
-  BarChart3, CandlestickChart, Workflow, Calculator, Bell, Settings,
+  BarChart3, CandlestickChart, Workflow, NotebookPen, Bell, Settings,
   ShieldCheck, LogOut, X,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -24,7 +24,7 @@ const NAV_MORE = [
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
   { title: "Stratégies",      url: "/strategies",      icon: Workflow,         hover: "hover:bg-mint/[0.04] hover:text-mint/80" },
-  { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator,       hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
+  { title: "Notes",           url: "/notes",           icon: NotebookPen,     hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
   { title: "Alertes",         url: "/alerts",          icon: Bell,             hover: "hover:bg-yellow-500/[0.04] hover:text-yellow-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];

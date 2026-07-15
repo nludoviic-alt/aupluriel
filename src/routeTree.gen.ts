@@ -13,16 +13,15 @@ import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as StrategiesRouteImport } from './routes/strategies'
 import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as RiskCalculatorRouteImport } from './routes/risk-calculator'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as NotesRouteImport } from './routes/notes'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as BacktestRouteImport } from './routes/backtest'
 import { Route as AutotraderRouteImport } from './routes/autotrader'
-import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -31,10 +30,10 @@ import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
+import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
-import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
@@ -72,11 +71,6 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RiskCalculatorRoute = RiskCalculatorRouteImport.update({
-  id: '/risk-calculator',
-  path: '/risk-calculator',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -85,6 +79,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotesRoute = NotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketsRoute = MarketsRouteImport.update({
@@ -115,11 +114,6 @@ const BacktestRoute = BacktestRouteImport.update({
 const AutotraderRoute = AutotraderRouteImport.update({
   id: '/autotrader',
   path: '/autotrader',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AssistantRoute = AssistantRouteImport.update({
-  id: '/assistant',
-  path: '/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlertsRoute = AlertsRouteImport.update({
@@ -162,6 +156,11 @@ const ApiPushRoute = ApiPushRouteImport.update({
   path: '/api/push',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiNotesRoute = ApiNotesRouteImport.update({
+  id: '/api/notes',
+  path: '/api/notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLearningRoute = ApiLearningRouteImport.update({
   id: '/api/learning',
   path: '/api/learning',
@@ -175,11 +174,6 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
 const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   id: '/api/deriv-session',
   path: '/api/deriv-session',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiChatRoute = ApiChatRouteImport.update({
-  id: '/api/chat',
-  path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBotRoute = ApiBotRouteImport.update({
@@ -268,16 +262,15 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/assistant': typeof AssistantRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/risk-calculator': typeof RiskCalculatorRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
   '/strategies': typeof StrategiesRoute
@@ -285,10 +278,10 @@ export interface FileRoutesByFullPath {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
-  '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/notes': typeof ApiNotesRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -312,16 +305,15 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/assistant': typeof AssistantRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/risk-calculator': typeof RiskCalculatorRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
   '/strategies': typeof StrategiesRoute
@@ -329,10 +321,10 @@ export interface FileRoutesByTo {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
-  '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/notes': typeof ApiNotesRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -357,16 +349,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/assistant': typeof AssistantRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/risk-calculator': typeof RiskCalculatorRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
   '/strategies': typeof StrategiesRoute
@@ -374,10 +365,10 @@ export interface FileRoutesById {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
-  '/api/chat': typeof ApiChatRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
+  '/api/notes': typeof ApiNotesRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -403,16 +394,15 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/alerts'
-    | '/assistant'
     | '/autotrader'
     | '/backtest'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
+    | '/notes'
     | '/portfolio'
     | '/reset-password'
-    | '/risk-calculator'
     | '/settings'
     | '/signals'
     | '/strategies'
@@ -420,10 +410,10 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
-    | '/api/chat'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/notes'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -447,16 +437,15 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/alerts'
-    | '/assistant'
     | '/autotrader'
     | '/backtest'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
+    | '/notes'
     | '/portfolio'
     | '/reset-password'
-    | '/risk-calculator'
     | '/settings'
     | '/signals'
     | '/strategies'
@@ -464,10 +453,10 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
-    | '/api/chat'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/notes'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -491,16 +480,15 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/alerts'
-    | '/assistant'
     | '/autotrader'
     | '/backtest'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
+    | '/notes'
     | '/portfolio'
     | '/reset-password'
-    | '/risk-calculator'
     | '/settings'
     | '/signals'
     | '/strategies'
@@ -508,10 +496,10 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
-    | '/api/chat'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
+    | '/api/notes'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -536,16 +524,15 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   AlertsRoute: typeof AlertsRoute
-  AssistantRoute: typeof AssistantRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRoute
+  NotesRoute: typeof NotesRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  RiskCalculatorRoute: typeof RiskCalculatorRoute
   SettingsRoute: typeof SettingsRoute
   SignalsRoute: typeof SignalsRoute
   StrategiesRoute: typeof StrategiesRoute
@@ -553,10 +540,10 @@ export interface RootRouteChildren {
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiAutoBacktestRoute: typeof ApiAutoBacktestRoute
   ApiBotRoute: typeof ApiBotRoute
-  ApiChatRoute: typeof ApiChatRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
+  ApiNotesRoute: typeof ApiNotesRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
@@ -607,13 +594,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/risk-calculator': {
-      id: '/risk-calculator'
-      path: '/risk-calculator'
-      fullPath: '/risk-calculator'
-      preLoaderRoute: typeof RiskCalculatorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -626,6 +606,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notes': {
+      id: '/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof NotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/markets': {
@@ -668,13 +655,6 @@ declare module '@tanstack/react-router' {
       path: '/autotrader'
       fullPath: '/autotrader'
       preLoaderRoute: typeof AutotraderRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/assistant': {
-      id: '/assistant'
-      path: '/assistant'
-      fullPath: '/assistant'
-      preLoaderRoute: typeof AssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/alerts': {
@@ -733,6 +713,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPushRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/notes': {
+      id: '/api/notes'
+      path: '/api/notes'
+      fullPath: '/api/notes'
+      preLoaderRoute: typeof ApiNotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/learning': {
       id: '/api/learning'
       path: '/api/learning'
@@ -752,13 +739,6 @@ declare module '@tanstack/react-router' {
       path: '/api/deriv-session'
       fullPath: '/api/deriv-session'
       preLoaderRoute: typeof ApiDerivSessionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/chat': {
-      id: '/api/chat'
-      path: '/api/chat'
-      fullPath: '/api/chat'
-      preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bot': {
@@ -880,16 +860,15 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   AlertsRoute: AlertsRoute,
-  AssistantRoute: AssistantRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRoute,
+  NotesRoute: NotesRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  RiskCalculatorRoute: RiskCalculatorRoute,
   SettingsRoute: SettingsRoute,
   SignalsRoute: SignalsRoute,
   StrategiesRoute: StrategiesRoute,
@@ -897,10 +876,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAlertsRoute: ApiAlertsRoute,
   ApiAutoBacktestRoute: ApiAutoBacktestRoute,
   ApiBotRoute: ApiBotRoute,
-  ApiChatRoute: ApiChatRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
+  ApiNotesRoute: ApiNotesRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,

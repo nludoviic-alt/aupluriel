@@ -210,6 +210,14 @@ function migrate(db: Database.Database) {
       detail     TEXT    NOT NULL DEFAULT '',
       checked_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    -- Personal free-text notes — one per user, replaces the Risk Calculator
+    -- page. Server-side (not localStorage) so notes survive a device switch.
+    CREATE TABLE IF NOT EXISTS user_notes (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      content    TEXT    NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---

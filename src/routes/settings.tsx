@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bell, Bot, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
+import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -11,9 +11,6 @@ import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
-
-const AI_KEY_STORAGE = "lio23.ai_api_key";
-const AI_PROVIDER_STORAGE = "lio23.ai_provider";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Paramètres — Pluriel" }] }),
@@ -36,9 +33,6 @@ function SettingsPage() {
   const [stake, setStake] = useState(5);
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState<{ id?: string; balance?: number; currency?: string } | null>(null);
-  const [aiKey, setAiKey] = useState("");
-  const [showAiKey, setShowAiKey] = useState(false);
-  const [aiProvider, setAiProvider] = useState<"google" | "groq" | "openrouter">("groq");
   const [autoBacktestEnabled, setAutoBacktestEnabled] = useState(false);
   const [autoBacktestSaving, setAutoBacktestSaving] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -54,8 +48,6 @@ function SettingsPage() {
     setRisk(Number(localStorage.getItem(KEYS.riskPerTrade) ?? 2));
     setMaxDd(Number(localStorage.getItem(KEYS.maxDrawdown) ?? 5));
     setStake(loadDefaultStake());
-    setAiKey(localStorage.getItem(AI_KEY_STORAGE) ?? "");
-    setAiProvider((localStorage.getItem(AI_PROVIDER_STORAGE) as "google" | "groq" | "openrouter") ?? "groq");
     // Then hydrate from server
     api.get<Record<string, unknown>>("/api/settings").then((s) => {
       if (s.deriv_token) setToken(s.deriv_token as string);
@@ -63,8 +55,6 @@ function SettingsPage() {
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
       if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
-      if (s.ai_provider) setAiProvider(s.ai_provider as "google" | "groq" | "openrouter");
-      if (s.ai_api_key) setAiKey(s.ai_api_key as string);
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -414,105 +404,6 @@ function SettingsPage() {
                 <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 font-medium leading-relaxed">
                   ⚠️ Risque par trade supérieur à 2% — non recommandé pour conserver votre capital sur le long terme.
                 </div>
-              )}
-            </div>
-          </CollapsibleSection>
-
-          {/* AI Assistant Card */}
-          <CollapsibleSection
-            icon={<Bot className="mt-1 h-5.5 w-5.5 text-violet-400 shrink-0" />}
-            title="Assistant IA"
-            description="Choisis ton fournisseur IA et entre ta clé API. Elle est stockée localement."
-          >
-            <div className="space-y-4">
-              {/* Provider selector */}
-              <div className="space-y-2">
-                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Fournisseur</span>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {([
-                    { id: "groq",       label: "Groq (gratuit)", desc: "console.groq.com" },
-                    { id: "openrouter", label: "OpenRouter (gratuit)", desc: "openrouter.ai" },
-                    { id: "google",     label: "Gemini", desc: "aistudio.google.com" },
-                  ] as const).map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        setAiProvider(p.id);
-                        localStorage.setItem(AI_PROVIDER_STORAGE, p.id);
-                      }}
-                      className={cn(
-                        "rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
-                        aiProvider === p.id
-                          ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400 font-semibold"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <div className="font-bold">{p.label}</div>
-                      <div className="text-[10px] opacity-70 mt-0.5 leading-normal">{p.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* API Key input */}
-              <div className="space-y-2">
-                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300 flex flex-wrap items-center gap-1.5">
-                  Clé API
-                  {aiProvider === "groq" && (
-                    <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline normal-case font-bold">
-                      → Obtenir une clé Groq (gratuite)
-                    </a>
-                  )}
-                  {aiProvider === "openrouter" && (
-                    <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline normal-case font-bold">
-                      → Obtenir une clé OpenRouter (gratuite)
-                    </a>
-                  )}
-                  {aiProvider === "google" && (
-                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline normal-case font-bold">
-                      → Obtenir une clé Google (gratuite)
-                    </a>
-                  )}
-                </span>
-                <div className="relative">
-                  <input
-                    type={showAiKey ? "text" : "password"}
-                    value={aiKey}
-                    onChange={(e) => setAiKey(e.target.value)}
-                    placeholder={
-                      aiProvider === "groq" ? "gsk_..."
-                      : aiProvider === "openrouter" ? "sk-or-v1-..."
-                      : "AIza... ou AQ... (clé Google AI Studio)"
-                    }
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-cyan-500/50 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAiKey((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showAiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <Button
-                onClick={async () => {
-                  localStorage.setItem(AI_KEY_STORAGE, aiKey);
-                  localStorage.setItem(AI_PROVIDER_STORAGE, aiProvider);
-                  await api.put("/api/settings", { ai_api_key: aiKey, ai_provider: aiProvider }).catch(() => {});
-                  toast.success("Clé API IA enregistrée ✓");
-                }}
-                className="w-full bg-gradient-to-r from-cyan-500/20 to-violet-500/20 hover:from-cyan-500/35 hover:to-violet-500/35 text-cyan-400 border border-cyan-500/30 font-bold h-10 text-xs md:text-sm rounded-xl shadow-sm transition-all"
-              >
-                <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                Enregistrer la clé IA
-              </Button>
-
-              {aiKey && (
-                <p className="text-xs text-[color:var(--bull)] flex items-center gap-2 font-medium">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" /> Clé configurée — l'assistant IA est actif.
-                </p>
               )}
             </div>
           </CollapsibleSection>

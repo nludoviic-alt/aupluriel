@@ -217,7 +217,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
-import { VOICE_ACTION_EVENT } from "@/components/voice-control";
 import { activeStrategySymbols } from "@/lib/strategies";
 import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
@@ -596,17 +595,6 @@ function AutoTraderPage() {
   }
 
 
-  // Voice commands: start/stop the bot from anywhere
-  useEffect(() => {
-    function onVoice(e: Event) {
-      const type = (e as CustomEvent<{ type: string }>).detail?.type;
-      if (type === "start-bot" && !running) toggleEngine();
-      if (type === "stop-bot" && running) toggleEngine();
-    }
-    window.addEventListener(VOICE_ACTION_EVENT, onVoice);
-    return () => window.removeEventListener(VOICE_ACTION_EVENT, onVoice);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, config, disclaimerAccepted]);
 
   async function runBacktest() {
     setBacktestRunning(true);

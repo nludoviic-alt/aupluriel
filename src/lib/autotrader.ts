@@ -349,9 +349,9 @@ export function notifyTradeTaken(symbol: string, direction: string, confidence: 
 
 // ─── Real Kelly-criterion stake ────────────────────────────────────────────────
 // "adaptiveStake" above is a coarse win-rate-tiered haircut, marketed as "Kelly"
-// in the UI but not an actual Kelly calculation. This is: same formula already
-// used correctly in risk-calculator.tsx (f* = p - q/b), fed by the REAL measured
-// win-rate/payout from backtestMultiTf instead of a value the user guesses.
+// in the UI but not an actual Kelly calculation. This is: the real formula
+// (f* = p - q/b), fed by the REAL measured win-rate/payout from
+// backtestMultiTf instead of a value the user guesses.
 
 const BACKTEST_STATS_KEY = "lio23.backtest_stats";
 
