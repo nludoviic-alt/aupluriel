@@ -48,6 +48,7 @@ import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api/auth/for
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
+import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
 
@@ -247,6 +248,11 @@ const ApiAdminInvitesRoute = ApiAdminInvitesRouteImport.update({
   path: '/api/admin/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
+  id: '/api/admin/health',
+  path: '/api/admin/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminChangelogRoute = ApiAdminChangelogRouteImport.update({
   id: '/api/admin/changelog',
   path: '/api/admin/changelog',
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -333,6 +340,7 @@ export interface FileRoutesByTo {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -377,6 +385,7 @@ export interface FileRoutesById {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -422,6 +431,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
     | '/api/admin/users'
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
     | '/api/admin/users'
@@ -508,6 +519,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
     | '/api/admin/users'
@@ -552,6 +564,7 @@ export interface RootRouteChildren {
   ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminBotRoute: typeof ApiAdminBotRoute
   ApiAdminChangelogRoute: typeof ApiAdminChangelogRoute
+  ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
@@ -839,6 +852,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminInvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/health': {
+      id: '/api/admin/health'
+      path: '/api/admin/health'
+      fullPath: '/api/admin/health'
+      preLoaderRoute: typeof ApiAdminHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/changelog': {
       id: '/api/admin/changelog'
       path: '/api/admin/changelog'
@@ -888,6 +908,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminBotRoute: ApiAdminBotRoute,
   ApiAdminChangelogRoute: ApiAdminChangelogRoute,
+  ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,

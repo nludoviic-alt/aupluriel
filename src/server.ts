@@ -24,6 +24,14 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[auto-backtest] Démarrage échoué:", e));
   }, 5000);
 
+  // Feature health monitor: periodic checks + push alert to admins on any
+  // healthy↔degraded transition (see health-monitor.server.ts).
+  setTimeout(() => {
+    import("./lib/health-monitor.server")
+      .then((m) => m.startHealthMonitorScheduler())
+      .catch((e) => console.error("[health] Démarrage échoué:", e));
+  }, 6000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so

@@ -198,6 +198,18 @@ function migrate(db: Database.Database) {
       created_at  INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_changelog_created ON changelog_entries(created_at DESC);
+
+    -- Feature health monitor (see health-monitor.server.ts): one row per
+    -- check, overwritten every cycle. checked_at lets the admin panel show
+    -- staleness; the scheduler diffs against the previous status row to
+    -- decide whether a check just transitioned (and is worth a push alert).
+    CREATE TABLE IF NOT EXISTS health_status (
+      check_key  TEXT    PRIMARY KEY,
+      label      TEXT    NOT NULL,
+      status     TEXT    NOT NULL,             -- 'ok' | 'warn' | 'error'
+      detail     TEXT    NOT NULL DEFAULT '',
+      checked_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---

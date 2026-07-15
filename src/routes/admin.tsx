@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { KpiCard } from "@/components/kpi-card";
 import { CollapsibleBlock } from "@/components/collapsible-section";
 import { ChangelogPanel } from "@/components/changelog-panel";
+import { HealthPanel } from "@/components/health-panel";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -505,6 +506,9 @@ function AdminPage() {
           tone={avgWinRate >= 54.1 ? "bull" : "default"}
         />
       </div>
+
+      {/* ── FEATURE HEALTH MONITOR ── */}
+      <HealthPanel />
 
       {/* ── BUG/CHANGELOG TRACKER ── */}
       <ChangelogPanel />
