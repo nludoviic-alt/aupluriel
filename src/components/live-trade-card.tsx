@@ -36,7 +36,7 @@ export function LiveTradeCard({ trade, onDismiss }: { trade: LiveTradeLike; onDi
 
   const entry = trade.entryPrice ?? series[0]?.price ?? 0;
   const current = last ?? entry;
-  const isForex = trade.symbol.startsWith("frx");
+  const isForex = trade.symbol ? trade.symbol.startsWith("frx") : false;
   const decimals = isForex ? 5 : 2;
 
   // Use real Deriv P&L when available, else binary estimate (CALL/MULTUP>entry / PUT/MULTDOWN<entry)

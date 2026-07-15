@@ -10,6 +10,10 @@ export function useDerivTicks(symbol: string, maxPoints = 120) {
   const dataRef = useRef<{ t: number; price: number }[]>([]);
 
   useEffect(() => {
+    if (!symbol) {
+      setStatus("error");
+      return;
+    }
     setSeries([]);
     setLast(null);
     setStatus("connecting");

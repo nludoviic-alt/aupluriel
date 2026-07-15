@@ -630,30 +630,36 @@ export async function getOpenPositions(): Promise<OpenPosition[]> {
       portfolio?: {
         contracts?: Array<{
           contract_id: number;
-          symbol: string;
-          contract_type: string;
-          buy_price: number;
-          payout: number;
-          profit: number;
-          current_spot: number;
-          date_start: number;
-          date_expiry: number;
-          shortcode: string;
+          symbol?: string;
+          underlying_symbol?: string;
+          contract_type?: string;
+          buy_price?: number;
+          payout?: number;
+          profit?: number;
+          current_spot?: number;
+          date_start?: number;
+          date_expiry?: number;
+          expiry_time?: number;
+          shortcode?: string;
         }>;
       };
     }>({ portfolio: 1 });
-    return (res.portfolio?.contracts ?? []).map((c) => ({
-      contractId: c.contract_id,
-      symbol: c.symbol,
-      contractType: c.contract_type,
-      buyPrice: Number(c.buy_price),
-      payout: Number(c.payout),
-      profit: Number(c.profit ?? 0),
-      currentSpot: Number(c.current_spot ?? 0),
-      dateStart: c.date_start,
-      dateExpiry: c.date_expiry,
-      shortcode: c.shortcode,
-    }));
+    return (res.portfolio?.contracts ?? []).map((c) => {
+      const parts = c.shortcode?.split("_") ?? [];
+      const derivedSymbol = c.symbol ?? c.underlying_symbol ?? parts[1] ?? "";
+      return {
+        contractId: c.contract_id,
+        symbol: derivedSymbol,
+        contractType: c.contract_type ?? parts[0] ?? "CALL",
+        buyPrice: Number(c.buy_price ?? 0),
+        payout: Number(c.payout ?? 0),
+        profit: Number(c.profit ?? 0),
+        currentSpot: Number(c.current_spot ?? 0),
+        dateStart: c.date_start ?? Math.floor(Date.now() / 1000),
+        dateExpiry: c.date_expiry ?? c.expiry_time ?? (Number(parts[2]) ? Number(parts[2]) : Math.floor(Date.now() / 1000) + 300),
+        shortcode: c.shortcode ?? "",
+      };
+    });
   } catch {
     return [];
   }
@@ -676,14 +682,14 @@ export async function getProfitTable(limit = 50): Promise<ProfitRecord[]> {
       profit_table?: {
         transactions?: Array<{
           contract_id: number;
-          shortcode: string;
+          shortcode?: string;
           underlying_symbol?: string;
           contract_type?: string;
-          buy_price: number;
-          sell_price: number;
+          buy_price?: number;
+          sell_price?: number;
           profit?: number; // absent on the Options Trading API — derive it
-          purchase_time: number;
-          sell_time: number;
+          purchase_time?: number;
+          sell_time?: number;
           app_id?: number;
         }>;
       };
@@ -694,11 +700,11 @@ export async function getProfitTable(limit = 50): Promise<ProfitRecord[]> {
         contractId: t.contract_id,
         symbol: t.underlying_symbol ?? parts[1] ?? "—",
         contractType: t.contract_type ?? parts[0] ?? "—",
-        buyPrice: Number(t.buy_price),
-        sellPrice: Number(t.sell_price),
-        profit: t.profit !== undefined ? Number(t.profit) : Number(t.sell_price) - Number(t.buy_price),
-        purchaseTime: t.purchase_time,
-        sellTime: t.sell_time,
+        buyPrice: Number(t.buy_price ?? 0),
+        sellPrice: Number(t.sell_price ?? 0),
+        profit: t.profit !== undefined ? Number(t.profit) : Number(t.sell_price ?? 0) - Number(t.buy_price ?? 0),
+        purchaseTime: t.purchase_time ?? Math.floor(Date.now() / 1000),
+        sellTime: t.sell_time ?? Math.floor(Date.now() / 1000),
       };
     });
   } catch {

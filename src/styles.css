@@ -333,6 +333,13 @@
   --width: 340px !important;
 }
 
+@media (max-width: 767px) {
+  [data-sonner-toaster] {
+    --mobile-offset: calc(78px + env(safe-area-inset-bottom)) !important;
+    bottom: var(--mobile-offset) !important;
+  }
+}
+
 [data-sonner-toast] {
   --toast-accent: oklch(0.70 0.24 290);
 }

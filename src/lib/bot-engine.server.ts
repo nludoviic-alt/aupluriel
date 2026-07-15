@@ -35,10 +35,12 @@ import {
   isInTradingSession,
   minContractMinutes,
   symbolRollingStats,
+  currentActiveSessions,
   type AutoTraderConfig,
   type ScanResult,
   type ScanSymbolResult,
   type TradeLog,
+  type TradingSession,
 } from "./signal-core";
 
 const SCAN_MS = 60_000;
@@ -252,6 +254,7 @@ class ServerBotEngine {
   private sessionPeakPnl = 0;
   lastScan: ScanResult | null = null;
   lastError: string | null = null;
+  private lastActiveSessions: TradingSession[] = [];
 
   constructor(
     public readonly userId: number,
@@ -260,6 +263,7 @@ class ServerBotEngine {
   ) {
     this.conn = new DerivTradingConnection(derivToken, config.mode === "live" ? "live" : "demo");
     this.logs = loadRecentTrades(userId);
+    this.lastActiveSessions = currentActiveSessions();
   }
 
   get pausedUntil(): number {
@@ -288,47 +292,44 @@ class ServerBotEngine {
   private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
     const closed = (log.status === "won" || log.status === "lost") && prevStatus !== log.status;
     const riskStop = log.status === "risk-stop" && prevStatus === null;
-    if (!closed && !riskStop) return;
-    void (async () => {
-      const { sendEmail, tradeClosedEmail, riskPauseEmail } = await import("./email.server");
-      const user = getDb().prepare("SELECT email, username FROM users WHERE id = ?").get(this.userId) as { email: string; username: string } | undefined;
-      if (!user) return;
-      const { subject, html } = closed
-        ? tradeClosedEmail({
-            symbol: log.symbol, direction: log.direction, stake: log.stake,
-            profit: log.profit, won: log.status === "won", mode: this.config.mode,
-          })
-        : riskPauseEmail(log.note ?? "Limite de risque atteinte", this.config.mode);
-      // The trade's owner gets the email; the admin (ADMIN_EMAIL) gets a copy
-      // of every user's notifications — the friends' bots are training the
-      // shared learning, and the admin oversees all of it from one inbox.
-      const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
-      const recipients = [...new Set([user.email.toLowerCase(), ...(adminEmail ? [adminEmail] : [])])];
-      await Promise.allSettled(recipients.map((to) =>
-        sendEmail({
-          to,
-          subject: to === adminEmail && to !== user.email.toLowerCase() ? `[${user.username}] ${subject}` : subject,
-          html,
-        }),
-      ));
-    })().catch((e) => console.error(`[bot] Notification email échouée pour user ${this.userId}:`, (e as Error).message));
+    const opened = log.status === "open" && (prevStatus === null || prevStatus === "pending");
+    const error = log.status === "error" && prevStatus === null;
+
+    if (!closed && !riskStop && !opened && !error) return;
 
     // Push, unlike email, is scoped to the trade's owner only — it targets
     // that person's own locked phone, not a shared admin inbox.
     void (async () => {
       const { sendPushToUser } = await import("./push.server");
       const sign = log.profit >= 0 ? "+" : "";
-      const payload = closed
-        ? {
-            title: log.status === "won" ? `🎉 Gagné ${sign}$${log.profit.toFixed(2)}` : `Perdu ${sign}$${log.profit.toFixed(2)}`,
-            body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "réel" : "démo"}`,
-            url: "/autotrader",
-          }
-        : {
-            title: "Bot en pause (protection de risque)",
-            body: log.note ?? "Limite de risque atteinte",
-            url: "/autotrader",
-          };
+      
+      let payload;
+      if (closed) {
+        payload = {
+          title: log.status === "won" ? `🎉 Gagné ${sign}$${log.profit.toFixed(2)}` : `❌ Perdu ${sign}$${log.profit.toFixed(2)}`,
+          body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+        };
+      } else if (opened) {
+        payload = {
+          title: `🚀 Position ouverte : ${log.symbol}`,
+          body: `${log.direction} · Mise : $${log.stake.toFixed(2)} · Confiance : ${log.confidence}% · Mode : ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+        };
+      } else if (error) {
+        payload = {
+          title: `⚠️ Erreur sur ${log.symbol}`,
+          body: log.note ?? "Échec de l'ouverture de position",
+          url: "/autotrader",
+        };
+      } else {
+        payload = {
+          title: "Bot en pause (protection de risque)",
+          body: log.note ?? "Limite de risque atteinte",
+          url: "/autotrader",
+        };
+      }
+      
       await sendPushToUser(this.userId, payload);
     })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
   }
@@ -512,6 +513,50 @@ class ServerBotEngine {
     // SQL over all of today's rows — the in-memory log is a capped window, so
     // computing daily P&L/count from it drops early wins as events accumulate.
     const { pnl, count } = getTodayStats(this.userId);
+
+    // Check for session open/close changes
+    const currentSessions = currentActiveSessions();
+    const openedSessions = currentSessions.filter((s) => !this.lastActiveSessions.includes(s));
+    const closedSessions = this.lastActiveSessions.filter((s) => !currentSessions.includes(s));
+    this.lastActiveSessions = currentSessions;
+
+    if (openedSessions.length > 0 || closedSessions.length > 0) {
+      const configSessions = config.tradingSessions || [];
+      const relevantOpened = openedSessions.filter((s) => configSessions.includes(s));
+      const relevantClosed = closedSessions.filter((s) => configSessions.includes(s));
+
+      if (relevantOpened.length > 0 || relevantClosed.length > 0) {
+        void (async () => {
+          try {
+            const { sendPushToUser } = await import("./push.server");
+            const sessionLabels: Record<TradingSession, string> = {
+              london: "Londres",
+              newyork: "New York",
+              asia: "Asie/Tokyo",
+              sydney: "Sydney",
+            };
+
+            for (const s of relevantOpened) {
+              await sendPushToUser(this.userId, {
+                title: `🟢 Session ${sessionLabels[s] || s} ouverte`,
+                body: `La session ${sessionLabels[s] || s} vient d'ouvrir. Le bot commence l'analyse de ce marché.`,
+                url: "/autotrader",
+              }).catch(() => {});
+            }
+
+            for (const s of relevantClosed) {
+              await sendPushToUser(this.userId, {
+                title: `🔴 Session ${sessionLabels[s] || s} fermée`,
+                body: `La session ${sessionLabels[s] || s} est maintenant fermée. Le bot suspend le trading sur ce marché.`,
+                url: "/autotrader",
+              }).catch(() => {});
+            }
+          } catch (e) {
+            console.error(`[bot] Push de session échoué pour user ${this.userId}:`, (e as Error).message);
+          }
+        })();
+      }
+    }
     const scanResults: ScanSymbolResult[] = [];
     const finishScan = () => { this.lastScan = { time: Date.now(), results: scanResults }; };
 
@@ -825,6 +870,18 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   await engine.reconcile().catch(() => {});
   engine.start();
   console.log(`[bot] Moteur serveur démarré pour user ${userId} (mode ${config.mode})`);
+  void (async () => {
+    try {
+      const { sendPushToUser } = await import("./push.server");
+      await sendPushToUser(userId, {
+        title: "🤖 Auto-trader démarré",
+        body: `Le bot serveur est actif en mode ${config.mode === "live" ? "Réel" : "Démo"}.`,
+        url: "/autotrader",
+      });
+    } catch (e) {
+      console.error(`[bot] Push démarré échoué pour user ${userId}:`, (e as Error).message);
+    }
+  })();
 }
 
 export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
@@ -835,27 +892,18 @@ export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
     engines.delete(userId);
     console.log(`[bot] Moteur serveur arrêté pour user ${userId} (${reason})`);
 
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (adminEmail) {
-      void (async () => {
-        try {
-          const user = getDb().prepare("SELECT username, email FROM users WHERE id = ?").get(userId) as { username: string; email: string } | undefined;
-          if (!user) return;
-          const { sendEmail } = await import("./email.server");
-          const subject = `⚠️ [Pluriel] Bot arrêté pour ${user.username}`;
-          const html = `
-            <h3>Arrêt du Bot Auto-Trader</h3>
-            <p>Le bot de trading de l'utilisateur <strong>${user.username}</strong> (${user.email}) s'est arrêté.</p>
-            <p><strong>Raison de l'arrêt :</strong> ${reason}</p>
-            <hr/>
-            <p>Cet e-mail est envoyé automatiquement à l'administrateur.</p>
-          `;
-          await sendEmail({ to: adminEmail, subject, html });
-        } catch (e) {
-          console.error(`[bot] Notification d'arrêt admin échouée pour user ${userId}:`, (e as Error).message);
-        }
-      })();
-    }
+    void (async () => {
+      try {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(userId, {
+          title: "🛑 Auto-trader arrêté",
+          body: reason,
+          url: "/autotrader",
+        });
+      } catch (e) {
+        console.error(`[bot] Push d'arrêt utilisateur échoué pour user ${userId}:`, (e as Error).message);
+      }
+    })();
 
     void (async () => {
       try {

@@ -24,6 +24,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Pluriel" }] }),
@@ -118,6 +119,7 @@ function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const { confirmState, confirm } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -215,8 +217,45 @@ function AdminPage() {
   }
 
   async function act(userId: number, action: "approve" | "reject" | "revoke" | "delete" | "reset-password") {
-    if (action === "delete" && !confirm("Supprimer définitivement ce compte ?")) return;
-    if (action === "revoke" && !confirm("Révoquer l'accès de cet utilisateur ?")) return;
+    let ok = true;
+    if (action === "delete") {
+      ok = await confirm({
+        title: "Supprimer le compte ?",
+        description: "Cette action supprimera définitivement ce compte utilisateur et toutes ses données associées.",
+        confirmLabel: "Supprimer",
+        danger: true,
+      });
+    } else if (action === "revoke") {
+      ok = await confirm({
+        title: "Révoquer l'accès ?",
+        description: "L'accès de cet utilisateur sera révoqué et ses sessions actives seront déconnectées.",
+        confirmLabel: "Révoquer",
+        danger: true,
+      });
+    } else if (action === "approve") {
+      ok = await confirm({
+        title: "Approuver le compte ?",
+        description: "Voulez-vous approuver ce compte utilisateur pour l'autoriser à se connecter ?",
+        confirmLabel: "Approuver",
+        danger: false,
+      });
+    } else if (action === "reject") {
+      ok = await confirm({
+        title: "Rejeter le compte ?",
+        description: "Voulez-vous rejeter ce compte utilisateur ?",
+        confirmLabel: "Rejeter",
+        danger: true,
+      });
+    } else if (action === "reset-password") {
+      ok = await confirm({
+        title: "Réinitialiser le mot de passe ?",
+        description: "Un email de réinitialisation de mot de passe sera envoyé à cet utilisateur.",
+        confirmLabel: "Envoyer l'email",
+        danger: false,
+      });
+    }
+
+    if (!ok) return;
     setBusyId(userId);
     try {
       await api.post("/api/admin/users", { userId, action });
@@ -282,7 +321,31 @@ function AdminPage() {
   }
 
   async function inviteAction(id: number, action: "revoke" | "resend" | "delete") {
-    if (action === "delete" && !confirm("Supprimer cette invitation ?")) return;
+    let ok = true;
+    if (action === "delete") {
+      ok = await confirm({
+        title: "Supprimer l'invitation ?",
+        description: "Cette invitation sera supprimée définitivement.",
+        confirmLabel: "Supprimer",
+        danger: true,
+      });
+    } else if (action === "revoke") {
+      ok = await confirm({
+        title: "Révoquer l'invitation ?",
+        description: "Cette invitation sera révoquée et ne pourra plus être utilisée pour s'inscrire.",
+        confirmLabel: "Révoquer",
+        danger: true,
+      });
+    } else if (action === "resend") {
+      ok = await confirm({
+        title: "Renvoyer l'invitation ?",
+        description: "Renvoyer l'email d'invitation à cette adresse ?",
+        confirmLabel: "Renvoyer",
+        danger: false,
+      });
+    }
+
+    if (!ok) return;
     setInviteActionId(id);
     try {
       await api.post("/api/admin/invites", { id, action });
@@ -1277,6 +1340,7 @@ function AdminPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog state={confirmState} />
     </div>
   );
 }

@@ -284,17 +284,17 @@ export default function PortfolioPage() {
                   <span
                     className={cn(
                       "rounded-md px-2 py-0.5 text-xs font-semibold",
-                      p.contractType === "CALL"
+                      p.contractType === "CALL" || p.contractType === "MULTUP"
                         ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
                         : "bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
                     )}
                   >
-                    {p.contractType === "CALL" ? "▲ CALL" : "▼ PUT"}
+                    {p.contractType === "CALL" || p.contractType === "MULTUP" ? "▲" : "▼"} {p.contractType}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs">{p.buyPrice.toFixed(2)}</td>
                 <td className="px-4 py-3 text-right font-mono text-muted-foreground text-xs">
-                  {p.currentSpot > 0 ? p.currentSpot.toFixed(p.symbol.startsWith("frx") ? 5 : 2) : "—"}
+                  {p.currentSpot > 0 ? p.currentSpot.toFixed(p.symbol && p.symbol.startsWith("frx") ? 5 : 2) : "—"}
                 </td>
                 <td
                   className={cn(
@@ -367,12 +367,12 @@ export default function PortfolioPage() {
                   <span
                     className={cn(
                       "rounded-md px-2 py-0.5 text-xs font-semibold",
-                      t.contractType === "CALL"
+                      t.contractType === "CALL" || t.contractType === "MULTUP"
                         ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
                         : "bg-[color:var(--bear)]/10 text-[color:var(--bear)]",
                     )}
                   >
-                    {t.contractType}
+                    {t.contractType === "CALL" || t.contractType === "MULTUP" ? "▲" : "▼"} {t.contractType}
                   </span>
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-muted-foreground text-xs">

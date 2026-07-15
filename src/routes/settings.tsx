@@ -10,6 +10,7 @@ import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
+import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 
 const AI_KEY_STORAGE = "lio23.ai_api_key";
 const AI_PROVIDER_STORAGE = "lio23.ai_provider";
@@ -43,6 +44,7 @@ function SettingsPage() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSaving, setPushSaving] = useState(false);
   const [pushChecked, setPushChecked] = useState(false);
+  const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -219,7 +221,18 @@ function SettingsPage() {
                   {(["demo", "live"] as const).map((t) => (
                     <button
                       key={t}
-                      onClick={() => setAccount(t)}
+                      onClick={async () => {
+                        if (t === "live") {
+                          const ok = await confirm({
+                            title: "Passer en mode LIVE ?",
+                            description: "Le mode LIVE engage de l'argent réel sur les transactions Deriv. Es-tu sûr de vouloir passer en mode LIVE ?",
+                            confirmLabel: "Passer en LIVE",
+                            danger: true,
+                      });
+                      if (!ok) return;
+                    }
+                    setAccount(t);
+                  }}
                       className={cn(
                         "flex-1 py-1.5 text-[10px] md:text-xs uppercase tracking-wider font-bold rounded-lg transition-all text-center",
                         account === t
@@ -519,6 +532,7 @@ function SettingsPage() {
           <CheckCircle2 className="mr-2 h-4 w-4" /> Enregistrer toutes les modifications
         </Button>
       </div>
+      <ConfirmDialog state={confirmState} />
     </div>
   );
 }

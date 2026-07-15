@@ -810,7 +810,18 @@ function AutoTraderPage() {
               {(["simulation", "demo", "live"] as TradingMode[]).map((m) => {
                 const isSelected = config.mode === m;
                 return (
-                  <button key={m} disabled={running} onClick={() => patchConfig("mode", m)}
+                  <button key={m} disabled={running} onClick={async () => {
+                    if (m === "live") {
+                      const ok = await confirm({
+                        title: "Passer en mode LIVE ?",
+                        description: "Le mode LIVE engage de l'argent réel sur les transactions Deriv. Es-tu sûr de vouloir passer en mode LIVE ?",
+                        confirmLabel: "Passer en LIVE",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                    }
+                    patchConfig("mode", m);
+                  }}
                     className={cn(
                       "flex flex-col items-center gap-1.5 py-4 text-center transition-all duration-200 border-r last:border-r-0 border-border/40",
                       isSelected
@@ -1010,8 +1021,19 @@ function AutoTraderPage() {
                   disabled={!derivSession.connected || forcingTrade}
                   onClick={async () => {
                     if (!forceSymbol) return;
-                    setForcingTrade(true);
                     const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
+                    const isLive = config.mode === "live";
+                    
+                    const confirmed = await confirm({
+                      title: isLive ? "⚠️ CONFIRMER LE TRADE FORCÉ (RÉEL) ?" : "Confirmer le trade forcé (démo) ?",
+                      description: `Vous allez ouvrir immédiatement une position ${forceDir === "CALL" ? "Hausse (CALL)" : "Baisse (PUT)"} sur ${label} avec une mise de $${forceStake}. Ce trade contourne toutes les validations de l'auto-trader.`,
+                      confirmLabel: isLive ? "Forcer le trade RÉEL" : "Forcer le trade",
+                      danger: isLive,
+                    });
+                    
+                    if (!confirmed) return;
+
+                    setForcingTrade(true);
                     toast.info(`Trade forcé en cours — ${label} ${forceDir}…`);
                     try {
                       await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
