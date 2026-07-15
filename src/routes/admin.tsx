@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { KpiCard } from "@/components/kpi-card";
 import { CollapsibleBlock } from "@/components/collapsible-section";
+import { ChangelogPanel } from "@/components/changelog-panel";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -504,6 +505,9 @@ function AdminPage() {
           tone={avgWinRate >= 54.1 ? "bull" : "default"}
         />
       </div>
+
+      {/* ── BUG/CHANGELOG TRACKER ── */}
+      <ChangelogPanel />
 
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock

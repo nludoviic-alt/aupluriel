@@ -183,6 +183,21 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+
+    -- Admin-facing bug/changelog tracker: one durable record of what was
+    -- found, fixed, and improved, so a recurring issue (or "didn't we
+    -- already look at this?") has a place to check instead of re-litigating
+    -- it from memory every time. Seeded once from real project history.
+    CREATE TABLE IF NOT EXISTS changelog_entries (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      type        TEXT    NOT NULL,               -- 'fix' | 'improvement' | 'watch'
+      title       TEXT    NOT NULL,
+      description TEXT    NOT NULL DEFAULT '',
+      status      TEXT    NOT NULL DEFAULT 'resolved', -- 'open' | 'monitoring' | 'resolved'
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_changelog_created ON changelog_entries(created_at DESC);
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---
@@ -238,6 +253,8 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE user_settings ADD COLUMN auto_backtest_enabled INTEGER NOT NULL DEFAULT 0");
   }
 
+  seedChangelogIfEmpty(db);
+
   // Promote the configured admin email if that account already exists.
   const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase();
   if (adminEmail) {
@@ -245,4 +262,105 @@ function migrate(db: Database.Database) {
       "UPDATE users SET is_admin = 1, status = 'approved', email_verified = 1 WHERE email = ?",
     ).run(adminEmail);
   }
+}
+
+// One-time seed from real project history (commit dates as created_at) so
+// the admin changelog isn't empty on first use — never re-seeds once rows
+// exist, so entries added/edited from the admin UI afterward are untouched.
+function seedChangelogIfEmpty(db: Database.Database) {
+  const { n } = db.prepare("SELECT COUNT(*) AS n FROM changelog_entries").get() as { n: number };
+  if (n > 0) return;
+
+  const seed: [string, string, string, string, number][] = [
+    ["fix", "Migration API Deriv vers Options Trading (OTP WS)", "Passage de l'ancienne API Deriv v3 vers l'API Options Trading v1, marchés disponibles élargis.", "resolved", 1783281978],
+    ["improvement", "Refonte du header, retrait du market-coach, notification d'ouverture de marché", "", "resolved", 1783310643],
+    ["improvement", "Moteur de trading multi-marché adaptatif, mise Kelly, optimisations perf", "", "resolved", 1783364414],
+    ["fix", "Refonte de la page de connexion et correction du portail d'authentification", "", "resolved", 1783371727],
+    ["improvement", "Compression des logos, création de compte admin, réactif mobile", "", "resolved", 1783379048],
+    ["fix", "L'auto-trader s'arrêtait en changeant de page", "Le moteur tournait uniquement tant que le composant restait monté — corrigé pour rester actif à la navigation.", "resolved", 1783422682],
+    ["improvement", "Auto-trader côté serveur (tourne 24/7) + corrections d'audit sur la fréquence de trade", "", "resolved", 1783456015],
+    ["fix", "Icônes PWA corrigées, cache du service worker obsolète, ré-enregistrement", "", "resolved", 1783470767],
+    ["improvement", "Harmonisation sidebar mobile/desktop, logo glassmorphic", "", "resolved", 1783484191],
+    ["fix", "Arrondi du prix d'achat Deriv corrigé + durcissement des contrôles de risque", "Rebranding de l'app en Lio23 à la même occasion.", "resolved", 1783602533],
+    ["improvement", "Déploiement automatique sur lio23.com", "GitHub Actions déclenche un déploiement SSH sur le VPS à chaque push sur main.", "resolved", 1783603892],
+    ["fix", "Blocage par corrélation appliqué dans les deux sens", "Le filtre bloquait aussi la direction non corrélée au lieu de ne bloquer que la direction réellement corrélée.", "resolved", 1783631280],
+    ["fix", "KPI \"P&L Aujourd'hui\" ignorait les trades du bot serveur", "Ne sommait que les trades du moteur local — invisible dès qu'on tradait via le bot serveur.", "resolved", 1783631822],
+    ["improvement", "Deux corrections de logique de trading trouvées lors d'un audit complet", "", "resolved", 1783632585],
+    ["improvement", "Veto de tendance journalière optionnel + coupe-circuit de win-rate par symbole", "", "resolved", 1783634549],
+    ["improvement", "Passage aux contrats Multiplicateur (MULTUP/MULTDOWN) par défaut", "Remplace CALL/PUT — effet de levier, sans échéance fixe, stop/take-profit en montant absolu.", "resolved", 1783636556],
+    ["improvement", "Ajout du mode Live (argent réel) pour le bot serveur", "Avec avertissement de risque explicite avant activation.", "resolved", 1783637321],
+    ["improvement", "Stops dynamiques basés sur l'ATR + décroissance de récence sur les poids appris", "", "resolved", 1783650987],
+    ["improvement", "Récap de trading par utilisateur + détail de l'apprentissage partagé dans l'admin", "", "resolved", 1783650987],
+    ["improvement", "Limitation de débit sur inscription/connexion/mot de passe oublié/renvoi de vérification", "", "resolved", 1783650987],
+    ["improvement", "Couverture crypto 24/7 + assouplissement du palier premium pour un vrai flux de trades", "", "resolved", 1783688161],
+    ["fix", "Seuil d'accord multi-timeframe relevé à 3", "Validé par un replay honnête de 52 jours de backtest.", "resolved", 1783690509],
+    ["fix", "volatilityRatio comparait un ATR absolu à une base en pourcentage", "Faussait le calcul de volatilité relative.", "resolved", 1783691144],
+    ["improvement", "Arrêt propre du serveur, emails de trade, comparatif backtest-vs-réel dans l'admin", "", "resolved", 1783693046],
+    ["improvement", "Copie de chaque email de trade/risque vers l'admin", "", "resolved", 1783694635],
+    ["fix", "Erreurs API Deriv, auto-réparation des multiplicateurs, signaux optimisés", "Inscription sécurisée par code d'invitation à la même occasion.", "resolved", 1783822481],
+    ["improvement", "Refonte de la page admin en interface glassmorphique premium", "", "resolved", 1783822910],
+    ["improvement", "Les admins peuvent activer l'auto-trader par utilisateur avec statut live", "", "resolved", 1783824716],
+    ["improvement", "Génération de codes d'invitation par destinataire, envoyés par email", "", "resolved", 1783826933],
+    ["improvement", "Suivi de la calibration de confiance dans les analytics du bot", "", "resolved", 1783887920],
+    ["improvement", "Scheduler de backtest automatique + refonte Auto-Trader/Paramètres", "", "resolved", 1783964552],
+    ["fix", "Indicateur de statut du backtest auto + vérifications de token localStorage périmées", "", "resolved", 1783966414],
+    ["improvement", "Refonte du dashboard bot, layout auto-trader, sessions de marché colorées, pipeline de test restauré", "", "resolved", 1783971873],
+    ["fix", "Contournement du blocage autoplay navigateur + sons d'ouverture/perte de trade", "", "resolved", 1783973594],
+    ["improvement", "Refonte des emails en thème sombre premium avec logo favicon", "Couleurs alignées sur le orange de la marque (au lieu de cyan/violet).", "resolved", 1783974347],
+    ["fix", "Stats démo/live mélangées, mode simulation affichait un P&L inventé", "Séparées par mode ; Kelly implémenté côté serveur ; indices synthétiques retirés des presets.", "resolved", 1783978593],
+    ["improvement", "Navigation mobile façon app", "5 onglets essentiels en bas, pages denses réduites à l'essentiel via accordéons.", "resolved", 1783988979],
+    ["fix", "Confirmation ajoutée avant CHAQUE lancement du bot", "Auparavant seule l'activation du mode live était confirmée — désormais démo aussi.", "resolved", 1783990915],
+    ["improvement", "Notifications Web Push réelles", "Fonctionnent même téléphone verrouillé, contrairement aux anciennes notifications navigateur au premier plan.", "resolved", 1783992398],
+    ["fix", "Tiroir de menu mobile caché derrière la barre de navigation du bas", "Email/nom coupés en bas du menu — corrigé par z-index et min-h-0 sur la liste scrollable.", "resolved", 1783999077],
+    ["fix", "Le bot tentait des ordres Multiplicateur sur des indices actions (OTC_*)", "Ces symboles ne supportent pas ce type de contrat sur Deriv.", "resolved", 1784023573],
+    ["fix", "Inversion base/quote USD dans le filtre de corrélation", "Bloquait/laissait passer l'inverse de ce qu'il fallait selon le sens de la paire ; ajout du groupe or/argent.", "resolved", 1784042964],
+    ["fix", "Corrections d'un audit de trading complet", "Sessions crypto, plancher de confiance, perte flottante plafonnée dans le risque journalier, plafond global de positions ouvertes.", "resolved", 1784044054],
+    ["fix", "Détection Chrome/Firefox sur iOS pour les notifications push", "Ces navigateurs ne peuvent jamais activer le push sur iOS (restriction Apple) — orientation explicite vers Safari.", "resolved", 1784045822],
+    ["fix", "Arrondi des décimales de l'API Deriv corrigé", "Configs par défaut optimisées (levier x20, ATR stop 2.5).", "resolved", 1784048403],
+    ["improvement", "Notification admin à l'arrêt d'un bot + affichage des soldes Deriv utilisateurs dans l'admin", "", "resolved", 1784049793],
+    ["improvement", "Contrôles admin pour activer/désactiver le backtest auto par utilisateur", "", "resolved", 1784050079],
+    ["improvement", "Notifications push aux admins quand le bot d'un utilisateur s'arrête", "", "resolved", 1784050337],
+    ["fix", "Trois ajustements de stratégie externes revus", "Cap du levier crypto, retrait du Stochastique, filtres RSI, ATR stop élargi à 3.0 — dont un (atrStopMode) contredisait un résultat de backtest de 52 jours déjà documenté dans le code.", "resolved", 1784065602],
+    ["fix", "Stop-loss recalculé avec le levier crypto réellement appliqué", "Utilisait le levier brut demandé au lieu du levier effectif (capé x10 en crypto) ; annulation du atrStopMode non validé.", "resolved", 1784066569],
+    ["fix", "Minuteur maxHoldMinutes repartait de zéro à chaque redémarrage serveur", "Pouvait ne jamais se déclencher si les redémarrages étaient assez fréquents — recalculé depuis l'heure d'ouverture réelle de la position.", "resolved", 1784076937],
+    ["fix", "Notifications push en double corrigées, crash du portefeuille corrigé, dialogues de confirmation ajoutés", "", "resolved", 1784083725],
+    ["fix", "P&L Aujourd'hui figé à la valeur du chargement de page", "Ne se rafraîchissait jamais — polling 30s ajouté.", "resolved", 1784111997],
+    ["improvement", "Retrait du moteur de trading local (navigateur)", "Ne tournait que fenêtre ouverte, invisible partout ailleurs (autres appareils, journal, admin), sans notification. Le bot serveur devient l'unique moteur supporté.", "resolved", 1784112862],
+    ["fix", "Panneau admin (statut bot, P&L cumulés) ne se rafraîchissait jamais automatiquement", "Polling 20s ajouté.", "resolved", 1784119370],
+    ["fix", "Positions orphelines après arrêt du bot par le backtest auto", "Un verdict défavorable pouvait arrêter un bot avec des positions encore ouvertes, les laissant sans suivi P&L ni clôture automatique. L'arrêt est désormais différé jusqu'à ce qu'elles se closent. Dérive de la mise (stake) entre navigateur et serveur corrigée par resynchronisation au chargement de la page.", "resolved", 1784120108],
+    ["improvement", "Coupe-circuit du backtest auto étendu au mode live", "Arrêt automatique si le verdict devient défavorable, avec le même garde-fou positions ouvertes. Jamais de redémarrage automatique en live — ça reste toujours une action manuelle confirmée.", "resolved", 1784120673],
+  ];
+
+  const insert = db.prepare(
+    "INSERT INTO changelog_entries (type, title, description, status, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  const insertAll = db.transaction((rows: typeof seed) => {
+    for (const row of rows) insert.run(...row);
+  });
+  insertAll(seed);
+
+  // Current open watch items, known as of this seeding — not from git
+  // history, but real state worth surfacing so it doesn't get re-discovered
+  // from scratch next time someone asks "is everything OK".
+  const watch = db.prepare(
+    "INSERT INTO changelog_entries (type, title, description, status) VALUES (?, ?, ?, ?)",
+  );
+  watch.run(
+    "watch",
+    "Verdict backtest auto actuellement défavorable",
+    "39,0% de réussite mesurée vs 54,1% nécessaire pour être rentable — les bots démo opt-in restent arrêtés par design. À surveiller avant tout passage en live.",
+    "monitoring",
+  );
+  watch.run(
+    "watch",
+    "Erreur récurrente : logo-192.png manquant",
+    "500 sur /home/ubuntu/app/.output/public/logo-192.png (asset PWA/manifest) — repéré dans les logs journalctl, pas encore corrigé.",
+    "open",
+  );
+  watch.run(
+    "watch",
+    "netPnl admin ne filtre pas par mode démo/live",
+    "src/routes/api/admin/stats.ts additionne démo et live ensemble. Sans impact tant que tout est en démo, à corriger avant que du live coexiste avec du démo.",
+    "open",
+  );
 }
