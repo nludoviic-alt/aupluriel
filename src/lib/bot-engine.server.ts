@@ -447,8 +447,16 @@ class ServerBotEngine {
     // Safety net: force-close after maxHoldMinutes even if neither stop_loss
     // nor take_profit triggered — avoids swap-fee accumulation on positions
     // held past the daily cutoff, and stops a stuck position from holding a
-    // correlation slot open indefinitely.
+    // correlation slot open indefinitely. Measured from the position's
+    // ORIGINAL open time (openLog.time), not from whenever this function
+    // runs: re-tracking on reconcile() (server restart, or the auto-backtest
+    // gate stopping and later restarting the bot — stop() tears down every
+    // subscription and timer) used to reset a fresh full-duration timer
+    // every time, so a position surviving a restart could sit open well past
+    // maxHoldMinutes with the safety net never actually firing. A position
+    // already overdue by the time it's reconciled force-closes immediately.
     const maxHoldMs = Math.max(60_000, this.config.maxHoldMinutes * 60_000);
+    const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
     const maxHoldTimer = setTimeout(async () => {
       if (resolved || this.stopped) return;
       try {
@@ -459,7 +467,7 @@ class ServerBotEngine {
         const match = records.find((r) => r.contractId === contractId);
         if (match) finalize(match.profit);
       }
-    }, maxHoldMs);
+    }, remainingMs);
     this.fallbackTimers.add(maxHoldTimer);
   }
 
