@@ -288,7 +288,7 @@ function SettingsPage() {
           <CollapsibleSection
             icon={<FlaskConical className="mt-1 h-5.5 w-5.5 text-cyan-400 shrink-0" />}
             title="Backtest automatique"
-            description="Rejoue le pipeline live toutes les 6h. Si le win rate mesuré dépasse le seuil de rentabilité, le bot serveur démarre en Démo ; sinon il s'arrête. Le mode Live n'est jamais touché."
+            description="Rejoue le pipeline live toutes les 6h. Si le win rate mesuré dépasse le seuil de rentabilité, le bot serveur démarre en Démo ; sinon il s'arrête. En Live, seul l'arrêt automatique s'applique — jamais de démarrage automatique, un lancement en argent réel reste toujours une confirmation manuelle."
           >
             <div
               className={cn(
@@ -299,7 +299,7 @@ function SettingsPage() {
               <div>
                 <h4 className="text-xs md:text-sm text-neutral-200 font-bold">Activer l'automatisme</h4>
                 <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
-                  Démarre/arrête le bot Démo selon le verdict du backtest, sans intervention.
+                  Démarre/arrête le bot Démo selon le verdict du backtest. En Live : arrête seulement, jamais de démarrage automatique.
                 </p>
               </div>
               <Switch checked={autoBacktestEnabled} disabled={autoBacktestSaving} onCheckedChange={toggleAutoBacktest} />

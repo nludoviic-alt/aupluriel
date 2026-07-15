@@ -84,11 +84,15 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
   for (const { user_id } of rows) {
     try {
       const existing = loadBotConfig(user_id);
-      // Never touch a live-mode bot — auto-backtest only ever manages demo.
-      if (existing?.mode === "live") continue;
-
+      const isLive = existing?.mode === "live";
       const running = isBotRunning(user_id);
+
       if (verdict.favorable && !running) {
+        // Live is never auto-started — a live start moves real money and
+        // stays a manual, confirmed action. Auto-backtest only ever resumes
+        // demo; a live bot the user stopped (or that this sweep stopped
+        // below) waits for them to restart it themselves.
+        if (isLive) continue;
         const config = { ...DEFAULT_CONFIG, stakeUsd: existing?.stakeUsd ?? DEFAULT_CONFIG.stakeUsd, mode: "demo" as const };
         await startBotForUser(user_id, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
@@ -102,8 +106,14 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
           console.log(`[auto-backtest] user ${user_id} : verdict défavorable mais positions encore ouvertes — arrêt reporté`);
           continue;
         }
-        stopBotForUser(user_id, "Verdict de backtest automatique défavorable");
-        console.log(`[auto-backtest] bot arrêté pour user ${user_id} (verdict défavorable)`);
+        // Same circuit-breaker extended to live: an edge that isn't there in
+        // demo isn't there in live either, and real money shouldn't keep
+        // trading on it. Only the stop side applies here — restart is always
+        // manual (see the isLive skip above).
+        stopBotForUser(user_id, isLive
+          ? "Verdict de backtest automatique défavorable (live)"
+          : "Verdict de backtest automatique défavorable");
+        console.log(`[auto-backtest] bot arrêté pour user ${user_id} (verdict défavorable${isLive ? ", live" : ""})`);
       }
     } catch (e) {
       console.error(`[auto-backtest] sweep échoué pour user ${user_id}:`, (e as Error).message);
