@@ -130,10 +130,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "The future" },
       { property: "og:description", content: "The future" },
       { name: "twitter:description", content: "The future" },
-      { property: "og:image", content: "https://lio23.com/logo-lio23-banner.jpg" },
+      { property: "og:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
       { property: "og:image:width", content: "600" },
       { property: "og:image:height", content: "400" },
-      { name: "twitter:image", content: "https://lio23.com/logo-lio23-banner.jpg" },
+      { name: "twitter:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
     ],
     links: [
       { rel: "manifest", href: "/manifest.json" },

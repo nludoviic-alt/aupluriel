@@ -13,7 +13,7 @@ const APP_NAME = "Pluriel";
 
 export function getAppUrl(): string {
   // Public base URL used to build links in emails.
-  return process.env.APP_URL ?? process.env.PUBLIC_URL ?? "https://lio23.com";
+  return process.env.APP_URL ?? process.env.PUBLIC_URL ?? "https://aupluriel.com";
 }
 
 export async function sendEmail({ to, subject, html }: SendEmailInput): Promise<void> {

@@ -306,7 +306,7 @@ function SettingsPage() {
           >
             {isIosNonSafari() ? (
               <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 leading-relaxed">
-                Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple, même en l'ajoutant à l'écran d'accueil ça ne marchera pas depuis Chrome. Ouvre <span className="font-bold">lio23.com dans Safari</span>, puis Partager → « Sur l'écran d'accueil ».
+                Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple, même en l'ajoutant à l'écran d'accueil ça ne marchera pas depuis Chrome. Ouvre <span className="font-bold">aupluriel.com dans Safari</span>, puis Partager → « Sur l'écran d'accueil ».
               </div>
             ) : !isPushSupported() ? (
               <div className="rounded-xl border border-white/5 bg-white/[0.005] p-3.5 text-xs text-muted-foreground leading-relaxed">
