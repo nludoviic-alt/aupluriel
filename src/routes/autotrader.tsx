@@ -567,53 +567,14 @@ function AutoTraderPage() {
       stopAutoTraderEngine();
       toast.info("Auto-trader arrêté");
     } else {
-      if (!disclaimerAccepted) {
-        setShowDisclaimer(true);
-        return;
-      }
-      // derivSession.connected is the real signal here — it's backed by the
-      // server-persisted token, not this browser's localStorage, so it stays
-      // accurate even when the token was only ever configured on another
-      // device/session.
-      if ((config.mode === "demo" || config.mode === "live") && !derivSession.connected) {
-        if (derivSession.connecting) {
-          toast.info("Connexion Deriv en cours, réessaie dans quelques secondes…");
-        } else if (derivSession.error === "Aucun token Deriv configuré") {
-          toast.error("Configure un token API Deriv dans Paramètres d'abord (requis pour demo et live)");
-        } else {
-          toast.error("Session Deriv non connectée — clique 'Reconnecter' dans le panneau de configuration");
-          reinitDerivSession();
-        }
-        return;
-      }
-      // Always confirm before launching — live gets the full risk dialog,
-      // demo/simulation get a lighter one so a stray tap can't start the bot.
-      {
-        const isLive = config.mode === "live";
-        const ok = await confirm({
-          title: isLive ? "Démarrer en mode LIVE ?" : `Démarrer l'auto-trader (${config.mode === "demo" ? "Démo" : "Simulation"}) ?`,
-          description: isLive
-            ? `Le bot va trader avec du VRAI argent. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.`
-            : `Le bot va scanner les marchés et ouvrir des positions automatiquement (${config.mode === "demo" ? "compte de démonstration Deriv" : "simulation locale, aucun ordre réel"}). Mise : $${config.stakeUsd} par trade.`,
-          confirmLabel: isLive ? "Démarrer en réel" : "Démarrer",
-          danger: isLive,
-        });
-        if (!ok) return;
-      }
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-      // Merge active strategy symbols into the watchlist
-      const stratSymbols = activeStrategySymbols();
-      const mergedSymbols = [...new Set([...config.symbols, ...stratSymbols])];
-      const effectiveConfig = mergedSymbols.length > config.symbols.length
-        ? { ...config, symbols: mergedSymbols }
-        : config;
-      if (stratSymbols.length) {
-        toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
-      }
-      const started = startAutoTraderEngine(effectiveConfig, handleEvent, handleRiskStop, () => balanceRef.current);
-      if (started) toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
+      // Local engine retired: it only ran while a tab stayed open, logged to
+      // this one browser's localStorage (invisible everywhere else — other
+      // devices, the journal, admin), and never sent a notification. Real
+      // money moved through it with none of that — the server bot is the
+      // only supported way to trade now: persisted, notified, one shared
+      // source of truth. Stopping (above) still works for anyone who had it
+      // running before this change shipped.
+      toast.error("Le moteur local est désactivé — utilise le Bot serveur (☁️ ci-dessous) : suivi centralisé et notifications sur chaque trade.");
     }
   }
 
