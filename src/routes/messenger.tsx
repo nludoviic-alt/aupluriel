@@ -22,11 +22,9 @@ import {
   Paperclip,
   Check,
   CheckCheck,
-  Lock,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush } from "@/lib/push";
@@ -161,7 +159,6 @@ function MessengerPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toggleSidebar } = useSidebar();
-  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (user && !user.is_admin && user.chat_enabled !== 1) {
@@ -169,38 +166,6 @@ function MessengerPage() {
       navigate({ to: "/" });
     }
   }, [user, navigate]);
-
-  // Desktop-only access code gate — mobile is never locked. The code itself is
-  // verified server-side (/api/chat/verify-code) so it isn't readable from the client bundle.
-  const [desktopUnlocked, setDesktopUnlocked] = useState(false);
-  const [accessCode, setAccessCode] = useState("");
-  const [verifyingCode, setVerifyingCode] = useState(false);
-  const [codeError, setCodeError] = useState("");
-
-  useEffect(() => {
-    if (sessionStorage.getItem("lio23.messenger_unlocked") === "1") {
-      setDesktopUnlocked(true);
-    }
-  }, []);
-
-  const needsDesktopCode = !isMobile && !desktopUnlocked;
-
-  async function handleUnlock(e: React.FormEvent) {
-    e.preventDefault();
-    if (!accessCode.trim() || verifyingCode) return;
-    setVerifyingCode(true);
-    setCodeError("");
-    try {
-      await api.post("/api/chat/verify-code", { code: accessCode.trim() });
-      sessionStorage.setItem("lio23.messenger_unlocked", "1");
-      setDesktopUnlocked(true);
-    } catch {
-      setCodeError("Code incorrect.");
-      setAccessCode("");
-    } finally {
-      setVerifyingCode(false);
-    }
-  }
 
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -298,10 +263,10 @@ function MessengerPage() {
   }
 
   useEffect(() => {
-    if (user && !needsDesktopCode) {
+    if (user) {
       loadSidebarData();
     }
-  }, [user, needsDesktopCode]);
+  }, [user]);
 
   // Fetch messages when active group changes
   useEffect(() => {
@@ -546,41 +511,6 @@ function MessengerPage() {
   function toggleGroupMember(userId: number) {
     setCurrentGroupMembers((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  }
-
-  if (needsDesktopCode) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full min-h-0 bg-background px-4">
-        <div className="w-full max-w-sm rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 shadow-lg text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-            <Lock className="h-5 w-5" />
-          </div>
-          <h2 className="text-lg font-bold text-foreground mb-1">Accès protégé</h2>
-          <p className="text-sm text-muted-foreground mb-5">
-            Entrez le code d'accès pour ouvrir la messagerie sur cet ordinateur.
-          </p>
-          <form onSubmit={handleUnlock} className="space-y-3">
-            <input
-              type="password"
-              inputMode="numeric"
-              autoFocus
-              value={accessCode}
-              onChange={(e) => setAccessCode(e.target.value)}
-              placeholder="Code d'accès"
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-2.5 text-center text-foreground tracking-widest outline-none focus:border-amber-500/40"
-            />
-            {codeError && <p className="text-xs text-red-400">{codeError}</p>}
-            <button
-              type="submit"
-              disabled={verifyingCode || !accessCode.trim()}
-              className="w-full rounded-xl bg-amber-500 text-black font-semibold py-2.5 transition-opacity disabled:opacity-50"
-            >
-              {verifyingCode ? "Vérification..." : "Déverrouiller"}
-            </button>
-          </form>
-        </div>
-      </div>
     );
   }
 

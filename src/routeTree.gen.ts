@@ -38,7 +38,6 @@ import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
-import { Route as ApiChatVerifyCodeRouteImport } from './routes/api/chat/verify-code'
 import { Route as ApiChatUsersRouteImport } from './routes/api/chat/users'
 import { Route as ApiChatMessagesRouteImport } from './routes/api/chat/messages'
 import { Route as ApiChatGroupsRouteImport } from './routes/api/chat/groups'
@@ -202,11 +201,6 @@ const ApiAlertsRoute = ApiAlertsRouteImport.update({
   path: '/api/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiChatVerifyCodeRoute = ApiChatVerifyCodeRouteImport.update({
-  id: '/api/chat/verify-code',
-  path: '/api/chat/verify-code',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiChatUsersRoute = ApiChatUsersRouteImport.update({
   id: '/api/chat/users',
   path: '/api/chat/users',
@@ -340,7 +334,6 @@ export interface FileRoutesByFullPath {
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/users': typeof ApiChatUsersRoute
-  '/api/chat/verify-code': typeof ApiChatVerifyCodeRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRoutesByTo {
@@ -389,7 +382,6 @@ export interface FileRoutesByTo {
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/users': typeof ApiChatUsersRoute
-  '/api/chat/verify-code': typeof ApiChatVerifyCodeRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRoutesById {
@@ -439,7 +431,6 @@ export interface FileRoutesById {
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/users': typeof ApiChatUsersRoute
-  '/api/chat/verify-code': typeof ApiChatVerifyCodeRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRouteTypes {
@@ -490,7 +481,6 @@ export interface FileRouteTypes {
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/users'
-    | '/api/chat/verify-code'
     | '/api/chat/groups/members'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -539,7 +529,6 @@ export interface FileRouteTypes {
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/users'
-    | '/api/chat/verify-code'
     | '/api/chat/groups/members'
   id:
     | '__root__'
@@ -588,7 +577,6 @@ export interface FileRouteTypes {
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/users'
-    | '/api/chat/verify-code'
     | '/api/chat/groups/members'
   fileRoutesById: FileRoutesById
 }
@@ -638,7 +626,6 @@ export interface RootRouteChildren {
   ApiChatGroupsRoute: typeof ApiChatGroupsRouteWithChildren
   ApiChatMessagesRoute: typeof ApiChatMessagesRoute
   ApiChatUsersRoute: typeof ApiChatUsersRoute
-  ApiChatVerifyCodeRoute: typeof ApiChatVerifyCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -846,13 +833,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/chat/verify-code': {
-      id: '/api/chat/verify-code'
-      path: '/api/chat/verify-code'
-      fullPath: '/api/chat/verify-code'
-      preLoaderRoute: typeof ApiChatVerifyCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/chat/users': {
       id: '/api/chat/users'
       path: '/api/chat/users'
@@ -1033,7 +1013,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatGroupsRoute: ApiChatGroupsRouteWithChildren,
   ApiChatMessagesRoute: ApiChatMessagesRoute,
   ApiChatUsersRoute: ApiChatUsersRoute,
-  ApiChatVerifyCodeRoute: ApiChatVerifyCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
