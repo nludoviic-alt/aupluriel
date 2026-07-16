@@ -269,6 +269,10 @@ function migrate(db: Database.Database) {
   if (!userCols.has("chat_enabled")) {
     db.exec("ALTER TABLE users ADD COLUMN chat_enabled INTEGER NOT NULL DEFAULT 0");
   }
+  if (!userCols.has("admin_note")) {
+    // Free-text note an admin can leave on a user's profile (typo history, VIP status, etc.) — never shown to the user themselves.
+    db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");
+  }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---
   const botTradeCols = new Set(

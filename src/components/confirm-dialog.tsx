@@ -21,7 +21,7 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({ state }: ConfirmDialogProps) {
   if (!state) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-background/80 backdrop-blur-sm p-4">
       <div className="glass-panel w-full max-w-sm rounded-xl p-5 space-y-4 shadow-2xl">
         <div className="flex items-start gap-3">
           <div className={cn(
