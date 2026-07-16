@@ -256,15 +256,6 @@ function MessengerPage() {
         const usersRes = await api.get<{ users: VerifiedUser[] }>("/api/chat/users");
         setVerifiedUsers(usersRes.users);
       }
-
-      if (groupsRes.groups.length > 0 && !activeGroupIdRef.current && window.innerWidth >= 768) {
-        const publicGroup = groupsRes.groups.find((g) => g.isDirect === 0);
-        if (publicGroup) {
-          setActiveGroupId(publicGroup.id);
-        } else {
-          setActiveGroupId(groupsRes.groups[0].id);
-        }
-      }
     } catch {
       toast.error("Impossible de charger les données");
     } finally {
@@ -636,9 +627,14 @@ function MessengerPage() {
             <>
               {/* PUBLIC GROUPS */}
               <div className="space-y-1">
-                <div className="px-2.5 sm:px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
-                  <Hash className="h-3 w-3" />
-                  Groupes & Salons ({publicGroups.length})
+                <div className="mx-2.5 sm:mx-3 mb-3 px-3 py-2 rounded-xl bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/20 flex items-center gap-2.5 select-none">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-950/30">
+                    <Hash className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-violet-300">Groupes & Salons</div>
+                    <div className="text-[9.5px] text-muted-foreground/60">{publicGroups.length} {publicGroups.length === 1 ? 'groupe' : 'groupes'}</div>
+                  </div>
                 </div>
                 {publicGroups.map((group) => {
                   const isActive = group.id === activeGroupId;
@@ -700,9 +696,14 @@ function MessengerPage() {
 
               {/* PRIVATE MESSAGES */}
               <div className="space-y-1">
-                <div className="px-2.5 sm:px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
-                  <UserCheck className="h-3 w-3" />
-                  Messages Personnels
+                <div className="mx-2.5 sm:mx-3 mb-3 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 flex items-center gap-2.5 select-none">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-950/30">
+                    <UserCheck className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300">Messages Personnels</div>
+                    <div className="text-[9.5px] text-muted-foreground/60">{verifiedUsers.length} {verifiedUsers.length === 1 ? 'utilisateur' : 'utilisateurs'}</div>
+                  </div>
                 </div>
 
                 {!!user?.is_admin ? (
