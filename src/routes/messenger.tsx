@@ -267,7 +267,16 @@ function MessengerPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [inputText, setInputText] = useState("");
-  
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Auto-grow the composer textarea like WhatsApp, capped at ~5 lines
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [inputText]);
+
   // Voice note recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -582,7 +591,7 @@ function MessengerPage() {
     reader.readAsDataURL(file);
   };
 
-  // Delete group or conversation chat (Admin only)
+  // Delete group or conversation chat totally (admin: any conversation; regular user: their own DM only)
   async function handleDeleteGroup() {
     if (!activeGroupId) return;
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette discussion définitivement ? Cette action supprimera tous les messages associés et est irréversible.")) {
@@ -949,7 +958,7 @@ function MessengerPage() {
                     </button>
                   )}
 
-                  {!!user?.is_admin && (
+                  {(!!user?.is_admin || isActiveDirect) && (
                     <button
                       onClick={handleDeleteGroup}
                       title="Supprimer la discussion"
@@ -1133,7 +1142,7 @@ function MessengerPage() {
 
                 {/* Input Controls Strip */}
                 {isRecording ? (
-                  <div className="flex items-center justify-between gap-2 sm:gap-4 rounded-2xl border border-red-500/35 bg-red-500/[0.04] px-3 sm:px-4.5 py-3 shadow-[0_0_15px_rgba(239,68,68,0.05)] animate-pulse">
+                  <div className="flex items-center justify-between gap-2 sm:gap-4 rounded-full border border-red-500/35 bg-red-500/[0.06] pl-4 sm:pl-5 pr-1.5 py-1.5 shadow-[0_0_15px_rgba(239,68,68,0.08)]">
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                       <span className="relative flex h-2.5 w-2.5 shrink-0">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -1144,22 +1153,22 @@ function MessengerPage() {
                         {formatDuration(recordingDuration)}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={cancelRecording}
-                        className="px-3 sm:px-3.5 py-2 text-xs font-bold rounded-xl border border-white/10 bg-transparent hover:bg-white/5 text-muted-foreground transition-all duration-200 cursor-pointer active:scale-95"
+                        className="h-10 px-3 sm:px-4 rounded-full border border-white/10 bg-transparent hover:bg-white/5 text-xs font-bold text-muted-foreground transition-all duration-200 cursor-pointer active:scale-95"
                       >
                         Annuler
                       </button>
                       <button
                         type="button"
                         onClick={stopRecording}
-                        className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-950/20 transition-all duration-200 cursor-pointer active:scale-95"
+                        title="Terminer et envoyer"
+                        className="flex h-10 shrink-0 items-center justify-center gap-1.5 px-3.5 sm:px-4 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-950/30 transition-all duration-200 cursor-pointer active:scale-90"
                       >
-                        <Square className="h-3 w-3 fill-current" />
-                        <span className="hidden sm:inline">Terminer et Envoyer</span>
-                        <span className="sm:hidden">Envoyer</span>
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                        <span className="text-xs font-bold">Envoyer</span>
                       </button>
                     </div>
                   </div>
@@ -1174,8 +1183,8 @@ function MessengerPage() {
                     />
 
                     {selectedImage && (
-                      <div className="relative p-2.5 sm:p-3 mb-2 rounded-xl border border-white/10 bg-white/[0.02] flex items-center gap-3 shrink-0">
-                        <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/40 shadow-inner">
+                      <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center gap-3 shrink-0">
+                        <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/40 shadow-inner">
                           <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
                           <button
                             type="button"
@@ -1186,73 +1195,80 @@ function MessengerPage() {
                           </button>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          Image prête à être envoyée. Cliquez sur le bouton d'envoi pour l'expédier.
+                          Image prête à être envoyée. Appuyez sur envoyer pour l'expédier.
                         </div>
                       </div>
                     )}
 
                     <form
                       onSubmit={handleSendMessage}
-                      className="flex items-center gap-1 sm:gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-2 sm:px-3.5 py-1.5 sm:py-2.5 focus-within:border-amber-500/40 focus-within:bg-white/[0.05] transition-all duration-200 relative shadow-lg shadow-black/45"
+                      className="flex items-end gap-1.5 sm:gap-2"
                     >
-                      {/* Smiley Button */}
-                      <button
-                        type="button"
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        title="Ajouter un emoji"
-                        className={cn(
-                          "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
-                          showEmojiPicker && "text-amber-400 bg-white/[0.04]"
-                        )}
-                      >
-                        <Smile className="h-5 w-5" />
-                      </button>
+                      {/* WhatsApp-style rounded composer pill */}
+                      <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[26px] border border-white/[0.08] bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/40 focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/40">
+                        {/* Smiley Button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          title="Ajouter un emoji"
+                          className={cn(
+                            "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
+                            showEmojiPicker && "text-amber-400 bg-white/[0.06]"
+                          )}
+                        >
+                          <Smile className="h-5 w-5" />
+                        </button>
 
-                      {/* Paperclip/Image Attachment Button */}
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        title="Partager une image"
-                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
-                      >
-                        <Paperclip className="h-5 w-5" />
-                      </button>
+                        <textarea
+                          ref={textareaRef}
+                          rows={1}
+                          value={inputText}
+                          onChange={(e) => setInputText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage(e);
+                            }
+                          }}
+                          placeholder={selectedImage ? "Ajouter un commentaire..." : "Message"}
+                          className="flex-1 min-w-0 bg-transparent border-none text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
+                        />
 
-                      <textarea
-                        rows={1}
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage(e);
-                          }
-                        }}
-                        placeholder={selectedImage ? "Ajouter un commentaire..." : "Écrivez votre message..."}
-                        className="flex-1 min-w-0 bg-transparent border-none text-[13.5px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 resize-none max-h-24 overflow-y-auto leading-relaxed py-1.5"
-                      />
+                        {/* Paperclip/Image Attachment Button */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Partager une image"
+                          className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
+                        >
+                          <Paperclip className="h-5 w-5" />
+                        </button>
+                      </div>
 
-                      {/* Microphone Button */}
-                      <button
-                        type="button"
-                        onClick={startRecording}
-                        title="Enregistrer un message vocal"
-                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
-                      >
-                        <Mic className="h-5 w-5" />
-                      </button>
-
-                      <button
-                        type="submit"
-                        disabled={(inputText.trim() === "" && !selectedImage) || sending}
-                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-500 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer active:scale-90"
-                      >
-                        {sending ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-black" />
-                        ) : (
-                          <Send className="h-4 w-4 text-black fill-current" />
-                        )}
-                      </button>
+                      {/* Circular send/mic button — morphs like WhatsApp */}
+                      {inputText.trim() !== "" || selectedImage ? (
+                        <button
+                          type="submit"
+                          disabled={sending}
+                          title="Envoyer"
+                          className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 disabled:opacity-40 text-black shadow-lg shadow-amber-950/30 transition-all duration-200 cursor-pointer active:scale-90"
+                        >
+                          {sending ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-black" />
+                          ) : (
+                            <Send className="h-5 w-5 text-black fill-current" />
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          title="Enregistrer un message vocal"
+                          className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-black shadow-lg shadow-amber-950/30 transition-all duration-200 cursor-pointer active:scale-90"
+                        >
+                          <Mic className="h-5 w-5" />
+                        </button>
+                      )}
                     </form>
                   </>
                 )}

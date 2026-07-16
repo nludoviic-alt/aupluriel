@@ -129,10 +129,8 @@ export const Route = createFileRoute("/api/chat/groups")({
       },
 
       DELETE: async ({ request }) => {
-        const admin = await requireAdmin(request);
-        if (!admin) {
-          return json({ error: "Seul l'administrateur peut supprimer une discussion." }, 403);
-        }
+        const user = await getFullUserFromRequest(request);
+        if (!user) return json({ error: "Non authentifié" }, 401);
 
         const url = new URL(request.url);
         let groupId = url.searchParams.get("groupId");
@@ -147,6 +145,22 @@ export const Route = createFileRoute("/api/chat/groups")({
         }
 
         const db = getDb();
+
+        if (user.is_admin === 0) {
+          // Non-admins can only fully delete their own direct conversation with the admin,
+          // never a shared group salon — that stays admin-only to avoid one member
+          // destroying it for everyone else without consent.
+          const group = db
+            .prepare("SELECT is_direct, recipient_id FROM chat_groups WHERE id = ?")
+            .get(groupId) as { is_direct: number; recipient_id: number | null } | undefined;
+
+          if (!group) return json({ error: "Groupe ou discussion introuvable." }, 404);
+
+          if (group.is_direct !== 1 || group.recipient_id !== user.id) {
+            return json({ error: "Accès refusé." }, 403);
+          }
+        }
+
         const result = db.prepare("DELETE FROM chat_groups WHERE id = ?").run(groupId);
 
         if (result.changes === 0) {

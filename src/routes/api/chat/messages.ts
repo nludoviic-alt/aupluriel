@@ -24,9 +24,18 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
 
-        // Security check: if group is direct, only admin or the recipient user can access
-        if (group.is_direct === 1 && user.is_admin === 0 && group.recipient_id !== user.id) {
-          return json({ error: "Accès refusé." }, 403);
+        if (user.is_admin === 0) {
+          // Security check: if group is direct, only the recipient user can access
+          if (group.is_direct === 1 && group.recipient_id !== user.id) {
+            return json({ error: "Accès refusé." }, 403);
+          }
+          // Security check: if group is a public/group chat, only actual members can access
+          if (group.is_direct === 0) {
+            const membership = db
+              .prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?")
+              .get(groupId, user.id);
+            if (!membership) return json({ error: "Accès refusé." }, 403);
+          }
         }
 
         const rows = db
@@ -74,9 +83,18 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
 
-        // Security check: if group is direct, only admin or the recipient user can post
-        if (group.is_direct === 1 && user.is_admin === 0 && group.recipient_id !== user.id) {
-          return json({ error: "Accès refusé." }, 403);
+        if (user.is_admin === 0) {
+          // Security check: if group is direct, only the recipient user can post
+          if (group.is_direct === 1 && group.recipient_id !== user.id) {
+            return json({ error: "Accès refusé." }, 403);
+          }
+          // Security check: if group is a public/group chat, only actual members can post
+          if (group.is_direct === 0) {
+            const membership = db
+              .prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?")
+              .get(body.groupId, user.id);
+            if (!membership) return json({ error: "Accès refusé." }, 403);
+          }
         }
 
         const newId = randomUUID();
