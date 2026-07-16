@@ -14,13 +14,14 @@ export const Route = createFileRoute("/api/chat/users")({
 
         const db = getDb();
 
-        // Retrieve all users except the current admin
+        // Retrieve users with messaging activated for them (except the current admin) —
+        // a user not yet enabled by the admin shouldn't appear as a chattable contact.
         const users = db
           .prepare(`
             SELECT u.id, u.username, u.email, g.id AS groupId
             FROM users u
             LEFT JOIN chat_groups g ON g.is_direct = 1 AND g.recipient_id = u.id
-            WHERE u.id != ?
+            WHERE u.id != ? AND u.chat_enabled = 1
             ORDER BY u.username ASC
           `)
           .all(admin.id) as {

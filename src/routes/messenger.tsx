@@ -26,7 +26,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getExistingPushSubscription, isPushSupported, subscribeToPush } from "@/lib/push";
+import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush } from "@/lib/push";
 
 export const Route = createFileRoute("/messenger")({
   head: () => ({ meta: [{ title: "Messagerie — Au Pluriel" }] }),
@@ -307,10 +307,14 @@ function MessengerPage() {
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
+  const [pushIosNonSafari, setPushIosNonSafari] = useState(false);
+  const [pushIosNonStandalone, setPushIosNonStandalone] = useState(false);
 
   useEffect(() => {
     const supported = isPushSupported();
     setPushSupported(supported);
+    setPushIosNonSafari(isIosNonSafari());
+    setPushIosNonStandalone(isIosNonStandalone());
     if (supported) {
       getExistingPushSubscription().then((sub) => {
         setPushEnabled(!!sub);
@@ -718,7 +722,27 @@ function MessengerPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {pushSupported && !pushEnabled && (
+          {!pushEnabled && pushIosNonSafari && (
+            <div
+              title="Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple. Ouvre aupluriel.com dans Safari, puis Partager → « Sur l'écran d'accueil »."
+              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border border-red-500/20 bg-red-500/5 text-red-400 shadow-sm cursor-help"
+            >
+              <Bell className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline whitespace-nowrap">Ouvrir dans Safari</span>
+            </div>
+          )}
+
+          {!pushEnabled && !pushIosNonSafari && pushSupported && pushIosNonStandalone && (
+            <div
+              title="Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé."
+              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-400 shadow-sm cursor-help"
+            >
+              <Bell className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline whitespace-nowrap">Ajouter à l'accueil</span>
+            </div>
+          )}
+
+          {pushSupported && !pushEnabled && !pushIosNonSafari && !pushIosNonStandalone && (
             <button
               onClick={handleEnablePush}
               className={cn(
