@@ -233,40 +233,49 @@ function NotesPage() {
               </button>
             </div>
           ) : (
-            <div className="space-y-1">
-              {notes.map((note) => {
+            <div className="space-y-2">
+              {notes.map((note, index) => {
                 const isActive = note.id === activeNoteId;
+                const colors = [
+                  { from: "from-rose-500", to: "to-pink-600", border: "border-rose-500/30", accent: "bg-rose-400" },
+                  { from: "from-violet-500", to: "to-indigo-600", border: "border-violet-500/30", accent: "bg-violet-400" },
+                  { from: "from-amber-500", to: "to-orange-600", border: "border-amber-500/30", accent: "bg-amber-400" },
+                  { from: "from-emerald-500", to: "to-teal-600", border: "border-emerald-500/30", accent: "bg-emerald-400" },
+                  { from: "from-cyan-500", to: "to-blue-600", border: "border-cyan-500/30", accent: "bg-cyan-400" },
+                ];
+                const color = colors[index % colors.length];
                 return (
                   <button
                     key={note.id}
                     onClick={() => handleSelectNote(note.id)}
                     className={cn(
-                      "w-full text-left p-3.5 rounded-xl border transition-all duration-200 group relative cursor-pointer",
+                      "w-full text-left p-4 rounded-2xl border transition-all duration-200 group relative cursor-pointer overflow-hidden",
                       isActive
-                        ? "bg-rose-500/[0.08] border-rose-500/25 text-foreground"
-                        : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
+                        ? `bg-gradient-to-br ${color.from}/15 ${color.to}/8 ${color.border} shadow-lg text-foreground`
+                        : `bg-gradient-to-br ${color.from}/8 ${color.to}/4 ${color.border} text-muted-foreground hover:text-foreground shadow-sm hover:shadow-md hover:${color.from}/15 hover:${color.to}/8`
                     )}
                   >
                     {isActive && (
-                      <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-rose-400" />
+                      <span className={`absolute left-0 inset-y-3 w-1 rounded-r-full bg-gradient-to-b ${color.from} ${color.to} shadow-lg`} />
                     )}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-bold text-[14px] leading-snug truncate pr-4">
-                        {note.title.trim() === "" ? "Sans titre" : note.title}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-[15px] leading-snug truncate">
+                          {note.title.trim() === "" ? "Sans titre" : note.title}
+                        </div>
+                        <div className="text-[12px] text-muted-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">
+                          {note.content.trim() === "" ? "Rédige une note..." : note.content}
+                        </div>
                       </div>
                       <ChevronRight
                         className={cn(
-                          "h-4 w-4 shrink-0 transition-transform duration-200",
-                          isActive ? "text-rose-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          "h-4.5 w-4.5 shrink-0 transition-transform duration-200 mt-0.5",
+                          isActive ? `${color.accent} translate-x-0.5` : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
                         )}
                       />
                     </div>
 
-                    <div className="text-[12px] text-muted-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">
-                      {note.content.trim() === "" ? "Rédige une note..." : note.content}
-                    </div>
-
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40 mt-3.5 select-none">
+                    <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/40 mt-3 select-none">
                       <Calendar className="h-3 w-3" />
                       {new Date(note.updatedAt * 1000).toLocaleDateString("fr-FR", {
                         day: "numeric",
