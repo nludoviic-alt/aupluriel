@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   MessageSquare,
@@ -177,6 +177,15 @@ function VoicePlayer({ src, isMe }: { src: string; isMe: boolean }) {
 
 function MessengerPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && !user.is_admin && user.chat_enabled !== 1) {
+      toast.error("Vous n'avez pas accès à la messagerie.");
+      navigate({ to: "/" });
+    }
+  }, [user, navigate]);
+
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);

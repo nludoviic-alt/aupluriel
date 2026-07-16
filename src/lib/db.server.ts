@@ -266,6 +266,9 @@ function migrate(db: Database.Database) {
   if (!userCols.has("is_admin")) {
     db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
   }
+  if (!userCols.has("chat_enabled")) {
+    db.exec("ALTER TABLE users ADD COLUMN chat_enabled INTEGER NOT NULL DEFAULT 0");
+  }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---
   const botTradeCols = new Set(

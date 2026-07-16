@@ -218,6 +218,17 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
+  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
+  const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
+
+  const filteredAnalysisItems = analysisItems.filter(
+    (item) => item.url !== "/backtest" || showBacktest
+  );
+
+  const filteredToolItems = toolItems.filter(
+    (item) => item.url !== "/messenger" || showChat
+  );
+
   if (isMobile) return null;
 
   function handleNavClick() {
@@ -295,7 +306,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {analysisItems.map((item) => (
+              {filteredAnalysisItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
             </SidebarMenu>
@@ -311,7 +322,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
-              {toolItems.map((item) => (
+              {filteredToolItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
               {user?.is_admin && (() => {

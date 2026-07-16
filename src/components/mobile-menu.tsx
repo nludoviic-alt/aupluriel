@@ -35,6 +35,13 @@ export function MobileMenu() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
 
+  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
+  const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
+
+  const filteredNavMore = NAV_MORE.filter(
+    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/messenger" || showChat)
+  );
+
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const close = () => setOpenMobile(false);
 
@@ -168,7 +175,7 @@ export function MobileMenu() {
               Plus
             </p>
             <div className="space-y-0.5">
-              {NAV_MORE.map((item) => {
+              {filteredNavMore.map((item) => {
                 const active = isActive(item.url);
                 return (
                   <Link

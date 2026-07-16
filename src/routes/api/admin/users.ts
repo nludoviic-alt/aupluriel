@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/admin/users")({
         const db = getDb();
         const users = db
           .prepare(
-            "SELECT id, email, username, email_verified, status, is_admin, created_at FROM users ORDER BY created_at DESC",
+            "SELECT id, email, username, email_verified, status, is_admin, chat_enabled, created_at FROM users ORDER BY created_at DESC",
           )
           .all();
         return json({ users });
@@ -29,11 +29,12 @@ export const Route = createFileRoute("/api/admin/users")({
 
         const body = (await request.json()) as {
           userId?: number;
-          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password";
+          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password" | "toggle-chat";
           email?: string;
           username?: string;
           password?: string;
           isAdmin?: boolean;
+          chatEnabled?: boolean;
         };
         const { action } = body;
         if (!action) return json({ error: "action requise." }, 400);
@@ -129,6 +130,10 @@ export const Route = createFileRoute("/api/admin/users")({
             const { subject, html } = resetEmail(link);
             await sendEmail({ to: targetUser.email, subject, html });
             return json({ ok: true });
+          }
+          case "toggle-chat": {
+            db.prepare("UPDATE users SET chat_enabled = ? WHERE id = ?").run(body.chatEnabled ? 1 : 0, userId);
+            break;
           }
           default:
             return json({ error: "Action inconnue." }, 400);
