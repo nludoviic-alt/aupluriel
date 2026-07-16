@@ -592,16 +592,19 @@ function MessengerPage() {
   };
 
   // Delete group or conversation chat totally (admin: any conversation; regular user: their own DM only)
-  async function handleDeleteGroup() {
-    if (!activeGroupId) return;
+  // Callable either from the open chat header (no arg, targets activeGroupId) or
+  // directly from a sidebar row (WhatsApp-style, no need to open the conversation first).
+  async function handleDeleteGroup(groupIdToDelete?: string) {
+    const targetId = groupIdToDelete ?? activeGroupId;
+    if (!targetId) return;
     if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette discussion définitivement ? Cette action supprimera tous les messages associés et est irréversible.")) {
       return;
     }
 
     try {
-      await api.delete(`/api/chat/groups?groupId=${activeGroupId}`);
+      await api.delete(`/api/chat/groups?groupId=${targetId}`);
       toast.success("Discussion supprimée avec succès");
-      setActiveGroupId(null);
+      if (targetId === activeGroupId) setActiveGroupId(null);
       loadSidebarData();
     } catch (err: any) {
       toast.error(err.message || "Impossible de supprimer la discussion");
@@ -770,42 +773,57 @@ function MessengerPage() {
                 {publicGroups.map((group) => {
                   const isActive = group.id === activeGroupId;
                   return (
-                    <button
-                      key={group.id}
-                      onClick={() => setActiveGroupId(group.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
-                        isActive
-                          ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                          : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                      )}
-                    >
-                      {isActive && (
-                        <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                      )}
-                      <span className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
-                        isActive
-                          ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-                          : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
-                      )}>
-                        <Hash className="h-4.5 w-4.5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-[14px] leading-snug truncate">
-                          {group.name}
-                        </div>
-                        <div className="text-[10.5px] text-muted-foreground/45 truncate mt-0.5">
-                          Salon de groupe
-                        </div>
-                      </div>
-                      <ChevronRight
+                    <div key={group.id} className="relative group">
+                      <button
+                        onClick={() => setActiveGroupId(group.id)}
                         className={cn(
-                          "h-4 w-4 shrink-0 transition-transform duration-200",
-                          isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
+                          !!user?.is_admin && "pr-11",
+                          isActive
+                            ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
+                            : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
                         )}
-                      />
-                    </button>
+                      >
+                        {isActive && (
+                          <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
+                        )}
+                        <span className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
+                          isActive
+                            ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
+                            : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
+                        )}>
+                          <Hash className="h-4.5 w-4.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-[14px] leading-snug truncate">
+                            {group.name}
+                          </div>
+                          <div className="text-[10.5px] text-muted-foreground/45 truncate mt-0.5">
+                            Salon de groupe
+                          </div>
+                        </div>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-transform duration-200",
+                            isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          )}
+                        />
+                      </button>
+                      {!!user?.is_admin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteGroup(group.id);
+                          }}
+                          title="Supprimer ce salon"
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -828,83 +846,108 @@ function MessengerPage() {
                     verifiedUsers.map((u) => {
                       const isActive = u.groupId === activeGroupId;
                       return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => setActiveGroupId(u.groupId)}
-                          className={cn(
-                            "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
-                            isActive
-                              ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                              : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                          )}
-                          <span className={cn(
-                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
-                            getAvatarStyle(u.username)
-                          )}>
-                            {getInitial(u.username)}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-[14px] leading-snug truncate pr-4">
-                              {u.username}
-                            </div>
-                            <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
-                              {u.email}
-                            </div>
-                          </div>
-                          <ChevronRight
+                        <div key={u.id} className="relative group">
+                          <button
+                            type="button"
+                            onClick={() => setActiveGroupId(u.groupId)}
                             className={cn(
-                              "h-4 w-4 shrink-0 transition-transform duration-200",
-                              isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                              "w-full flex items-center gap-3 p-3 sm:p-3.5 pr-11 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
+                              isActive
+                                ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
+                                : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
                             )}
-                          />
-                        </button>
+                          >
+                            {isActive && (
+                              <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
+                            )}
+                            <span className={cn(
+                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
+                              getAvatarStyle(u.username)
+                            )}>
+                              {getInitial(u.username)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-[14px] leading-snug truncate">
+                                {u.username}
+                              </div>
+                              <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
+                                {u.email}
+                              </div>
+                            </div>
+                            <ChevronRight
+                              className={cn(
+                                "h-4 w-4 shrink-0 transition-transform duration-200",
+                                isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                              )}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteGroup(u.groupId);
+                            }}
+                            title="Supprimer cette discussion"
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       );
                     })
                   )
                 ) : (
                   // Regular user sees only their direct chat with the Admin
                   userDmGroup && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveGroupId(userDmGroup.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
-                        userDmGroup.id === activeGroupId
-                          ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                          : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                      )}
-                    >
-                      {userDmGroup.id === activeGroupId && (
-                        <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                      )}
-                      <span className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
-                        userDmGroup.id === activeGroupId
-                          ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-                          : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
-                      )}>
-                        <Shield className="h-4.5 w-4.5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-[14px] leading-snug truncate">
-                          Support Admin
-                        </div>
-                        <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
-                          Conversation privée
-                        </div>
-                      </div>
-                      <ChevronRight
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => setActiveGroupId(userDmGroup.id)}
                         className={cn(
-                          "h-4 w-4 shrink-0 transition-transform duration-200",
-                          userDmGroup.id === activeGroupId ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          "w-full flex items-center gap-3 p-3 sm:p-3.5 pr-11 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
+                          userDmGroup.id === activeGroupId
+                            ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
+                            : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
                         )}
-                      />
-                    </button>
+                      >
+                        {userDmGroup.id === activeGroupId && (
+                          <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
+                        )}
+                        <span className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
+                          userDmGroup.id === activeGroupId
+                            ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
+                            : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
+                        )}>
+                          <Shield className="h-4.5 w-4.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-[14px] leading-snug truncate">
+                            Support Admin
+                          </div>
+                          <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
+                            Conversation privée
+                          </div>
+                        </div>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-transform duration-200",
+                            userDmGroup.id === activeGroupId ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          )}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGroup(userDmGroup.id);
+                        }}
+                        title="Supprimer cette discussion"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   )
                 )}
               </div>
@@ -960,7 +1003,7 @@ function MessengerPage() {
 
                   {(!!user?.is_admin || isActiveDirect) && (
                     <button
-                      onClick={handleDeleteGroup}
+                      onClick={() => handleDeleteGroup()}
                       title="Supprimer la discussion"
                       className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/30 text-red-400 transition-all duration-200 cursor-pointer active:scale-95"
                     >
@@ -972,7 +1015,7 @@ function MessengerPage() {
               </div>
 
               {/* MESSAGES THREAD */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4 space-y-4 z-10">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4 z-10 flex flex-col justify-end gap-4">
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />

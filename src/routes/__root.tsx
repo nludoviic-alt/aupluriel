@@ -393,8 +393,9 @@ function RootComponent() {
             {/* Breathing room below the sticky header */}
             <div className="h-6 shrink-0" />
 
-            {/* Strong signal banner */}
-            {hasAlerts && (
+            {/* Strong signal banner — hidden on the messenger page: it eats into the
+                chat panel's carefully-budgeted viewport height and is irrelevant there */}
+            {hasAlerts && pathname !== "/messenger" && (
               <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
@@ -424,7 +425,10 @@ function RootComponent() {
             <div className="hidden md:block">
               <TickerBar />
             </div>
-            <main className="flex-1 min-w-0 pb-16 md:pb-0">
+            <main className={cn(
+              "flex-1 min-w-0 pb-16 md:pb-0",
+              pathname === "/messenger" && "overflow-hidden"
+            )}>
               <Outlet />
             </main>
           </div>
