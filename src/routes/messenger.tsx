@@ -627,13 +627,13 @@ function MessengerPage() {
             <>
               {/* PUBLIC GROUPS */}
               <div className="space-y-1">
-                <div className="mx-2.5 sm:mx-3 mb-3 px-3 py-2 rounded-xl bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/20 flex items-center gap-2.5 select-none">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-950/30">
-                    <Hash className="h-4 w-4 text-white" />
+                <div className="px-2.5 sm:px-3 mb-2 flex items-center gap-2 select-none">
+                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-950/30">
+                    <Hash className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-violet-300">Groupes & Salons</div>
-                    <div className="text-[9.5px] text-muted-foreground/60">{publicGroups.length} {publicGroups.length === 1 ? 'groupe' : 'groupes'}</div>
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-violet-300">Groupes & Salons</div>
+                    <div className="text-[8.5px] sm:text-[9.5px] text-muted-foreground/60">{publicGroups.length} {publicGroups.length === 1 ? 'groupe' : 'groupes'}</div>
                   </div>
                 </div>
                 {publicGroups.map((group) => {
@@ -696,13 +696,13 @@ function MessengerPage() {
 
               {/* PRIVATE MESSAGES */}
               <div className="space-y-1">
-                <div className="mx-2.5 sm:mx-3 mb-3 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 flex items-center gap-2.5 select-none">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-950/30">
-                    <UserCheck className="h-4 w-4 text-white" />
+                <div className="px-2.5 sm:px-3 mb-2 flex items-center gap-2 select-none">
+                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-950/30">
+                    <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300">Messages Personnels</div>
-                    <div className="text-[9.5px] text-muted-foreground/60">{verifiedUsers.length} {verifiedUsers.length === 1 ? 'utilisateur' : 'utilisateurs'}</div>
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-300">Messages Personnels</div>
+                    <div className="text-[8.5px] sm:text-[9.5px] text-muted-foreground/60">{verifiedUsers.length} {verifiedUsers.length === 1 ? 'utilisateur' : 'utilisateurs'}</div>
                   </div>
                 </div>
 
