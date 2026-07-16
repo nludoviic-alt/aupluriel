@@ -9,7 +9,7 @@ interface SendEmailInput {
   html: string;
 }
 
-const APP_NAME = "Pluriel";
+const APP_NAME = "Au Pluriel";
 
 export function getAppUrl(): string {
   // Public base URL used to build links in emails.
@@ -92,10 +92,10 @@ const linkColor = "#ff8a3d";
 
 export function verificationEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Vérifie ton adresse email — Pluriel",
+    subject: "Vérifie ton adresse email — Au Pluriel",
     html: layout(
       "Active ton compte",
-      `<p style="margin:0 0 16px;text-align:center">Bienvenue ! Confirme ton adresse email pour activer ton compte Pluriel.</p>
+      `<p style="margin:0 0 16px;text-align:center">Bienvenue ! Confirme ton adresse email pour activer ton compte Au Pluriel.</p>
        <p style="margin:0 0 24px;text-align:center"><a href="${link}" style="${buttonStyle}">Vérifier mon email</a></p>
        <p style="font-size:12px;color:#52525b;margin:0 0 8px;text-align:center">Ou copie ce lien : <br><a href="${link}" style="color:${linkColor};text-decoration:none;word-break:break-all">${link}</a></p>
        <p style="font-size:12px;color:#52525b;margin:0;text-align:center">Ce lien expire dans 24 h. Après vérification, ton compte devra être approuvé par un administrateur.</p>`,
@@ -110,9 +110,9 @@ export function welcomeEmail(
 ): { subject: string; html: string } {
   const link = `${getAppUrl()}/login`;
   return {
-    subject: "Ton compte Pluriel a été créé",
+    subject: "Ton compte Au Pluriel a été créé",
     html: layout(
-      "Bienvenue sur Pluriel",
+      "Bienvenue sur Au Pluriel",
       `<p style="margin:0 0 16px;text-align:center">Un administrateur vient de créer ton compte. Voici tes identifiants de connexion :</p>
        <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px">
          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -180,10 +180,10 @@ export function inviteEmail(
     month: "long",
   });
   return {
-    subject: "Tu es invité(e) sur Pluriel",
+    subject: "Tu es invité(e) sur Au Pluriel",
     html: layout(
-      "Invitation à rejoindre Pluriel",
-      `<p style="margin:0 0 16px;text-align:center">Un administrateur t'invite à créer un compte sur Pluriel Quant Trading.</p>
+      "Invitation à rejoindre Au Pluriel",
+      `<p style="margin:0 0 16px;text-align:center">Un administrateur t'invite à créer un compte sur Au Pluriel Quant Trading.</p>
        <div style="font-size:13px;color:#e4e4e7;background:#141417;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px;margin:0 0 24px;text-align:center">
          <span style="font-size:11px;text-transform:uppercase;color:#71717a;font-weight:700;letter-spacing:0.1em">Code d'invitation</span>
          <div style="font-size:24px;font-weight:900;letter-spacing:4px;color:#ffffff;margin-top:6px;font-family:monospace">${code}</div>
@@ -197,7 +197,7 @@ export function inviteEmail(
 
 export function resetEmail(link: string): { subject: string; html: string } {
   return {
-    subject: "Réinitialise ton mot de passe — Pluriel",
+    subject: "Réinitialise ton mot de passe — Au Pluriel",
     html: layout(
       "Réinitialisation du mot de passe",
       `<p style="margin:0 0 16px;text-align:center">Tu as demandé à réinitialiser ton mot de passe.</p>

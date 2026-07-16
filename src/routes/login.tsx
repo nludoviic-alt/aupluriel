@@ -8,8 +8,8 @@ import { api, setToken, TOKEN_KEY } from "@/lib/api";
 export const Route = createFileRoute("/login")({
   head: () => ({ 
     meta: [
-      { title: "Access — Pluriel Quant Terminal" },
-      { name: "description", content: "Connect to your Pluriel quantitative trading AI terminal." }
+      { title: "Access — Au Pluriel Quant Terminal" },
+      { name: "description", content: "Connect to your Au Pluriel quantitative trading AI terminal." }
     ] 
   }),
   component: LoginPage,
@@ -138,7 +138,7 @@ function LoginPage() {
       {/* Auth Form Container */}
       <div className="w-full max-w-[480px] p-6 relative z-10 animate-in fade-in zoom-in-95 duration-1000">
         <div className="flex flex-col items-center space-y-8">
-          {/* Logo only — the mark already carries "Pluriel" + "THE FUTURE",
+          {/* Logo only — the mark already carries "Au Pluriel" + "THE FUTURE",
               repeating them as a separate text block was pure duplication. */}
           <div className="flex items-center justify-center w-full">
             <div className="relative group cursor-default">

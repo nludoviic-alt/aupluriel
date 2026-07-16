@@ -43,7 +43,7 @@ function notifyMarketOpen(session: TradingSession) {
     description: "Nouvelle fenêtre de trading disponible.",
   });
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-    const n = new Notification(`Pluriel — Session ${label} ouverte`, {
+    const n = new Notification(`Au Pluriel — Session ${label} ouverte`, {
       body: "Une nouvelle session de marché vient de démarrer.",
       icon: "/favicon.ico",
       tag: `lio23-market-open-${session}`,

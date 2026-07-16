@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/verify-email")({
-  head: () => ({ meta: [{ title: "Vérification — Pluriel" }] }),
+  head: () => ({ meta: [{ title: "Vérification — Au Pluriel" }] }),
   component: VerifyEmailPage,
 });
 
@@ -70,7 +70,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center gap-3 mb-8">
           <div className="text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">Pluriel</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight brand-gradient-text">Au Pluriel</h1>
             <p className="text-sm text-muted-foreground">Quant Trading — Crypto & Forex</p>
           </div>
         </div>

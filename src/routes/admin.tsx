@@ -29,7 +29,7 @@ import {
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Administration — Pluriel" }] }),
+  head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
   component: AdminPage,
 });
 

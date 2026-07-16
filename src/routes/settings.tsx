@@ -13,7 +13,7 @@ import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPush
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({ meta: [{ title: "Paramètres — Pluriel" }] }),
+  head: () => ({ meta: [{ title: "Paramètres — Au Pluriel" }] }),
   component: SettingsPage,
 });
 
@@ -314,7 +314,7 @@ function SettingsPage() {
               </div>
             ) : isIosNonStandalone() ? (
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-xs text-amber-400 leading-relaxed">
-                Sur iPhone, ajoute Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé.
+                Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé.
               </div>
             ) : (
               <div
@@ -413,7 +413,7 @@ function SettingsPage() {
       {/* Global Unified Action Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-white/5">
         <p className="text-[11px] md:text-xs text-muted-foreground leading-normal max-w-2xl text-center sm:text-left">
-          Avertissement : Pluriel est un outil d'analyse. Le trading de Crypto et Forex comporte un risque important
+          Avertissement : Au Pluriel est un outil d'analyse. Le trading de Crypto et Forex comporte un risque important
           de perte en capital. Les performances passées ne préjugent pas des performances futures.
         </p>
         <Button

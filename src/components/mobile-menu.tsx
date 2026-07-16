@@ -88,7 +88,7 @@ export function MobileMenu() {
               
               {/* Glassmorphic container */}
               <div className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_1px_0_rgba(255,255,255,0.15)] backdrop-blur-md group-hover/logo:border-orange-500/30 group-hover/logo:bg-white/[0.08] transition-all duration-300">
-                <img src="/favicon.png" alt="Pluriel" className="h-10 w-10 object-contain absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                <img src="/favicon.png" alt="Au Pluriel" className="h-10 w-10 object-contain absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
               </div>
               
               {/* Live dot */}
@@ -98,7 +98,7 @@ export function MobileMenu() {
               </span>
             </div>
             <div className="flex flex-col leading-none overflow-hidden">
-              <span className="text-[26px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">Pluriel</span>
+              <span className="text-[26px] font-black tracking-tight bg-gradient-to-r from-white via-white/95 to-white/60 bg-clip-text text-transparent leading-none">Au Pluriel</span>
               <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.24em] bg-gradient-to-r from-orange-400 to-amber-500 bg-clip-text text-transparent">Quant Trading</span>
             </div>
           </Link>

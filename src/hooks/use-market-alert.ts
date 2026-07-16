@@ -42,7 +42,7 @@ async function requestNotificationPermission(): Promise<boolean> {
 
 function sendBrowserNotification(alert: MarketAlert) {
   if (typeof window === "undefined" || Notification.permission !== "granted") return;
-  const n = new Notification(`Pluriel — Signal fort sur ${alert.label}`, {
+  const n = new Notification(`Au Pluriel — Signal fort sur ${alert.label}`, {
     body: `${alert.direction} · Confiance ${alert.confidence}% · ${alert.agreement}/4 TF · Marché favorable`,
     icon: "/favicon.ico",
     tag: `lio23-${alert.symbol}`, // replace previous for same symbol

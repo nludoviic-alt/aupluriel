@@ -21,8 +21,8 @@ import { api } from "@/lib/api";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — Pluriel" },
-      { name: "description", content: "Dashboard de trading Pluriel avec données Deriv en temps réel." },
+      { title: "Dashboard — Au Pluriel" },
+      { name: "description", content: "Dashboard de trading Au Pluriel avec données Deriv en temps réel." },
     ],
   }),
   component: Dashboard,
@@ -396,7 +396,7 @@ function Dashboard() {
       <div className="flex items-start gap-3 rounded-xl border border-border/30 bg-muted/5 px-4 py-3">
         <Bot className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-0.5" />
         <p className="text-xs text-muted-foreground/60 leading-relaxed">
-          Le trading comporte des risques significatifs. Pluriel fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
+          Le trading comporte des risques significatifs. Au Pluriel fournit des analyses algorithmiques, pas des conseils financiers réglementés. Toutes les décisions restent sous contrôle humain.
         </p>
       </div>
     </div>

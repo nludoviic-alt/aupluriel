@@ -88,7 +88,7 @@ export function usePriceAlerts(enabled = true) {
             const msg = `${alert.pair} ${alert.condition === ">" ? "a dépassé" : "est passé sous"} ${alert.value.toLocaleString()}`;
             toast.success(`Alerte prix — ${msg}`, { duration: 8000 });
             sendNotification(
-              `Pluriel — Alerte prix ${alert.pair}`,
+              `Au Pluriel — Alerte prix ${alert.pair}`,
               `Prix actuel: ${tick.quote.toLocaleString()} · Condition: ${alert.condition} ${alert.value.toLocaleString()}`,
               `alert-price-${alert.id}`,
             );
@@ -116,7 +116,7 @@ export function usePriceAlerts(enabled = true) {
           saveFired(firedRef.current);
           toast.warning(`Drawdown ${drawdownPct.toFixed(2)}% dépassé (seuil: ${alert.value}%)`, { duration: 10_000 });
           sendNotification(
-            "Pluriel — Drawdown dépassé",
+            "Au Pluriel — Drawdown dépassé",
             `Perte journalière: $${Math.abs(pnl).toFixed(2)} · Seuil: ${alert.value}%`,
             `alert-drawdown-${alert.id}`,
           );

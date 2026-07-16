@@ -112,13 +112,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "Pluriel" },
+      { name: "apple-mobile-web-app-title", content: "Au Pluriel" },
       {
         name: "description",
         content:
-          "Pluriel — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
+          "Au Pluriel — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
       },
-      { name: "author", content: "Pluriel" },
+      { name: "author", content: "Au Pluriel" },
       { property: "og:title", content: "The future" },
       {
         property: "og:description",
@@ -322,7 +322,7 @@ function RootComponent() {
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     </span>
                     <p className="truncate text-[10.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground/50">
-                      Pluriel Quant Trading
+                      Au Pluriel Quant Trading
                     </p>
                   </div>
                 </div>

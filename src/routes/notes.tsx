@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/notes")({
-  head: () => ({ meta: [{ title: "Notes — Pluriel" }] }),
+  head: () => ({ meta: [{ title: "Notes — Au Pluriel" }] }),
   component: NotesPage,
 });
 

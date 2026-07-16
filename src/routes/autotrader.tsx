@@ -232,7 +232,7 @@ import {
 } from "@/hooks/use-autotrader-engine";
 
 export const Route = createFileRoute("/autotrader")({
-  head: () => ({ meta: [{ title: "Auto-Trader — Pluriel" }] }),
+  head: () => ({ meta: [{ title: "Auto-Trader — Au Pluriel" }] }),
   component: AutoTraderPage,
 });
 
@@ -523,7 +523,7 @@ function AutoTraderPage() {
 
       // Notification de bureau native (HTML5 API) pour alerter en tâche de fond
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`🎉 Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`, {
+        new Notification(`🎉 Au Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`, {
           body: `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
         });
       }
@@ -536,7 +536,7 @@ function AutoTraderPage() {
       toast.error(`${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
 
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`, {
+        new Notification(`Au Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`, {
           body: `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
         });
       }
@@ -549,7 +549,7 @@ function AutoTraderPage() {
       toast.info(`Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
 
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(`Pluriel — Position ouverte`, {
+        new Notification(`Au Pluriel — Position ouverte`, {
           body: `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
         });
       }
@@ -2256,7 +2256,7 @@ function AutoTraderPage() {
                 "Les signaux sont basés sur des indicateurs passés, pas sur le futur.",
                 "Le circuit-breaker limite les pertes mais ne les élimine pas.",
                 "En mode LIVE, du vrai argent est engagé à chaque trade.",
-                "Pluriel est un outil d'analyse, pas un conseiller financier agréé."
+                "Au Pluriel est un outil d'analyse, pas un conseiller financier agréé."
               ].map((t, i) => (
                 <li key={i} className="flex gap-2">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-down" />
