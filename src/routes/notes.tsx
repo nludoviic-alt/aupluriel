@@ -9,6 +9,7 @@ import {
   Calendar,
   ChevronRight,
   FileText,
+  ChevronLeft,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -156,8 +157,8 @@ function NotesPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-13.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100vh-9.5rem)] overflow-hidden min-h-0">
-      {/* HEADER SECTION */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
+      {/* HEADER SECTION - Hidden on mobile if a note is active */}
+      <div className={cn("flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0", activeNoteId ? "hidden md:flex" : "flex")}>
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shadow-inner">
             <NotebookPen className="h-5 w-5" />
@@ -211,7 +212,7 @@ function NotesPage() {
       {/* WORKSPACE AREA */}
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* LIST COLUMN */}
-        <div className="w-80 shrink-0 flex flex-col bg-white/[0.01] overflow-y-auto p-3">
+        <div className={cn("flex flex-col bg-white/[0.01] overflow-y-auto p-3", activeNoteId ? "hidden md:flex md:w-80 shrink-0" : "w-full md:w-80 shrink-0")}>
           {loading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
@@ -283,13 +284,27 @@ function NotesPage() {
         </div>
 
         {/* EDITOR COLUMN */}
-        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden relative">
+        <div className={cn("flex-1 flex flex-col bg-background/40 overflow-hidden relative", activeNoteId ? "flex" : "hidden md:flex")}>
           {/* Subtle Ambient Background glow blobs matching the rose/violet theme */}
           <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-rose-500/[0.02] blur-[90px]" />
           <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full bg-violet-500/[0.02] blur-[90px]" />
 
           {activeNote ? (
             <div className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto z-10">
+              {/* Mobile header with back button */}
+              <div className="md:hidden flex items-center gap-2 mb-2">
+                <button
+                  onClick={() => setActiveNoteId(null)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-200 active:scale-90"
+                  title="Retour aux notes"
+                >
+                  <ChevronLeft className="h-4.5 w-4.5" />
+                </button>
+                <span className="font-bold text-[14.5px] text-foreground tracking-tight font-sans truncate">
+                  {activeNote.title.trim() === "" ? "Sans titre" : activeNote.title}
+                </span>
+              </div>
+
               <div className="flex items-center gap-4">
                 <input
                   type="text"
