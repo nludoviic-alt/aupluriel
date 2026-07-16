@@ -45,7 +45,7 @@ const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
-  { title: "Notes",             url: "/notes",           icon: NotebookPen,     color: "text-rose-400",    glow: "shadow-rose-500/30" },
+  { title: "Notes",             url: "/carnet-de-notes", icon: NotebookPen,     color: "text-rose-400",    glow: "shadow-rose-500/30" },
 ];
 
 const toolItems = [

@@ -20,7 +20,6 @@ import {
   ChevronLeft,
   Bell,
   Paperclip,
-  Menu,
   Check,
   CheckCheck,
 } from "lucide-react";
@@ -543,17 +542,11 @@ function MessengerPage() {
       {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
       <div className={cn("items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeGroupId ? "hidden md:flex" : "flex")}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <button
-            onClick={toggleSidebar}
-            className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.03] text-muted-foreground mr-1"
-          >
-            <Menu className="h-4.5 w-4.5" />
-          </button>
           <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner shrink-0">
             <MessageSquare className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground font-sans truncate">Messagerie</h1>
+            <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground font-sans truncate">Mes Messages</h1>
             <p className="text-xs text-muted-foreground truncate hidden sm:block">Discussions de groupe, conversations personnelles et vocaux</p>
           </div>
         </div>

@@ -202,7 +202,7 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
   "/strategies": { label: "Stratégies", icon: Workflow },
-  "/notes": { label: "Notes", icon: NotebookPen },
+  "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
   "/alerts": { label: "Alertes", icon: Bell },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
@@ -396,7 +396,7 @@ function RootComponent() {
             {/* Strong signal banner — hidden on the messenger page: it eats into the
                 chat panel's carefully-budgeted viewport height and is irrelevant there */}
             {hasAlerts && pathname !== "/messenger" && (
-              <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
+              <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-up animate-pulse" />

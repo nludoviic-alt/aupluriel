@@ -15,8 +15,8 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/notes")({
-  head: () => ({ meta: [{ title: "Notes — Au Pluriel" }] }),
+export const Route = createFileRoute("/carnet-de-notes")({
+  head: () => ({ meta: [{ title: "Carnet de Notes — Au Pluriel" }] }),
   component: NotesPage,
 });
 
@@ -44,9 +44,6 @@ function NotesPage() {
     api.get<{ notes: Note[] }>("/api/notes")
       .then((data) => {
         setNotes(data.notes);
-        if (data.notes.length > 0) {
-          setActiveNoteId(data.notes[0].id);
-        }
       })
       .catch(() => toast.error("Impossible de charger les notes"))
       .finally(() => setLoading(false));
@@ -158,53 +155,55 @@ function NotesPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-13.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100vh-9.5rem)] overflow-hidden min-h-0">
       {/* HEADER SECTION - Hidden on mobile if a note is active */}
-      <div className={cn("flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0", activeNoteId ? "hidden md:flex" : "flex")}>
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shadow-inner">
-            <NotebookPen className="h-5 w-5" />
+      <div className={cn("flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeNoteId ? "hidden md:flex" : "flex")}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shadow-inner shrink-0">
+            <NotebookPen className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground font-sans">Carnet de Notes</h1>
-            <p className="text-xs text-muted-foreground">Prends des notes sur le marché ou tes stratégies</p>
+          <div className="min-w-0">
+            <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground font-sans truncate">Carnet de Notes</h1>
+            <p className="text-xs text-muted-foreground truncate hidden sm:block">Prends des notes sur le marché ou tes stratégies</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Saving indicator */}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-5 select-none">
             {saving ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" />
-                Enregistrement…
+                <span className="hidden md:inline">Enregistrement…</span>
               </>
             ) : lastSavedAt ? (
               <>
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                Enregistré à{" "}
-                {new Date(lastSavedAt * 1000).toLocaleTimeString("fr-FR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
+                <span className="hidden md:inline">Enregistré à{" "}
+                  {new Date(lastSavedAt * 1000).toLocaleTimeString("fr-FR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </span>
               </>
             ) : activeNote ? (
               <>
                 <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground/45" />
-                Dernière modif :{" "}
-                {new Date(activeNote.updatedAt * 1000).toLocaleDateString("fr-FR", {
-                  day: "numeric",
-                  month: "short",
-                })}
+                <span className="hidden md:inline">Dernière modif :{" "}
+                  {new Date(activeNote.updatedAt * 1000).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
               </>
             ) : null}
           </div>
 
           <button
             onClick={handleCreateNote}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-md shadow-rose-950/20 transition-all duration-200 cursor-pointer"
+            className="flex h-10 md:h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-bold rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-md shadow-rose-950/20 transition-all duration-200 cursor-pointer shrink-0 active:scale-95"
           >
             <Plus className="h-4.5 w-4.5" />
-            Nouvelle Note
+            <span className="hidden md:inline whitespace-nowrap">Nouvelle Note</span>
           </button>
         </div>
       </div>

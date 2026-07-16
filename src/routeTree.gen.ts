@@ -15,12 +15,12 @@ import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
-import { Route as NotesRouteImport } from './routes/notes'
 import { Route as MessengerRouteImport } from './routes/messenger'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as CarnetDeNotesRouteImport } from './routes/carnet-de-notes'
 import { Route as BacktestRouteImport } from './routes/backtest'
 import { Route as AutotraderRouteImport } from './routes/autotrader'
 import { Route as AlertsRouteImport } from './routes/alerts'
@@ -86,11 +86,6 @@ const PortfolioRoute = PortfolioRouteImport.update({
   path: '/portfolio',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NotesRoute = NotesRouteImport.update({
-  id: '/notes',
-  path: '/notes',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const MessengerRoute = MessengerRouteImport.update({
   id: '/messenger',
   path: '/messenger',
@@ -114,6 +109,11 @@ const JournalRoute = JournalRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CarnetDeNotesRoute = CarnetDeNotesRouteImport.update({
+  id: '/carnet-de-notes',
+  path: '/carnet-de-notes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BacktestRoute = BacktestRouteImport.update({
@@ -294,12 +294,12 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -342,12 +342,12 @@ export interface FileRoutesByTo {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -391,12 +391,12 @@ export interface FileRoutesById {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -441,12 +441,12 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
     | '/messenger'
-    | '/notes'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -489,12 +489,12 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
     | '/messenger'
-    | '/notes'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -537,12 +537,12 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
     | '/markets'
     | '/messenger'
-    | '/notes'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -586,12 +586,12 @@ export interface RootRouteChildren {
   AlertsRoute: typeof AlertsRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
+  CarnetDeNotesRoute: typeof CarnetDeNotesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRoute
   MessengerRoute: typeof MessengerRoute
-  NotesRoute: typeof NotesRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -672,13 +672,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortfolioRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/notes': {
-      id: '/notes'
-      path: '/notes'
-      fullPath: '/notes'
-      preLoaderRoute: typeof NotesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/messenger': {
       id: '/messenger'
       path: '/messenger'
@@ -712,6 +705,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/carnet-de-notes': {
+      id: '/carnet-de-notes'
+      path: '/carnet-de-notes'
+      fullPath: '/carnet-de-notes'
+      preLoaderRoute: typeof CarnetDeNotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backtest': {
@@ -973,12 +973,12 @@ const rootRouteChildren: RootRouteChildren = {
   AlertsRoute: AlertsRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
+  CarnetDeNotesRoute: CarnetDeNotesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRoute,
   MessengerRoute: MessengerRoute,
-  NotesRoute: NotesRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
