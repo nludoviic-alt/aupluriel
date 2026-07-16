@@ -18,6 +18,7 @@ import {
   Smile,
   X,
   ChevronRight,
+  ChevronLeft,
   Bell,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -591,7 +592,7 @@ function MessengerPage() {
       {/* CHAT WORKSPACE */}
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* SIDEBAR COL */}
-        <div className="w-80 shrink-0 flex flex-col bg-white/[0.01] overflow-y-auto space-y-6 p-3">
+        <div className={cn("flex flex-col bg-white/[0.01] overflow-y-auto space-y-6 p-3", activeGroupId ? "hidden md:flex md:w-80 shrink-0" : "w-full md:w-80 shrink-0")}>
           {loadingSidebar ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
@@ -752,7 +753,7 @@ function MessengerPage() {
         </div>
 
         {/* CHAT WINDOW */}
-        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden relative min-h-0">
+        <div className={cn("flex-1 flex flex-col bg-background/40 overflow-hidden relative min-h-0", activeGroupId ? "flex" : "hidden md:flex")}>
           {/* Subtle Ambient Background glow blobs matching the application style */}
           <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-amber-500/[0.02] blur-[90px]" />
           <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full bg-violet-500/[0.02] blur-[90px]" />
@@ -762,6 +763,13 @@ function MessengerPage() {
               {/* CHAT WINDOW HEADER */}
               <div className="flex items-center justify-between border-b border-white/[0.05] bg-white/[0.01] px-6 py-4 shrink-0 z-10">
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveGroupId(null)}
+                    className="md:hidden flex items-center justify-center p-2 rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground cursor-pointer mr-1.5 transition-all duration-200"
+                    title="Retour aux conversations"
+                  >
+                    <ChevronLeft className="h-4.5 w-4.5" />
+                  </button>
                   <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-sm">
                     {isActiveDirect ? <Shield className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
                   </span>

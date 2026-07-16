@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LineChart, Zap, ShieldCheck, X, Menu } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Zap, ShieldCheck, X, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ import { haptic } from "@/lib/haptics";
 // it's the bot control surface, the app's core loop.
 const PRIMARY_ITEMS = [
   { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
-  { title: "Backtest",    url: "/backtest",   icon: LineChart },
+  { title: "Messenger",   url: "/messenger",  icon: MessageSquare },
   { title: "Auto-Trader", url: "/autotrader", icon: Zap },
 ] as const;
 
