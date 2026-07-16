@@ -245,46 +245,57 @@ function NotesPage() {
                 ];
                 const color = colors[index % colors.length];
                 return (
-                  <button
-                    key={note.id}
-                    onClick={() => handleSelectNote(note.id)}
-                    className={cn(
-                      "w-full text-left p-4 rounded-2xl border transition-all duration-200 group relative cursor-pointer overflow-hidden",
-                      isActive
-                        ? `bg-gradient-to-br ${color.from}/15 ${color.to}/8 ${color.border} shadow-lg text-foreground`
-                        : `bg-gradient-to-br ${color.from}/8 ${color.to}/4 ${color.border} text-muted-foreground hover:text-foreground shadow-sm hover:shadow-md hover:${color.from}/15 hover:${color.to}/8`
-                    )}
-                  >
-                    {isActive && (
-                      <span className={`absolute left-0 inset-y-3 w-1 rounded-r-full bg-gradient-to-b ${color.from} ${color.to} shadow-lg`} />
-                    )}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-[15px] leading-snug truncate">
-                          {note.title.trim() === "" ? "Sans titre" : note.title}
+                  <div key={note.id} className="relative group">
+                    <button
+                      onClick={() => handleSelectNote(note.id)}
+                      className={cn(
+                        "w-full text-left p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden",
+                        isActive
+                          ? `bg-gradient-to-br ${color.from}/15 ${color.to}/8 ${color.border} shadow-lg text-foreground`
+                          : `bg-gradient-to-br ${color.from}/8 ${color.to}/4 ${color.border} text-muted-foreground hover:text-foreground shadow-sm hover:shadow-md hover:${color.from}/15 hover:${color.to}/8`
+                      )}
+                    >
+                      {isActive && (
+                        <span className={`absolute left-0 inset-y-3 w-1 rounded-r-full bg-gradient-to-b ${color.from} ${color.to} shadow-lg`} />
+                      )}
+                      <div className="flex items-start justify-between gap-3 pr-11">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-[15px] leading-snug truncate">
+                            {note.title.trim() === "" ? "Sans titre" : note.title}
+                          </div>
+                          <div className="text-[12px] text-muted-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">
+                            {note.content.trim() === "" ? "Rédige une note..." : note.content}
+                          </div>
                         </div>
-                        <div className="text-[12px] text-muted-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">
-                          {note.content.trim() === "" ? "Rédige une note..." : note.content}
-                        </div>
+                        <ChevronRight
+                          className={cn(
+                            "h-4.5 w-4.5 shrink-0 transition-transform duration-200 mt-0.5",
+                            isActive ? `${color.accent} translate-x-0.5` : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                          )}
+                        />
                       </div>
-                      <ChevronRight
-                        className={cn(
-                          "h-4.5 w-4.5 shrink-0 transition-transform duration-200 mt-0.5",
-                          isActive ? `${color.accent} translate-x-0.5` : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
-                        )}
-                      />
-                    </div>
 
-                    <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/40 mt-3 select-none">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(note.updatedAt * 1000).toLocaleDateString("fr-FR", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </button>
+                      <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/40 mt-3 select-none">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(note.updatedAt * 1000).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteNote(note.id);
+                      }}
+                      title="Supprimer cette note"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
