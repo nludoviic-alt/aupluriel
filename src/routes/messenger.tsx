@@ -18,11 +18,13 @@ import {
   Smile,
   X,
   ChevronRight,
+  Bell,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getExistingPushSubscription, isPushSupported, subscribeToPush } from "@/lib/push";
 
 export const Route = createFileRoute("/messenger")({
   head: () => ({ meta: [{ title: "Messagerie — Au Pluriel" }] }),
@@ -203,6 +205,38 @@ function MessengerPage() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [currentGroupMembers, setCurrentGroupMembers] = useState<number[]>([]);
   const [savingMembers, setSavingMembers] = useState(false);
+
+  // Web Push states
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
+
+  useEffect(() => {
+    const supported = isPushSupported();
+    setPushSupported(supported);
+    if (supported) {
+      getExistingPushSubscription().then((sub) => {
+        setPushEnabled(!!sub);
+      }).catch(() => {});
+      if (typeof Notification !== "undefined") {
+        setPushPermissionDenied(Notification.permission === "denied");
+      }
+    }
+  }, []);
+
+  async function handleEnablePush() {
+    try {
+      await subscribeToPush();
+      setPushEnabled(true);
+      setPushPermissionDenied(false);
+      toast.success("Notifications activées pour cet appareil !");
+    } catch (err: any) {
+      toast.error(err.message || "Impossible d'activer les notifications");
+      if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+        setPushPermissionDenied(true);
+      }
+    }
+  }
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeGroupIdRef = useRef<string | null>(null);
@@ -510,7 +544,7 @@ function MessengerPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-7rem)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-13.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100vh-9.5rem)] overflow-hidden min-h-0">
       {/* HEADER SECTION */}
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
@@ -523,15 +557,35 @@ function MessengerPage() {
           </div>
         </div>
 
-        {!!user?.is_admin && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
-          >
-            <Plus className="h-4.5 w-4.5" />
-            Créer un groupe
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {pushSupported && !pushEnabled && (
+            <button
+              onClick={handleEnablePush}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer shadow-sm",
+                pushPermissionDenied
+                  ? "border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10"
+                  : "border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10"
+              )}
+              title={pushPermissionDenied ? "Notifications bloquées. Activez-les dans les réglages du navigateur." : "Activer les notifications push sur ce téléphone"}
+            >
+              <Bell className="h-4 w-4 animate-bounce" />
+              <span className="hidden sm:inline">
+                {pushPermissionDenied ? "Notifications bloquées" : "M'alerter sur mobile"}
+              </span>
+            </button>
+          )}
+
+          {!!user?.is_admin && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
+            >
+              <Plus className="h-4.5 w-4.5" />
+              Créer un groupe
+            </button>
+          )}
+        </div>
       </div>
 
       {/* CHAT WORKSPACE */}
@@ -698,7 +752,7 @@ function MessengerPage() {
         </div>
 
         {/* CHAT WINDOW */}
-        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden relative">
+        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden relative min-h-0">
           {/* Subtle Ambient Background glow blobs matching the application style */}
           <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-amber-500/[0.02] blur-[90px]" />
           <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full bg-violet-500/[0.02] blur-[90px]" />
@@ -743,7 +797,7 @@ function MessengerPage() {
               </div>
 
               {/* MESSAGES THREAD */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 z-10">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4 z-10">
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />

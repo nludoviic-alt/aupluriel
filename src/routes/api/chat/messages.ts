@@ -69,8 +69,8 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         // Verify group exists and check access
         const group = db
-          .prepare("SELECT is_direct, recipient_id FROM chat_groups WHERE id = ?")
-          .get(body.groupId) as { is_direct: number; recipient_id: number | null } | undefined;
+          .prepare("SELECT name, is_direct, recipient_id FROM chat_groups WHERE id = ?")
+          .get(body.groupId) as { name: string; is_direct: number; recipient_id: number | null } | undefined;
 
         if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
 
@@ -85,6 +85,50 @@ export const Route = createFileRoute("/api/chat/messages")({
         db.prepare(
           "INSERT INTO chat_messages (id, group_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)"
         ).run(newId, body.groupId, user.id, body.content.trim(), now);
+
+        // Send Push Notifications to recipient(s)
+        try {
+          const recipientIds: number[] = [];
+
+          if (group.is_direct === 1) {
+            if (user.is_admin === 1) {
+              if (group.recipient_id) {
+                recipientIds.push(group.recipient_id);
+              }
+            } else {
+              const admins = db
+                .prepare("SELECT id FROM users WHERE is_admin = 1")
+                .all() as { id: number }[];
+              recipientIds.push(...admins.map((a) => a.id));
+            }
+          } else {
+            const members = db
+              .prepare("SELECT user_id FROM chat_group_members WHERE group_id = ? AND user_id != ?")
+              .all(body.groupId, user.id) as { user_id: number }[];
+            recipientIds.push(...members.map((m) => m.user_id));
+          }
+
+          const pushTitle = group.is_direct === 1
+            ? `Message de ${user.username}`
+            : `Groupe ${group.name || "Messagerie"}`;
+
+          const pushBody = body.content.trim().startsWith("data:audio/")
+            ? "🎙️ Message vocal"
+            : body.content.trim().length > 60
+              ? body.content.trim().substring(0, 60) + "..."
+              : body.content.trim();
+
+          const { sendPushToUser } = await import("@/lib/push.server");
+          for (const recipientId of recipientIds) {
+            sendPushToUser(recipientId, {
+              title: pushTitle,
+              body: pushBody,
+              url: "/messenger",
+            }).catch((err) => console.error("[push] error sending chat notification:", err));
+          }
+        } catch (pushErr) {
+          console.error("[push] error sending push notifications:", pushErr);
+        }
 
         return json({
           id: newId,

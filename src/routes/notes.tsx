@@ -155,7 +155,7 @@ function NotesPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-7rem)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-13.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100vh-9.5rem)] overflow-hidden min-h-0">
       {/* HEADER SECTION */}
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
