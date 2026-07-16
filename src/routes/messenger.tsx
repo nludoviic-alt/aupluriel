@@ -706,6 +706,10 @@ function MessengerPage() {
       isActiveDirect = true;
     }
   }
+  if (!activeGroupName && activeGroupId) {
+    // Sidebar data not loaded yet, or the group/user vanished — never leave the header blank.
+    activeGroupName = "Discussion";
+  }
 
   return (
     <div className="flex flex-col h-[calc(100dvh-10.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100dvh-9.75rem)] overflow-hidden min-h-0">
@@ -988,7 +992,7 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-2 border-b border-white/[0.05] bg-white/[0.01] px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-10">
+              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-10">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
@@ -1014,6 +1018,39 @@ function MessengerPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  {!pushEnabled && pushIosNonSafari && (
+                    <div
+                      title="Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple. Ouvre aupluriel.com dans Safari, puis Partager → « Sur l'écran d'accueil »."
+                      className="md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 text-red-400 cursor-help"
+                    >
+                      <Bell className="h-3.5 w-3.5" />
+                    </div>
+                  )}
+
+                  {!pushEnabled && !pushIosNonSafari && pushSupported && pushIosNonStandalone && (
+                    <div
+                      title="Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications."
+                      className="md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400 cursor-help"
+                    >
+                      <Bell className="h-3.5 w-3.5" />
+                    </div>
+                  )}
+
+                  {pushSupported && !pushEnabled && !pushIosNonSafari && !pushIosNonStandalone && (
+                    <button
+                      onClick={handleEnablePush}
+                      title={pushPermissionDenied ? "Notifications bloquées. Activez-les dans les réglages du navigateur." : "Activer les notifications push sur ce téléphone"}
+                      className={cn(
+                        "md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border transition-all duration-200 cursor-pointer active:scale-95",
+                        pushPermissionDenied
+                          ? "border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10"
+                          : "border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10"
+                      )}
+                    >
+                      <Bell className="h-3.5 w-3.5 animate-bounce" />
+                    </button>
+                  )}
+
                   {!isActiveDirect && !!user?.is_admin && (
                     <button
                       onClick={handleOpenMembersModal}
