@@ -102,6 +102,25 @@ const EMOJI_CATEGORIES = [
   }
 ];
 
+const AVATAR_GRADIENTS = [
+  "from-amber-500/25 to-orange-600/25 text-amber-300 border-amber-500/25",
+  "from-violet-500/25 to-indigo-600/25 text-violet-300 border-violet-500/25",
+  "from-cyan-500/25 to-blue-600/25 text-cyan-300 border-cyan-500/25",
+  "from-emerald-500/25 to-teal-600/25 text-emerald-300 border-emerald-500/25",
+  "from-pink-500/25 to-rose-600/25 text-pink-300 border-pink-500/25",
+  "from-fuchsia-500/25 to-purple-600/25 text-fuchsia-300 border-fuchsia-500/25",
+];
+
+function getAvatarStyle(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
+}
+
+function getInitial(name: string) {
+  return (name.trim().charAt(0) || "?").toUpperCase();
+}
+
 // Custom Premium Voice Note Player
 function VoicePlayer({ src, isMe }: { src: string; isMe: boolean }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -673,34 +692,34 @@ function MessengerPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-13.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100vh-9.5rem)] overflow-hidden min-h-0">
-      {/* HEADER SECTION */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
-            <MessageSquare className="h-5 w-5" />
+    <div className="flex flex-col h-[calc(100dvh-10.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100dvh-9.75rem)] overflow-hidden min-h-0">
+      {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
+      <div className={cn("items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeGroupId ? "hidden md:flex" : "flex")}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner shrink-0">
+            <MessageSquare className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground font-sans">Messagerie</h1>
-            <p className="text-xs text-muted-foreground">Discussions de groupe, conversations personnelles et vocaux</p>
+          <div className="min-w-0">
+            <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground font-sans truncate">Messagerie</h1>
+            <p className="text-xs text-muted-foreground truncate hidden sm:block">Discussions de groupe, conversations personnelles et vocaux</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           {pushSupported && !pushEnabled && (
             <button
               onClick={handleEnablePush}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer shadow-sm",
+                "flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer shadow-sm active:scale-95",
                 pushPermissionDenied
                   ? "border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10"
                   : "border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10"
               )}
               title={pushPermissionDenied ? "Notifications bloquées. Activez-les dans les réglages du navigateur." : "Activer les notifications push sur ce téléphone"}
             >
-              <Bell className="h-4 w-4 animate-bounce" />
-              <span className="hidden sm:inline">
-                {pushPermissionDenied ? "Notifications bloquées" : "M'alerter sur mobile"}
+              <Bell className="h-4 w-4 animate-bounce shrink-0" />
+              <span className="hidden md:inline whitespace-nowrap">
+                {pushPermissionDenied ? "Notifications bloquées" : "M'alerter"}
               </span>
             </button>
           )}
@@ -708,10 +727,11 @@ function MessengerPage() {
           {!!user?.is_admin && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
+              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer shrink-0 active:scale-95"
+              title="Créer un groupe"
             >
-              <Plus className="h-4.5 w-4.5" />
-              Créer un groupe
+              <Plus className="h-4.5 w-4.5 shrink-0" />
+              <span className="hidden md:inline whitespace-nowrap">Créer un groupe</span>
             </button>
           )}
         </div>
@@ -720,7 +740,7 @@ function MessengerPage() {
       {/* CHAT WORKSPACE */}
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* SIDEBAR COL */}
-        <div className={cn("flex flex-col bg-white/[0.01] overflow-y-auto space-y-6 p-3", activeGroupId ? "hidden md:flex md:w-80 shrink-0" : "w-full md:w-80 shrink-0")}>
+        <div className={cn("flex flex-col bg-white/[0.01] overflow-y-auto overscroll-contain space-y-5 p-2.5 sm:p-3", activeGroupId ? "hidden md:flex md:w-80 shrink-0" : "w-full md:w-80 shrink-0")}>
           {loadingSidebar ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
@@ -734,7 +754,7 @@ function MessengerPage() {
             <>
               {/* PUBLIC GROUPS */}
               <div className="space-y-1">
-                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
+                <div className="px-2.5 sm:px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
                   <Hash className="h-3 w-3" />
                   Groupes & Salons ({publicGroups.length})
                 </div>
@@ -745,7 +765,7 @@ function MessengerPage() {
                       key={group.id}
                       onClick={() => setActiveGroupId(group.id)}
                       className={cn(
-                        "w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-200 text-left group relative cursor-pointer",
+                        "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
                         isActive
                           ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
                           : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
@@ -755,16 +775,19 @@ function MessengerPage() {
                         <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
                       )}
                       <span className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm transition-all duration-200",
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
                         isActive
                           ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
                           : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
                       )}>
-                        <Hash className="h-4 w-4" />
+                        <Hash className="h-4.5 w-4.5" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="font-bold text-[14px] leading-snug truncate pr-4">
+                        <div className="font-bold text-[14px] leading-snug truncate">
                           {group.name}
+                        </div>
+                        <div className="text-[10.5px] text-muted-foreground/45 truncate mt-0.5">
+                          Salon de groupe
                         </div>
                       </div>
                       <ChevronRight
@@ -780,7 +803,7 @@ function MessengerPage() {
 
               {/* PRIVATE MESSAGES */}
               <div className="space-y-1">
-                <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
+                <div className="px-2.5 sm:px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/45 flex items-center gap-1.5 select-none">
                   <UserCheck className="h-3 w-3" />
                   Messages Personnels
                 </div>
@@ -798,9 +821,10 @@ function MessengerPage() {
                       return (
                         <button
                           key={u.id}
+                          type="button"
                           onClick={() => setActiveGroupId(u.groupId)}
                           className={cn(
-                            "w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-200 text-left group relative cursor-pointer",
+                            "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
                             isActive
                               ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
                               : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
@@ -810,12 +834,10 @@ function MessengerPage() {
                             <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
                           )}
                           <span className={cn(
-                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm transition-all duration-200",
-                            isActive
-                              ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-                              : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
+                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
+                            getAvatarStyle(u.username)
                           )}>
-                            <User className="h-4 w-4" />
+                            {getInitial(u.username)}
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="font-bold text-[14px] leading-snug truncate pr-4">
@@ -839,9 +861,10 @@ function MessengerPage() {
                   // Regular user sees only their direct chat with the Admin
                   userDmGroup && (
                     <button
+                      type="button"
                       onClick={() => setActiveGroupId(userDmGroup.id)}
                       className={cn(
-                        "w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all duration-200 text-left group relative cursor-pointer",
+                        "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left group relative cursor-pointer active:scale-[0.98]",
                         userDmGroup.id === activeGroupId
                           ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
                           : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
@@ -851,12 +874,12 @@ function MessengerPage() {
                         <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
                       )}
                       <span className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm transition-all duration-200",
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
                         userDmGroup.id === activeGroupId
                           ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
                           : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
                       )}>
-                        <Shield className="h-4 w-4" />
+                        <Shield className="h-4.5 w-4.5" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-[14px] leading-snug truncate">
@@ -889,33 +912,40 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between border-b border-white/[0.05] bg-white/[0.01] px-6 py-4 shrink-0 z-10">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2 border-b border-white/[0.05] bg-white/[0.01] px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-10">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
-                    className="md:hidden flex items-center justify-center p-2 rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground cursor-pointer mr-1.5 transition-all duration-200"
+                    className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground cursor-pointer mr-0.5 transition-all duration-200 active:scale-90"
                     title="Retour aux conversations"
                   >
                     <ChevronLeft className="h-4.5 w-4.5" />
                   </button>
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-sm">
-                    {isActiveDirect ? <Shield className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
+                  <span className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold shadow-sm",
+                    isActiveDirect
+                      ? cn("bg-gradient-to-br", getAvatarStyle(activeGroupName))
+                      : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                  )}>
+                    {isActiveDirect ? getInitial(activeGroupName) : <Hash className="h-4 w-4" />}
                   </span>
-                  <span className="font-bold text-[15px] text-foreground tracking-tight font-sans">
-                    {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
+                  <span className="min-w-0 flex-1 flex items-center gap-1.5">
+                    <span className="font-bold text-[14.5px] sm:text-[15px] text-foreground tracking-tight font-sans truncate">
+                      {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
+                    </span>
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
                   </span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ml-1.5 animate-pulse" />
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   {!isActiveDirect && !!user?.is_admin && (
                     <button
                       onClick={handleOpenMembersModal}
                       title="Gérer les membres du groupe"
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/15 transition-all duration-200 cursor-pointer"
+                      className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-95"
                     >
                       <Settings2 className="h-3.5 w-3.5 text-amber-400" />
-                      <span className="hidden sm:inline">Membres</span>
+                      <span className="hidden sm:inline whitespace-nowrap">Membres</span>
                     </button>
                   )}
 
@@ -923,17 +953,17 @@ function MessengerPage() {
                     <button
                       onClick={handleDeleteGroup}
                       title="Supprimer la discussion"
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/30 text-red-400 transition-all duration-200 cursor-pointer"
+                      className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/30 text-red-400 transition-all duration-200 cursor-pointer active:scale-95"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Supprimer</span>
+                      <span className="hidden sm:inline whitespace-nowrap">Supprimer</span>
                     </button>
                   )}
                 </div>
               </div>
 
               {/* MESSAGES THREAD */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4 z-10">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4 space-y-4 z-10">
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />
@@ -958,7 +988,7 @@ function MessengerPage() {
                       <div
                         key={msg.id}
                         className={cn(
-                          "flex flex-col max-w-[70%] animate-in fade-in-50 duration-200",
+                          "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200",
                           isMe ? "ml-auto items-end" : "mr-auto items-start"
                         )}
                       >
@@ -1056,7 +1086,7 @@ function MessengerPage() {
               </div>
 
               {/* INPUT BAR */}
-              <div className="p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
+              <div className="p-2.5 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                   <>
@@ -1064,49 +1094,72 @@ function MessengerPage() {
                       className="fixed inset-0 z-30"
                       onClick={() => setShowEmojiPicker(false)}
                     />
-                    <div className="absolute bottom-[4.5rem] left-6 z-40 bg-[oklch(0.16_0.03_250)] border border-white/[0.08] rounded-2xl p-2.5 shadow-2xl w-60 grid grid-cols-5 gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                      {EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => handleSelectEmoji(emoji)}
-                          className="flex h-9 w-9 items-center justify-center text-[18px] rounded-xl hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-95 transition-all duration-100 cursor-pointer"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
+                    <div className="absolute bottom-[4rem] sm:bottom-[4.5rem] left-1/2 -translate-x-1/2 z-40 bg-[oklch(0.16_0.03_250)] border border-white/[0.08] rounded-2xl shadow-2xl w-[min(21rem,calc(100vw-1.5rem))] animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+                      {/* Category tabs */}
+                      <div className="flex items-center gap-1 p-2 border-b border-white/[0.06] overflow-x-auto scrollbar-none">
+                        {EMOJI_CATEGORIES.map((cat, idx) => (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => setActiveEmojiCategory(idx)}
+                            title={cat.name}
+                            className={cn(
+                              "flex h-9 w-9 shrink-0 items-center justify-center text-[16px] rounded-xl transition-all duration-150 cursor-pointer",
+                              idx === activeEmojiCategory
+                                ? "bg-amber-500/15 border border-amber-500/25"
+                                : "hover:bg-white/[0.06] border border-transparent"
+                            )}
+                          >
+                            {cat.icon}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Emoji grid */}
+                      <div className="grid grid-cols-6 gap-1 p-2.5 max-h-52 overflow-y-auto">
+                        {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, idx) => (
+                          <button
+                            key={`${emoji}-${idx}`}
+                            type="button"
+                            onClick={() => handleSelectEmoji(emoji)}
+                            className="flex h-9 w-9 items-center justify-center text-[18px] rounded-xl hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-95 transition-all duration-100 cursor-pointer"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
 
                 {/* Input Controls Strip */}
                 {isRecording ? (
-                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/35 bg-red-500/[0.04] px-4.5 py-3 shadow-[0_0_15px_rgba(239,68,68,0.05)] animate-pulse">
-                    <div className="flex items-center gap-3">
-                      <span className="relative flex h-2.5 w-2.5">
+                  <div className="flex items-center justify-between gap-2 sm:gap-4 rounded-2xl border border-red-500/35 bg-red-500/[0.04] px-3 sm:px-4.5 py-3 shadow-[0_0_15px_rgba(239,68,68,0.05)] animate-pulse">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                       </span>
-                      <span className="text-xs font-bold uppercase tracking-wider text-red-400 font-sans">Enregistrement vocal</span>
-                      <span className="font-mono text-sm font-semibold text-foreground ml-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-red-400 font-sans hidden sm:inline">Enregistrement vocal</span>
+                      <span className="font-mono text-sm font-semibold text-foreground sm:ml-1.5">
                         {formatDuration(recordingDuration)}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={cancelRecording}
-                        className="px-3.5 py-2 text-xs font-bold rounded-xl border border-white/10 bg-transparent hover:bg-white/5 text-muted-foreground transition-all duration-200 cursor-pointer"
+                        className="px-3 sm:px-3.5 py-2 text-xs font-bold rounded-xl border border-white/10 bg-transparent hover:bg-white/5 text-muted-foreground transition-all duration-200 cursor-pointer active:scale-95"
                       >
                         Annuler
                       </button>
                       <button
                         type="button"
                         onClick={stopRecording}
-                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-950/20 transition-all duration-200 cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-bold rounded-xl bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-950/20 transition-all duration-200 cursor-pointer active:scale-95"
                       >
                         <Square className="h-3 w-3 fill-current" />
-                        Terminer et Envoyer
+                        <span className="hidden sm:inline">Terminer et Envoyer</span>
+                        <span className="sm:hidden">Envoyer</span>
                       </button>
                     </div>
                   </div>
@@ -1121,8 +1174,8 @@ function MessengerPage() {
                     />
 
                     {selectedImage && (
-                      <div className="relative p-3 mb-2 rounded-xl border border-white/10 bg-white/[0.02] flex items-center gap-3 shrink-0">
-                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/10 bg-black/40 shadow-inner">
+                      <div className="relative p-2.5 sm:p-3 mb-2 rounded-xl border border-white/10 bg-white/[0.02] flex items-center gap-3 shrink-0">
+                        <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/40 shadow-inner">
                           <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
                           <button
                             type="button"
@@ -1140,7 +1193,7 @@ function MessengerPage() {
 
                     <form
                       onSubmit={handleSendMessage}
-                      className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 focus-within:border-amber-500/40 focus-within:bg-white/[0.05] transition-all duration-200 relative shadow-lg shadow-black/45"
+                      className="flex items-center gap-1 sm:gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-2 sm:px-3.5 py-1.5 sm:py-2.5 focus-within:border-amber-500/40 focus-within:bg-white/[0.05] transition-all duration-200 relative shadow-lg shadow-black/45"
                     >
                       {/* Smiley Button */}
                       <button
@@ -1148,7 +1201,7 @@ function MessengerPage() {
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                         title="Ajouter un emoji"
                         className={cn(
-                          "p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer",
+                          "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
                           showEmojiPicker && "text-amber-400 bg-white/[0.04]"
                         )}
                       >
@@ -1160,7 +1213,7 @@ function MessengerPage() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         title="Partager une image"
-                        className="p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer"
+                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
                       >
                         <Paperclip className="h-5 w-5" />
                       </button>
@@ -1176,7 +1229,7 @@ function MessengerPage() {
                           }
                         }}
                         placeholder={selectedImage ? "Ajouter un commentaire..." : "Écrivez votre message..."}
-                        className="flex-1 bg-transparent border-none text-[13.5px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 resize-none max-h-24 overflow-y-auto leading-relaxed py-1"
+                        className="flex-1 min-w-0 bg-transparent border-none text-[13.5px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 resize-none max-h-24 overflow-y-auto leading-relaxed py-1.5"
                       />
 
                       {/* Microphone Button */}
@@ -1184,7 +1237,7 @@ function MessengerPage() {
                         type="button"
                         onClick={startRecording}
                         title="Enregistrer un message vocal"
-                        className="p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer"
+                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
                       >
                         <Mic className="h-5 w-5" />
                       </button>
@@ -1192,7 +1245,7 @@ function MessengerPage() {
                       <button
                         type="submit"
                         disabled={(inputText.trim() === "" && !selectedImage) || sending}
-                        className="shrink-0 p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-500 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
+                        className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-500 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer active:scale-90"
                       >
                         {sending ? (
                           <Loader2 className="h-4 w-4 animate-spin text-black" />
@@ -1210,7 +1263,7 @@ function MessengerPage() {
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.05] text-muted-foreground/20">
                 <MessageSquare className="h-7 w-7" />
               </div>
-              <div className="text-sm font-semibold">Sélectionnez un groupe ou un utilisateur pour commencer à échanger.</div>
+              <div className="text-sm font-semibold px-4">Sélectionnez un groupe ou un utilisateur pour commencer à échanger.</div>
             </div>
           )}
         </div>
@@ -1219,12 +1272,12 @@ function MessengerPage() {
       {/* CREATE GROUP MODAL (Admin Only) */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl border border-white/[0.08] bg-[oklch(0.15_0.03_250)] p-6 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-white/[0.08] bg-[oklch(0.15_0.03_250)] p-5 sm:p-6 shadow-2xl space-y-5 sm:space-y-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
                 <Plus className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-lg font-bold text-foreground font-sans">Créer un groupe</h3>
                 <p className="text-xs text-muted-foreground">Sélectionnez les membres à ajouter au salon</p>
               </div>
@@ -1306,12 +1359,12 @@ function MessengerPage() {
       {/* MANAGE MEMBERS MODAL (Admin Only) */}
       {showMembersModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl border border-white/[0.08] bg-[oklch(0.15_0.03_250)] p-6 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-white/[0.08] bg-[oklch(0.15_0.03_250)] p-5 sm:p-6 shadow-2xl space-y-5 sm:space-y-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
                 <UserPlus className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-lg font-bold text-foreground font-sans">Membres du groupe</h3>
                 <p className="text-xs text-muted-foreground">Ajoutez ou retirez des membres de ce groupe</p>
               </div>
