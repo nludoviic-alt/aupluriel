@@ -391,7 +391,7 @@ function RootComponent() {
             </header>
 
             {/* Breathing room below the sticky header */}
-            <div className="h-6 shrink-0" />
+            <div className="h-2 shrink-0" />
 
             {/* Strong signal banner — hidden on the messenger page: it eats into the
                 chat panel's carefully-budgeted viewport height and is irrelevant there */}
@@ -427,7 +427,7 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "overflow-hidden"
+              pathname === "/messenger" && "pb-0 overflow-hidden"
             )}>
               <Outlet />
             </main>

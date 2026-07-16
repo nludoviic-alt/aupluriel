@@ -317,6 +317,15 @@ function migrate(db: Database.Database) {
   if (!chatGroupCols.has("recipient_id")) {
     db.exec("ALTER TABLE chat_groups ADD COLUMN recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
   }
+
+  // --- Additive column migrations on `chat_messages` (idempotent) ---
+  const chatMessageCols = new Set(
+    (db.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!chatMessageCols.has("read_at")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN read_at INTEGER");
+  }
+
   seedChangelogIfEmpty(db);
 
   // Promote the configured admin email if that account already exists.

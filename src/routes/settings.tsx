@@ -297,42 +297,6 @@ function SettingsPage() {
 
             {autoBacktestEnabled && <AutoBacktestStatus />}
           </CollapsibleSection>
-
-          {/* Push Notifications Card */}
-          <CollapsibleSection
-            icon={<Bell className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
-            title="Notifications push"
-            description="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
-          >
-            {isIosNonSafari() ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 leading-relaxed">
-                Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple, même en l'ajoutant à l'écran d'accueil ça ne marchera pas depuis Chrome. Ouvre <span className="font-bold">aupluriel.com dans Safari</span>, puis Partager → « Sur l'écran d'accueil ».
-              </div>
-            ) : !isPushSupported() ? (
-              <div className="rounded-xl border border-white/5 bg-white/[0.005] p-3.5 text-xs text-muted-foreground leading-relaxed">
-                Notifications push non supportées par ce navigateur.
-              </div>
-            ) : isIosNonStandalone() ? (
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-xs text-amber-400 leading-relaxed">
-                Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé.
-              </div>
-            ) : (
-              <div
-                className={cn(
-                  "flex items-center justify-between p-3.5 rounded-xl border transition-all",
-                  pushEnabled ? "bg-amber-500/5 border-amber-500/20" : "bg-white/[0.005] border-white/5",
-                )}
-              >
-                <div>
-                  <h4 className="text-xs md:text-sm text-neutral-200 font-bold">Activer les notifications</h4>
-                  <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
-                    Trade clôturé, bot en pause (protection de risque).
-                  </p>
-                </div>
-                <Switch checked={pushEnabled} disabled={pushSaving || !pushChecked} onCheckedChange={togglePush} />
-              </div>
-            )}
-          </CollapsibleSection>
         </div>
 
         {/* RIGHT COLUMN: Risk & AI */}
@@ -406,6 +370,42 @@ function SettingsPage() {
                 </div>
               )}
             </div>
+          </CollapsibleSection>
+
+          {/* Push Notifications Card */}
+          <CollapsibleSection
+            icon={<Bell className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
+            title="Notifications push"
+            description="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
+          >
+            {isIosNonSafari() ? (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 leading-relaxed">
+                Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple, même en l'ajoutant à l'écran d'accueil ça ne marchera pas depuis Chrome. Ouvre <span className="font-bold">aupluriel.com dans Safari</span>, puis Partager → « Sur l'écran d'accueil ».
+              </div>
+            ) : !isPushSupported() ? (
+              <div className="rounded-xl border border-white/5 bg-white/[0.005] p-3.5 text-xs text-muted-foreground leading-relaxed">
+                Notifications push non supportées par ce navigateur.
+              </div>
+            ) : isIosNonStandalone() ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-xs text-amber-400 leading-relaxed">
+                Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé.
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center justify-between p-3.5 rounded-xl border transition-all",
+                  pushEnabled ? "bg-amber-500/5 border-amber-500/20" : "bg-white/[0.005] border-white/5",
+                )}
+              >
+                <div>
+                  <h4 className="text-xs md:text-sm text-neutral-200 font-bold">Activer les notifications</h4>
+                  <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
+                    Trade clôturé, bot en pause (protection de risque).
+                  </p>
+                </div>
+                <Switch checked={pushEnabled} disabled={pushSaving || !pushChecked} onCheckedChange={togglePush} />
+              </div>
+            )}
           </CollapsibleSection>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useSidebar } from "@/components/ui/sidebar";
 import {
   MessageSquare,
   Send,
@@ -12,8 +13,6 @@ import {
   Shield,
   UserPlus,
   Settings2,
-  Mic,
-  Square,
   Trash2,
   Smile,
   X,
@@ -21,6 +20,9 @@ import {
   ChevronLeft,
   Bell,
   Paperclip,
+  Menu,
+  Check,
+  CheckCheck,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,6 +50,7 @@ interface ChatMessage {
   senderId: number;
   content: string;
   createdAt: number;
+  readAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
 }
@@ -57,6 +60,38 @@ interface VerifiedUser {
   username: string;
   email: string;
   groupId: string;
+}
+
+// Generate a consistent color for a user based on their username
+function getUserColor(username: string): { bg: string; border: string; shadow: string; text: string; bgSubtle: string } {
+  // Simple hash function to generate a number from the username
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // Use the hash to pick from a predefined palette of nice colors
+  const colors = [
+    { bg: 'from-rose-500 to-rose-600', border: 'border-rose-400/20', shadow: 'shadow-rose-950/20', text: 'text-rose-400', bgSubtle: 'bg-rose-500/[0.03]' },
+    { bg: 'from-orange-500 to-orange-600', border: 'border-orange-400/20', shadow: 'shadow-orange-950/20', text: 'text-orange-400', bgSubtle: 'bg-orange-500/[0.03]' },
+    { bg: 'from-amber-500 to-amber-600', border: 'border-amber-400/20', shadow: 'shadow-amber-950/20', text: 'text-amber-400', bgSubtle: 'bg-amber-500/[0.03]' },
+    { bg: 'from-yellow-500 to-yellow-600', border: 'border-yellow-400/20', shadow: 'shadow-yellow-950/20', text: 'text-yellow-400', bgSubtle: 'bg-yellow-500/[0.03]' },
+    { bg: 'from-lime-500 to-lime-600', border: 'border-lime-400/20', shadow: 'shadow-lime-950/20', text: 'text-lime-400', bgSubtle: 'bg-lime-500/[0.03]' },
+    { bg: 'from-green-500 to-green-600', border: 'border-green-400/20', shadow: 'shadow-green-950/20', text: 'text-green-400', bgSubtle: 'bg-green-500/[0.03]' },
+    { bg: 'from-emerald-500 to-emerald-600', border: 'border-emerald-400/20', shadow: 'shadow-emerald-950/20', text: 'text-emerald-400', bgSubtle: 'bg-emerald-500/[0.03]' },
+    { bg: 'from-teal-500 to-teal-600', border: 'border-teal-400/20', shadow: 'shadow-teal-950/20', text: 'text-teal-400', bgSubtle: 'bg-teal-500/[0.03]' },
+    { bg: 'from-cyan-500 to-cyan-600', border: 'border-cyan-400/20', shadow: 'shadow-cyan-950/20', text: 'text-cyan-400', bgSubtle: 'bg-cyan-500/[0.03]' },
+    { bg: 'from-sky-500 to-sky-600', border: 'border-sky-400/20', shadow: 'shadow-sky-950/20', text: 'text-sky-400', bgSubtle: 'bg-sky-500/[0.03]' },
+    { bg: 'from-blue-500 to-blue-600', border: 'border-blue-400/20', shadow: 'shadow-blue-950/20', text: 'text-blue-400', bgSubtle: 'bg-blue-500/[0.03]' },
+    { bg: 'from-indigo-500 to-indigo-600', border: 'border-indigo-400/20', shadow: 'shadow-indigo-950/20', text: 'text-indigo-400', bgSubtle: 'bg-indigo-500/[0.03]' },
+    { bg: 'from-violet-500 to-violet-600', border: 'border-violet-400/20', shadow: 'shadow-violet-950/20', text: 'text-violet-400', bgSubtle: 'bg-violet-500/[0.03]' },
+    { bg: 'from-purple-500 to-purple-600', border: 'border-purple-400/20', shadow: 'shadow-purple-950/20', text: 'text-purple-400', bgSubtle: 'bg-purple-500/[0.03]' },
+    { bg: 'from-fuchsia-500 to-fuchsia-600', border: 'border-fuchsia-400/20', shadow: 'shadow-fuchsia-950/20', text: 'text-fuchsia-400', bgSubtle: 'bg-fuchsia-500/[0.03]' },
+    { bg: 'from-pink-500 to-pink-600', border: 'border-pink-400/20', shadow: 'shadow-pink-950/20', text: 'text-pink-400', bgSubtle: 'bg-pink-500/[0.03]' },
+  ];
+  
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
 }
 
 const EMOJI_CATEGORIES = [
@@ -121,136 +156,10 @@ function getInitial(name: string) {
   return (name.trim().charAt(0) || "?").toUpperCase();
 }
 
-// Custom Premium Voice Note Player
-function VoicePlayer({ src, isMe }: { src: string; isMe: boolean }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-
-  // Clean up on unmount or src change
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, [src]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) {
-      try {
-        const audio = new Audio(src);
-        
-        audio.addEventListener("timeupdate", () => {
-          setCurrentTime(audio.currentTime);
-          if (audio.duration) {
-            setProgress((audio.currentTime / audio.duration) * 100);
-          }
-        });
-
-        audio.addEventListener("loadedmetadata", () => {
-          setDuration(audio.duration || 0);
-        });
-
-        audio.addEventListener("ended", () => {
-          setIsPlaying(false);
-          setProgress(0);
-          setCurrentTime(0);
-        });
-
-        audio.load();
-        audioRef.current = audio;
-      } catch (err) {
-        console.error("Failed to initialize Audio:", err);
-        toast.error("Format audio non supporté.");
-        return;
-      }
-    }
-
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play()
-        .then(() => {
-          setIsPlaying(true);
-        })
-        .catch((e) => {
-          console.error("Error playing audio:", e);
-          toast.error("Impossible de lire l'audio sur cet appareil.");
-        });
-    }
-  };
-
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current || !duration) return;
-    const value = parseFloat(e.target.value);
-    const newTime = (value / 100) * duration;
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-    setProgress(value);
-  };
-
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return "0:00";
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  return (
-    <div className="flex items-center gap-3 w-full max-w-[280px] sm:max-w-[320px] select-none py-1">
-      <button
-        type="button"
-        onClick={togglePlay}
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 active:scale-90 shrink-0 shadow-sm cursor-pointer",
-          isMe
-            ? "bg-white text-black hover:bg-white/90"
-            : "bg-amber-500 text-black hover:bg-amber-600"
-        )}
-      >
-        {isPlaying ? (
-          <svg className="h-4.5 w-4.5 fill-current" viewBox="0 0 24 24">
-            <rect x="6" y="4" width="4" height="16" rx="1" />
-            <rect x="14" y="4" width="4" height="16" rx="1" />
-          </svg>
-        ) : (
-          <svg className="h-4.5 w-4.5 fill-current ml-0.5" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        )}
-      </button>
-
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={progress}
-          onChange={handleSliderChange}
-          className={cn(
-            "w-full h-1 rounded-lg appearance-none cursor-pointer focus:outline-none transition-all",
-            isMe 
-              ? "bg-white/20 accent-white" 
-              : "bg-white/10 accent-amber-500"
-          )}
-        />
-        <div className="flex justify-between text-[9.5px] leading-none opacity-60">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MessengerPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toggleSidebar } = useSidebar();
 
   useEffect(() => {
     if (user && !user.is_admin && user.chat_enabled !== 1) {
@@ -276,13 +185,6 @@ function MessengerPage() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [inputText]);
-
-  // Voice note recording states
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<any>(null);
 
   // Emoji picker popover state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -388,6 +290,13 @@ function MessengerPage() {
       .then((data) => {
         setMessages(data.messages);
         scrollToBottom();
+        
+        // Mark messages as read (only messages not sent by current user)
+        const unreadMessages = data.messages.filter(msg => msg.senderId !== user?.id && !msg.readAt);
+        unreadMessages.forEach(msg => {
+          api.put("/api/chat/messages", { groupId: activeGroupId, messageId: msg.id })
+            .catch(() => {}); // Silently fail
+        });
       })
       .catch(() => toast.error("Impossible de charger les messages"))
       .finally(() => setLoadingMessages(false));
@@ -401,19 +310,27 @@ function MessengerPage() {
       api.get<{ messages: ChatMessage[] }>(`/api/chat/messages?groupId=${activeGroupId}`)
         .then((data) => {
           setMessages((prev) => {
-            if (data.messages.length !== prev.length) {
+            const hasNewMessage =
+              data.messages.length !== prev.length ||
+              (data.messages.length > 0 &&
+                prev.length > 0 &&
+                data.messages[data.messages.length - 1].id !== prev[prev.length - 1].id);
+
+            if (hasNewMessage) {
               setTimeout(scrollToBottom, 50);
-              return data.messages;
             }
-            if (
-              data.messages.length > 0 &&
-              prev.length > 0 &&
-              data.messages[data.messages.length - 1].id !== prev[prev.length - 1].id
-            ) {
-              setTimeout(scrollToBottom, 50);
-              return data.messages;
-            }
-            return prev;
+
+            // Always refresh so readAt (blue checkmarks) updates are reflected
+            return data.messages;
+          });
+
+          // Mark newly received messages as read
+          const unread = data.messages.filter(
+            (msg) => msg.senderId !== user?.id && !msg.readAt
+          );
+          unread.forEach((msg) => {
+            api.put("/api/chat/messages", { groupId: activeGroupId, messageId: msg.id })
+              .catch(() => {});
           });
         })
         .catch((err) => console.error("Polling messages error:", err));
@@ -462,87 +379,6 @@ function MessengerPage() {
     } finally {
       setSending(false);
     }
-  }
-
-  // Voice note recording logic
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64Audio = reader.result as string;
-          setSending(true);
-          try {
-            const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
-              groupId: activeGroupId,
-              content: base64Audio,
-            });
-            setMessages((prev) => [...prev, newMsg]);
-            setTimeout(scrollToBottom, 50);
-            toast.success("Note vocale envoyée");
-          } catch (err: any) {
-            toast.error(err.message || "Erreur d'envoi du message vocal");
-          } finally {
-            setSending(false);
-          }
-        };
-
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingDuration(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingDuration((prev) => prev + 1);
-      }, 1000);
-    } catch (err) {
-      toast.error("Impossible d'accéder au microphone.");
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-      }
-    }
-  }
-
-  function cancelRecording() {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.onstop = () => {
-        const stream = mediaRecorderRef.current?.stream;
-        stream?.getTracks().forEach((track) => track.stop());
-      };
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-      }
-      toast.info("Enregistrement annulé");
-    }
-  }
-
-  function formatDuration(sec: number) {
-    const mins = Math.floor(sec / 60);
-    const secs = sec % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
   function handleSelectEmoji(emoji: string) {
@@ -712,10 +548,16 @@ function MessengerPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-10.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] md:h-[calc(100dvh-9.75rem)] overflow-hidden min-h-0">
+    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background">
       {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
       <div className={cn("items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeGroupId ? "hidden md:flex" : "flex")}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <button
+            onClick={toggleSidebar}
+            className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-white/[0.03] text-muted-foreground mr-1"
+          >
+            <Menu className="h-4.5 w-4.5" />
+          </button>
           <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner shrink-0">
             <MessageSquare className="h-4.5 w-4.5 md:h-5 md:w-5" />
           </div>
@@ -992,7 +834,7 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-10">
+              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-black/60 backdrop-blur-md px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-20 sticky top-0 sm:pt-4">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
@@ -1076,7 +918,7 @@ function MessengerPage() {
               </div>
 
               {/* MESSAGES THREAD */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 py-4 z-10 flex flex-col justify-end gap-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-10 pb-4 z-10 flex flex-col justify-end gap-4 relative">
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />
@@ -1093,9 +935,8 @@ function MessengerPage() {
                   messages.map((msg) => {
                     const isMe = msg.senderId === user?.id;
                     const isAdminSender = msg.senderIsAdmin === 1;
-                    const isVoiceNote = msg.content.startsWith("data:audio/");
                     const isImage = msg.content.startsWith("data:image/");
-                    const isMedia = isVoiceNote || isImage;
+                    const userColor = getUserColor(msg.senderUsername);
 
                     return (
                       <div
@@ -1107,11 +948,11 @@ function MessengerPage() {
                       >
                         {/* Sender labels */}
                         <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/50 mb-1 px-1 select-none">
-                          <span className={cn(isMe ? "text-amber-400 font-bold" : "text-muted-foreground font-semibold")}>
+                          <span className={cn("font-semibold", isMe ? userColor.text : userColor.text)}>
                             {msg.senderUsername}
                           </span>
                           {isAdminSender && (
-                            <span className="inline-flex items-center gap-0.5 text-[8.5px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 uppercase tracking-widest leading-none">
+                            <span className="inline-flex items-center gap-0.5 text-[8.5px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/60 uppercase tracking-widest leading-none">
                               Admin
                             </span>
                           )}
@@ -1120,77 +961,59 @@ function MessengerPage() {
                         {/* Message bubble */}
                         <div
                           className={cn(
-                            "rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed shadow-md",
-                            isMedia && "min-w-[280px] sm:min-w-[320px] bg-none shadow-none p-0 border-0!",
-                            !isMedia && (
-                              isMe
-                                ? cn(
-                                    "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
-                                    isAdminSender
-                                      ? "from-amber-500 to-amber-600 border-amber-400/20 shadow-amber-950/20"
-                                      : "from-violet-500 to-indigo-600 border-violet-400/20 shadow-violet-950/20"
-                                  )
-                                : cn(
-                                    "text-foreground rounded-tl-none bg-white/[0.03] border border-white/[0.07] backdrop-blur-sm",
-                                    isAdminSender && "border-amber-500/20 bg-amber-500/[0.02]"
-                                  )
-                            )
+                            "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
+                            isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
+                            isMe
+                              ? cn(
+                                  "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
+                                  userColor.bg,
+                                  userColor.border,
+                                  userColor.shadow
+                                )
+                              : cn(
+                                  "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
+                                  userColor.border,
+                                  userColor.bgSubtle
+                                )
                           )}
                         >
-                          {isVoiceNote ? (
-                            <div className={cn(
-                              "rounded-2xl p-3 border shadow-md",
-                              isMe
-                                ? cn(
-                                    "bg-gradient-to-br text-white rounded-tr-none",
-                                    isAdminSender
-                                      ? "from-amber-500 to-amber-600 border-amber-400/20 shadow-amber-950/20"
-                                      : "from-violet-500 to-indigo-600 border-violet-400/20 shadow-violet-950/20"
-                                  )
-                                : cn(
-                                    "bg-white/[0.03] border-white/[0.07] text-foreground rounded-tl-none",
-                                    isAdminSender && "border-amber-500/20 bg-amber-500/[0.02]"
-                                  )
-                            )}>
-                              <VoicePlayer src={msg.content} isMe={isMe} />
-                            </div>
-                          ) : isImage ? (
-                            <div className={cn(
-                              "rounded-2xl p-1.5 border shadow-md overflow-hidden bg-black/10",
-                              isMe
-                                ? cn(
-                                    "rounded-tr-none",
-                                    isAdminSender
-                                      ? "from-amber-500 to-amber-600 border-amber-400/20 shadow-amber-950/20"
-                                      : "from-violet-500 to-indigo-600 border-violet-400/20 shadow-violet-950/20"
-                                  )
-                                : cn(
-                                    "rounded-tl-none bg-white/[0.03] border border-white/[0.07]",
-                                    isAdminSender && "border-amber-500/20 bg-amber-500/[0.02]"
-                                  )
-                            )}>
-                              <img
-                                src={msg.content}
-                                alt="Image envoyée"
-                                className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                                onClick={() => {
-                                  const w = window.open();
-                                  if (w) w.document.write(`<img src="${msg.content}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
-                                }}
-                              />
-                            </div>
+                          {isImage ? (
+                            <img
+                              src={msg.content}
+                              alt="Image envoyée"
+                              className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
+                              onClick={() => {
+                                const w = window.open();
+                                if (w) w.document.write(`<img src="${msg.content}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+                              }}
+                            />
                           ) : (
-                            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                            <div className="whitespace-pre-wrap break-words break-all max-w-full">
+                              {msg.content.startsWith("data:") 
+                                ? "[Contenu média non supporté]" 
+                                : msg.content}
+                            </div>
                           )}
                         </div>
 
-                        {/* Msg timestamp */}
-                        <span className="text-[9px] text-muted-foreground/35 mt-1.5 px-1 select-none">
-                          {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
+                        {/* Msg timestamp and read receipt */}
+                        <div className="flex items-center gap-1.5 mt-1.5 px-1 select-none">
+                          <span className="text-[9px] text-muted-foreground/35">
+                            {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          {isMe && (
+                            <div className="flex items-center">
+                              {msg.readAt ? (
+                                <CheckCheck className="h-3 w-3 text-blue-400" />
+                              ) : (
+                                <Check className="h-3 w-3 text-muted-foreground/40" />
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })
@@ -1245,62 +1068,29 @@ function MessengerPage() {
                 )}
 
                 {/* Input Controls Strip */}
-                {isRecording ? (
-                  <div className="flex items-center justify-between gap-2 sm:gap-4 rounded-full border border-red-500/35 bg-red-500/[0.06] pl-4 sm:pl-5 pr-1.5 py-1.5 shadow-[0_0_15px_rgba(239,68,68,0.08)]">
-                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                      </span>
-                      <span className="text-xs font-bold uppercase tracking-wider text-red-400 font-sans hidden sm:inline">Enregistrement vocal</span>
-                      <span className="font-mono text-sm font-semibold text-foreground sm:ml-1.5">
-                        {formatDuration(recordingDuration)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={cancelRecording}
-                        className="h-10 px-3 sm:px-4 rounded-full border border-white/10 bg-transparent hover:bg-white/5 text-xs font-bold text-muted-foreground transition-all duration-200 cursor-pointer active:scale-95"
-                      >
-                        Annuler
-                      </button>
-                      <button
-                        type="button"
-                        onClick={stopRecording}
-                        title="Terminer et envoyer"
-                        className="flex h-10 shrink-0 items-center justify-center gap-1.5 px-3.5 sm:px-4 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-950/30 transition-all duration-200 cursor-pointer active:scale-90"
-                      >
-                        <Square className="h-3.5 w-3.5 fill-current" />
-                        <span className="text-xs font-bold">Envoyer</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={fileInputRef}
-                      className="hidden"
-                      onChange={handleImageSelect}
-                    />
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
 
-                    {selectedImage && (
-                      <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center gap-3 shrink-0">
-                        <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/40 shadow-inner">
-                          <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setSelectedImage(null)}
-                            className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Image prête à être envoyée. Appuyez sur envoyer pour l'expédier.
-                        </div>
+                {selectedImage && (
+                  <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center gap-3 shrink-0">
+                    <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/40 shadow-inner">
+                      <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Image prête à être envoyée. Appuyez sur envoyer pour l'expédier.
+                    </div>
                       </div>
                     )}
 
@@ -1349,33 +1139,25 @@ function MessengerPage() {
                         </button>
                       </div>
 
-                      {/* Circular send/mic button — morphs like WhatsApp */}
-                      {inputText.trim() !== "" || selectedImage ? (
-                        <button
-                          type="submit"
-                          disabled={sending}
-                          title="Envoyer"
-                          className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 disabled:opacity-40 text-black shadow-lg shadow-amber-950/30 transition-all duration-200 cursor-pointer active:scale-90"
-                        >
-                          {sending ? (
-                            <Loader2 className="h-5 w-5 animate-spin text-black" />
-                          ) : (
-                            <Send className="h-5 w-5 text-black fill-current" />
-                          )}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={startRecording}
-                          title="Enregistrer un message vocal"
-                          className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-black shadow-lg shadow-amber-950/30 transition-all duration-200 cursor-pointer active:scale-90"
-                        >
-                          <Mic className="h-5 w-5" />
-                        </button>
-                      )}
+                      {/* Send button */}
+                      <button
+                        type="submit"
+                        disabled={sending || (!inputText.trim() && !selectedImage)}
+                        title="Envoyer"
+                        className={cn(
+                          "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90 shadow-lg",
+                          (inputText.trim() || selectedImage)
+                            ? "bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-black shadow-amber-950/30"
+                            : "bg-white/5 text-muted-foreground cursor-not-allowed"
+                        )}
+                      >
+                        {sending ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Send className="h-5 w-5 fill-current" />
+                        )}
+                      </button>
                     </form>
-                  </>
-                )}
               </div>
             </>
           ) : (

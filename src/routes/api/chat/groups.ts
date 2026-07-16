@@ -137,7 +137,7 @@ export const Route = createFileRoute("/api/chat/groups")({
 
         if (!groupId) {
           const body = (await request.json().catch(() => ({}))) as { groupId?: string };
-          groupId = body.groupId;
+          groupId = body.groupId ?? null;
         }
 
         if (!groupId) {

@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         const rows = db
           .prepare(`
-            SELECT m.id, m.group_id AS groupId, m.sender_id AS senderId, m.content, m.created_at AS createdAt,
+            SELECT m.id, m.group_id AS groupId, m.sender_id AS senderId, m.content, m.created_at AS createdAt, m.read_at AS readAt,
                    u.username AS senderUsername, u.is_admin AS senderIsAdmin
             FROM chat_messages m
             JOIN users u ON m.sender_id = u.id
@@ -54,6 +54,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           senderId: number;
           content: string;
           createdAt: number;
+          readAt: number | null;
           senderUsername: string;
           senderIsAdmin: number;
         }[];
@@ -130,9 +131,7 @@ export const Route = createFileRoute("/api/chat/messages")({
             ? `Message de ${user.username}`
             : `Groupe ${group.name || "Messagerie"}`;
 
-          const pushBody = body.content.trim().startsWith("data:audio/")
-            ? "🎙️ Message vocal"
-            : body.content.trim().startsWith("data:image/")
+          const pushBody = body.content.trim().startsWith("data:image/")
               ? "📷 Photo"
               : body.content.trim().length > 60
                 ? body.content.trim().substring(0, 60) + "..."
@@ -156,9 +155,60 @@ export const Route = createFileRoute("/api/chat/messages")({
           senderId: user.id,
           content: body.content.trim(),
           createdAt: now,
+          readAt: null,
           senderUsername: user.username,
           senderIsAdmin: user.is_admin,
         });
+      },
+
+      PUT: async ({ request }) => {
+        const user = await getFullUserFromRequest(request);
+        if (!user) return json({ error: "Non authentifié" }, 401);
+
+        const body = (await request.json().catch(() => ({}))) as {
+          groupId?: string;
+          messageId?: string;
+        };
+
+        if (!body.groupId || !body.messageId) {
+          return json({ error: "groupId et messageId requis." }, 400);
+        }
+
+        const db = getDb();
+
+        // Verify message exists and user has access to the group
+        const message = db
+          .prepare(`
+            SELECT m.sender_id, g.recipient_id, g.is_direct
+            FROM chat_messages m
+            JOIN chat_groups g ON m.group_id = g.id
+            WHERE m.id = ? AND m.group_id = ?
+          `)
+          .get(body.messageId, body.groupId) as { sender_id: number; recipient_id: number | null; is_direct: number } | undefined;
+
+        if (!message) return json({ error: "Message non trouvé." }, 404);
+
+        // Only the recipient can mark messages as read
+        if (message.sender_id === user.id) {
+          return json({ error: "Vous ne pouvez pas marquer vos propres messages comme lus." }, 400);
+        }
+
+        // Check if user is the recipient (for direct messages) or a member (for group chats)
+        if (message.is_direct === 1 && message.recipient_id !== user.id && user.is_admin === 0) {
+          return json({ error: "Accès refusé." }, 403);
+        }
+
+        if (message.is_direct === 0) {
+          const membership = db
+            .prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?")
+            .get(body.groupId, user.id);
+          if (!membership && user.is_admin === 0) return json({ error: "Accès refusé." }, 403);
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        db.prepare("UPDATE chat_messages SET read_at = ? WHERE id = ?").run(now, body.messageId);
+
+        return json({ success: true });
       },
     },
   },
