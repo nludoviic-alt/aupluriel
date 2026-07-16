@@ -257,7 +257,7 @@ function MessengerPage() {
         setVerifiedUsers(usersRes.users);
       }
 
-      if (groupsRes.groups.length > 0 && !activeGroupIdRef.current) {
+      if (groupsRes.groups.length > 0 && !activeGroupIdRef.current && window.innerWidth >= 768) {
         const publicGroup = groupsRes.groups.find((g) => g.isDirect === 0);
         if (publicGroup) {
           setActiveGroupId(publicGroup.id);
