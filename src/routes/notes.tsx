@@ -74,7 +74,6 @@ function NotesPage() {
         content: noteToSave.content,
       });
       setLastSavedAt(res.updatedAt);
-      // Update the note's updatedAt in local state without sorting/shuffling immediately
       setNotes((prev) =>
         prev.map((n) => (n.id === noteToSave.id ? { ...n, updatedAt: res.updatedAt } : n))
       );
@@ -88,12 +87,10 @@ function NotesPage() {
   function handleNoteChange(updatedFields: Partial<Note>) {
     if (!activeNoteId) return;
 
-    // Update local state immediately
     setNotes((prev) =>
       prev.map((n) => (n.id === activeNoteId ? { ...n, ...updatedFields } : n))
     );
 
-    // Schedule save
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const currentActive = activeNoteRef.current;
@@ -138,7 +135,6 @@ function NotesPage() {
       await api.delete<{ ok: boolean }>("/api/notes", { id });
       setNotes((prev) => prev.filter((n) => n.id !== id));
       toast.success("Note supprimée");
-      // Choose next active note
       const remaining = notes.filter((n) => n.id !== id);
       if (remaining.length > 0) {
         setActiveNoteId(remaining[0].id);
@@ -163,18 +159,18 @@ function NotesPage() {
       {/* HEADER SECTION */}
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shadow-inner">
             <NotebookPen className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">Carnet de Notes</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground font-sans">Carnet de Notes</h1>
             <p className="text-xs text-muted-foreground">Prends des notes sur le marché ou tes stratégies</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Saving indicator */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-5 select-none">
             {saving ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" />
@@ -204,7 +200,7 @@ function NotesPage() {
 
           <button
             onClick={handleCreateNote}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-md shadow-rose-950/20 transition-all duration-200"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-md shadow-rose-950/20 transition-all duration-200 cursor-pointer"
           >
             <Plus className="h-4.5 w-4.5" />
             Nouvelle Note
@@ -215,9 +211,9 @@ function NotesPage() {
       {/* WORKSPACE AREA */}
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* LIST COLUMN */}
-        <div className="w-80 shrink-0 flex flex-col bg-white/[0.01] overflow-y-auto">
+        <div className="w-80 shrink-0 flex flex-col bg-white/[0.01] overflow-y-auto p-3">
           {loading ? (
-            <div className="flex flex-col gap-3 p-4">
+            <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
                 <div
                   key={n}
@@ -226,18 +222,18 @@ function NotesPage() {
               ))}
             </div>
           ) : notes.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground/60 space-y-4">
+            <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground/60 space-y-4 p-6 select-none">
               <FileText className="h-10 w-10 text-muted-foreground/20" />
               <div className="text-sm">Aucune note pour le moment.</div>
               <button
                 onClick={handleCreateNote}
-                className="text-xs text-rose-400 hover:text-rose-300 font-semibold underline"
+                className="text-xs text-rose-400 hover:text-rose-300 font-semibold underline cursor-pointer"
               >
                 Créer ma première note
               </button>
             </div>
           ) : (
-            <div className="p-3 space-y-1">
+            <div className="space-y-1">
               {notes.map((note) => {
                 const isActive = note.id === activeNoteId;
                 return (
@@ -245,7 +241,7 @@ function NotesPage() {
                     key={note.id}
                     onClick={() => handleSelectNote(note.id)}
                     className={cn(
-                      "w-full text-left p-3.5 rounded-xl border transition-all duration-200 group relative",
+                      "w-full text-left p-3.5 rounded-xl border transition-all duration-200 group relative cursor-pointer",
                       isActive
                         ? "bg-rose-500/[0.08] border-rose-500/25 text-foreground"
                         : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
@@ -266,11 +262,11 @@ function NotesPage() {
                       />
                     </div>
 
-                    <div className="text-[12px] text-muted-foreground/60 mt-1 line-clamp-2 leading-relaxed">
+                    <div className="text-[12px] text-muted-foreground/60 mt-1.5 line-clamp-2 leading-relaxed">
                       {note.content.trim() === "" ? "Rédige une note..." : note.content}
                     </div>
 
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40 mt-3.5">
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40 mt-3.5 select-none">
                       <Calendar className="h-3 w-3" />
                       {new Date(note.updatedAt * 1000).toLocaleDateString("fr-FR", {
                         day: "numeric",
@@ -287,22 +283,26 @@ function NotesPage() {
         </div>
 
         {/* EDITOR COLUMN */}
-        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden relative">
+          {/* Subtle Ambient Background glow blobs matching the rose/violet theme */}
+          <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-rose-500/[0.02] blur-[90px]" />
+          <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full bg-violet-500/[0.02] blur-[90px]" />
+
           {activeNote ? (
-            <div className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto">
-              <div className="flex items-start gap-4">
+            <div className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto z-10">
+              <div className="flex items-center gap-4">
                 <input
                   type="text"
                   value={activeNote.title}
                   onChange={(e) => handleNoteChange({ title: e.target.value })}
                   placeholder="Titre de la note"
-                  className="flex-1 bg-transparent border-none text-2xl font-bold text-foreground focus:outline-none focus:ring-0 placeholder:text-muted-foreground/35"
+                  className="flex-1 bg-transparent border-none text-2xl font-bold text-foreground focus:outline-none focus:ring-0 placeholder:text-muted-foreground/35 tracking-tight font-sans"
                 />
 
                 <button
                   onClick={() => handleDeleteNote(activeNote.id)}
                   title="Supprimer cette note"
-                  className="shrink-0 p-2.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all duration-200"
+                  className="shrink-0 p-2.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all duration-200 cursor-pointer shadow-sm"
                 >
                   <Trash2 className="h-4.5 w-4.5" />
                 </button>
@@ -312,13 +312,15 @@ function NotesPage() {
                 value={activeNote.content}
                 onChange={(e) => handleNoteChange({ content: e.target.value })}
                 placeholder="Rédige tes pensées, tes analyses de trading, ou tes stratégies..."
-                className="flex-1 w-full bg-transparent border-none text-[14px] text-foreground leading-relaxed resize-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30 min-h-[40vh]"
+                className="flex-1 w-full bg-transparent border-none text-[14px] text-foreground leading-relaxed resize-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30 min-h-[40vh] py-2"
               />
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-muted-foreground/50 space-y-4">
-              <FileText className="h-12 w-12 text-muted-foreground/15" />
-              <div>Sélectionne une note ou crée-en une nouvelle pour commencer à écrire.</div>
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-muted-foreground/40 space-y-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.05] text-muted-foreground/20">
+                <FileText className="h-7 w-7" />
+              </div>
+              <div className="text-sm font-semibold">Sélectionne une note ou crée-en une nouvelle pour commencer à écrire.</div>
             </div>
           )}
         </div>
