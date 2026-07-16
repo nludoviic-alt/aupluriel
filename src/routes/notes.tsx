@@ -1,8 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, NotebookPen } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  NotebookPen,
+  Plus,
+  Trash2,
+  Calendar,
+  ChevronRight,
+  FileText,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/notes")({
   head: () => ({ meta: [{ title: "Notes — Au Pluriel" }] }),
@@ -11,30 +21,63 @@ export const Route = createFileRoute("/notes")({
 
 const AUTOSAVE_DELAY_MS = 1500;
 
+interface Note {
+  id: string;
+  title: string;
+  content: string;
+  updatedAt: number;
+}
+
 function NotesPage() {
-  const [content, setContent] = useState("");
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loaded = useRef(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
 
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeNoteRef = useRef<Note | null>(null);
+
+  // Fetch all notes on mount
   useEffect(() => {
-    api.get<{ content: string; updatedAt: number | null }>("/api/notes")
+    api.get<{ notes: Note[] }>("/api/notes")
       .then((data) => {
-        setContent(data.content);
-        setUpdatedAt(data.updatedAt);
-        loaded.current = true;
+        setNotes(data.notes);
+        if (data.notes.length > 0) {
+          setActiveNoteId(data.notes[0].id);
+        }
       })
       .catch(() => toast.error("Impossible de charger les notes"))
       .finally(() => setLoading(false));
   }, []);
 
-  const save = useCallback(async (text: string) => {
+  const activeNote = notes.find((n) => n.id === activeNoteId) || null;
+  activeNoteRef.current = activeNote;
+
+  // Flush any pending save immediately when switching active note or leaving
+  const flushSave = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      if (activeNoteRef.current) {
+        await save(activeNoteRef.current);
+      }
+    }
+  }, []);
+
+  const save = useCallback(async (noteToSave: Note) => {
     setSaving(true);
     try {
-      const res = await api.put<{ updatedAt: number }>("/api/notes", { content: text });
-      setUpdatedAt(res.updatedAt);
+      const res = await api.put<{ updatedAt: number }>("/api/notes", {
+        id: noteToSave.id,
+        title: noteToSave.title,
+        content: noteToSave.content,
+      });
+      setLastSavedAt(res.updatedAt);
+      // Update the note's updatedAt in local state without sorting/shuffling immediately
+      setNotes((prev) =>
+        prev.map((n) => (n.id === noteToSave.id ? { ...n, updatedAt: res.updatedAt } : n))
+      );
     } catch {
       toast.error("Échec de l'enregistrement");
     } finally {
@@ -42,42 +85,244 @@ function NotesPage() {
     }
   }, []);
 
-  function onChange(text: string) {
-    setContent(text);
-    if (!loaded.current) return;
+  function handleNoteChange(updatedFields: Partial<Note>) {
+    if (!activeNoteId) return;
+
+    // Update local state immediately
+    setNotes((prev) =>
+      prev.map((n) => (n.id === activeNoteId ? { ...n, ...updatedFields } : n))
+    );
+
+    // Schedule save
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => save(text), AUTOSAVE_DELAY_MS);
+    saveTimer.current = setTimeout(() => {
+      const currentActive = activeNoteRef.current;
+      if (currentActive) {
+        save(currentActive);
+      }
+    }, AUTOSAVE_DELAY_MS);
   }
 
-  // Flush a pending autosave immediately when leaving the page.
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  // Handle active note switch
+  async function handleSelectNote(id: string) {
+    await flushSave();
+    setActiveNoteId(id);
+    setLastSavedAt(null);
+  }
+
+  // Create a new note
+  async function handleCreateNote() {
+    await flushSave();
+    setSaving(true);
+    try {
+      const newNote = await api.post<Note>("/api/notes", {});
+      setNotes((prev) => [newNote, ...prev]);
+      setActiveNoteId(newNote.id);
+      setLastSavedAt(null);
+      toast.success("Nouvelle note créée");
+    } catch {
+      toast.error("Erreur lors de la création de la note");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Delete active note
+  async function handleDeleteNote(id: string) {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
+    try {
+      await api.delete<{ ok: boolean }>("/api/notes", { id });
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      toast.success("Note supprimée");
+      // Choose next active note
+      const remaining = notes.filter((n) => n.id !== id);
+      if (remaining.length > 0) {
+        setActiveNoteId(remaining[0].id);
+      } else {
+        setActiveNoteId(null);
+      }
+      setLastSavedAt(null);
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  }
+
+  // Clean timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <NotebookPen className="h-5 w-5 text-[color:var(--brand-cyan)]" />
-          Notes
-        </h1>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-5">
-          {saving ? (
-            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enregistrement…</>
-          ) : updatedAt ? (
-            <><CheckCircle2 className="h-3.5 w-3.5 text-[color:var(--bull)]" /> Enregistré {new Date(updatedAt * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</>
-          ) : null}
+    <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-7rem)] overflow-hidden">
+      {/* HEADER SECTION */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-6 py-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+            <NotebookPen className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Carnet de Notes</h1>
+            <p className="text-xs text-muted-foreground">Prends des notes sur le marché ou tes stratégies</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Saving indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-h-5">
+            {saving ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-400" />
+                Enregistrement…
+              </>
+            ) : lastSavedAt ? (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                Enregistré à{" "}
+                {new Date(lastSavedAt * 1000).toLocaleTimeString("fr-FR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </>
+            ) : activeNote ? (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground/45" />
+                Dernière modif :{" "}
+                {new Date(activeNote.updatedAt * 1000).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "short",
+                })}
+              </>
+            ) : null}
+          </div>
+
+          <button
+            onClick={handleCreateNote}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white shadow-md shadow-rose-950/20 transition-all duration-200"
+          >
+            <Plus className="h-4.5 w-4.5" />
+            Nouvelle Note
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">Chargement…</div>
-      ) : (
-        <textarea
-          value={content}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Tes notes personnelles — idées, observations sur le marché, rappels…"
-          className="w-full min-h-[60vh] rounded-2xl border border-border bg-card p-4 text-sm text-foreground leading-relaxed resize-y focus:ring-1 focus:ring-cyan-500/50 outline-none"
-        />
-      )}
+      {/* WORKSPACE AREA */}
+      <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
+        {/* LIST COLUMN */}
+        <div className="w-80 shrink-0 flex flex-col bg-white/[0.01] overflow-y-auto">
+          {loading ? (
+            <div className="flex flex-col gap-3 p-4">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="h-20 animate-pulse rounded-xl border border-white/[0.05] bg-white/[0.02]"
+                />
+              ))}
+            </div>
+          ) : notes.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground/60 space-y-4">
+              <FileText className="h-10 w-10 text-muted-foreground/20" />
+              <div className="text-sm">Aucune note pour le moment.</div>
+              <button
+                onClick={handleCreateNote}
+                className="text-xs text-rose-400 hover:text-rose-300 font-semibold underline"
+              >
+                Créer ma première note
+              </button>
+            </div>
+          ) : (
+            <div className="p-3 space-y-1">
+              {notes.map((note) => {
+                const isActive = note.id === activeNoteId;
+                return (
+                  <button
+                    key={note.id}
+                    onClick={() => handleSelectNote(note.id)}
+                    className={cn(
+                      "w-full text-left p-3.5 rounded-xl border transition-all duration-200 group relative",
+                      isActive
+                        ? "bg-rose-500/[0.08] border-rose-500/25 text-foreground"
+                        : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
+                    )}
+                  >
+                    {isActive && (
+                      <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-rose-400" />
+                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-bold text-[14px] leading-snug truncate pr-4">
+                        {note.title.trim() === "" ? "Sans titre" : note.title}
+                      </div>
+                      <ChevronRight
+                        className={cn(
+                          "h-4 w-4 shrink-0 transition-transform duration-200",
+                          isActive ? "text-rose-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
+                        )}
+                      />
+                    </div>
+
+                    <div className="text-[12px] text-muted-foreground/60 mt-1 line-clamp-2 leading-relaxed">
+                      {note.content.trim() === "" ? "Rédige une note..." : note.content}
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/40 mt-3.5">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(note.updatedAt * 1000).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* EDITOR COLUMN */}
+        <div className="flex-1 flex flex-col bg-background/40 overflow-hidden">
+          {activeNote ? (
+            <div className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto">
+              <div className="flex items-start gap-4">
+                <input
+                  type="text"
+                  value={activeNote.title}
+                  onChange={(e) => handleNoteChange({ title: e.target.value })}
+                  placeholder="Titre de la note"
+                  className="flex-1 bg-transparent border-none text-2xl font-bold text-foreground focus:outline-none focus:ring-0 placeholder:text-muted-foreground/35"
+                />
+
+                <button
+                  onClick={() => handleDeleteNote(activeNote.id)}
+                  title="Supprimer cette note"
+                  className="shrink-0 p-2.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all duration-200"
+                >
+                  <Trash2 className="h-4.5 w-4.5" />
+                </button>
+              </div>
+
+              <textarea
+                value={activeNote.content}
+                onChange={(e) => handleNoteChange({ content: e.target.value })}
+                placeholder="Rédige tes pensées, tes analyses de trading, ou tes stratégies..."
+                className="flex-1 w-full bg-transparent border-none text-[14px] text-foreground leading-relaxed resize-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground/30 min-h-[40vh]"
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-muted-foreground/50 space-y-4">
+              <FileText className="h-12 w-12 text-muted-foreground/15" />
+              <div>Sélectionne une note ou crée-en une nouvelle pour commencer à écrire.</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

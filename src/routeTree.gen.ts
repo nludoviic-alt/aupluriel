@@ -16,6 +16,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as NotesRouteImport } from './routes/notes'
+import { Route as MessengerRouteImport } from './routes/messenger'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
@@ -37,6 +38,9 @@ import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
+import { Route as ApiChatUsersRouteImport } from './routes/api/chat/users'
+import { Route as ApiChatMessagesRouteImport } from './routes/api/chat/messages'
+import { Route as ApiChatGroupsRouteImport } from './routes/api/chat/groups'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
 import { Route as ApiAuthResetPasswordRouteImport } from './routes/api/auth/reset-password'
 import { Route as ApiAuthResendVerificationRouteImport } from './routes/api/auth/resend-verification'
@@ -50,6 +54,7 @@ import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
+import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/groups/members'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
@@ -84,6 +89,11 @@ const PortfolioRoute = PortfolioRouteImport.update({
 const NotesRoute = NotesRouteImport.update({
   id: '/notes',
   path: '/notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MessengerRoute = MessengerRouteImport.update({
+  id: '/messenger',
+  path: '/messenger',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketsRoute = MarketsRouteImport.update({
@@ -191,6 +201,21 @@ const ApiAlertsRoute = ApiAlertsRouteImport.update({
   path: '/api/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatUsersRoute = ApiChatUsersRouteImport.update({
+  id: '/api/chat/users',
+  path: '/api/chat/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiChatMessagesRoute = ApiChatMessagesRouteImport.update({
+  id: '/api/chat/messages',
+  path: '/api/chat/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiChatGroupsRoute = ApiChatGroupsRouteImport.update({
+  id: '/api/chat/groups',
+  path: '/api/chat/groups',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthVerifyEmailRoute = ApiAuthVerifyEmailRouteImport.update({
   id: '/api/auth/verify-email',
   path: '/api/auth/verify-email',
@@ -257,6 +282,11 @@ const ApiAdminBotRoute = ApiAdminBotRouteImport.update({
   path: '/api/admin/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatGroupsMembersRoute = ApiChatGroupsMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => ApiChatGroupsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -268,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/messenger': typeof MessengerRoute
   '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -300,6 +331,10 @@ export interface FileRoutesByFullPath {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
+  '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/users': typeof ApiChatUsersRoute
+  '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -311,6 +346,7 @@ export interface FileRoutesByTo {
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/messenger': typeof MessengerRoute
   '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -343,6 +379,10 @@ export interface FileRoutesByTo {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
+  '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/users': typeof ApiChatUsersRoute
+  '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -355,6 +395,7 @@ export interface FileRoutesById {
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
+  '/messenger': typeof MessengerRoute
   '/notes': typeof NotesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -387,6 +428,10 @@ export interface FileRoutesById {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
+  '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/users': typeof ApiChatUsersRoute
+  '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -400,6 +445,7 @@ export interface FileRouteTypes {
     | '/journal'
     | '/login'
     | '/markets'
+    | '/messenger'
     | '/notes'
     | '/portfolio'
     | '/reset-password'
@@ -432,6 +478,10 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/chat/groups'
+    | '/api/chat/messages'
+    | '/api/chat/users'
+    | '/api/chat/groups/members'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -443,6 +493,7 @@ export interface FileRouteTypes {
     | '/journal'
     | '/login'
     | '/markets'
+    | '/messenger'
     | '/notes'
     | '/portfolio'
     | '/reset-password'
@@ -475,6 +526,10 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/chat/groups'
+    | '/api/chat/messages'
+    | '/api/chat/users'
+    | '/api/chat/groups/members'
   id:
     | '__root__'
     | '/'
@@ -486,6 +541,7 @@ export interface FileRouteTypes {
     | '/journal'
     | '/login'
     | '/markets'
+    | '/messenger'
     | '/notes'
     | '/portfolio'
     | '/reset-password'
@@ -518,6 +574,10 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/chat/groups'
+    | '/api/chat/messages'
+    | '/api/chat/users'
+    | '/api/chat/groups/members'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -530,6 +590,7 @@ export interface RootRouteChildren {
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRoute
+  MessengerRoute: typeof MessengerRoute
   NotesRoute: typeof NotesRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -562,6 +623,9 @@ export interface RootRouteChildren {
   ApiAuthResendVerificationRoute: typeof ApiAuthResendVerificationRoute
   ApiAuthResetPasswordRoute: typeof ApiAuthResetPasswordRoute
   ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
+  ApiChatGroupsRoute: typeof ApiChatGroupsRouteWithChildren
+  ApiChatMessagesRoute: typeof ApiChatMessagesRoute
+  ApiChatUsersRoute: typeof ApiChatUsersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -613,6 +677,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof NotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/messenger': {
+      id: '/messenger'
+      path: '/messenger'
+      fullPath: '/messenger'
+      preLoaderRoute: typeof MessengerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/markets': {
@@ -762,6 +833,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat/users': {
+      id: '/api/chat/users'
+      path: '/api/chat/users'
+      fullPath: '/api/chat/users'
+      preLoaderRoute: typeof ApiChatUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/chat/messages': {
+      id: '/api/chat/messages'
+      path: '/api/chat/messages'
+      fullPath: '/api/chat/messages'
+      preLoaderRoute: typeof ApiChatMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/chat/groups': {
+      id: '/api/chat/groups'
+      path: '/api/chat/groups'
+      fullPath: '/api/chat/groups'
+      preLoaderRoute: typeof ApiChatGroupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/verify-email': {
       id: '/api/auth/verify-email'
       path: '/api/auth/verify-email'
@@ -853,8 +945,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminBotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat/groups/members': {
+      id: '/api/chat/groups/members'
+      path: '/members'
+      fullPath: '/api/chat/groups/members'
+      preLoaderRoute: typeof ApiChatGroupsMembersRouteImport
+      parentRoute: typeof ApiChatGroupsRoute
+    }
   }
 }
+
+interface ApiChatGroupsRouteChildren {
+  ApiChatGroupsMembersRoute: typeof ApiChatGroupsMembersRoute
+}
+
+const ApiChatGroupsRouteChildren: ApiChatGroupsRouteChildren = {
+  ApiChatGroupsMembersRoute: ApiChatGroupsMembersRoute,
+}
+
+const ApiChatGroupsRouteWithChildren = ApiChatGroupsRoute._addFileChildren(
+  ApiChatGroupsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -866,6 +977,7 @@ const rootRouteChildren: RootRouteChildren = {
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRoute,
+  MessengerRoute: MessengerRoute,
   NotesRoute: NotesRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
@@ -898,6 +1010,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthResendVerificationRoute: ApiAuthResendVerificationRoute,
   ApiAuthResetPasswordRoute: ApiAuthResetPasswordRoute,
   ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
+  ApiChatGroupsRoute: ApiChatGroupsRouteWithChildren,
+  ApiChatMessagesRoute: ApiChatMessagesRoute,
+  ApiChatUsersRoute: ApiChatUsersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

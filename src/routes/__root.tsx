@@ -37,6 +37,7 @@ import {
   Settings,
   ShieldCheck,
   Compass,
+  MessageSquare,
 } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -205,6 +206,7 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/alerts": { label: "Alertes", icon: Bell },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
+  "/messenger": { label: "Messagerie", icon: MessageSquare },
 };
 
 function getPageMeta(pathname: string) {

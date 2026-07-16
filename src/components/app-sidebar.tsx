@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronRight,
   Cpu,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -50,6 +51,7 @@ const analysisItems = [
 
 const toolItems = [
   { title: "Alertes",          url: "/alerts",          icon: Bell,             color: "text-yellow-400",  glow: "shadow-yellow-500/30" },
+  { title: "Messagerie",       url: "/messenger",       icon: MessageSquare,    color: "text-amber-400",   glow: "shadow-amber-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
