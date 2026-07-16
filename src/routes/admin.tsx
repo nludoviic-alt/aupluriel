@@ -175,15 +175,15 @@ function AdminPage() {
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
   const [calibration, setCalibration] = useState<CalibrationBucket[]>([]);
   const [recapLoading, setRecapLoading] = useState(true);
-  const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
+  const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
   const [journalInsights, setJournalInsights] = useState<{ demo: UserInsights; live: UserInsights } | null>(null);
   const [insightsMode, setInsightsMode] = useState<"demo" | "live">("demo");
   const [applyingRec, setApplyingRec] = useState<string | null>(null);
-  const [renameUser, setRenameUser] = useState<AdminUser | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -259,8 +259,9 @@ function AdminPage() {
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
-  async function openJournal(u: UserRecap) {
-    setJournalUser(u);
+  async function openProfile(u: AdminUser) {
+    setProfileUser(u);
+    setEditingUsername(false);
     setJournalLoading(true);
     setInsightsMode("demo");
     try {
@@ -268,22 +269,22 @@ function AdminPage() {
         trades: JournalTrade[];
         config: UserBotConfig | null;
         insights: { demo: UserInsights; live: UserInsights };
-      }>(`/api/admin/stats?userId=${u.userId}`);
+      }>(`/api/admin/stats?userId=${u.id}`);
       setJournalTrades(data.trades);
       setJournalConfig(data.config);
       setJournalInsights(data.insights);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur de chargement du journal");
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement du profil");
     } finally {
       setJournalLoading(false);
     }
   }
 
   async function applyRecommendation(rec: Recommendation) {
-    if (!journalUser || !journalConfig) return;
+    if (!profileUser || !journalConfig) return;
     setApplyingRec(rec.message);
     try {
-      const patch: { userId: number; symbols?: string[]; minConfidence?: number } = { userId: journalUser.userId };
+      const patch: { userId: number; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id };
       if (rec.type === "disable-symbol" && rec.symbol) {
         patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
       } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
@@ -301,24 +302,26 @@ function AdminPage() {
     }
   }
 
-  function openRename(u: AdminUser) {
-    setRenameUser(u);
-    setRenameValue(u.username);
+  function startEditUsername() {
+    if (!profileUser) return;
+    setUsernameDraft(profileUser.username);
+    setEditingUsername(true);
   }
 
   async function submitRename(e: React.FormEvent) {
     e.preventDefault();
-    if (!renameUser) return;
-    const trimmed = renameValue.trim();
-    if (!trimmed || trimmed === renameUser.username) {
-      setRenameUser(null);
+    if (!profileUser) return;
+    const trimmed = usernameDraft.trim();
+    if (!trimmed || trimmed === profileUser.username) {
+      setEditingUsername(false);
       return;
     }
     setRenameBusy(true);
     try {
-      await api.post("/api/admin/users", { userId: renameUser.id, action: "edit-username", username: trimmed });
+      await api.post("/api/admin/users", { userId: profileUser.id, action: "edit-username", username: trimmed });
       toast.success("Nom d'utilisateur mis à jour ✓");
-      setRenameUser(null);
+      setProfileUser((p) => (p ? { ...p, username: trimmed } : p));
+      setEditingUsername(false);
       await load();
       await loadRecap();
     } catch (err) {
@@ -386,6 +389,15 @@ function AdminPage() {
       toast.success(msg[action] ?? "Action effectuée");
       await load();
       await loadRecap();
+      setProfileUser((p) => {
+        if (!p || p.id !== userId) return p;
+        if (action === "delete") return null;
+        if (action === "approve") return { ...p, status: "approved", email_verified: 1 };
+        if (action === "reject") return { ...p, status: "rejected" };
+        if (action === "revoke") return { ...p, status: "suspended" };
+        if (action === "toggle-chat") return { ...p, chat_enabled: chatEnabled ? 1 : 0 };
+        return p;
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur");
     } finally {
@@ -646,25 +658,21 @@ function AdminPage() {
               <tr>
                 <th className="px-4 py-3">Utilisateur</th>
                 <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Vérifié</th>
                 <th className="px-4 py-3">Statut</th>
-                <th className="px-4 py-3">Auto-Trader</th>
-                <th className="px-4 py-3">Backtest Auto</th>
-                <th className="px-4 py-3">Messagerie</th>
                 <th className="px-4 py-3">Inscrit</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-right">Profil</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground font-semibold">
                     Aucun utilisateur trouvé.
                   </td>
                 </tr>
@@ -673,7 +681,11 @@ function AdminPage() {
                   const initials = u.username.slice(0, 2).toUpperCase();
                   const isAdmin = u.is_admin === 1;
                   return (
-                    <tr key={u.id} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                    <tr
+                      key={u.id}
+                      onClick={() => openProfile(u)}
+                      className="border-t border-white/[0.06] hover:bg-white/[0.02] transition-all duration-300 cursor-pointer"
+                    >
                       <td className="px-4 py-3 font-semibold text-foreground">
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-xs font-bold border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]">
@@ -692,117 +704,26 @@ function AdminPage() {
                                 </span>
                               )}
                             </div>
+                            {!u.email_verified && (
+                              <div className="text-[9px] text-amber-400/70 font-semibold mt-0.5">email non vérifié</div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-medium">{u.email}</td>
                       <td className="px-4 py-3">
-                        {u.email_verified ? (
-                          <span className="text-[color:var(--bull)] font-bold bg-[color:var(--bull)]/10 px-2.5 py-0.5 rounded-full text-xs">oui</span>
-                        ) : (
-                          <span className="text-muted-foreground bg-white/[0.03] px-2.5 py-0.5 rounded-full text-xs">non</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
                         <StatusBadge status={u.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        {isAdmin ? (
-                          <span className="text-xs text-muted-foreground/40 font-mono">—</span>
-                        ) : (
-                          <BotStatusCell
-                            status={botStatus[u.id]}
-                            busy={botBusyId === u.id}
-                            onToggle={(action) => toggleBot(u.id, action)}
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isAdmin ? (
-                          <span className="text-xs text-muted-foreground/40 font-mono">—</span>
-                        ) : (
-                          <BacktestStatusCell
-                            status={botStatus[u.id]}
-                            busy={backtestBusyId === u.id}
-                            onToggle={(checked) => toggleBacktest(u.id, checked)}
-                          />
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isAdmin ? (
-                          <span className="text-xs text-muted-foreground/40 font-mono">—</span>
-                        ) : (
-                          <ChatStatusCell
-                            user={u}
-                            busy={busyId === u.id}
-                            onToggle={(checked) => act(u.id, "toggle-chat", checked)}
-                          />
-                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-semibold">
                         {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
                       </td>
-                      <td className="px-4 py-3">
-                        {isAdmin ? (
-                          <span className="block text-right text-xs text-muted-foreground/40 font-mono">—</span>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1.5">
-                            {u.status !== "approved" && (
-                              <button
-                                onClick={() => act(u.id, "approve")}
-                                disabled={busyId === u.id}
-                                title="Approuver l'accès"
-                                className="rounded-xl border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 p-2 text-[color:var(--bull)] hover:bg-[color:var(--bull)]/20 transition-colors disabled:opacity-50"
-                              >
-                                <Check className="h-4 w-4" />
-                              </button>
-                            )}
-                            {u.status === "pending" && (
-                              <button
-                                onClick={() => act(u.id, "reject")}
-                                disabled={busyId === u.id}
-                                title="Refuser la demande"
-                                className="rounded-xl border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 p-2 text-[color:var(--bear)] hover:bg-[color:var(--bear)]/20 transition-colors disabled:opacity-50"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
-                            {u.status === "approved" && (
-                              <button
-                                onClick={() => act(u.id, "revoke")}
-                                disabled={busyId === u.id}
-                                title="Révoquer l'accès"
-                                className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-amber-500 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-                              >
-                                <ShieldOff className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => openRename(u)}
-                              disabled={busyId === u.id}
-                              title="Modifier le nom d'utilisateur"
-                              className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-2 text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => act(u.id, "reset-password")}
-                              disabled={busyId === u.id}
-                              title="Envoyer un lien de réinitialisation du mot de passe"
-                              className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 p-2 text-indigo-400 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
-                            >
-                              <KeyRound className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => act(u.id, "delete")}
-                              disabled={busyId === u.id}
-                              title="Supprimer définitivement"
-                              className="rounded-xl border border-white/5 bg-white/[0.02] p-2 text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openProfile(u); }}
+                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-foreground hover:bg-white/[0.08] transition-colors"
+                        >
+                          Voir le profil
+                        </button>
                       </td>
                     </tr>
                   );
@@ -827,7 +748,11 @@ function AdminPage() {
               const initials = u.username.slice(0, 2).toUpperCase();
               const isAdmin = u.is_admin === 1;
               return (
-                <div key={u.id} className="border border-white/[0.06] rounded-xl p-4 bg-white/[0.01] space-y-3">
+                <div
+                  key={u.id}
+                  onClick={() => openProfile(u)}
+                  className="border border-white/[0.06] rounded-xl p-4 bg-white/[0.01] space-y-3 cursor-pointer active:bg-white/[0.03] transition-colors"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-[10px] font-bold border border-cyan-500/20">
@@ -852,88 +777,12 @@ function AdminPage() {
                       <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
                     </div>
                   </div>
-                  {!isAdmin && (
-                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
-                      <span className="text-xs text-muted-foreground font-semibold">Auto-Trader</span>
-                      <BotStatusCell
-                        status={botStatus[u.id]}
-                        busy={botBusyId === u.id}
-                        onToggle={(action) => toggleBot(u.id, action)}
-                      />
-                    </div>
-                  )}
-                  {!isAdmin && (
-                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
-                      <span className="text-xs text-muted-foreground font-semibold">Backtest Auto</span>
-                      <BacktestStatusCell
-                        status={botStatus[u.id]}
-                        busy={backtestBusyId === u.id}
-                        onToggle={(checked) => toggleBacktest(u.id, checked)}
-                      />
-                    </div>
-                  )}
-                  {!isAdmin && (
-                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-2">
-                      <span className="text-xs text-muted-foreground font-semibold">Messagerie</span>
-                      <ChatStatusCell
-                        user={u}
-                        busy={busyId === u.id}
-                        onToggle={(checked) => act(u.id, "toggle-chat", checked)}
-                      />
-                    </div>
-                  )}
-                  {!isAdmin && (
-                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/[0.04]">
-                      {u.status !== "approved" && (
-                        <button
-                          onClick={() => act(u.id, "approve")}
-                          disabled={busyId === u.id}
-                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 py-1.5 text-xs text-[color:var(--bull)] font-bold"
-                        >
-                          <Check className="h-3.5 w-3.5" /> Activer
-                        </button>
-                      )}
-                      {u.status === "pending" && (
-                        <button
-                          onClick={() => act(u.id, "reject")}
-                          disabled={busyId === u.id}
-                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 py-1.5 text-xs text-[color:var(--bear)] font-bold"
-                        >
-                          <X className="h-3.5 w-3.5" /> Rejeter
-                        </button>
-                      )}
-                      {u.status === "approved" && (
-                        <button
-                          onClick={() => act(u.id, "revoke")}
-                          disabled={busyId === u.id}
-                          className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 py-1.5 text-xs text-amber-500 font-bold"
-                        >
-                          <ShieldOff className="h-3.5 w-3.5" /> Révoquer
-                        </button>
-                      )}
-                      <button
-                        onClick={() => openRename(u)}
-                        disabled={busyId === u.id}
-                        className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/10 py-1.5 text-xs text-cyan-400 font-bold"
-                      >
-                        <Pencil className="h-3.5 w-3.5" /> Renommer
-                      </button>
-                      <button
-                        onClick={() => act(u.id, "reset-password")}
-                        disabled={busyId === u.id}
-                        className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-500/10 py-1.5 text-xs text-indigo-400 font-bold"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" /> MDP
-                      </button>
-                      <button
-                        onClick={() => act(u.id, "delete")}
-                        disabled={busyId === u.id}
-                        className="flex items-center justify-center rounded-lg border border-white/5 bg-white/[0.02] p-1.5 text-muted-foreground hover:text-white"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openProfile(u); }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] py-2 text-xs font-bold text-foreground"
+                  >
+                    Voir le profil
+                  </button>
                 </div>
               );
             })
@@ -1152,7 +1001,10 @@ function AdminPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => openJournal(r)}
+                        onClick={() => {
+                          const target = users.find((x) => x.id === r.userId);
+                          if (target) openProfile(target);
+                        }}
                         disabled={!r.trades && !r.open}
                         title="Consulter le journal"
                         className="rounded-xl border border-white/5 bg-white/[0.02] p-2 text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-30"
@@ -1442,122 +1294,232 @@ function AdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── USER JOURNAL DIALOG ── */}
+      {/* ── USER PROFILE DIALOG ── */}
       <Dialog
-        open={!!journalUser}
+        open={!!profileUser}
         onOpenChange={(open) => {
           if (open) return;
-          setJournalUser(null);
+          setProfileUser(null);
           setJournalConfig(null);
           setJournalInsights(null);
+          setEditingUsername(false);
         }}
       >
         <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
-              <BookOpen className="h-4.5 w-4.5 text-indigo-400" />
-              Journal de {journalUser?.username}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground mt-1">
-              {journalUser?.trades} trade{(journalUser?.trades ?? 0) > 1 ? "s" : ""} clos · P&amp;L Net cumulé : {journalUser && (journalUser.netPnl >= 0 ? "+" : "")}{journalUser?.netPnl.toFixed(2)} $
-            </DialogDescription>
-          </DialogHeader>
-
-          {!journalLoading && journalInsights && (
-            <UserInsightsPanel
-              insights={journalInsights}
-              config={journalConfig}
-              mode={insightsMode}
-              onModeChange={setInsightsMode}
-              onApply={applyRecommendation}
-              applyingRec={applyingRec}
-            />
-          )}
-
-          <div className="space-y-2 py-2">
-            {journalLoading ? (
-              <div className="py-12 text-center">
-                <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
-              </div>
-            ) : journalTrades.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground font-semibold">
-                Aucun trade enregistré pour cet utilisateur.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {journalTrades.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5 hover:bg-white/[0.02] transition-colors text-xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {t.status === "won" ? (
-                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bull)]/10 text-[color:var(--bull)]">
-                          <TrendingUp className="h-4 w-4" />
-                        </div>
-                      ) : t.status === "lost" ? (
-                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bear)]/10 text-[color:var(--bear)]">
-                          <TrendingDown className="h-4 w-4" />
-                        </div>
-                      ) : (
-                        <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 animate-pulse">
-                          <Clock className="h-4 w-4" />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <div className="font-bold text-foreground">{t.symbol} · {t.direction}</div>
-                        <div className="text-muted-foreground/60 text-[10px] mt-0.5">
-                          {new Date(t.time).toLocaleString("fr-FR")} · Confiance {t.confidence}% · TFs {t.tf_agreement}/4
-                        </div>
-                        {t.note && (
-                          <div className="text-muted-foreground/50 text-[9px] mt-0.5 border-l border-white/10 pl-1.5 italic truncate max-w-[280px]">
-                            {t.note}
-                          </div>
-                        )}
-                      </div>
+          {profileUser && (() => {
+            const isAdmin = profileUser.is_admin === 1;
+            const r = recap.find((x) => x.userId === profileUser.id);
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-sm font-bold border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]">
+                      {profileUser.username.slice(0, 2).toUpperCase()}
                     </div>
-                    <div className={cn(
-                      "shrink-0 text-right font-black font-mono text-sm",
-                      t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
-                    )}>
-                      {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
+                    <div className="min-w-0 flex-1">
+                      <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
+                        {profileUser.username}
+                        {isAdmin ? (
+                          <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[9px] text-cyan-400 font-bold uppercase tracking-wider">
+                            admin
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={startEditUsername}
+                            title="Modifier le nom d'utilisateur"
+                            className="text-muted-foreground/50 hover:text-cyan-400 transition-colors cursor-pointer"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </DialogTitle>
+                      <DialogDescription className="text-xs text-muted-foreground mt-1 normal-case tracking-normal flex items-center gap-2 flex-wrap">
+                        {profileUser.email} · Inscrit le {new Date(profileUser.created_at * 1000).toLocaleDateString("fr-FR")}
+                        <StatusBadge status={profileUser.status} />
+                      </DialogDescription>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+                  {editingUsername && (
+                    <form onSubmit={submitRename} className="flex items-center gap-1.5 mt-2">
+                      <Input
+                        value={usernameDraft}
+                        onChange={(e) => setUsernameDraft(e.target.value)}
+                        autoFocus
+                        maxLength={32}
+                        className="h-8 text-sm"
+                      />
+                      <Button type="submit" size="sm" disabled={renameBusy || !usernameDraft.trim()} className="h-8 px-2.5 shrink-0">
+                        {renameBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setEditingUsername(false)} disabled={renameBusy} className="h-8 px-2.5 shrink-0">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </form>
+                  )}
+                </DialogHeader>
 
-      <Dialog open={!!renameUser} onOpenChange={(open) => !open && setRenameUser(null)}>
-        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
-              <Pencil className="h-4.5 w-4.5 text-cyan-400" />
-              Renommer {renameUser?.username}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground mt-1">
-              Corrige le nom d'utilisateur affiché dans l'app.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitRename} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rename-username" className="text-xs text-muted-foreground">Nom d'utilisateur</Label>
-              <Input
-                id="rename-username"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                autoFocus
-                maxLength={32}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRenameUser(null)} disabled={renameBusy}>
-                Annuler
-              </Button>
-              <Button type="submit" disabled={renameBusy || !renameValue.trim()}>
-                {renameBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enregistrer"}
-              </Button>
-            </DialogFooter>
-          </form>
+                {!isAdmin && (
+                  <div className="flex flex-wrap gap-1.5 border-t border-white/[0.06] pt-3">
+                    {profileUser.status !== "approved" && (
+                      <button
+                        onClick={() => act(profileUser.id, "approve")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-1.5 rounded-lg border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 px-3 py-1.5 text-xs text-[color:var(--bull)] font-bold hover:bg-[color:var(--bull)]/20 transition-colors disabled:opacity-50"
+                      >
+                        <Check className="h-3.5 w-3.5" /> Approuver
+                      </button>
+                    )}
+                    {profileUser.status === "pending" && (
+                      <button
+                        onClick={() => act(profileUser.id, "reject")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-1.5 rounded-lg border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 px-3 py-1.5 text-xs text-[color:var(--bear)] font-bold hover:bg-[color:var(--bear)]/20 transition-colors disabled:opacity-50"
+                      >
+                        <X className="h-3.5 w-3.5" /> Rejeter
+                      </button>
+                    )}
+                    {profileUser.status === "approved" && (
+                      <button
+                        onClick={() => act(profileUser.id, "revoke")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-500 font-bold hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      >
+                        <ShieldOff className="h-3.5 w-3.5" /> Révoquer
+                      </button>
+                    )}
+                    <button
+                      onClick={() => act(profileUser.id, "reset-password")}
+                      disabled={busyId === profileUser.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-400 font-bold hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" /> Réinitialiser le mot de passe
+                    </button>
+                    <button
+                      onClick={() => act(profileUser.id, "delete")}
+                      disabled={busyId === profileUser.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Supprimer le compte
+                    </button>
+                  </div>
+                )}
+
+                {!isAdmin && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-white/[0.06] pt-3">
+                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3 py-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Auto-Trader</span>
+                      <BotStatusCell
+                        status={botStatus[profileUser.id]}
+                        busy={botBusyId === profileUser.id}
+                        onToggle={(action) => toggleBot(profileUser.id, action)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3 py-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Backtest Auto</span>
+                      <BacktestStatusCell
+                        status={botStatus[profileUser.id]}
+                        busy={backtestBusyId === profileUser.id}
+                        onToggle={(checked) => toggleBacktest(profileUser.id, checked)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3 py-2">
+                      <span className="text-xs text-muted-foreground font-semibold">Messagerie</span>
+                      <ChatStatusCell
+                        user={profileUser}
+                        busy={busyId === profileUser.id}
+                        onToggle={(checked) => act(profileUser.id, "toggle-chat", checked)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {r && (
+                  <div className="flex flex-wrap gap-1.5 border-t border-white/[0.06] pt-3 text-[10px]">
+                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+                      Solde{" "}
+                      <span className="text-orange-400 font-bold">
+                        {r.balance !== null && r.balance !== undefined
+                          ? `${r.currency} ${r.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "—"}
+                      </span>
+                    </span>
+                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+                      {r.trades} trade{r.trades > 1 ? "s" : ""} <span className="text-foreground font-semibold">{r.trades ? `${r.winRate}%` : "—"}</span>
+                    </span>
+                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+                      P&amp;L{" "}
+                      <span className={cn("font-bold", r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground")}>
+                        {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+                      </span>
+                    </span>
+                  </div>
+                )}
+
+                {!journalLoading && journalInsights && (
+                  <UserInsightsPanel
+                    insights={journalInsights}
+                    config={journalConfig}
+                    mode={insightsMode}
+                    onModeChange={setInsightsMode}
+                    onApply={applyRecommendation}
+                    applyingRec={applyingRec}
+                  />
+                )}
+
+                <div className="space-y-2 py-2">
+                  {journalLoading ? (
+                    <div className="py-12 text-center">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+                    </div>
+                  ) : journalTrades.length === 0 ? (
+                    <p className="py-12 text-center text-sm text-muted-foreground font-semibold">
+                      Aucun trade enregistré pour cet utilisateur.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {journalTrades.map((t) => (
+                        <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5 hover:bg-white/[0.02] transition-colors text-xs">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {t.status === "won" ? (
+                              <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bull)]/10 text-[color:var(--bull)]">
+                                <TrendingUp className="h-4 w-4" />
+                              </div>
+                            ) : t.status === "lost" ? (
+                              <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-[color:var(--bear)]/10 text-[color:var(--bear)]">
+                                <TrendingDown className="h-4 w-4" />
+                              </div>
+                            ) : (
+                              <div className="h-7 w-7 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 animate-pulse">
+                                <Clock className="h-4 w-4" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-bold text-foreground">{t.symbol} · {t.direction}</div>
+                              <div className="text-muted-foreground/60 text-[10px] mt-0.5">
+                                {new Date(t.time).toLocaleString("fr-FR")} · Confiance {t.confidence}% · TFs {t.tf_agreement}/4
+                              </div>
+                              {t.note && (
+                                <div className="text-muted-foreground/50 text-[9px] mt-0.5 border-l border-white/10 pl-1.5 italic truncate max-w-[280px]">
+                                  {t.note}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className={cn(
+                            "shrink-0 text-right font-black font-mono text-sm",
+                            t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+                          )}>
+                            {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
