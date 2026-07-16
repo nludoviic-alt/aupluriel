@@ -20,6 +20,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Bell,
+  Paperclip,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -58,7 +59,48 @@ interface VerifiedUser {
   groupId: string;
 }
 
-const EMOJIS = ["😀", "😂", "👍", "🔥", "🚀", "📈", "📉", "💡", "💰", "👏", "🙏", "⚠️", "❌", "✅", "❤️"];
+const EMOJI_CATEGORIES = [
+  {
+    name: "Smileys",
+    icon: "😊",
+    emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤔", "🫣", "🤭", "🫢", "🫡", "🤫", "🫠", "🤥", "😶", "🫥", "😐", "😑", "😬", "🫨", "🙄", "😯", "😦", "😧", "😮", "😲", "🥱", "😴", "🤤", "😪", "😵", "😵‍💫", "🤐", "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕", "🤑", "🤠", "😈", "👿", "💀", "👻", "👽", "👾", "🤖", "💩", "🤡"]
+  },
+  {
+    name: "Gestes & Corps",
+    icon: "👍",
+    emojis: ["👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✍️", "💅", "🤳", "💪", "🦾", "👂", "🦻", "👃", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👁️", "👅", "👄", "💋", "🩸"]
+  },
+  {
+    name: "Nature & Animaux",
+    icon: "🐱",
+    emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻 White", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🕷️", "🕸️", "🦂", "🐢", "🐍", "🦎", "🐙", "🦑", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🦧", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🐐", "🦌", "🐕", "🐈", "🐈‍⬛", "🐓", "🦃", "🦚", "Parrot", "🦜", "🦢", "🦩", "🐾", "🌲", "🌳", "🌴", "🪵", "🌵", "🌾", "🌿", "🍀", "🍁", "🍂", "🍃", "🍄", "🌹", "🌸", "🌺", "🌻", "🌼", "🌷", "🌱", "🪴", "🌙", "☀️", "🌤️", "☁️", "🌧️", "🌩️", "❄️", "🔥", "💧", "🌊"]
+  },
+  {
+    name: "Aliments & Boissons",
+    icon: "🍏",
+    emojis: ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🥞", "🧇", "🥩", "🍗", "🍔", "🍟", "🍕", "🌭", "🥪", "🌮", "🌯", "🥗", "🍿", "🧈", "Salt", "🧂", "🍱", "🍜", "🍝", "🍣", "🍦", "🍧", "Donut", "🍩", "Cookie", "🍪", "🎂", "🧁", "🍫", "🍬", "🍯", "🥛", "☕", "🫖", "🍷", "🍸", "🍺", "🍻", "🥂", "🥃", "🧋"]
+  },
+  {
+    name: "Sports & Loisirs",
+    icon: "⚽",
+    emojis: ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🏓", "🏸", "🏒", "⛳", "🪁", "🏹", "🎣", "🥊", "🥋", "🏃", "🚶", "🏆", "🥇", "🥈", "🥉", "🎟️", "🎨", "🎤", "🎧", "🎼", "🎹", "🥁", "🎸", "🎻", "🎮", "🎳"]
+  },
+  {
+    name: "Voyages & Lieux",
+    icon: "🚗",
+    emojis: ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚜", "🛴", "🚲", "🏍️", "🚨", "✈️", "🛫", "🛬", "🪂", "🚀", "🛸", "🚁", "⛵", "🚤", "⚓", "🚧", "⛽", "🎡", "🎢", "🏠", "🏢", "🏥", "🏦", "🏨", "🏫", "🏰", "⛪", "🕌", "⛰️", "🌋", "🏜️", "⛺", "🌌", "🌉"]
+  },
+  {
+    name: "Objets & Outils",
+    icon: "💡",
+    emojis: ["⌚", "📱", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "📷", "📸", "📹", "🎥", "📞", "☎️", "TV", "📺", "Radio", "📻", "⌛", "💡", "Flashlight", "🔦", "Candle", "🕯️", "🧯", "💰", "💵", "💶", "💳", "💎", "⚖️", "🛠️", "Hammer", "🔨", "Wrench", "🔧", "🪛", "🔑", "Gun", "🔫", "Shield", "🛡️", "Bomb", "💣", "⚰️", "🔮", "Book", "📖", "Envelope", "✉️", "Pen", "✏️", "📎"]
+  },
+  {
+    name: "Symboles & Drapeaux",
+    icon: "❤️",
+    emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "☮️", "✝️", "☪️", "🕉️", "☸️", "✡️", "☯️", "☦️", "🛐", "♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓", "☢️", "☣️", "⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️", "↔️", "🔄", "🎵", "🎶", "➕", "➖", "➗", "✖️", "♾️", "💲", "©️", "®️", "🇫🇷", "🇺🇸", "🇬🇧", "🇩🇪", "🇯🇵", "🇨🇳", "🇨🇦", "🇧🇷"]
+  }
+];
 
 // Custom Premium Voice Note Player
 function VoicePlayer({ src, isMe }: { src: string; isMe: boolean }) {
@@ -68,47 +110,59 @@ function VoicePlayer({ src, isMe }: { src: string; isMe: boolean }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
 
+  // Clean up on unmount or src change
   useEffect(() => {
-    const audio = new Audio(src);
-    audioRef.current = audio;
-
-    const onTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-      if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
-      }
-    };
-
-    const onLoadedMetadata = () => {
-      setDuration(audio.duration || 0);
-    };
-
-    const onEnded = () => {
-      setIsPlaying(false);
-      setProgress(0);
-      setCurrentTime(0);
-    };
-
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("ended", onEnded);
-
     return () => {
-      audio.pause();
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("ended", onEnded);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, [src]);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current) {
+      try {
+        const audio = new Audio(src);
+        
+        audio.addEventListener("timeupdate", () => {
+          setCurrentTime(audio.currentTime);
+          if (audio.duration) {
+            setProgress((audio.currentTime / audio.duration) * 100);
+          }
+        });
+
+        audio.addEventListener("loadedmetadata", () => {
+          setDuration(audio.duration || 0);
+        });
+
+        audio.addEventListener("ended", () => {
+          setIsPlaying(false);
+          setProgress(0);
+          setCurrentTime(0);
+        });
+
+        audio.load();
+        audioRef.current = audio;
+      } catch (err) {
+        console.error("Failed to initialize Audio:", err);
+        toast.error("Format audio non supporté.");
+        return;
+      }
+    }
+
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().catch((e) => console.error("Error playing audio", e));
-      setIsPlaying(true);
+      audioRef.current.play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((e) => {
+          console.error("Error playing audio:", e);
+          toast.error("Impossible de lire l'audio sur cet appareil.");
+        });
     }
   };
 
@@ -204,6 +258,11 @@ function MessengerPage() {
 
   // Emoji picker popover state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
+
+  // Image upload states & ref
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Modal for group creation (Admin only)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -338,19 +397,34 @@ function MessengerPage() {
   // Handle message send
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!activeGroupId || inputText.trim() === "" || sending) return;
+    if (!activeGroupId || sending) return;
+    if (inputText.trim() === "" && !selectedImage) return;
 
-    const content = inputText.trim();
-    setInputText("");
     setSending(true);
 
     try {
-      const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
-        groupId: activeGroupId,
-        content,
-      });
-      setMessages((prev) => [...prev, newMsg]);
-      setTimeout(scrollToBottom, 50);
+      // 1. Send image if selected
+      if (selectedImage) {
+        const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
+          groupId: activeGroupId,
+          content: selectedImage,
+        });
+        setMessages((prev) => [...prev, newMsg]);
+        setSelectedImage(null);
+        setTimeout(scrollToBottom, 50);
+      }
+
+      // 2. Send text if typed
+      if (inputText.trim() !== "") {
+        const content = inputText.trim();
+        setInputText("");
+        const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
+          groupId: activeGroupId,
+          content,
+        });
+        setMessages((prev) => [...prev, newMsg]);
+        setTimeout(scrollToBottom, 50);
+      }
     } catch (err: any) {
       toast.error(err.message || "Erreur d'envoi");
     } finally {
@@ -443,6 +517,51 @@ function MessengerPage() {
     setInputText((prev) => prev + emoji);
     setShowEmojiPicker(false);
   }
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Veuillez sélectionner un fichier image.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.7);
+          setSelectedImage(compressedDataUrl);
+        }
+      };
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Delete group or conversation chat (Admin only)
   async function handleDeleteGroup() {
@@ -832,6 +951,8 @@ function MessengerPage() {
                     const isMe = msg.senderId === user?.id;
                     const isAdminSender = msg.senderIsAdmin === 1;
                     const isVoiceNote = msg.content.startsWith("data:audio/");
+                    const isImage = msg.content.startsWith("data:image/");
+                    const isMedia = isVoiceNote || isImage;
 
                     return (
                       <div
@@ -857,8 +978,8 @@ function MessengerPage() {
                         <div
                           className={cn(
                             "rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed shadow-md",
-                            isVoiceNote && "min-w-[280px] sm:min-w-[320px] bg-none shadow-none p-0 border-0!",
-                            !isVoiceNote && (
+                            isMedia && "min-w-[280px] sm:min-w-[320px] bg-none shadow-none p-0 border-0!",
+                            !isMedia && (
                               isMe
                                 ? cn(
                                     "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
@@ -889,6 +1010,31 @@ function MessengerPage() {
                                   )
                             )}>
                               <VoicePlayer src={msg.content} isMe={isMe} />
+                            </div>
+                          ) : isImage ? (
+                            <div className={cn(
+                              "rounded-2xl p-1.5 border shadow-md overflow-hidden bg-black/10",
+                              isMe
+                                ? cn(
+                                    "rounded-tr-none",
+                                    isAdminSender
+                                      ? "from-amber-500 to-amber-600 border-amber-400/20 shadow-amber-950/20"
+                                      : "from-violet-500 to-indigo-600 border-violet-400/20 shadow-violet-950/20"
+                                  )
+                                : cn(
+                                    "rounded-tl-none bg-white/[0.03] border border-white/[0.07]",
+                                    isAdminSender && "border-amber-500/20 bg-amber-500/[0.02]"
+                                  )
+                            )}>
+                              <img
+                                src={msg.content}
+                                alt="Image envoyée"
+                                className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
+                                onClick={() => {
+                                  const w = window.open();
+                                  if (w) w.document.write(`<img src="${msg.content}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+                                }}
+                              />
                             </div>
                           ) : (
                             <div className="whitespace-pre-wrap break-words">{msg.content}</div>
@@ -965,59 +1111,97 @@ function MessengerPage() {
                     </div>
                   </div>
                 ) : (
-                  <form
-                    onSubmit={handleSendMessage}
-                    className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 focus-within:border-amber-500/40 focus-within:bg-white/[0.05] transition-all duration-200 relative shadow-lg shadow-black/45"
-                  >
-                    {/* Smiley Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                      title="Ajouter un emoji"
-                      className={cn(
-                        "p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer",
-                        showEmojiPicker && "text-amber-400 bg-white/[0.04]"
-                      )}
-                    >
-                      <Smile className="h-5 w-5" />
-                    </button>
-
-                    <textarea
-                      rows={1}
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage(e);
-                        }
-                      }}
-                      placeholder="Écrivez votre message..."
-                      className="flex-1 bg-transparent border-none text-[13.5px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 resize-none max-h-24 overflow-y-auto leading-relaxed py-1"
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      className="hidden"
+                      onChange={handleImageSelect}
                     />
 
-                    {/* Microphone Button */}
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      title="Enregistrer un message vocal"
-                      className="p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer"
-                    >
-                      <Mic className="h-5 w-5" />
-                    </button>
+                    {selectedImage && (
+                      <div className="relative p-3 mb-2 rounded-xl border border-white/10 bg-white/[0.02] flex items-center gap-3 shrink-0">
+                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/10 bg-black/40 shadow-inner">
+                          <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedImage(null)}
+                            className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Image prête à être envoyée. Cliquez sur le bouton d'envoi pour l'expédier.
+                        </div>
+                      </div>
+                    )}
 
-                    <button
-                      type="submit"
-                      disabled={inputText.trim() === "" || sending}
-                      className="shrink-0 p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-500 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 focus-within:border-amber-500/40 focus-within:bg-white/[0.05] transition-all duration-200 relative shadow-lg shadow-black/45"
                     >
-                      {sending ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-black" />
-                      ) : (
-                        <Send className="h-4 w-4 text-black fill-current" />
-                      )}
-                    </button>
-                  </form>
+                      {/* Smiley Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        title="Ajouter un emoji"
+                        className={cn(
+                          "p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer",
+                          showEmojiPicker && "text-amber-400 bg-white/[0.04]"
+                        )}
+                      >
+                        <Smile className="h-5 w-5" />
+                      </button>
+
+                      {/* Paperclip/Image Attachment Button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Partager une image"
+                        className="p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer"
+                      >
+                        <Paperclip className="h-5 w-5" />
+                      </button>
+
+                      <textarea
+                        rows={1}
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage(e);
+                          }
+                        }}
+                        placeholder={selectedImage ? "Ajouter un commentaire..." : "Écrivez votre message..."}
+                        className="flex-1 bg-transparent border-none text-[13.5px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-0 resize-none max-h-24 overflow-y-auto leading-relaxed py-1"
+                      />
+
+                      {/* Microphone Button */}
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        title="Enregistrer un message vocal"
+                        className="p-2 rounded-xl hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 shrink-0 cursor-pointer"
+                      >
+                        <Mic className="h-5 w-5" />
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={(inputText.trim() === "" && !selectedImage) || sending}
+                        className="shrink-0 p-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-30 disabled:hover:bg-amber-500 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer"
+                      >
+                        {sending ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-black" />
+                        ) : (
+                          <Send className="h-4 w-4 text-black fill-current" />
+                        )}
+                      </button>
+                    </form>
+                  </>
                 )}
               </div>
             </>

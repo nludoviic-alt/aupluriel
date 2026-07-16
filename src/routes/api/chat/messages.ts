@@ -114,9 +114,11 @@ export const Route = createFileRoute("/api/chat/messages")({
 
           const pushBody = body.content.trim().startsWith("data:audio/")
             ? "🎙️ Message vocal"
-            : body.content.trim().length > 60
-              ? body.content.trim().substring(0, 60) + "..."
-              : body.content.trim();
+            : body.content.trim().startsWith("data:image/")
+              ? "📷 Photo"
+              : body.content.trim().length > 60
+                ? body.content.trim().substring(0, 60) + "..."
+                : body.content.trim();
 
           const { sendPushToUser } = await import("@/lib/push.server");
           for (const recipientId of recipientIds) {
