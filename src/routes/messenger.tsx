@@ -171,6 +171,8 @@ function MessengerPage() {
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
+  const lastTypingSentRef = useRef<number>(0);
   const [loadingSidebar, setLoadingSidebar] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
@@ -328,6 +330,31 @@ function MessengerPage() {
 
     return () => clearInterval(interval);
   }, [activeGroupId]);
+
+  // Polling for "is typing" status of the other participant(s)
+  useEffect(() => {
+    setTypingUserIds([]);
+    if (!activeGroupId) return;
+
+    const poll = () => {
+      api.get<{ typingUserIds: number[] }>(`/api/chat/typing?groupId=${activeGroupId}`)
+        .then((data) => setTypingUserIds(data.typingUserIds))
+        .catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
+
+    return () => clearInterval(interval);
+  }, [activeGroupId]);
+
+  // Throttled ping so the other side sees us typing without spamming the endpoint
+  function notifyTyping() {
+    if (!activeGroupId) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 2000) return;
+    lastTypingSentRef.current = now;
+    api.post("/api/chat/typing", { groupId: activeGroupId }).catch(() => {});
+  }
 
   function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -536,6 +563,15 @@ function MessengerPage() {
     // Sidebar data not loaded yet, or the group/user vanished — never leave the header blank.
     activeGroupName = "Discussion";
   }
+
+  const typingUsernames = typingUserIds
+    .map((id) => messages.find((m) => m.senderId === id)?.senderUsername)
+    .filter((name): name is string => !!name);
+  const typingLabel = isActiveDirect
+    ? "en train d'écrire…"
+    : typingUsernames.length > 0
+      ? `${typingUsernames.join(", ")} ${typingUsernames.length > 1 ? "écrivent" : "écrit"}…`
+      : "quelqu'un écrit…";
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background">
@@ -845,11 +881,23 @@ function MessengerPage() {
                   )}>
                     {isActiveDirect ? getInitial(activeGroupName) : <Hash className="h-4 w-4" />}
                   </span>
-                  <span className="min-w-0 flex-1 flex items-center gap-1.5">
-                    <span className="font-bold text-[14.5px] sm:text-[15px] text-foreground tracking-tight font-sans truncate">
-                      {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
+                  <span className="min-w-0 flex-1 flex flex-col justify-center">
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-bold text-[14.5px] sm:text-[15px] text-foreground tracking-tight font-sans truncate">
+                        {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
+                      </span>
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
                     </span>
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                    {typingUserIds.length > 0 && (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400">
+                        <span className="flex items-center gap-0.5">
+                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.3s]" />
+                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.15s]" />
+                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce" />
+                        </span>
+                        {typingLabel}
+                      </span>
+                    )}
                   </span>
                 </div>
 
@@ -1111,7 +1159,10 @@ function MessengerPage() {
                           ref={textareaRef}
                           rows={1}
                           value={inputText}
-                          onChange={(e) => setInputText(e.target.value)}
+                          onChange={(e) => {
+                            setInputText(e.target.value);
+                            notifyTyping();
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();

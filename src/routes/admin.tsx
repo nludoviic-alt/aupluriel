@@ -4,7 +4,7 @@ import {
   ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
   BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
-  Mail, Ban, Copy, Send,
+  Mail, Ban, Copy, Send, Lightbulb, AlertTriangle, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -120,6 +120,38 @@ interface JournalTrade {
   note: string | null;
 }
 
+interface BreakdownRow {
+  key: string;
+  trades: number;
+  wins: number;
+  winRate: number | null;
+  netPnl: number;
+}
+
+interface Recommendation {
+  type: "disable-symbol" | "raise-confidence" | "small-sample";
+  message: string;
+  symbol?: string;
+  suggestedMinConfidence?: number;
+}
+
+interface UserInsights {
+  mode: "demo" | "live";
+  totalTrades: number;
+  bySymbol: BreakdownRow[];
+  byConfidence: BreakdownRow[];
+  bySession: BreakdownRow[];
+  recommendations: Recommendation[];
+}
+
+interface UserBotConfig {
+  mode: "simulation" | "demo" | "live";
+  stakeUsd: number;
+  minConfidence: number;
+  symbols: string[];
+  [key: string]: unknown;
+}
+
 function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -146,6 +178,13 @@ function AdminPage() {
   const [journalUser, setJournalUser] = useState<UserRecap | null>(null);
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
+  const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
+  const [journalInsights, setJournalInsights] = useState<{ demo: UserInsights; live: UserInsights } | null>(null);
+  const [insightsMode, setInsightsMode] = useState<"demo" | "live">("demo");
+  const [applyingRec, setApplyingRec] = useState<string | null>(null);
+  const [renameUser, setRenameUser] = useState<AdminUser | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
@@ -223,13 +262,69 @@ function AdminPage() {
   async function openJournal(u: UserRecap) {
     setJournalUser(u);
     setJournalLoading(true);
+    setInsightsMode("demo");
     try {
-      const data = await api.get<{ trades: JournalTrade[] }>(`/api/admin/stats?userId=${u.userId}`);
+      const data = await api.get<{
+        trades: JournalTrade[];
+        config: UserBotConfig | null;
+        insights: { demo: UserInsights; live: UserInsights };
+      }>(`/api/admin/stats?userId=${u.userId}`);
       setJournalTrades(data.trades);
+      setJournalConfig(data.config);
+      setJournalInsights(data.insights);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du journal");
     } finally {
       setJournalLoading(false);
+    }
+  }
+
+  async function applyRecommendation(rec: Recommendation) {
+    if (!journalUser || !journalConfig) return;
+    setApplyingRec(rec.message);
+    try {
+      const patch: { userId: number; symbols?: string[]; minConfidence?: number } = { userId: journalUser.userId };
+      if (rec.type === "disable-symbol" && rec.symbol) {
+        patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
+      } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
+        patch.minConfidence = rec.suggestedMinConfidence;
+      } else {
+        return;
+      }
+      const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", patch);
+      setJournalConfig(res.config);
+      toast.success("Configuration mise à jour ✓");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible d'appliquer la recommandation");
+    } finally {
+      setApplyingRec(null);
+    }
+  }
+
+  function openRename(u: AdminUser) {
+    setRenameUser(u);
+    setRenameValue(u.username);
+  }
+
+  async function submitRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renameUser) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === renameUser.username) {
+      setRenameUser(null);
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      await api.post("/api/admin/users", { userId: renameUser.id, action: "edit-username", username: trimmed });
+      toast.success("Nom d'utilisateur mis à jour ✓");
+      setRenameUser(null);
+      await load();
+      await loadRecap();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de renommer cet utilisateur");
+    } finally {
+      setRenameBusy(false);
     }
   }
 
@@ -683,6 +778,14 @@ function AdminPage() {
                               </button>
                             )}
                             <button
+                              onClick={() => openRename(u)}
+                              disabled={busyId === u.id}
+                              title="Modifier le nom d'utilisateur"
+                              className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-2 text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => act(u.id, "reset-password")}
                               disabled={busyId === u.id}
                               title="Envoyer un lien de réinitialisation du mot de passe"
@@ -808,6 +911,13 @@ function AdminPage() {
                           <ShieldOff className="h-3.5 w-3.5" /> Révoquer
                         </button>
                       )}
+                      <button
+                        onClick={() => openRename(u)}
+                        disabled={busyId === u.id}
+                        className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/10 py-1.5 text-xs text-cyan-400 font-bold"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Renommer
+                      </button>
                       <button
                         onClick={() => act(u.id, "reset-password")}
                         disabled={busyId === u.id}
@@ -1333,8 +1443,16 @@ function AdminPage() {
       </Dialog>
 
       {/* ── USER JOURNAL DIALOG ── */}
-      <Dialog open={!!journalUser} onOpenChange={(open) => !open && setJournalUser(null)}>
-        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-xl max-h-[80vh] overflow-y-auto">
+      <Dialog
+        open={!!journalUser}
+        onOpenChange={(open) => {
+          if (open) return;
+          setJournalUser(null);
+          setJournalConfig(null);
+          setJournalInsights(null);
+        }}
+      >
+        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
               <BookOpen className="h-4.5 w-4.5 text-indigo-400" />
@@ -1344,6 +1462,18 @@ function AdminPage() {
               {journalUser?.trades} trade{(journalUser?.trades ?? 0) > 1 ? "s" : ""} clos · P&amp;L Net cumulé : {journalUser && (journalUser.netPnl >= 0 ? "+" : "")}{journalUser?.netPnl.toFixed(2)} $
             </DialogDescription>
           </DialogHeader>
+
+          {!journalLoading && journalInsights && (
+            <UserInsightsPanel
+              insights={journalInsights}
+              config={journalConfig}
+              mode={insightsMode}
+              onModeChange={setInsightsMode}
+              onApply={applyRecommendation}
+              applyingRec={applyingRec}
+            />
+          )}
+
           <div className="space-y-2 py-2">
             {journalLoading ? (
               <div className="py-12 text-center">
@@ -1396,6 +1526,41 @@ function AdminPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!renameUser} onOpenChange={(open) => !open && setRenameUser(null)}>
+        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
+              <Pencil className="h-4.5 w-4.5 text-cyan-400" />
+              Renommer {renameUser?.username}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground mt-1">
+              Corrige le nom d'utilisateur affiché dans l'app.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitRename} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rename-username" className="text-xs text-muted-foreground">Nom d'utilisateur</Label>
+              <Input
+                id="rename-username"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                autoFocus
+                maxLength={32}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRenameUser(null)} disabled={renameBusy}>
+                Annuler
+              </Button>
+              <Button type="submit" disabled={renameBusy || !renameValue.trim()}>
+                {renameBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enregistrer"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog state={confirmState} />
     </div>
   );
@@ -1556,3 +1721,126 @@ function ChatStatusCell({
 }
 
 import { Clock } from "lucide-react";
+
+function BreakdownTable({ rows, title }: { rows: BreakdownRow[]; title: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1.5">{title}</div>
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center justify-between gap-2 text-[11px] rounded-lg border border-white/[0.04] bg-white/[0.01] px-2.5 py-1.5">
+            <span className="font-semibold text-foreground/80">{r.key}</span>
+            <span className="text-muted-foreground/50">{r.trades} trade{r.trades > 1 ? "s" : ""}</span>
+            <span className={cn(
+              "font-bold",
+              r.winRate === null ? "text-muted-foreground/40" : r.winRate >= 50 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"
+            )}>
+              {r.winRate === null ? "—" : `${r.winRate}%`}
+            </span>
+            <span className={cn(
+              "font-mono font-bold",
+              r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+            )}>
+              {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UserInsightsPanel({
+  insights,
+  config,
+  mode,
+  onModeChange,
+  onApply,
+  applyingRec,
+}: {
+  insights: { demo: UserInsights; live: UserInsights };
+  config: UserBotConfig | null;
+  mode: "demo" | "live";
+  onModeChange: (mode: "demo" | "live") => void;
+  onApply: (rec: Recommendation) => void;
+  applyingRec: string | null;
+}) {
+  const current = insights[mode];
+
+  return (
+    <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+          <BrainCircuit className="h-3.5 w-3.5 text-violet-400" />
+          Analyse & réglages
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
+          {(["demo", "live"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onModeChange(m)}
+              className={cn(
+                "px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md transition-colors cursor-pointer",
+                mode === m ? "bg-amber-500/15 text-amber-400" : "text-muted-foreground/50 hover:text-foreground"
+              )}
+            >
+              {m === "demo" ? "Démo" : "Live"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {config && (
+        <div className="flex flex-wrap gap-1.5 text-[10px]">
+          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+            Mise <span className="text-foreground font-semibold">{config.stakeUsd}$</span>
+          </span>
+          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+            Confiance min <span className="text-foreground font-semibold">{config.minConfidence}%</span>
+          </span>
+          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-muted-foreground/70">
+            {config.symbols.length} symbole{config.symbols.length > 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {current.recommendations.map((rec) => (
+          <div
+            key={rec.message}
+            className={cn(
+              "flex items-start gap-2 rounded-lg border px-2.5 py-2 text-[11px]",
+              rec.type === "small-sample"
+                ? "border-white/[0.05] bg-white/[0.01] text-muted-foreground/60"
+                : "border-amber-500/15 bg-amber-500/[0.04] text-foreground/85"
+            )}
+          >
+            {rec.type === "small-sample" ? (
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground/40" />
+            ) : (
+              <Lightbulb className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" />
+            )}
+            <span className="flex-1">{rec.message}</span>
+            {rec.type !== "small-sample" && (
+              <button
+                type="button"
+                onClick={() => onApply(rec)}
+                disabled={applyingRec === rec.message}
+                className="shrink-0 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {applyingRec === rec.message ? "..." : "Appliquer"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <BreakdownTable rows={current.bySymbol} title="Par symbole" />
+        <BreakdownTable rows={current.byConfidence} title="Par confiance" />
+      </div>
+    </div>
+  );
+}

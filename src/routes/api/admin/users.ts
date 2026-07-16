@@ -29,7 +29,7 @@ export const Route = createFileRoute("/api/admin/users")({
 
         const body = (await request.json()) as {
           userId?: number;
-          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password" | "toggle-chat";
+          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password" | "toggle-chat" | "edit-username";
           email?: string;
           username?: string;
           password?: string;
@@ -133,6 +133,17 @@ export const Route = createFileRoute("/api/admin/users")({
           }
           case "toggle-chat": {
             db.prepare("UPDATE users SET chat_enabled = ? WHERE id = ?").run(body.chatEnabled ? 1 : 0, userId);
+            break;
+          }
+          case "edit-username": {
+            const username = body.username?.trim();
+            if (!username) return json({ error: "Nom d'utilisateur requis." }, 400);
+            if (username.length < 2 || username.length > 32) {
+              return json({ error: "Le nom d'utilisateur doit faire entre 2 et 32 caractères." }, 400);
+            }
+            const taken = db.prepare("SELECT id FROM users WHERE username = ? AND id != ?").get(username, userId);
+            if (taken) return json({ error: "Ce nom d'utilisateur est déjà pris." }, 409);
+            db.prepare("UPDATE users SET username = ? WHERE id = ?").run(username, userId);
             break;
           }
           default:

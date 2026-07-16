@@ -39,6 +39,7 @@ import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiChatUsersRouteImport } from './routes/api/chat/users'
+import { Route as ApiChatTypingRouteImport } from './routes/api/chat/typing'
 import { Route as ApiChatMessagesRouteImport } from './routes/api/chat/messages'
 import { Route as ApiChatGroupsRouteImport } from './routes/api/chat/groups'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
@@ -49,6 +50,7 @@ import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api/auth/forgot-password'
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
+import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
@@ -206,6 +208,11 @@ const ApiChatUsersRoute = ApiChatUsersRouteImport.update({
   path: '/api/chat/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatTypingRoute = ApiChatTypingRouteImport.update({
+  id: '/api/chat/typing',
+  path: '/api/chat/typing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatMessagesRoute = ApiChatMessagesRouteImport.update({
   id: '/api/chat/messages',
   path: '/api/chat/messages',
@@ -255,6 +262,11 @@ const ApiAuthForgotPasswordRoute = ApiAuthForgotPasswordRouteImport.update({
 const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
   id: '/api/admin/users',
   path: '/api/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminUserConfigRoute = ApiAdminUserConfigRouteImport.update({
+  id: '/api/admin/user-config',
+  path: '/api/admin/user-config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminStatsRoute = ApiAdminStatsRouteImport.update({
@@ -323,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
+  '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -333,6 +346,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
@@ -371,6 +385,7 @@ export interface FileRoutesByTo {
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
+  '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -381,6 +396,7 @@ export interface FileRoutesByTo {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
@@ -420,6 +436,7 @@ export interface FileRoutesById {
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
+  '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -430,6 +447,7 @@ export interface FileRoutesById {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
 }
@@ -470,6 +488,7 @@ export interface FileRouteTypes {
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
+    | '/api/admin/user-config'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -480,6 +499,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
   fileRoutesByTo: FileRoutesByTo
@@ -518,6 +538,7 @@ export interface FileRouteTypes {
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
+    | '/api/admin/user-config'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -528,6 +549,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
   id:
@@ -566,6 +588,7 @@ export interface FileRouteTypes {
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
+    | '/api/admin/user-config'
     | '/api/admin/users'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -576,6 +599,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
   fileRoutesById: FileRoutesById
@@ -615,6 +639,7 @@ export interface RootRouteChildren {
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
+  ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
@@ -625,6 +650,7 @@ export interface RootRouteChildren {
   ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
   ApiChatGroupsRoute: typeof ApiChatGroupsRouteWithChildren
   ApiChatMessagesRoute: typeof ApiChatMessagesRoute
+  ApiChatTypingRoute: typeof ApiChatTypingRoute
   ApiChatUsersRoute: typeof ApiChatUsersRoute
 }
 
@@ -840,6 +866,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat/typing': {
+      id: '/api/chat/typing'
+      path: '/api/chat/typing'
+      fullPath: '/api/chat/typing'
+      preLoaderRoute: typeof ApiChatTypingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/chat/messages': {
       id: '/api/chat/messages'
       path: '/api/chat/messages'
@@ -908,6 +941,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/users'
       fullPath: '/api/admin/users'
       preLoaderRoute: typeof ApiAdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/user-config': {
+      id: '/api/admin/user-config'
+      path: '/api/admin/user-config'
+      fullPath: '/api/admin/user-config'
+      preLoaderRoute: typeof ApiAdminUserConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/stats': {
@@ -1002,6 +1042,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
+  ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,
@@ -1012,6 +1053,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
   ApiChatGroupsRoute: ApiChatGroupsRouteWithChildren,
   ApiChatMessagesRoute: ApiChatMessagesRoute,
+  ApiChatTypingRoute: ApiChatTypingRoute,
   ApiChatUsersRoute: ApiChatUsersRoute,
 }
 export const routeTree = rootRouteImport
