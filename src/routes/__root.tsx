@@ -20,6 +20,7 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
+import { useHeartbeat } from "@/hooks/use-heartbeat";
 import {
   Bell,
   Loader2,
@@ -253,6 +254,7 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   usePriceAlerts(!isPublicRoute && !!user);
+  useHeartbeat(!isPublicRoute && !!user);
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render

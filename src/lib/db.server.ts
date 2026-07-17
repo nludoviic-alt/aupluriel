@@ -250,6 +250,16 @@ function migrate(db: Database.Database) {
       user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
       PRIMARY KEY (group_id, user_id)
     );
+
+    -- One reaction per (message, user) — picking a new emoji replaces the
+    -- previous one, same as WhatsApp/iMessage rather than stacking many.
+    CREATE TABLE IF NOT EXISTS chat_message_reactions (
+      message_id TEXT    NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      emoji      TEXT    NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (message_id, user_id)
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---

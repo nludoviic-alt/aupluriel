@@ -43,6 +43,12 @@ interface ChatGroup {
   createdAt: number;
 }
 
+interface MessageReaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
 interface ChatMessage {
   id: string;
   groupId: string;
@@ -52,6 +58,8 @@ interface ChatMessage {
   readAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
+  reactions: MessageReaction[];
+  pending?: boolean; // optimistic send — not yet confirmed by the server
 }
 
 interface VerifiedUser {
@@ -92,6 +100,8 @@ function getUserColor(username: string): { bg: string; border: string; shadow: s
   const index = Math.abs(hash) % colors.length;
   return colors[index];
 }
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 const EMOJI_CATEGORIES = [
   {
@@ -155,6 +165,24 @@ function getInitial(name: string) {
   return (name.trim().charAt(0) || "?").toUpperCase();
 }
 
+// Locally predicts the post-toggle reaction list so the tap feels instant —
+// one reaction per user (picking a new emoji replaces the old one), the
+// server response (fetched right after) is the source of truth that follows.
+function applyOptimisticReaction(reactions: MessageReaction[], emoji: string): MessageReaction[] {
+  const previousMine = reactions.find((r) => r.mine);
+  let next = reactions
+    .map((r) => (r.mine ? { ...r, count: r.count - 1, mine: false } : r))
+    .filter((r) => r.count > 0);
+
+  if (previousMine?.emoji === emoji) return next; // tapping the same emoji again toggles it off
+
+  const existing = next.find((r) => r.emoji === emoji);
+  next = existing
+    ? next.map((r) => (r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r))
+    : [...next, { emoji, count: 1, mine: true }];
+  return next;
+}
+
 function MessengerPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -172,6 +200,7 @@ function MessengerPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
   const lastTypingSentRef = useRef<number>(0);
   const [loadingSidebar, setLoadingSidebar] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -190,6 +219,10 @@ function MessengerPage() {
   // Emoji picker popover state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
+
+  // Per-message quick-reaction picker (WhatsApp-style: id of the message
+  // whose emoji strip is currently open, null when none is)
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
 
   // Image upload states & ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -347,6 +380,26 @@ function MessengerPage() {
     return () => clearInterval(interval);
   }, [activeGroupId]);
 
+  // Polling for online status of the users listed in the sidebar (admin only —
+  // regular users only ever see the admin's presence, which isn't wired up
+  // here since their own DM row doesn't carry the admin's user id).
+  useEffect(() => {
+    if (!user?.is_admin || verifiedUsers.length === 0) {
+      setOnlineUserIds(new Set());
+      return;
+    }
+    const ids = verifiedUsers.map((u) => u.id);
+    let cancelled = false;
+    const poll = () => {
+      api.get<{ onlineUserIds: number[] }>(`/api/presence?userIds=${ids.join(",")}`)
+        .then((data) => { if (!cancelled) setOnlineUserIds(new Set(data.onlineUserIds)); })
+        .catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [user?.is_admin, verifiedUsers]);
+
   // Throttled ping so the other side sees us typing without spamming the endpoint
   function notifyTyping() {
     if (!activeGroupId) return;
@@ -361,6 +414,35 @@ function MessengerPage() {
   }
 
   // Handle message send
+  // Sends one piece of content optimistically: it appears in the thread
+  // immediately (dimmed, single check) and swaps in for the server's real
+  // row the moment the request resolves — no waiting for the next poll.
+  async function sendOptimistic(groupId: string, content: string) {
+    if (!user) return;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      groupId,
+      senderId: user.id,
+      content,
+      createdAt: Math.floor(Date.now() / 1000),
+      readAt: null,
+      senderUsername: user.username,
+      senderIsAdmin: user.is_admin ?? 0,
+      reactions: [],
+      pending: true,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setTimeout(scrollToBottom, 50);
+    try {
+      const newMsg = await api.post<ChatMessage>("/api/chat/messages", { groupId, content });
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? newMsg : m)));
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      throw err;
+    }
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!activeGroupId || sending) return;
@@ -369,32 +451,34 @@ function MessengerPage() {
     setSending(true);
 
     try {
-      // 1. Send image if selected
       if (selectedImage) {
-        const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
-          groupId: activeGroupId,
-          content: selectedImage,
-        });
-        setMessages((prev) => [...prev, newMsg]);
+        const image = selectedImage;
         setSelectedImage(null);
-        setTimeout(scrollToBottom, 50);
+        await sendOptimistic(activeGroupId, image);
       }
 
-      // 2. Send text if typed
       if (inputText.trim() !== "") {
         const content = inputText.trim();
         setInputText("");
-        const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
-          groupId: activeGroupId,
-          content,
-        });
-        setMessages((prev) => [...prev, newMsg]);
-        setTimeout(scrollToBottom, 50);
+        await sendOptimistic(activeGroupId, content);
       }
     } catch (err: any) {
       toast.error(err.message || "Erreur d'envoi");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    setReactionPickerFor(null);
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, reactions: applyOptimisticReaction(m.reactions, emoji) } : m))
+    );
+    try {
+      const res = await api.post<{ reactions: MessageReaction[] }>("/api/chat/reactions", { messageId, emoji });
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: res.reactions } : m)));
+    } catch {
+      toast.error("Impossible d'ajouter la réaction");
     }
   }
 
@@ -547,16 +631,23 @@ function MessengerPage() {
   // Determine active group name & type
   let activeGroupName = "";
   let isActiveDirect = false;
+  // Only known when an admin is viewing a specific user's DM — regular users'
+  // own DM row doesn't carry the admin's id, so their header just omits the dot.
+  let activePartnerId: number | undefined;
 
   const currentGroup = groups.find((g) => g.id === activeGroupId);
   if (currentGroup) {
     activeGroupName = currentGroup.name;
     isActiveDirect = currentGroup.isDirect === 1;
+    if (isActiveDirect && !!user?.is_admin) {
+      activePartnerId = currentGroup.recipientId ?? undefined;
+    }
   } else if (!!user?.is_admin) {
     const matchingUser = verifiedUsers.find((u) => u.groupId === activeGroupId);
     if (matchingUser) {
       activeGroupName = matchingUser.username;
       isActiveDirect = true;
+      activePartnerId = matchingUser.id;
     }
   }
   if (!activeGroupName && activeGroupId) {
@@ -764,10 +855,16 @@ function MessengerPage() {
                               <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
                             )}
                             <span className={cn(
-                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
+                              "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
                               getAvatarStyle(u.username)
                             )}>
                               {getInitial(u.username)}
+                              {onlineUserIds.has(u.id) && (
+                                <span
+                                  title="En ligne"
+                                  className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background"
+                                />
+                              )}
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="font-bold text-[14px] leading-snug truncate">
@@ -889,7 +986,15 @@ function MessengerPage() {
                       <span className="font-bold text-[14.5px] sm:text-[15px] text-foreground tracking-tight font-sans truncate">
                         {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
                       </span>
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                      {activePartnerId !== undefined && (
+                        <span
+                          title={onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full shrink-0",
+                            onlineUserIds.has(activePartnerId) ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/30"
+                          )}
+                        />
+                      )}
                     </span>
                     {typingUserIds.length > 0 && (
                       <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400">
@@ -982,13 +1087,15 @@ function MessengerPage() {
                     const isAdminSender = msg.senderIsAdmin === 1;
                     const isImage = msg.content.startsWith("data:image/");
                     const userColor = getUserColor(msg.senderUsername);
+                    const pickerOpen = reactionPickerFor === msg.id;
 
                     return (
                       <div
                         key={msg.id}
                         className={cn(
-                          "flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200",
-                          isMe ? "ml-auto items-end" : "mr-auto items-start"
+                          "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity",
+                          isMe ? "ml-auto items-end" : "mr-auto items-start",
+                          msg.pending && "opacity-60"
                         )}
                       >
                         {/* Sender labels */}
@@ -1003,43 +1110,104 @@ function MessengerPage() {
                           )}
                         </div>
 
-                        {/* Message bubble */}
-                        <div
-                          className={cn(
-                            "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
-                            isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
-                            isMe
-                              ? cn(
-                                  "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
-                                  userColor.bg,
-                                  userColor.border,
-                                  userColor.shadow
-                                )
-                              : cn(
-                                  "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
-                                  userColor.border,
-                                  userColor.bgSubtle
-                                )
+                        {/* Bubble row — react button sits on the inner side, revealed on hover */}
+                        <div className={cn("relative flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
+                          <div
+                            className={cn(
+                              "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
+                              isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
+                              isMe
+                                ? cn(
+                                    "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
+                                    userColor.bg,
+                                    userColor.border,
+                                    userColor.shadow
+                                  )
+                                : cn(
+                                    "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
+                                    userColor.border,
+                                    userColor.bgSubtle
+                                  )
+                            )}
+                          >
+                            {isImage ? (
+                              <img
+                                src={msg.content}
+                                alt="Image envoyée"
+                                className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
+                                onClick={() => {
+                                  const w = window.open();
+                                  if (w) w.document.write(`<img src="${msg.content}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+                                }}
+                              />
+                            ) : (
+                              <div className="whitespace-pre-wrap break-words break-all max-w-full">
+                                {msg.content.startsWith("data:")
+                                  ? "[Contenu média non supporté]"
+                                  : msg.content}
+                              </div>
+                            )}
+                          </div>
+
+                          {!msg.pending && (
+                            <button
+                              type="button"
+                              onClick={() => setReactionPickerFor(pickerOpen ? null : msg.id)}
+                              title="Réagir"
+                              className={cn(
+                                "shrink-0 mb-0.5 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
+                                pickerOpen ? "opacity-100 bg-white/[0.06] text-amber-400" : "opacity-0 group-hover:opacity-100"
+                              )}
+                            >
+                              <Smile className="h-4 w-4" />
+                            </button>
                           )}
-                        >
-                          {isImage ? (
-                            <img
-                              src={msg.content}
-                              alt="Image envoyée"
-                              className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                              onClick={() => {
-                                const w = window.open();
-                                if (w) w.document.write(`<img src="${msg.content}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
-                              }}
-                            />
-                          ) : (
-                            <div className="whitespace-pre-wrap break-words break-all max-w-full">
-                              {msg.content.startsWith("data:") 
-                                ? "[Contenu média non supporté]" 
-                                : msg.content}
-                            </div>
+
+                          {pickerOpen && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={() => setReactionPickerFor(null)} />
+                              <div
+                                className={cn(
+                                  "absolute bottom-full mb-1.5 z-40 flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-[oklch(0.16_0.03_250)] px-1.5 py-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150",
+                                  isMe ? "right-0" : "left-0"
+                                )}
+                              >
+                                {QUICK_REACTIONS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => toggleReaction(msg.id, emoji)}
+                                    className="flex h-8 w-8 items-center justify-center text-lg rounded-full hover:bg-white/[0.08] hover:scale-125 transition-all duration-100 cursor-pointer"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
                           )}
                         </div>
+
+                        {/* Reaction pills */}
+                        {msg.reactions.length > 0 && (
+                          <div className={cn("flex flex-wrap gap-1 mt-1 px-1", isMe ? "justify-end" : "justify-start")}>
+                            {msg.reactions.map((r) => (
+                              <button
+                                key={r.emoji}
+                                type="button"
+                                onClick={() => toggleReaction(msg.id, r.emoji)}
+                                className={cn(
+                                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer",
+                                  r.mine
+                                    ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                                    : "bg-white/[0.03] border-white/[0.08] text-muted-foreground/70 hover:bg-white/[0.06]"
+                                )}
+                              >
+                                <span>{r.emoji}</span>
+                                <span>{r.count}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Msg timestamp and read receipt */}
                         <div className="flex items-center gap-1.5 mt-1.5 px-1 select-none">
@@ -1051,7 +1219,9 @@ function MessengerPage() {
                           </span>
                           {isMe && (
                             <div className="flex items-center">
-                              {msg.readAt ? (
+                              {msg.pending ? (
+                                <Loader2 className="h-3 w-3 text-muted-foreground/40 animate-spin" />
+                              ) : msg.readAt ? (
                                 <CheckCheck className="h-3 w-3 text-blue-400" />
                               ) : (
                                 <Check className="h-3 w-3 text-muted-foreground/40" />

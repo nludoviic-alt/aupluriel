@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest } from "@/lib/auth.server";
+import { getReactions } from "@/lib/chat-reactions.server";
 import { randomUUID } from "crypto";
 
 export const Route = createFileRoute("/api/chat/messages")({
@@ -57,7 +58,9 @@ export const Route = createFileRoute("/api/chat/messages")({
           senderIsAdmin: number;
         }[];
 
-        return json({ messages: rows });
+        const messages = rows.map((r) => ({ ...r, reactions: getReactions(db, r.id, user.id) }));
+
+        return json({ messages });
       },
 
       POST: async ({ request }) => {
@@ -152,6 +155,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           readAt: null,
           senderUsername: user.username,
           senderIsAdmin: user.is_admin,
+          reactions: [],
         });
       },
 
