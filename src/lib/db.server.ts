@@ -284,6 +284,21 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");
   }
 
+  // --- Additive column migrations on `alerts` (idempotent) ---
+  // The API/table existed but was never wired to the UI (alerts.tsx and
+  // use-price-alerts.ts both ran on localStorage instead) — now that alerts
+  // are checked server-side (price-alerts.server.ts) so they push even with
+  // the app closed, these two columns are what that scheduler needs.
+  const alertCols = new Set(
+    (db.prepare("PRAGMA table_info(alerts)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!alertCols.has("symbol")) {
+    db.exec("ALTER TABLE alerts ADD COLUMN symbol TEXT"); // deriv symbol code, 'price' alerts only
+  }
+  if (!alertCols.has("last_fired_at")) {
+    db.exec("ALTER TABLE alerts ADD COLUMN last_fired_at INTEGER");
+  }
+
   // --- Additive column migrations on `bot_trades` (idempotent) ---
   const botTradeCols = new Set(
     (db.prepare("PRAGMA table_info(bot_trades)").all() as { name: string }[]).map((c) => c.name),

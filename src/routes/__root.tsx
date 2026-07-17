@@ -18,7 +18,6 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
-import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
 import {
@@ -253,7 +252,6 @@ function RootComponent() {
   const pageMeta = useMemo(() => getPageMeta(pathname), [pathname]);
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
-  usePriceAlerts(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
   const deriv = useDerivSession(!isPublicRoute && !!user);
 

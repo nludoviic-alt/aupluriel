@@ -42,20 +42,13 @@ function notifyMarketOpen(session: TradingSession) {
   toast.info(`Marché ouvert — session ${label}`, {
     description: "Nouvelle fenêtre de trading disponible.",
   });
-  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-    const n = new Notification(`Au Pluriel — Session ${label} ouverte`, {
-      body: "Une nouvelle session de marché vient de démarrer.",
-      icon: "/favicon.ico",
-      tag: `lio23-market-open-${session}`,
-    });
-    setTimeout(() => n.close(), 10000);
-  }
 }
 
 /**
- * Fires a notification (toast + browser Notification) whenever a trading
- * session transitions from closed to open — once per session per UTC day.
- * Reuses the same browser notification permission as the signal-alert bell.
+ * Shows an in-app toast whenever a trading session transitions from closed
+ * to open, for whoever has the app open at that moment — once per session
+ * per UTC day. The real OS-level push notification (delivered even with the
+ * app closed) is handled server-side, see market-session-notify.server.ts.
  */
 export function useMarketOpenNotify(enabled = true) {
   useEffect(() => {
