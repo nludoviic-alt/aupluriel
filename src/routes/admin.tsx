@@ -1336,7 +1336,7 @@ function AdminPage() {
             // outside interaction and would close this profile modal underneath it.
             if (confirmState) e.preventDefault();
           }}
-          className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-3xl max-h-[88vh] overflow-y-auto gap-6 p-7"
+          className="glass-panel border-white/10 bg-background/90 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-3xl max-h-[88vh] overflow-y-auto gap-6 p-7"
         >
           {profileUser && (() => {
             const isAdmin = profileUser.is_admin === 1;
@@ -1439,24 +1439,24 @@ function AdminPage() {
 
                 {!isAdmin && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 border-t border-white/[0.06] pt-4">
-                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5">
-                      <span className="text-sm text-muted-foreground font-semibold">Auto-Trader</span>
+                    <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 px-3.5 py-2.5 shadow-sm shadow-cyan-950/20">
+                      <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader</span>
                       <BotStatusCell
                         status={botStatus[profileUser.id]}
                         busy={botBusyId === profileUser.id}
                         onToggle={(action) => toggleBot(profileUser.id, action)}
                       />
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5">
-                      <span className="text-sm text-muted-foreground font-semibold">Backtest Auto</span>
+                    <div className="flex items-center justify-between rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-violet-500/5 px-3.5 py-2.5 shadow-sm shadow-violet-950/20">
+                      <span className="text-xs font-bold uppercase tracking-wider text-violet-400">Backtest Auto</span>
                       <BacktestStatusCell
                         status={botStatus[profileUser.id]}
                         busy={backtestBusyId === profileUser.id}
                         onToggle={(checked) => toggleBacktest(profileUser.id, checked)}
                       />
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.01] px-3.5 py-2.5">
-                      <span className="text-sm text-muted-foreground font-semibold">Messagerie</span>
+                    <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-amber-500/5 px-3.5 py-2.5 shadow-sm shadow-amber-950/20">
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Messagerie</span>
                       <ChatStatusCell
                         user={profileUser}
                         busy={busyId === profileUser.id}
@@ -1523,56 +1523,50 @@ function AdminPage() {
                   />
                 )}
 
-                <div className="space-y-2.5 py-2">
-                  {journalLoading ? (
-                    <div className="py-12 text-center">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
-                    </div>
-                  ) : journalTrades.length === 0 ? (
-                    <p className="py-12 text-center text-sm text-muted-foreground font-semibold">
-                      Aucun trade enregistré pour cet utilisateur.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {journalTrades.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.01] px-4 py-3 hover:bg-white/[0.02] transition-colors text-sm">
-                          <div className="flex items-center gap-3 min-w-0">
-                            {t.status === "won" ? (
-                              <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-[color:var(--bull)]/10 text-[color:var(--bull)]">
-                                <TrendingUp className="h-4.5 w-4.5" />
-                              </div>
-                            ) : t.status === "lost" ? (
-                              <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-[color:var(--bear)]/10 text-[color:var(--bear)]">
-                                <TrendingDown className="h-4.5 w-4.5" />
-                              </div>
-                            ) : (
-                              <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-500 animate-pulse">
-                                <Clock className="h-4.5 w-4.5" />
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="font-bold text-foreground">{t.symbol} · {t.direction}</div>
-                              <div className="text-muted-foreground/60 text-xs mt-0.5">
-                                {new Date(t.time).toLocaleString("fr-FR")} · Confiance {t.confidence}% · TFs {t.tf_agreement}/4
-                              </div>
-                              {t.note && (
-                                <div className="text-muted-foreground/50 text-[11px] mt-0.5 border-l border-white/10 pl-1.5 italic truncate max-w-[340px]">
-                                  {t.note}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className={cn(
-                            "shrink-0 text-right font-black font-mono text-base",
-                            t.profit > 0 ? "text-[color:var(--bull)]" : t.profit < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
-                          )}>
-                            {t.profit > 0 ? "+" : ""}{t.profit.toFixed(2)} $
-                          </div>
+                {(() => {
+                  const MINI_JOURNAL_LIMIT = 24;
+                  const outcomeTrades = journalTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open");
+                  const shown = outcomeTrades.slice(0, MINI_JOURNAL_LIMIT);
+                  const hiddenCount = outcomeTrades.length - shown.length;
+                  return (
+                    <div className="border-t border-white/[0.06] pt-4 space-y-2.5">
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">Mini journal</div>
+                      {journalLoading ? (
+                        <div className="py-6 text-center">
+                          <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                         </div>
-                      ))}
+                      ) : shown.length === 0 ? (
+                        <p className="text-sm text-muted-foreground font-semibold">
+                          Aucun trade enregistré pour cet utilisateur.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {shown.map((t) => (
+                            <span
+                              key={t.id}
+                              title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · Confiance ${t.confidence}%${t.note ? ` · ${t.note}` : ""}`}
+                              className={cn(
+                                "rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono cursor-default",
+                                t.status === "won"
+                                  ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
+                                  : t.status === "lost"
+                                    ? "bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
+                                    : "bg-amber-500/10 text-amber-500"
+                              )}
+                            >
+                              {t.status === "open" ? "…" : t.profit > 0 ? "+" : ""}{t.status === "open" ? "" : t.profit.toFixed(2)}
+                            </span>
+                          ))}
+                          {hiddenCount > 0 && (
+                            <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02]">
+                              +{hiddenCount} autres
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </>
             );
           })()}
@@ -1650,14 +1644,16 @@ function BotStatusCell({
         className={cn(
           "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
           running
-            ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
-            : "bg-white/[0.03] text-muted-foreground",
+            ? "bg-gradient-to-r from-emerald-500/20 to-emerald-600/10 text-emerald-400 border border-emerald-500/30"
+            : enabled
+              ? "bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30"
+              : "bg-gradient-to-r from-slate-500/20 to-slate-600/10 text-slate-400 border border-slate-500/30",
         )}
       >
         <span
           className={cn(
             "h-1.5 w-1.5 rounded-full",
-            running ? "bg-[color:var(--bull)] animate-pulse" : "bg-muted-foreground/40",
+            running ? "bg-emerald-400 animate-pulse" : enabled ? "bg-amber-400" : "bg-slate-400",
           )}
         />
         {running ? "live" : enabled ? "en attente" : "arrêté"}
@@ -1690,8 +1686,8 @@ function BacktestStatusCell({
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
           autoBacktestEnabled
-            ? "bg-amber-500/10 text-amber-500"
-            : "bg-white/[0.03] text-muted-foreground",
+            ? "bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30"
+            : "bg-gradient-to-r from-slate-500/20 to-slate-600/10 text-slate-400 border border-slate-500/30",
         )}
       >
         {autoBacktestEnabled ? "actif" : "inactif"}
@@ -1723,8 +1719,8 @@ function ChatStatusCell({
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
           chatEnabled
-            ? "bg-amber-500/10 text-amber-500"
-            : "bg-white/[0.03] text-muted-foreground",
+            ? "bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30"
+            : "bg-gradient-to-r from-slate-500/20 to-slate-600/10 text-slate-400 border border-slate-500/30",
         )}
       >
         {chatEnabled ? "actif" : "inactif"}
@@ -1737,8 +1733,6 @@ function ChatStatusCell({
     </div>
   );
 }
-
-import { Clock } from "lucide-react";
 
 function BreakdownTable({ rows, title }: { rows: BreakdownRow[]; title: string }) {
   if (rows.length === 0) return null;

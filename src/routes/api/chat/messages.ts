@@ -17,25 +17,23 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         const db = getDb();
 
-        // Verify user has access to this group
+        // Verify user has access to this group. Non-admins get an identical
+        // "not found" for both a nonexistent group and one they're just not
+        // in — distinguishing the two (404 vs 403) would let someone confirm
+        // a group exists without ever being able to see it.
         const group = db
           .prepare("SELECT is_direct, recipient_id FROM chat_groups WHERE id = ?")
           .get(groupId) as { is_direct: number; recipient_id: number | null } | undefined;
 
-        if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
-
         if (user.is_admin === 0) {
-          // Security check: if group is direct, only the recipient user can access
-          if (group.is_direct === 1 && group.recipient_id !== user.id) {
-            return json({ error: "Accès refusé." }, 403);
-          }
-          // Security check: if group is a public/group chat, only actual members can access
-          if (group.is_direct === 0) {
-            const membership = db
-              .prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?")
-              .get(groupId, user.id);
-            if (!membership) return json({ error: "Accès refusé." }, 403);
-          }
+          const hasAccess =
+            !!group &&
+            (group.is_direct === 1
+              ? group.recipient_id === user.id
+              : !!db.prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?").get(groupId, user.id));
+          if (!hasAccess) return json({ error: "Groupe de chat non trouvé." }, 404);
+        } else if (!group) {
+          return json({ error: "Groupe de chat non trouvé." }, 404);
         }
 
         const rows = db
@@ -77,25 +75,21 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         const db = getDb();
 
-        // Verify group exists and check access
+        // Verify group exists and check access (same non-existence vs no-access
+        // ambiguity as GET above — a non-admin gets one uniform 404 either way).
         const group = db
           .prepare("SELECT name, is_direct, recipient_id FROM chat_groups WHERE id = ?")
           .get(body.groupId) as { name: string; is_direct: number; recipient_id: number | null } | undefined;
 
-        if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
-
         if (user.is_admin === 0) {
-          // Security check: if group is direct, only the recipient user can post
-          if (group.is_direct === 1 && group.recipient_id !== user.id) {
-            return json({ error: "Accès refusé." }, 403);
-          }
-          // Security check: if group is a public/group chat, only actual members can post
-          if (group.is_direct === 0) {
-            const membership = db
-              .prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?")
-              .get(body.groupId, user.id);
-            if (!membership) return json({ error: "Accès refusé." }, 403);
-          }
+          const hasAccess =
+            !!group &&
+            (group.is_direct === 1
+              ? group.recipient_id === user.id
+              : !!db.prepare("SELECT 1 FROM chat_group_members WHERE group_id = ? AND user_id = ?").get(body.groupId, user.id));
+          if (!hasAccess) return json({ error: "Groupe de chat non trouvé." }, 404);
+        } else if (!group) {
+          return json({ error: "Groupe de chat non trouvé." }, 404);
         }
 
         const newId = randomUUID();

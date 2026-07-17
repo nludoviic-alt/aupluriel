@@ -149,15 +149,14 @@ export const Route = createFileRoute("/api/chat/groups")({
         if (user.is_admin === 0) {
           // Non-admins can only fully delete their own direct conversation with the admin,
           // never a shared group salon — that stays admin-only to avoid one member
-          // destroying it for everyone else without consent.
+          // destroying it for everyone else without consent. A nonexistent group and an
+          // inaccessible one get the identical response — no existence oracle either way.
           const group = db
             .prepare("SELECT is_direct, recipient_id FROM chat_groups WHERE id = ?")
             .get(groupId) as { is_direct: number; recipient_id: number | null } | undefined;
 
-          if (!group) return json({ error: "Groupe ou discussion introuvable." }, 404);
-
-          if (group.is_direct !== 1 || group.recipient_id !== user.id) {
-            return json({ error: "Accès refusé." }, 403);
+          if (!group || group.is_direct !== 1 || group.recipient_id !== user.id) {
+            return json({ error: "Groupe ou discussion introuvable." }, 404);
           }
         }
 

@@ -575,6 +575,9 @@ function MessengerPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background">
+      {/* Desktop-only: caps the workspace width and centers it so the sidebar
+          and message bubbles don't stretch edge-to-edge on wide monitors. */}
+      <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1400px] md:mx-auto">
       {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
       <div className={cn("items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeGroupId ? "hidden md:flex" : "flex")}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -1214,6 +1217,7 @@ function MessengerPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* CREATE GROUP MODAL (Admin Only) */}
