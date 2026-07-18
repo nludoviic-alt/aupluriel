@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   MessageSquare,
@@ -25,6 +25,11 @@ import {
   Mic,
   Square,
   CircleDot,
+  Ban,
+  Reply,
+  Forward,
+  Copy,
+  Pencil,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -60,9 +65,15 @@ interface ChatMessage {
   content: string;
   createdAt: number;
   readAt: number | null;
+  deliveredAt: number | null;
+  editedAt: number | null;
+  deletedAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
   reactions: MessageReaction[];
+  replyToId: string | null;
+  replyToContent: string | null;
+  replyToSenderUsername: string | null;
   pending?: boolean; // optimistic send — not yet confirmed by the server
 }
 
@@ -246,6 +257,21 @@ function parseInlineFormats(text: string, partIndex: number) {
   });
 }
 
+function isSameDay(a: number, b: number) {
+  const da = new Date(a * 1000);
+  const db = new Date(b * 1000);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+// "Aujourd'hui" / "Hier" / full date, WhatsApp-style separator label
+function formatDateSeparator(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  const now = Date.now() / 1000;
+  if (isSameDay(timestamp, now)) return "Aujourd'hui";
+  if (isSameDay(timestamp, now - 86400)) return "Hier";
+  return date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
 // Custom parser for WhatsApp styles
 function formatMessageContent(text: string) {
   if (text.startsWith("data:")) return "[Contenu média non supporté]";
@@ -423,9 +449,43 @@ function MessengerPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
 
-  // Per-message quick-reaction picker (WhatsApp-style: id of the message
-  // whose emoji strip is currently open, null when none is)
+  // Per-message action menu (WhatsApp-style: id of the message whose
+  // reaction strip + action list is currently open, null when none is).
+  // Opened by clicking the reveal-on-hover button (desktop) or a long-press
+  // on the bubble (touch).
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressMovedRef = useRef(false);
+
+  // Reply-to-message composer state — the message currently being quoted
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // Edit-message composer state — the message currently being edited
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  // Forward-message modal state — the message currently being forwarded
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardTargetId, setForwardTargetId] = useState<string | null>(null);
+  const [forwarding, setForwarding] = useState(false);
+
+  // Refs to each rendered message bubble, so a quoted-reply preview can
+  // scroll the original message into view when tapped.
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  function startLongPress(messageId: string) {
+    longPressMovedRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      if (!longPressMovedRef.current) {
+        if (typeof navigator.vibrate === "function") navigator.vibrate(15);
+        setReactionPickerFor(messageId);
+      }
+    }, 450);
+  }
+  function cancelLongPress() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
 
   // Image upload states & ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -636,7 +696,7 @@ function MessengerPage() {
   // Sends one piece of content optimistically: it appears in the thread
   // immediately (dimmed, single check) and swaps in for the server's real
   // row the moment the request resolves — no waiting for the next poll.
-  async function sendOptimistic(groupId: string, content: string) {
+  async function sendOptimistic(groupId: string, content: string, replyTo?: ChatMessage | null) {
     if (!user) return;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: ChatMessage = {
@@ -646,15 +706,25 @@ function MessengerPage() {
       content,
       createdAt: Math.floor(Date.now() / 1000),
       readAt: null,
+      deliveredAt: null,
+      editedAt: null,
+      deletedAt: null,
       senderUsername: user.username,
       senderIsAdmin: user.is_admin ?? 0,
       reactions: [],
+      replyToId: replyTo?.id ?? null,
+      replyToContent: replyTo?.content ?? null,
+      replyToSenderUsername: replyTo?.senderUsername ?? null,
       pending: true,
     };
     setMessages((prev) => [...prev, optimistic]);
     setTimeout(() => scrollToBottom(false), 50);
     try {
-      const newMsg = await api.post<ChatMessage>("/api/chat/messages", { groupId, content });
+      const newMsg = await api.post<ChatMessage>("/api/chat/messages", {
+        groupId,
+        content,
+        ...(replyTo ? { replyToId: replyTo.id } : {}),
+      });
       setMessages((prev) => prev.map((m) => (m.id === tempId ? newMsg : m)));
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -662,31 +732,141 @@ function MessengerPage() {
     }
   }
 
+  function cancelEdit() {
+    setEditingMessage(null);
+    setInputText("");
+  }
+
+  function cancelReply() {
+    setReplyingTo(null);
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!activeGroupId || sending) return;
+
+    if (editingMessage) {
+      const content = inputText.trim();
+      if (content === "") return;
+      setSending(true);
+      try {
+        const res = await api.patch<{ editedAt: number }>("/api/chat/messages", {
+          groupId: activeGroupId,
+          messageId: editingMessage.id,
+          content,
+        });
+        setMessages((prev) =>
+          prev.map((m) => (m.id === editingMessage.id ? { ...m, content, editedAt: res.editedAt } : m))
+        );
+        cancelEdit();
+      } catch (err: any) {
+        toast.error(err.message || "Impossible de modifier le message");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (inputText.trim() === "" && !selectedImage) return;
 
     setShowEmojiPicker(false);
     setSending(true);
+    const replyTo = replyingTo;
+    setReplyingTo(null);
 
     try {
       if (selectedImage) {
         const image = selectedImage;
         setSelectedImage(null);
-        await sendOptimistic(activeGroupId, image);
+        await sendOptimistic(activeGroupId, image, replyTo);
       }
 
       if (inputText.trim() !== "") {
         const content = inputText.trim();
         setInputText("");
-        await sendOptimistic(activeGroupId, content);
+        await sendOptimistic(activeGroupId, content, replyTo);
       }
     } catch (err: any) {
       toast.error(err.message || "Erreur d'envoi");
     } finally {
       setSending(false);
     }
+  }
+
+  function startEditMessage(msg: ChatMessage) {
+    setReplyingTo(null);
+    setEditingMessage(msg);
+    setInputText(msg.content);
+    setReactionPickerFor(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  function startReplyMessage(msg: ChatMessage) {
+    setEditingMessage(null);
+    setReplyingTo(msg);
+    setReactionPickerFor(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  async function copyMessageText(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success("Texte copié !");
+    } catch {
+      toast.error("Impossible de copier le texte");
+    }
+    setReactionPickerFor(null);
+  }
+
+  async function deleteMessage(msg: ChatMessage) {
+    setReactionPickerFor(null);
+    if (!activeGroupId) return;
+    if (!window.confirm("Supprimer ce message pour tout le monde ? Cette action est irréversible.")) return;
+    try {
+      const res = await api.delete<{ deletedAt: number }>("/api/chat/messages", {
+        groupId: activeGroupId,
+        messageId: msg.id,
+      });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, content: "", deletedAt: res.deletedAt } : m))
+      );
+      if (editingMessage?.id === msg.id) cancelEdit();
+    } catch (err: any) {
+      toast.error(err.message || "Impossible de supprimer le message");
+    }
+  }
+
+  function openForwardModal(msg: ChatMessage) {
+    setReactionPickerFor(null);
+    setForwardingMessage(msg);
+    setForwardTargetId(null);
+  }
+
+  async function confirmForward() {
+    if (!forwardingMessage || !forwardTargetId) return;
+    setForwarding(true);
+    try {
+      if (forwardTargetId === activeGroupId) {
+        await sendOptimistic(forwardTargetId, forwardingMessage.content);
+      } else {
+        await api.post("/api/chat/messages", { groupId: forwardTargetId, content: forwardingMessage.content });
+      }
+      toast.success("Message transféré !");
+      setForwardingMessage(null);
+      setForwardTargetId(null);
+    } catch (err: any) {
+      toast.error(err.message || "Impossible de transférer le message");
+    } finally {
+      setForwarding(false);
+    }
+  }
+
+  function scrollToMessage(messageId: string) {
+    const el = messageRefs.current.get(messageId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-amber-400/60");
+    setTimeout(() => el.classList.remove("ring-2", "ring-amber-400/60"), 900);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -1319,22 +1499,50 @@ function MessengerPage() {
                     <div className="text-xs text-muted-foreground/60">Soyez le premier à envoyer un message !</div>
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  messages.map((msg, idx) => {
                     const isMe = msg.senderId === user?.id;
                     const isAdminSender = msg.senderIsAdmin === 1;
-                    const isImage = msg.content.startsWith("data:image/");
+                    const isDeleted = !!msg.deletedAt;
+                    const isImage = !isDeleted && msg.content.startsWith("data:image/");
                     const userColor = getUserColor(msg.senderUsername);
                     const pickerOpen = reactionPickerFor === msg.id;
+                    const prevMsg = messages[idx - 1];
+                    const showDateSeparator = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
 
                     return (
-                      <div
-                        key={msg.id}
-                        className={cn(
-                          "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity",
-                          isMe ? "ml-auto items-end" : "mr-auto items-start",
-                          msg.pending && "opacity-60"
+                      <Fragment key={msg.id}>
+                        {showDateSeparator && (
+                          <div className="flex items-center justify-center my-1 select-none">
+                            <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground/50 bg-white/[0.04] border border-white/[0.06] rounded-full px-3 py-1">
+                              {formatDateSeparator(msg.createdAt)}
+                            </span>
+                          </div>
                         )}
-                      >
+                        <div
+                          ref={(el) => {
+                            if (el) messageRefs.current.set(msg.id, el);
+                            else messageRefs.current.delete(msg.id);
+                          }}
+                          onContextMenu={(e) => {
+                            if (isDeleted || msg.pending) return;
+                            e.preventDefault();
+                            setReactionPickerFor(pickerOpen ? null : msg.id);
+                          }}
+                          onTouchStart={() => {
+                            if (!isDeleted && !msg.pending) startLongPress(msg.id);
+                          }}
+                          onTouchMove={() => {
+                            longPressMovedRef.current = true;
+                            cancelLongPress();
+                          }}
+                          onTouchEnd={cancelLongPress}
+                          onTouchCancel={cancelLongPress}
+                          className={cn(
+                            "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity rounded-lg",
+                            isMe ? "ml-auto items-end" : "mr-auto items-start",
+                            msg.pending && "opacity-60"
+                          )}
+                        >
                         {/* Sender labels */}
                         {!isActiveDirect && !isMe && (
                           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/50 mb-1 px-1 select-none">
@@ -1349,64 +1557,99 @@ function MessengerPage() {
                           </div>
                         )}
 
-                        {/* Bubble row — react button sits on the inner side, revealed on hover */}
+                        {/* Bubble row — react/action button sits on the inner side, revealed on hover (desktop) or long-press (mobile) */}
                         <div className={cn("relative flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
-                          {(() => {
-                            const emojiCount = !isImage ? getEmojiOnlyCount(msg.content) : null;
-                            const isEmojiMsg = emojiCount !== null;
-                            return (
-                              <div
-                                className={cn(
-                                  isEmojiMsg
-                                    ? cn(
-                                        "select-none p-1",
-                                        emojiCount === 1 && "text-5xl",
-                                        emojiCount === 2 && "text-4xl",
-                                        emojiCount === 3 && "text-3xl"
-                                      )
-                                    : cn(
-                                        "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
-                                        isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
-                                        isMe
-                                          ? cn(
-                                              "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
-                                              userColor.bg,
-                                              userColor.border,
-                                              userColor.shadow
-                                            )
-                                          : cn(
-                                              "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
-                                              userColor.border,
-                                              userColor.bgSubtle
-                                            )
-                                      )
-                                )}
-                              >
-                                {isImage ? (
-                                  <img
-                                    src={msg.content}
-                                    alt="Image envoyée"
-                                    className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                                    onClick={() => {
-                                      setFullscreenImage(msg.content);
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="whitespace-pre-wrap break-words break-all max-w-full">
-                                    {isEmojiMsg ? msg.content : formatMessageContent(msg.content)}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
+                          {isDeleted ? (
+                            <div
+                              className={cn(
+                                "flex items-center gap-1.5 italic rounded-2xl text-[13px] px-4 py-2.5 text-muted-foreground/50 border border-white/[0.06] bg-white/[0.02]",
+                                isMe ? "rounded-tr-none" : "rounded-tl-none"
+                              )}
+                            >
+                              <Ban className="h-3.5 w-3.5 shrink-0" />
+                              Message supprimé
+                            </div>
+                          ) : (
+                            (() => {
+                              const emojiCount = !isImage ? getEmojiOnlyCount(msg.content) : null;
+                              const isEmojiMsg = emojiCount !== null;
+                              return (
+                                <div
+                                  className={cn(
+                                    isEmojiMsg
+                                      ? cn(
+                                          "select-none p-1",
+                                          emojiCount === 1 && "text-5xl",
+                                          emojiCount === 2 && "text-4xl",
+                                          emojiCount === 3 && "text-3xl"
+                                        )
+                                      : cn(
+                                          "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
+                                          isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
+                                          isMe
+                                            ? cn(
+                                                "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
+                                                userColor.bg,
+                                                userColor.border,
+                                                userColor.shadow
+                                              )
+                                            : cn(
+                                                "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
+                                                userColor.border,
+                                                userColor.bgSubtle
+                                              )
+                                        )
+                                  )}
+                                >
+                                  {msg.replyToId && (
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        scrollToMessage(msg.replyToId!);
+                                      }}
+                                      className={cn(
+                                        "mb-1.5 rounded-lg border-l-2 pl-2 pr-2 py-1 cursor-pointer text-[11.5px] max-w-full",
+                                        isMe ? "bg-black/15 border-white/50" : "bg-white/[0.05] border-amber-400/60"
+                                      )}
+                                    >
+                                      <div className={cn("font-semibold truncate", isMe ? "text-white/85" : "text-amber-400")}>
+                                        {msg.replyToSenderUsername ?? "Message"}
+                                      </div>
+                                      <div className={cn("truncate", isMe ? "text-white/60" : "text-muted-foreground/60")}>
+                                        {msg.replyToContent === null
+                                          ? "Message supprimé"
+                                          : msg.replyToContent.startsWith("data:image/")
+                                            ? "📷 Photo"
+                                            : msg.replyToContent}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {isImage ? (
+                                    <img
+                                      src={msg.content}
+                                      alt="Image envoyée"
+                                      className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
+                                      onClick={() => {
+                                        setFullscreenImage(msg.content);
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="whitespace-pre-wrap break-words break-all max-w-full">
+                                      {isEmojiMsg ? msg.content : formatMessageContent(msg.content)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
+                          )}
 
-                          {!msg.pending && (
+                          {!msg.pending && !isDeleted && (
                             <button
                               type="button"
                               onClick={() => setReactionPickerFor(pickerOpen ? null : msg.id)}
-                              title="Réagir"
+                              title="Réagir / Actions"
                               className={cn(
-                                "shrink-0 mb-0.5 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
+                                "shrink-0 mb-0.5 hidden sm:flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
                                 pickerOpen ? "opacity-100 bg-white/[0.06] text-amber-400" : "opacity-0 group-hover:opacity-100"
                               )}
                             >
@@ -1419,27 +1662,72 @@ function MessengerPage() {
                               <div className="fixed inset-0 z-30" onClick={() => setReactionPickerFor(null)} />
                               <div
                                 className={cn(
-                                  "absolute bottom-full mb-1.5 z-40 flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-[oklch(0.16_0.03_250)] px-1.5 py-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150",
+                                  "absolute bottom-full mb-1.5 z-40 rounded-2xl border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
                                   isMe ? "right-0" : "left-0"
                                 )}
                               >
-                                {QUICK_REACTIONS.map((emoji) => (
+                                <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-white/[0.06]">
+                                  {QUICK_REACTIONS.map((emoji) => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() => toggleReaction(msg.id, emoji)}
+                                      className="flex h-8 w-8 items-center justify-center text-lg rounded-full hover:bg-white/[0.08] hover:scale-125 transition-all duration-100 cursor-pointer"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="flex flex-col p-1 min-w-[9.5rem]">
                                   <button
-                                    key={emoji}
                                     type="button"
-                                    onClick={() => toggleReaction(msg.id, emoji)}
-                                    className="flex h-8 w-8 items-center justify-center text-lg rounded-full hover:bg-white/[0.08] hover:scale-125 transition-all duration-100 cursor-pointer"
+                                    onClick={() => startReplyMessage(msg)}
+                                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-foreground/90 hover:bg-white/[0.06] transition-colors cursor-pointer"
                                   >
-                                    {emoji}
+                                    <Reply className="h-3.5 w-3.5" /> Répondre
                                   </button>
-                                ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => openForwardModal(msg)}
+                                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-foreground/90 hover:bg-white/[0.06] transition-colors cursor-pointer"
+                                  >
+                                    <Forward className="h-3.5 w-3.5" /> Transférer
+                                  </button>
+                                  {!isImage && (
+                                    <button
+                                      type="button"
+                                      onClick={() => copyMessageText(msg.content)}
+                                      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-foreground/90 hover:bg-white/[0.06] transition-colors cursor-pointer"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" /> Copier
+                                    </button>
+                                  )}
+                                  {isMe && !isImage && (
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditMessage(msg)}
+                                      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-foreground/90 hover:bg-white/[0.06] transition-colors cursor-pointer"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" /> Modifier
+                                    </button>
+                                  )}
+                                  {isMe && (
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteMessage(msg)}
+                                      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" /> Supprimer
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </>
                           )}
                         </div>
 
                         {/* Reaction pills */}
-                        {msg.reactions.length > 0 && (
+                        {!isDeleted && msg.reactions.length > 0 && (
                           <div className={cn("flex flex-wrap gap-1 mt-1 px-1", isMe ? "justify-end" : "justify-start")}>
                             {msg.reactions.map((r) => (
                               <button
@@ -1462,6 +1750,9 @@ function MessengerPage() {
 
                         {/* Msg timestamp and read receipt */}
                         <div className="flex items-center gap-1.5 mt-1.5 px-1 select-none">
+                          {msg.editedAt && !isDeleted && (
+                            <span className="text-[9px] text-muted-foreground/35 italic">modifié</span>
+                          )}
                           <span className="text-[9px] text-muted-foreground/35">
                             {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
                               hour: "2-digit",
@@ -1474,13 +1765,16 @@ function MessengerPage() {
                                 <Loader2 className="h-3 w-3 text-muted-foreground/40 animate-spin" />
                               ) : msg.readAt ? (
                                 <CheckCheck className="h-3 w-3 text-blue-400" />
+                              ) : msg.deliveredAt ? (
+                                <CheckCheck className="h-3 w-3 text-muted-foreground/40" />
                               ) : (
                                 <Check className="h-3 w-3 text-muted-foreground/40" />
                               )}
                             </div>
                           )}
                         </div>
-                      </div>
+                        </div>
+                      </Fragment>
                     );
                   })
                 )}
@@ -1541,6 +1835,44 @@ function MessengerPage() {
                   className="hidden"
                   onChange={handleImageSelect}
                 />
+
+                {replyingTo && (
+                  <div className="relative p-2.5 mb-2 rounded-xl border border-white/10 bg-white/[0.03] flex items-center gap-2.5 shrink-0">
+                    <Reply className="h-4 w-4 text-amber-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-amber-400 truncate">
+                        Réponse à {replyingTo.senderId === user?.id ? "vous-même" : replyingTo.senderUsername}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {replyingTo.content.startsWith("data:image/") ? "📷 Photo" : replyingTo.content}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelReply}
+                      className="p-1 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
+                {editingMessage && (
+                  <div className="relative p-2.5 mb-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] flex items-center gap-2.5 shrink-0">
+                    <Pencil className="h-4 w-4 text-amber-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-amber-400">Modification du message</div>
+                      <div className="text-xs text-muted-foreground truncate">{editingMessage.content}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="p-1 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
 
                 {selectedImage && (
                   <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center gap-3 shrink-0">
@@ -1657,7 +1989,7 @@ function MessengerPage() {
                           }
                         }}
                         disabled={sending}
-                        title={inputText.trim() || selectedImage ? "Envoyer" : "Enregistrer la voix"}
+                        title={editingMessage ? "Enregistrer les modifications" : inputText.trim() || selectedImage ? "Envoyer" : "Enregistrer la voix"}
                         className={cn(
                           "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90 shadow-lg",
                           (inputText.trim() || selectedImage)
@@ -1667,6 +1999,8 @@ function MessengerPage() {
                       >
                         {sending ? (
                           <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : editingMessage ? (
+                          <Check className="h-5 w-5" />
                         ) : (inputText.trim() || selectedImage) ? (
                           <Send className="h-5 w-5 fill-current" />
                         ) : (
@@ -1839,6 +2173,81 @@ function MessengerPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* FORWARD MESSAGE MODAL */}
+      {forwardingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-white/[0.08] bg-[oklch(0.15_0.03_250)] p-5 sm:p-6 shadow-2xl space-y-5 sm:space-y-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner">
+                <Forward className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-foreground font-sans">Transférer le message</h3>
+                <p className="text-xs text-muted-foreground truncate">
+                  {forwardingMessage.content.startsWith("data:image/") ? "📷 Photo" : forwardingMessage.content}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="border border-white/[0.08] bg-white/[0.02] rounded-xl max-h-60 overflow-y-auto p-2.5 space-y-1 select-none">
+                {groups.length === 0 ? (
+                  <div className="text-[12px] text-muted-foreground/50 italic p-2 text-center">
+                    Aucune conversation disponible
+                  </div>
+                ) : (
+                  groups.map((g) => (
+                    <label
+                      key={g.id}
+                      className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/[0.04] cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-all duration-150"
+                    >
+                      <input
+                        type="radio"
+                        name="forward-target"
+                        checked={forwardTargetId === g.id}
+                        onChange={() => setForwardTargetId(g.id)}
+                        className="border-white/20 bg-transparent text-amber-500 focus:ring-0 focus:ring-offset-0 h-4 w-4 cursor-pointer"
+                      />
+                      <span className="font-medium text-[13px]">
+                        {g.isDirect === 1 ? `${g.name} (Privé)` : g.name}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForwardingMessage(null);
+                    setForwardTargetId(null);
+                  }}
+                  className="px-4 py-2.5 text-xs font-semibold rounded-xl border border-white/10 hover:bg-white/5 text-muted-foreground transition-all duration-200 cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmForward}
+                  disabled={!forwardTargetId || forwarding}
+                  className="flex items-center gap-1.5 px-4.5 py-2.5 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-black transition-all duration-200 cursor-pointer"
+                >
+                  {forwarding ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-black" />
+                      Envoi…
+                    </>
+                  ) : (
+                    "Transférer"
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { markOnline, getOnlineUserIds } from "@/lib/presence.server";
+import { markMessagesDelivered } from "@/lib/chat-delivery.server";
 
 export const Route = createFileRoute("/api/presence")({
   server: {
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/api/presence")({
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
         markOnline(user.id);
+        markMessagesDelivered(getDb(), user.id, user.is_admin === 1);
         return json({ success: true });
       },
 

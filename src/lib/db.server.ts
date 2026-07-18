@@ -354,6 +354,24 @@ function migrate(db: Database.Database) {
   if (!chatMessageCols.has("read_at")) {
     db.exec("ALTER TABLE chat_messages ADD COLUMN read_at INTEGER");
   }
+  if (!chatMessageCols.has("delivered_at")) {
+    // Set once the recipient's client is confirmed running (heartbeat) or has
+    // fetched the group's messages — distinct from read_at, which only fires
+    // once they've actually opened this specific conversation.
+    db.exec("ALTER TABLE chat_messages ADD COLUMN delivered_at INTEGER");
+  }
+  if (!chatMessageCols.has("reply_to_id")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN reply_to_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL");
+  }
+  if (!chatMessageCols.has("edited_at")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER");
+  }
+  if (!chatMessageCols.has("deleted_at")) {
+    // Soft delete ("supprimer pour tout le monde") — content is replaced with
+    // a tombstone marker client-side rather than erased, so ordering/read
+    // receipts stay intact.
+    db.exec("ALTER TABLE chat_messages ADD COLUMN deleted_at INTEGER");
+  }
 
   seedChangelogIfEmpty(db);
 
