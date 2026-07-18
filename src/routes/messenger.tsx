@@ -207,6 +207,36 @@ function MessengerPage() {
   const [sending, setSending] = useState(false);
   const [inputText, setInputText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  // Mobile-only: iOS Safari doesn't shrink the layout viewport when the
+  // on-screen keyboard opens — it just overlays it, so the browser scrolls the
+  // whole document to keep the focused composer in view, dragging the sticky
+  // conversation header along with it. Tracking the *visual* viewport lets us
+  // shrink this page to exactly what's visible instead, so nothing needs to
+  // scroll. Scoped to this component and to small screens only — desktop is
+  // untouched (visualViewport there always matches the window anyway).
+  const [mobileVisibleHeight, setMobileVisibleHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = pageRef.current;
+    if (!vv || !el) return;
+    const update = () => {
+      if (window.innerWidth >= 768) { setMobileVisibleHeight(null); return; }
+      const visibleBottom = vv.height + vv.offsetTop;
+      const height = visibleBottom - el.getBoundingClientRect().top;
+      setMobileVisibleHeight(height > 0 ? height : null);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
 
   // Auto-grow the composer textarea like WhatsApp, capped at ~5 lines
   useEffect(() => {
@@ -665,7 +695,11 @@ function MessengerPage() {
       : "quelqu'un écrit…";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background">
+    <div
+      ref={pageRef}
+      className="flex flex-col h-full overflow-hidden min-h-0 bg-background"
+      style={mobileVisibleHeight ? { height: mobileVisibleHeight } : undefined}
+    >
       {/* Desktop-only: caps the workspace width and centers it so the sidebar
           and message bubbles don't stretch edge-to-edge on wide monitors. */}
       <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1400px] md:mx-auto">

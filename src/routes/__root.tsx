@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
@@ -255,44 +255,6 @@ function RootComponent() {
   useHeartbeat(!isPublicRoute && !!user);
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
-  // On the messenger page, size the app shell to the *visual* viewport rather
-  // than the static 100vh layout viewport. iOS Safari doesn't shrink 100vh when
-  // the on-screen keyboard opens — it just overlays the keyboard on top, so the
-  // browser falls back to auto-scrolling the whole document to keep the focused
-  // composer visible, dragging the sticky conversation header along with it.
-  // Tracking visualViewport.height keeps the shell exactly as tall as what's
-  // actually visible, so the composer stays in view without any page scroll.
-  const isMessenger = pathname === "/messenger";
-  const [messengerViewportHeight, setMessengerViewportHeight] = useState<number | null>(null);
-  useEffect(() => {
-    if (!isMessenger) { setMessengerViewportHeight(null); return; }
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => setMessengerViewportHeight(vv.height);
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-    };
-  }, [isMessenger]);
-
-  // Belt-and-suspenders: the messenger layout handles all of its own scrolling
-  // internally, so the document itself should never scroll on this page —
-  // that's what was moving the header. Lock it explicitly while active.
-  useEffect(() => {
-    if (!isMessenger) return;
-    const { overflow: prevHtml } = document.documentElement.style;
-    const { overflow: prevBody } = document.body.style;
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.documentElement.style.overflow = prevHtml;
-      document.body.style.overflow = prevBody;
-    };
-  }, [isMessenger]);
-
   // Public auth pages (and the pre-redirect state for signed-out users) render
   // full-screen without the app sidebar/header chrome.
   if (authLoading) {
@@ -322,10 +284,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div
-          className={cn("flex w-full", isMessenger ? "h-screen" : "min-h-screen")}
-          style={isMessenger && messengerViewportHeight ? { height: messengerViewportHeight } : undefined}
-        >
+        <div className="flex min-h-screen w-full">
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}
@@ -465,7 +424,7 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "pb-0 overflow-hidden"
+              pathname === "/messenger" && "overflow-hidden"
             )}>
               <Outlet />
             </main>
