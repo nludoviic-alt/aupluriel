@@ -424,7 +424,7 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "overflow-hidden"
+              pathname === "/messenger" && "pb-0 overflow-hidden"
             )}>
               <Outlet />
             </main>
