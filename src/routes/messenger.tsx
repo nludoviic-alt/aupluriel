@@ -1054,16 +1054,6 @@ function MessengerPage() {
                     </button>
                   )}
 
-                  {(!!user?.is_admin || isActiveDirect) && (
-                    <button
-                      onClick={() => handleDeleteGroup()}
-                      title="Supprimer la discussion"
-                      className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/30 text-red-400 transition-all duration-200 cursor-pointer active:scale-95"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline whitespace-nowrap">Supprimer</span>
-                    </button>
-                  )}
                 </div>
               </div>
 
