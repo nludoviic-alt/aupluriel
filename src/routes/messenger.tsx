@@ -470,6 +470,67 @@ function MessengerPage() {
   // scroll the original message into view when tapped.
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+  // Swipe-right-to-reply (WhatsApp-style). Manipulates the bubble's transform
+  // directly via refs during the drag instead of React state, so dragging
+  // doesn't re-render the whole message list on every touchmove.
+  const bubbleRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const swipeIconRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const swipeStateRef = useRef<{ id: string; startX: number; startY: number; dragX: number; horizontal: boolean } | null>(null);
+  const SWIPE_TRIGGER_PX = 56;
+  const SWIPE_MAX_PX = 72;
+
+  function handleSwipeTouchStart(e: React.TouchEvent, messageId: string) {
+    swipeStateRef.current = {
+      id: messageId,
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      dragX: 0,
+      horizontal: false,
+    };
+  }
+
+  function handleSwipeTouchMove(e: React.TouchEvent, messageId: string) {
+    const s = swipeStateRef.current;
+    if (!s || s.id !== messageId) return;
+    const deltaX = e.touches[0].clientX - s.startX;
+    const deltaY = e.touches[0].clientY - s.startY;
+
+    if (!s.horizontal) {
+      // Wait for a clear enough gesture before committing to horizontal —
+      // avoids hijacking what's really a vertical scroll or a tap.
+      if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) return; // vertical scroll wins, let it pass through
+      s.horizontal = true;
+    }
+
+    // Only rightward, clamped — same feel as WhatsApp's reply reveal.
+    s.dragX = Math.max(0, Math.min(SWIPE_MAX_PX, deltaX));
+    const bubble = bubbleRowRefs.current.get(messageId);
+    const icon = swipeIconRefs.current.get(messageId);
+    if (bubble) bubble.style.transform = `translateX(${s.dragX}px)`;
+    if (icon) icon.style.opacity = String(Math.min(1, s.dragX / (SWIPE_TRIGGER_PX * 0.85)));
+  }
+
+  function handleSwipeTouchEnd(messageId: string, msg: ChatMessage) {
+    const s = swipeStateRef.current;
+    swipeStateRef.current = null;
+    if (!s || s.id !== messageId) return;
+
+    const bubble = bubbleRowRefs.current.get(messageId);
+    const icon = swipeIconRefs.current.get(messageId);
+    if (bubble) {
+      bubble.style.transition = "transform 200ms ease-out";
+      bubble.style.transform = "translateX(0px)";
+      setTimeout(() => { if (bubble) bubble.style.transition = ""; }, 220);
+    }
+    if (icon) icon.style.opacity = "0";
+
+    if (s.dragX > SWIPE_TRIGGER_PX) {
+      if (typeof navigator.vibrate === "function") navigator.vibrate(15);
+      startReplyMessage(msg);
+    }
+  }
+
   function startLongPress(messageId: string) {
     longPressMovedRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -769,8 +830,8 @@ function MessengerPage() {
     setReplyingTo(null);
   }
 
-  async function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSendMessage(e?: React.SyntheticEvent) {
+    e?.preventDefault();
     if (!activeGroupId || sending) return;
 
     if (editingMessage) {
@@ -1512,8 +1573,10 @@ function MessengerPage() {
                 </div>
               </div>
 
-              {/* MESSAGES THREAD */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-10 pb-4 z-10 flex flex-col justify-end gap-4 relative">
+              {/* MESSAGES THREAD — extra top padding so the very first message
+                  (and its date separator) is never flush against the top
+                  edge when scrolled all the way up */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-16 pb-4 z-10 flex flex-col justify-end gap-4 relative">
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />
@@ -1556,15 +1619,24 @@ function MessengerPage() {
                             e.preventDefault();
                             setReactionPickerFor(pickerOpen ? null : msg.id);
                           }}
-                          onTouchStart={() => {
-                            if (!isDeleted && !msg.pending) startLongPress(msg.id);
+                          onTouchStart={(e) => {
+                            if (isDeleted || msg.pending) return;
+                            startLongPress(msg.id);
+                            handleSwipeTouchStart(e, msg.id);
                           }}
-                          onTouchMove={() => {
+                          onTouchMove={(e) => {
                             longPressMovedRef.current = true;
                             cancelLongPress();
+                            if (!isDeleted && !msg.pending) handleSwipeTouchMove(e, msg.id);
                           }}
-                          onTouchEnd={cancelLongPress}
-                          onTouchCancel={cancelLongPress}
+                          onTouchEnd={() => {
+                            cancelLongPress();
+                            handleSwipeTouchEnd(msg.id, msg);
+                          }}
+                          onTouchCancel={() => {
+                            cancelLongPress();
+                            handleSwipeTouchEnd(msg.id, msg);
+                          }}
                           className={cn(
                             "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity rounded-lg",
                             isMe ? "ml-auto items-end" : "mr-auto items-start",
@@ -1585,8 +1657,29 @@ function MessengerPage() {
                           </div>
                         )}
 
-                        {/* Bubble row — react/action button sits on the inner side, revealed on hover (desktop) or long-press (mobile) */}
-                        <div className={cn("relative flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}>
+                        {/* Bubble row — react/action button sits on the inner side, revealed on hover (desktop) or long-press (mobile).
+                            touchAction: pan-y lets the browser keep handling vertical scroll natively while a
+                            horizontal drag (swipe-to-reply) is tracked manually in JS without the two fighting. */}
+                        <div
+                          ref={(el) => {
+                            if (el) bubbleRowRefs.current.set(msg.id, el);
+                            else bubbleRowRefs.current.delete(msg.id);
+                          }}
+                          style={{ touchAction: "pan-y" }}
+                          className={cn("relative flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}
+                        >
+                          {!isDeleted && !msg.pending && (
+                            <div
+                              ref={(el) => {
+                                if (el) swipeIconRefs.current.set(msg.id, el);
+                                else swipeIconRefs.current.delete(msg.id);
+                              }}
+                              style={{ opacity: 0 }}
+                              className="absolute left-0 -translate-x-9 bottom-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-amber-400 pointer-events-none"
+                            >
+                              <Reply className="h-3.5 w-3.5" />
+                            </div>
+                          )}
                           {isDeleted ? (
                             <div
                               className={cn(
@@ -1809,8 +1902,9 @@ function MessengerPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* INPUT BAR */}
-              <div className="p-2.5 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
+              {/* INPUT BAR — tighter bottom padding on mobile only, so the
+                  composer sits closer to the bottom nav bar below it */}
+              <div className="px-2.5 pt-2.5 pb-1 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                   <>
@@ -1920,10 +2014,12 @@ function MessengerPage() {
                       </div>
                     )}
 
-                    <form
-                      onSubmit={handleSendMessage}
-                      className="flex items-end gap-1.5 sm:gap-2"
-                    >
+                    {/* Plain div, not a <form> — wrapping the composer in a real
+                        <form> makes Android/Chrome show its native "previous
+                        field / next field / done" navigation bar above the
+                        keyboard. Enter-to-send and the button's onClick both
+                        already call handleSendMessage() directly. */}
+                    <div className="flex items-end gap-1.5 sm:gap-2">
                       {/* WhatsApp-style rounded composer pill */}
                       <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[26px] border border-white/[0.08] bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/40 focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/40">
                         {listening ? (
@@ -2005,16 +2101,17 @@ function MessengerPage() {
 
                       {/* Action Button (Send vs Microphone) */}
                       <button
-                        type={inputText.trim() || selectedImage ? "submit" : "button"}
+                        type="button"
                         onClick={(e) => {
                           if (!inputText.trim() && !selectedImage) {
-                            e.preventDefault();
                             if (whisperSupported) {
                               toggleVoice();
                             } else {
                               toast.error("L'enregistrement audio n'est pas supporté par votre navigateur.");
                             }
+                            return;
                           }
+                          handleSendMessage(e);
                         }}
                         disabled={sending}
                         title={editingMessage ? "Enregistrer les modifications" : inputText.trim() || selectedImage ? "Envoyer" : "Enregistrer la voix"}
@@ -2035,7 +2132,7 @@ function MessengerPage() {
                           <Mic className="h-5 w-5" />
                         )}
                       </button>
-                    </form>
+                    </div>
               </div>
             </>
           ) : (
