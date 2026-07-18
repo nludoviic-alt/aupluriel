@@ -284,7 +284,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex min-h-screen w-full">
+        <div className="flex h-dvh w-full">
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}

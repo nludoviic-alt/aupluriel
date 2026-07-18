@@ -135,7 +135,14 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
+              // h-dvh (not min-h-svh) so the box is a stable, fixed height —
+              // mobile browsers otherwise shift 100vh/100svh as the address
+              // bar collapses/expands, occasionally making the page taller
+              // than the viewport and triggering native page-scroll instead
+              // of the intended internal scroll areas (e.g. messenger.tsx's
+              // message thread), which drags "fixed" chrome like the chat
+              // composer along with it.
+              "group/sidebar-wrapper flex h-dvh w-full has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}
             ref={ref}

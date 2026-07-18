@@ -492,6 +492,32 @@ function MessengerPage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
+  // Swipe-down-to-dismiss for the fullscreen image (WhatsApp-style) — tracks
+  // the vertical drag offset live so the image follows the finger and the
+  // backdrop fades out, then either commits the close or snaps back.
+  const [lightboxDragY, setLightboxDragY] = useState(0);
+  const [lightboxDragging, setLightboxDragging] = useState(false);
+  const lightboxDragStartRef = useRef<number | null>(null);
+
+  function handleLightboxTouchStart(e: React.TouchEvent) {
+    lightboxDragStartRef.current = e.touches[0].clientY;
+    setLightboxDragging(true);
+  }
+  function handleLightboxTouchMove(e: React.TouchEvent) {
+    if (lightboxDragStartRef.current === null) return;
+    const delta = e.touches[0].clientY - lightboxDragStartRef.current;
+    if (delta > 0) setLightboxDragY(delta);
+  }
+  function handleLightboxTouchEnd() {
+    lightboxDragStartRef.current = null;
+    setLightboxDragging(false);
+    if (lightboxDragY > 110) {
+      setFullscreenImage(null);
+    } else {
+      setLightboxDragY(0);
+    }
+  }
+
   // Listen for Escape key to close fullscreen image
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -501,6 +527,8 @@ function MessengerPage() {
     };
     if (fullscreenImage) {
       window.addEventListener("keydown", handleKeyDown);
+    } else {
+      setLightboxDragY(0);
     }
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
@@ -2256,20 +2284,38 @@ function MessengerPage() {
       {fullscreenImage && (
         <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          style={{
+            opacity: lightboxDragY > 0 ? Math.max(0.25, 1 - lightboxDragY / 300) : 1,
+            transition: lightboxDragging ? "none" : "opacity 200ms",
+          }}
           onClick={() => setFullscreenImage(null)}
         >
-          {/* Close button at top right */}
+          {/* Close button — sits below the notch/status bar, opaque enough
+              to read at a glance, with a visible pressed state on tap since
+              hover never fires on touch. */}
           <button
             type="button"
             onClick={() => setFullscreenImage(null)}
-            className="absolute top-4 right-4 z-50 p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-white transition-colors cursor-pointer"
+            style={{ top: "calc(1rem + env(safe-area-inset-top))" }}
+            className="absolute right-4 z-50 p-2.5 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/30 active:scale-90 text-white shadow-lg transition-all duration-150 cursor-pointer"
             title="Fermer"
           >
             <X className="h-6 w-6" />
           </button>
-          
-          {/* Fullscreen Image container */}
-          <div className="relative max-w-[95vw] max-h-[85vh] flex items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
+
+          {/* Fullscreen Image container — drag down to dismiss */}
+          <div
+            className="relative max-w-[95vw] max-h-[85vh] flex items-center justify-center select-none touch-none"
+            style={{
+              transform: `translateY(${lightboxDragY}px)`,
+              transition: lightboxDragging ? "none" : "transform 200ms",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleLightboxTouchStart}
+            onTouchMove={handleLightboxTouchMove}
+            onTouchEnd={handleLightboxTouchEnd}
+            onTouchCancel={handleLightboxTouchEnd}
+          >
             <img
               src={fullscreenImage}
               alt="Aperçu plein écran"
