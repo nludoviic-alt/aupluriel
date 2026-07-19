@@ -1399,27 +1399,28 @@ function MessengerPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-[#08080a] md:p-4 lg:p-6">
+    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-[#050505] md:p-4 lg:p-6">
       {/* Main Premium Container — floating card effect on desktop */}
-      <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1240px] md:mx-auto md:rounded-[32px] border border-white/[0.08] bg-black/10 backdrop-blur-xl shadow-2xl overflow-hidden relative">
+      <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1280px] md:mx-auto md:rounded-[32px] border border-white/[0.06] bg-[#0a0a0c] shadow-2xl overflow-hidden relative">
         {/* Subtle Ambient background flares within the container */}
-        <div className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 bg-amber-500/[0.03] blur-[100px] rounded-full" />
-        <div className="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 bg-violet-600/[0.03] blur-[100px] rounded-full" />
+        <div className="pointer-events-none absolute -top-40 -left-40 w-[500px] h-[500px] bg-amber-500/[0.04] blur-[120px] rounded-full" />
+        <div className="pointer-events-none absolute -bottom-40 -right-40 w-[500px] h-[500px] bg-violet-600/[0.04] blur-[120px] rounded-full" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/[0.02] blur-[140px] rounded-full" />
 
         {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
         <div className={cn(
-          "items-center justify-between border-b border-white/[0.06] md:border-b-white/[0.08] bg-white/[0.01] md:bg-white/[0.02] backdrop-blur-xl px-5 py-4 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
+          "items-center justify-between border-b border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-2xl px-5 py-3.5 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
           activeGroupId ? "hidden md:flex" : "flex"
         )}>
         <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] shrink-0">
-            <MessageSquare className="h-5.5 w-5.5" />
+          <div className="flex h-10 w-10 md:h-11 md:w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.1)] shrink-0">
+            <MessageSquare className="h-5 w-5 md:h-5.5 md:w-5.5" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
-            <h1 className="text-[19px] md:text-2xl font-bold tracking-tight text-foreground font-sans truncate leading-none mb-1">Mes Messages</h1>
-            <div className="flex items-center gap-2">
-              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-[10px] md:text-xs text-muted-foreground/40 md:text-muted-foreground/50 font-bold truncate leading-none uppercase tracking-widest">Services Actifs</p>
+            <h1 className="text-lg md:text-2xl font-black tracking-tight text-foreground font-sans truncate leading-none mb-1">Messages</h1>
+            <div className="flex items-center gap-1.5">
+              <span className="flex h-1 w-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+              <p className="text-[9px] md:text-xs text-muted-foreground/50 font-black truncate leading-none uppercase tracking-[0.15em]">Réseau Sécurisé</p>
             </div>
           </div>
         </div>
@@ -1442,47 +1443,39 @@ function MessengerPage() {
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* SIDEBAR COL */}
         <div className={cn("flex flex-col bg-white/[0.01] overflow-hidden space-y-0", activeGroupId ? "hidden md:flex md:w-[350px] shrink-0" : "w-full md:w-[350px] shrink-0")}>
-          {/* SEARCH BAR (WhatsApp/Example style) */}
-          <div className="p-3.5 sm:p-4 pb-2">
+          {/* SEARCH BAR */}
+          <div className="px-4 py-3">
             <div className="relative group">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 group-focus-within:text-amber-400 transition-colors" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/20 group-focus-within:text-amber-500/50 transition-colors" />
               <input 
                 type="text"
-                placeholder="Rechercher..."
+                placeholder="Rechercher une discussion..."
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
                 disabled={!!activeGroupId}
-                className="w-full bg-white/[0.02] md:bg-white/[0.03] border border-white/[0.05] md:border-white/[0.06] rounded-[18px] md:rounded-2xl py-2.5 pl-10 pr-4 text-[16px] placeholder:text-muted-foreground/25 focus:outline-none focus:border-amber-500/20 focus:bg-white/[0.04] transition-all"
+                className="w-full bg-white/[0.03] border border-white/[0.05] rounded-2xl py-2.5 pl-10 pr-4 text-[15px] placeholder:text-muted-foreground/20 focus:outline-none focus:border-amber-500/20 focus:bg-white/[0.05] transition-all"
               />
             </div>
           </div>
 
-                  {/* FILTER TABS (Example style) */}
-          <div className="flex items-center gap-1 md:gap-2 p-1 md:p-0 mx-3.5 md:mx-0 sm:mx-4 pb-0 md:pb-4 mb-4 md:mb-2 bg-white/[0.02] md:bg-transparent border border-white/[0.05] md:border-none rounded-2xl md:rounded-none overflow-x-auto scrollbar-none shrink-0">
+          {/* FILTER TABS */}
+          <div className="flex items-center gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-none shrink-0">
             {[
-              { id: "all", label: "Tous", count: groupsWithAvatars.length + (!!user?.is_admin ? verifiedUsers.length : 0) },
-              { id: "personal", label: "Personnels", count: !!user?.is_admin ? verifiedUsers.length : (userDmGroup ? 1 : 0) },
-              { id: "groups", label: "Groupes", count: publicGroups.length },
+              { id: "all", label: "Tous" },
+              { id: "personal", label: "Privés" },
+              { id: "groups", label: "Groupes" },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setSidebarFilter(tab.id as any)}
                 className={cn(
-                  "flex-1 md:flex-initial flex items-center justify-center gap-2 px-3 py-2 md:py-1.5 md:px-4 rounded-xl md:rounded-full text-[13px] font-bold md:font-semibold transition-all whitespace-nowrap active:scale-95 cursor-pointer",
+                  "flex-1 flex items-center justify-center px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap active:scale-95 cursor-pointer border",
                   sidebarFilter === tab.id
-                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[inset_0_1px_0_rgba(245,158,11,0.15)] md:shadow-none"
-                    : "bg-transparent md:bg-white/[0.03] border-transparent md:border-white/[0.06] text-muted-foreground/50 md:text-muted-foreground/60 hover:text-foreground"
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-400 shadow-[0_2px_10px_-4px_rgba(245,158,11,0.2)]"
+                    : "bg-white/[0.02] border-white/[0.05] text-muted-foreground/40 hover:text-muted-foreground/60 hover:bg-white/[0.04]"
                 )}
               >
                 {tab.label}
-                {tab.count > 0 && (
-                  <span className={cn(
-                    "flex h-4.5 min-w-[1.125rem] items-center justify-center rounded-full px-1 text-[9px] font-black",
-                    sidebarFilter === tab.id ? "bg-amber-500/20" : "bg-white/10"
-                  )}>
-                    {tab.count}
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -1584,19 +1577,19 @@ function MessengerPage() {
                         key={row.id}
                         onClick={row.onClick}
                         className={cn(
-                          "w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-left relative cursor-pointer active:scale-[0.98] group/row mb-1.5 bg-white/[0.01] border-white/[0.02] md:bg-transparent md:border-transparent",
+                          "w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-[22px] border transition-all duration-300 text-left relative cursor-pointer group/row mb-2",
                           row.isActive
-                            ? "bg-gradient-to-r from-amber-500/[0.06] to-orange-500/[0.01] border-l-2 border-l-amber-500 border-y-transparent border-r-transparent text-foreground shadow-lg shadow-black/10 md:border-none md:bg-amber-500/[0.08] md:border-amber-500/25 md:shadow-black/20"
-                            : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground hover:border-white/[0.08]"
+                            ? "bg-gradient-to-br from-amber-500/15 to-orange-500/5 border-amber-500/30 shadow-[0_8px_20px_-8px_rgba(245,158,11,0.2)]"
+                            : "bg-white/[0.02] border-white/[0.04] text-muted-foreground hover:bg-white/[0.04] hover:border-white/[0.08]"
                         )}
                       >
                         <div className="relative shrink-0">
                           <div className={cn(
-                            "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-all duration-200 group-hover/row:scale-105 overflow-hidden bg-background",
+                            "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-black shadow-lg transition-all duration-300 group-hover/row:scale-105 overflow-hidden bg-background",
                             row.type === "personal"
-                              ? (row.avatar && row.avatar.startsWith("http") ? "" : cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name)))
+                              ? (row.avatar && row.avatar.startsWith("http") ? "border-white/10" : cn("bg-gradient-to-br border-white/5", getAvatarStyle(row.avatar || row.name)))
                               : "bg-amber-500/10 border-amber-500/20 text-amber-400",
-                            isOnline && "ring-2 ring-emerald-500/35 ring-offset-2 ring-offset-black"
+                            isOnline && "ring-2 ring-emerald-500/20 ring-offset-2 ring-offset-[#0a0a0c]"
                           )}>
                             {row.type === "personal" ? (
                               row.avatar && row.avatar.startsWith("http") ? (
@@ -1605,39 +1598,47 @@ function MessengerPage() {
                                 getInitial(row.avatar || row.name)
                               )
                             ) : (
-                              <Hash className="h-5 w-5" />
+                              <Hash className="h-5.5 w-5.5" strokeWidth={2.5} />
                             )}
                           </div>
                           {isOnline && (
-                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-500 animate-pulse" />
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#0a0a0c] bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                           )}
                         </div>
                         
-                        <div className="min-w-0 flex-1 flex flex-col justify-center -space-y-0.5">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <div className="font-bold text-[14.5px] sm:text-[15px] leading-tight truncate">
+                        <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className={cn(
+                              "font-black text-[15px] leading-tight truncate tracking-tight",
+                              row.isActive ? "text-amber-400" : "text-white/90"
+                            )}>
                               {row.name}
                             </div>
                             {row.time && (
-                              <div className="text-[10px] font-medium text-muted-foreground/35 md:text-muted-foreground/40 whitespace-nowrap">
+                              <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-wider">
                                 {row.time}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <div className={cn(
-                              "text-[12.5px] md:text-[12px] truncate leading-tight",
-                              row.isActive ? "text-muted-foreground" : "text-muted-foreground/45 md:text-muted-foreground/50"
+                              "text-[13px] truncate leading-snug font-medium",
+                              row.isActive ? "text-white/60" : "text-white/30"
                             )}>
                               {row.lastMessage}
                             </div>
                             {!!row.unread && row.unread > 0 && (
-                              <div className="h-4.5 min-w-[1.125rem] px-1.5 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[9.5px] font-black text-black shadow-lg shadow-amber-950/20">
+                              <div className="h-5 min-w-[1.25rem] px-1.5 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[10px] font-black text-black shadow-[0_4px_10px_-2px_rgba(245,158,11,0.4)] animate-in zoom-in duration-300">
                                 {row.unread}
                               </div>
                             )}
                           </div>
                         </div>
+                        
+                        {/* Selected Indicator Dot */}
+                        {row.isActive && (
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-amber-500 rounded-l-full shadow-[0_0_12px_rgba(245,158,11,0.5)]" />
+                        )}
                       </button>
                     );
                   });
@@ -1916,20 +1917,20 @@ function MessengerPage() {
                                           isEmojiMsg
                                             ? cn(
                                                 "select-none p-1",
-                                                emojiCount === 1 && "text-5xl",
-                                                emojiCount === 2 && "text-4xl",
-                                                emojiCount === 3 && "text-3xl"
+                                                emojiCount === 1 && "text-5xl drop-shadow-lg",
+                                                emojiCount === 2 && "text-4xl drop-shadow-md",
+                                                emojiCount === 3 && "text-3xl drop-shadow-sm"
                                               )
                                             : cn(
-                                                "rounded-[18px] text-[15px] leading-[1.35] relative shadow-md",
-                                                isImage ? "p-1 overflow-hidden" : "px-3 py-1.5 pb-5 min-w-[72px] max-w-full",
+                                                "rounded-[22px] text-[15px] leading-[1.4] relative shadow-lg transition-all duration-200",
+                                                isImage ? "p-1 overflow-hidden" : "px-4 py-2.5 pb-6 min-w-[80px] max-w-full",
                                                 isMe
-                                                  ? "md:text-white md:bg-gradient-to-br md:from-amber-500 md:to-orange-600 md:shadow-lg text-black bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-950/15 border border-amber-300/15"
-                                                  : "md:text-foreground md:border-white/[0.05] md:bg-[#202020] md:shadow-sm text-white bg-[#1c1c1e] border border-white/[0.06] shadow-md",
-                                                // Sharp "tail" only on the last bubble of a run
+                                                  ? "bg-gradient-to-br from-amber-400 via-amber-500 to-orange-600 text-black border border-amber-300/20 shadow-amber-500/10"
+                                                  : "bg-white/[0.05] border border-white/[0.08] text-white/95 backdrop-blur-md shadow-black/20",
+                                                // Smooth grouping logic
                                                 isMe
-                                                  ? (isGroupedWithNext ? "md:rounded-tr-none" : "rounded-tr-[4px] md:rounded-tr-none")
-                                                  : (isGroupedWithNext ? "md:rounded-tl-none" : "rounded-tl-[4px] md:rounded-tl-none")
+                                                  ? (isGroupedWithNext ? "rounded-br-[6px]" : "rounded-br-[22px]")
+                                                  : (isGroupedWithNext ? "rounded-bl-[6px]" : "rounded-bl-[22px]")
                                               )
                                         )}
                                       >
@@ -1987,25 +1988,25 @@ function MessengerPage() {
                                         {/* Integrated Timestamp & Status */}
                                         {!isEmojiMsg && (
                                           <div className={cn(
-                                            "absolute bottom-1 right-2.5 flex items-center gap-0.5 select-none pointer-events-none",
-                                            isMe ? "text-black/55 md:text-white/60" : "text-white/35"
+                                            "absolute bottom-1.5 right-3.5 flex items-center gap-1 select-none pointer-events-none",
+                                            isMe ? "text-black/50" : "text-white/30"
                                           )}>
-                                            <span className="text-[10px] font-medium tabular-nums">
+                                            <span className="text-[10px] font-bold tabular-nums">
                                               {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
                                                 hour: "2-digit",
                                                 minute: "2-digit",
                                               })}
                                             </span>
                                             {isMe && (
-                                              <div className="flex items-center scale-90">
+                                              <div className="flex items-center scale-75 origin-right">
                                                 {msg.pending ? (
-                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                 ) : msg.readAt ? (
-                                                  <CheckCheck className="h-3 w-3 text-blue-600 md:text-blue-400" />
+                                                  <CheckCheck className="h-3.5 w-3.5 text-black/70" />
                                                 ) : msg.deliveredAt ? (
-                                                  <CheckCheck className="h-3 w-3" />
+                                                  <CheckCheck className="h-3.5 w-3.5" />
                                                 ) : (
-                                                  <Check className="h-3 w-3" />
+                                                  <Check className="h-3.5 w-3.5" />
                                                 )}
                                               </div>
                                             )}
@@ -2274,211 +2275,167 @@ function MessengerPage() {
               {showScrollBottom && (
                 <button
                   onClick={() => scrollToBottom(false)}
-                  className="absolute bottom-28 right-3 sm:right-6 z-30 h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-black shadow-[0_4px_16px_-2px_rgba(245,158,11,0.45)] border border-amber-200/25 hover:scale-110 active:scale-95 transition-all animate-in zoom-in fade-in duration-200 cursor-pointer"
+                  className="absolute bottom-24 right-4 sm:right-8 z-30 h-11 w-11 flex items-center justify-center rounded-full bg-white/5 backdrop-blur-xl text-amber-400 shadow-2xl border border-white/10 hover:scale-110 active:scale-90 transition-all animate-in zoom-in fade-in duration-300 cursor-pointer group/scroll"
                   title="Aller aux derniers messages"
                 >
-                  <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 rotate-90" />
+                  <ChevronRight className="h-5 w-5 rotate-90 transition-transform group-hover/scroll:translate-y-0.5" />
+                  <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-md opacity-0 group-hover/scroll:opacity-100 transition-opacity" />
                 </button>
               )}
 
-              {/* INPUT BAR — mobile: premium glass bar matching list FAB /
-                  bubble amber language; desktop keeps softer treatment. */}
+              {/* INPUT BAR — mobile: floating premium glass bar */}
               <div className={cn(
-                "shrink-0 relative z-10",
-                "px-2.5 pt-1.5 md:px-4 md:pt-4",
-                "border-t border-white/[0.06]",
-                "bg-[#0a0a0c] md:bg-gradient-to-b md:from-transparent md:to-black/30",
-                keyboardOpen ? "pb-1.5 md:pb-4" : "pb-[max(6px,env(safe-area-inset-bottom))] md:pb-4"
+                "shrink-0 relative z-[110]",
+                "px-2.5 pb-[env(safe-area-inset-bottom)] md:px-6 md:pb-6 pt-2",
+                "bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/80 to-transparent",
+                keyboardOpen && "pb-2"
               )}>
-                {showEmojiPicker && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[100]"
-                      onClick={() => setShowEmojiPicker(false)}
-                    />
-                    <div className="absolute bottom-[4.25rem] md:bottom-[4.5rem] left-1/2 -translate-x-1/2 z-[101] bg-[#141416] border border-white/[0.1] rounded-[22px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.85)] w-[min(21rem,calc(100vw-1.25rem))] animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
-                      <div className="flex items-center gap-1 p-2 border-b border-white/[0.06] overflow-x-auto scrollbar-none">
-                        {EMOJI_CATEGORIES.map((cat, idx) => (
-                          <button
-                            key={cat.name}
-                            type="button"
-                            onClick={() => setActiveEmojiCategory(idx)}
-                            title={cat.name}
-                            className={cn(
-                              "flex h-9 w-9 shrink-0 items-center justify-center text-[16px] rounded-xl transition-all duration-150 cursor-pointer",
-                              idx === activeEmojiCategory
-                                ? "bg-amber-500/15 border border-amber-500/30 text-amber-300"
-                                : "hover:bg-white/[0.06] border border-transparent"
-                            )}
-                          >
-                            {cat.icon}
-                          </button>
-                        ))}
+                <div className="max-w-[1000px] mx-auto">
+                  {showEmojiPicker && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-[100]"
+                        onClick={() => setShowEmojiPicker(false)}
+                      />
+                      <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-[101] bg-[#141416]/95 backdrop-blur-xl border border-white/[0.1] rounded-[24px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.9)] w-[calc(100vw-1.5rem)] max-w-[400px] animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
+                        <div className="flex items-center gap-1 p-2.5 border-b border-white/[0.06] overflow-x-auto scrollbar-none">
+                          {EMOJI_CATEGORIES.map((cat, idx) => (
+                            <button
+                              key={cat.name}
+                              type="button"
+                              onClick={() => setActiveEmojiCategory(idx)}
+                              title={cat.name}
+                              className={cn(
+                                "flex h-9 w-9 shrink-0 items-center justify-center text-[16px] rounded-xl transition-all duration-150 cursor-pointer",
+                                idx === activeEmojiCategory
+                                  ? "bg-amber-500/20 border border-amber-500/40 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                                  : "hover:bg-white/[0.06] border border-transparent text-white/40"
+                              )}
+                            >
+                              {cat.icon}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5 p-3 max-h-56 overflow-y-auto">
+                          {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, idx) => (
+                            <button
+                              key={`${emoji}-${idx}`}
+                              type="button"
+                              onClick={() => handleSelectEmoji(emoji)}
+                              className="flex h-10 w-10 items-center justify-center text-[20px] rounded-xl hover:bg-white/[0.08] active:bg-amber-500/20 active:scale-90 transition-all duration-100 cursor-pointer"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-6 gap-1 p-2.5 max-h-52 overflow-y-auto">
-                        {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, idx) => (
-                          <button
-                            key={`${emoji}-${idx}`}
-                            type="button"
-                            onClick={() => handleSelectEmoji(emoji)}
-                            className="flex h-9 w-9 items-center justify-center text-[18px] rounded-xl hover:bg-white/[0.06] active:bg-amber-500/10 active:scale-95 transition-all duration-100 cursor-pointer"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
+                    </>
+                  )}
+
+                  {replyingTo && (
+                    <div className="relative mx-1 px-3.5 py-2.5 mb-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md flex items-center gap-3 shrink-0 shadow-lg animate-in slide-in-from-bottom-2 duration-200">
+                      <div className="absolute left-0 top-2 bottom-2 w-1 bg-amber-500 rounded-full" />
+                      <Reply className="h-4 w-4 text-amber-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">
+                          Réponse à {replyingTo.senderId === user?.id ? "Moi" : replyingTo.senderUsername}
+                        </div>
+                        <div className="text-[13px] text-white/60 truncate leading-tight">
+                          {replyingTo.content.startsWith("data:image/") ? "📷 Photo" : replyingTo.content}
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleImageSelect}
-                />
-
-                {replyingTo && (
-                  <div className="relative mx-0.5 px-3 py-2.5 mb-2 rounded-2xl border-l-[3px] border-l-amber-400 border border-amber-500/15 bg-gradient-to-r from-amber-500/[0.1] to-white/[0.03] flex items-center gap-2.5 shrink-0">
-                    <Reply className="h-4 w-4 text-amber-400 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-semibold text-amber-400 truncate leading-tight">
-                        Réponse à {replyingTo.senderId === user?.id ? "vous-même" : replyingTo.senderUsername}
-                      </div>
-                      <div className="text-[12px] text-muted-foreground/75 truncate mt-0.5 leading-snug">
-                        {replyingTo.content.startsWith("data:image/") ? "📷 Photo" : replyingTo.content}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelReply}
-                      className="p-1.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-
-                {editingMessage && (
-                  <div className="relative mx-0.5 px-3 py-2.5 mb-2 rounded-2xl border-l-[3px] border-l-amber-400 border border-amber-500/20 bg-gradient-to-r from-amber-500/[0.12] to-transparent flex items-center gap-2.5 shrink-0">
-                    <Pencil className="h-4 w-4 text-amber-400 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-semibold text-amber-400 leading-tight">Modification du message</div>
-                      <div className="text-[12px] text-muted-foreground/75 truncate mt-0.5 leading-snug">{editingMessage.content}</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={cancelEdit}
-                      className="p-1.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-
-                {selectedImage && (
-                  <div className="relative mx-0.5 p-2.5 mb-2 rounded-2xl border border-white/[0.1] bg-white/[0.04] flex items-center gap-3 shrink-0">
-                    <div className="relative h-14 w-14 shrink-0 rounded-xl overflow-hidden border border-amber-500/20 bg-black/40 shadow-inner ring-1 ring-amber-500/10">
-                      <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => setSelectedImage(null)}
-                        className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors cursor-pointer"
+                        onClick={cancelReply}
+                        className="h-7 w-7 flex items-center justify-center rounded-full text-white/30 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
-                    <div className="text-[12px] text-muted-foreground leading-snug">
-                      Image prête · appuyez sur envoyer
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Composer row — WhatsApp structure, Au Pluriel amber identity */}
-                <div className="flex items-end gap-2 md:gap-2.5">
-                  <div
-                    className={cn(
+                  {editingMessage && (
+                    <div className="relative mx-1 px-3.5 py-2.5 mb-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md flex items-center gap-3 shrink-0 shadow-lg animate-in slide-in-from-bottom-2 duration-200">
+                      <div className="absolute left-0 top-2 bottom-2 w-1 bg-amber-500 rounded-full" />
+                      <Pencil className="h-4 w-4 text-amber-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">Modification</div>
+                        <div className="text-[13px] text-white/60 truncate leading-tight">{editingMessage.content}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        className="h-7 w-7 flex items-center justify-center rounded-full text-white/30 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Composer row — Floating bar */}
+                  <div className="flex items-end gap-2.5">
+                    <div className={cn(
                       "flex flex-1 min-w-0 items-end",
-                      "rounded-[22px] md:rounded-[26px]",
-                      "border border-white/[0.09] md:border-white/[0.08]",
-                      "bg-[#1c1c1e] md:bg-white/[0.04]",
-                      "pl-0.5 pr-1 py-0.5 md:py-1",
-                      "focus-within:border-amber-500/30 md:focus-within:border-amber-500/40",
-                      "focus-within:bg-[#222224] md:focus-within:bg-white/[0.06]",
-                      "transition-colors duration-150"
-                    )}
-                  >
+                      "rounded-[26px] md:rounded-[28px]",
+                      "border border-white/[0.12]",
+                      "bg-white/[0.04] backdrop-blur-xl shadow-2xl",
+                      "p-1.5 transition-all duration-300 ease-out",
+                      "focus-within:border-amber-500/40 focus-within:bg-white/[0.06] focus-within:shadow-amber-500/5"
+                    )}>
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90",
+                          showEmojiPicker ? "text-amber-400 bg-amber-400/10" : "text-white/30 hover:text-white/60"
+                        )}
+                      >
+                        <Smile className="h-5.5 w-5.5" strokeWidth={2} />
+                      </button>
+
+                      <textarea
+                        ref={textareaRef}
+                        rows={1}
+                        value={inputText}
+                        onChange={(e) => {
+                          setInputText(e.target.value);
+                          notifyTyping();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            const isMobile = window.matchMedia("(max-width: 767px)").matches;
+                            if (isMobile) return;
+                            e.preventDefault();
+                            handleSendMessage(e);
+                          }
+                        }}
+                        placeholder="Votre message..."
+                        className="flex-1 min-w-0 self-center bg-transparent border-none text-[16px] md:text-[15px] text-white placeholder:text-white/20 focus:outline-none focus:ring-0 resize-none max-h-[10rem] overflow-y-auto leading-[1.4] py-2 px-1 tracking-tight caret-amber-400"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/30 hover:text-white/60 transition-all duration-200 cursor-pointer active:scale-90"
+                      >
+                        <Paperclip className="h-5 w-5" strokeWidth={2} />
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                      title="Ajouter un emoji"
+                      onClick={(e) => (inputText.trim() || selectedImage) && handleSendMessage(e)}
+                      disabled={sending || (!inputText.trim() && !selectedImage)}
                       className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-150 cursor-pointer active:scale-90",
-                        showEmojiPicker
-                          ? "text-amber-400 bg-amber-500/15"
-                          : "text-white/40 hover:text-amber-400 hover:bg-white/[0.06]"
+                        "flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-all duration-300 cursor-pointer active:scale-90",
+                        (inputText.trim() || selectedImage)
+                          ? "bg-gradient-to-br from-amber-400 to-orange-600 text-black shadow-[0_4px_20px_-4px_rgba(245,158,11,0.5)] border border-amber-300/30"
+                          : "bg-white/[0.03] text-white/10 border border-white/[0.05] cursor-not-allowed"
                       )}
                     >
-                      <Smile className="h-[22px] w-[22px] md:h-5 md:w-5" strokeWidth={1.75} />
-                    </button>
-
-                    <textarea
-                      ref={textareaRef}
-                      rows={1}
-                      value={inputText}
-                      onChange={(e) => {
-                        setInputText(e.target.value);
-                        notifyTyping();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          const isMobile = window.matchMedia("(max-width: 767px)").matches;
-                          if (isMobile) return;
-                          e.preventDefault();
-                          handleSendMessage(e);
-                        }
-                      }}
-                      onPaste={handlePaste}
-                      enterKeyHint="enter"
-                      placeholder={selectedImage ? "Ajouter un commentaire…" : "Message"}
-                      className="flex-1 min-w-0 self-center bg-transparent border-none text-[16px] md:text-[15px] text-white placeholder:text-white/28 focus:outline-none focus:ring-0 resize-none max-h-[9.75rem] md:max-h-[7.5rem] overflow-y-auto leading-[1.35] py-2.5 md:py-2 tracking-[-0.01em] caret-amber-400"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      title="Partager une image"
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer active:scale-90"
-                    >
-                      <Paperclip className="h-[20px] w-[20px] md:h-5 md:w-5" strokeWidth={1.75} />
+                      {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 fill-current translate-x-[1px]" />}
                     </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      if (inputText.trim() || selectedImage) {
-                        handleSendMessage(e);
-                      }
-                    }}
-                    disabled={sending || (!inputText.trim() && !selectedImage)}
-                    title={editingMessage ? "Enregistrer les modifications" : "Envoyer"}
-                    className={cn(
-                      "flex h-11 w-11 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90",
-                      (inputText.trim() || selectedImage)
-                        ? "bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 text-black shadow-[0_4px_18px_-2px_rgba(245,158,11,0.55)] border border-amber-200/30"
-                        : "bg-[#1c1c1e] md:bg-white/5 text-white/25 md:text-muted-foreground/30 cursor-not-allowed border border-white/[0.08] md:border-none"
-                    )}
-                  >
-                    {sending ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : editingMessage ? (
-                      <Check className="h-5 w-5" strokeWidth={2.5} />
-                    ) : (
-                      <Send className="h-[18px] w-[18px] md:h-5 md:w-5 fill-current translate-x-[1px]" />
-                    )}
-                  </button>
                 </div>
               </div>
             </>

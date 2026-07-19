@@ -318,6 +318,40 @@ body.keyboard-open {
   height: 100%;
 }
 
+/* ── iOS PWA Optimizations ── */
+
+/* Smooth momentum scrolling for all scroll containers on iOS */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent unwanted callout/selection on buttons and interactive items */
+button, 
+a, 
+[role="button"],
+.select-none {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Restore selection for inputs and textareas */
+input, 
+textarea,
+[contenteditable="true"],
+.select-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Prevent bounce/rubber-banding on the root document to make it feel like a native app */
+html, 
+body {
+  overscroll-behavior: none;
+  height: 100%;
+  background-color: #000;
+}
+
 /* ── LIO23 Toast Notifications ── */
 
 @keyframes lio-toast-in {
