@@ -6,7 +6,6 @@ import {
   CandlestickChart,
   Workflow,
   Zap,
-  Bell,
   Settings,
   BriefcaseBusiness,
   BarChart3,
@@ -15,6 +14,7 @@ import {
   LogOut,
   ChevronRight,
   Cpu,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -45,11 +45,11 @@ const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
-  { title: "Notes",             url: "/notes",           icon: NotebookPen,     color: "text-rose-400",    glow: "shadow-rose-500/30" },
+  { title: "Notes",             url: "/carnet-de-notes", icon: NotebookPen,     color: "text-rose-400",    glow: "shadow-rose-500/30" },
 ];
 
 const toolItems = [
-  { title: "Alertes",          url: "/alerts",          icon: Bell,             color: "text-yellow-400",  glow: "shadow-yellow-500/30" },
+  { title: "Messagerie",       url: "/messenger",       icon: MessageSquare,    color: "text-amber-400",   glow: "shadow-amber-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
@@ -216,6 +216,17 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
+  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
+  const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
+
+  const filteredAnalysisItems = analysisItems.filter(
+    (item) => item.url !== "/backtest" || showBacktest
+  );
+
+  const filteredToolItems = toolItems.filter(
+    (item) => item.url !== "/messenger" || showChat
+  );
+
   if (isMobile) return null;
 
   function handleNavClick() {
@@ -268,15 +279,15 @@ export function AppSidebar() {
       </SidebarHeader>
 
       {/* ── SIDEBAR CONTENT ── */}
-      <SidebarContent className="px-3 pt-6 pb-2 gap-1">
+      <SidebarContent className="px-3 pt-6 pb-2 gap-4">
 
         {/* Trading group */}
         <SidebarGroup className="pt-0">
-          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+          <SidebarGroupLabel className="px-3 mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
             Trading
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
+            <SidebarMenu className="gap-2">
               {tradingItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
@@ -287,13 +298,13 @@ export function AppSidebar() {
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
 
         {/* Analysis group */}
-        <SidebarGroup className="pt-2">
-          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+        <SidebarGroup className="pt-1">
+          <SidebarGroupLabel className="px-3 mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
             Analyse
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {analysisItems.map((item) => (
+            <SidebarMenu className="gap-2">
+              {filteredAnalysisItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
             </SidebarMenu>
@@ -303,13 +314,13 @@ export function AppSidebar() {
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
 
         {/* Tools group */}
-        <SidebarGroup className="pt-2">
-          <SidebarGroupLabel className="px-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+        <SidebarGroup className="pt-1">
+          <SidebarGroupLabel className="px-3 mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
             Outils
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {toolItems.map((item) => (
+            <SidebarMenu className="gap-2">
+              {filteredToolItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
               {user?.is_admin && (() => {

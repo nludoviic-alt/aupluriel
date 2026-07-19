@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/admin/users")({
         const db = getDb();
         const users = db
           .prepare(
-            "SELECT id, email, username, email_verified, status, is_admin, created_at FROM users ORDER BY created_at DESC",
+            "SELECT id, email, username, email_verified, status, is_admin, chat_enabled, admin_note, created_at FROM users ORDER BY created_at DESC",
           )
           .all();
         return json({ users });
@@ -29,11 +29,13 @@ export const Route = createFileRoute("/api/admin/users")({
 
         const body = (await request.json()) as {
           userId?: number;
-          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password";
+          action?: "create" | "approve" | "reject" | "revoke" | "delete" | "reset-password" | "toggle-chat" | "edit-username" | "edit-note";
           email?: string;
           username?: string;
           password?: string;
           isAdmin?: boolean;
+          chatEnabled?: boolean;
+          note?: string;
         };
         const { action } = body;
         if (!action) return json({ error: "action requise." }, 400);
@@ -129,6 +131,26 @@ export const Route = createFileRoute("/api/admin/users")({
             const { subject, html } = resetEmail(link);
             await sendEmail({ to: targetUser.email, subject, html });
             return json({ ok: true });
+          }
+          case "toggle-chat": {
+            db.prepare("UPDATE users SET chat_enabled = ? WHERE id = ?").run(body.chatEnabled ? 1 : 0, userId);
+            break;
+          }
+          case "edit-username": {
+            const username = body.username?.trim();
+            if (!username) return json({ error: "Nom d'utilisateur requis." }, 400);
+            if (username.length < 2 || username.length > 32) {
+              return json({ error: "Le nom d'utilisateur doit faire entre 2 et 32 caractères." }, 400);
+            }
+            const taken = db.prepare("SELECT id FROM users WHERE username = ? AND id != ?").get(username, userId);
+            if (taken) return json({ error: "Ce nom d'utilisateur est déjà pris." }, 409);
+            db.prepare("UPDATE users SET username = ? WHERE id = ?").run(username, userId);
+            break;
+          }
+          case "edit-note": {
+            const note = typeof body.note === "string" ? body.note.trim() : "";
+            db.prepare("UPDATE users SET admin_note = ? WHERE id = ?").run(note || null, userId);
+            break;
           }
           default:
             return json({ error: "Action inconnue." }, 400);

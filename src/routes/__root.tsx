@@ -37,6 +37,7 @@ import {
   Settings,
   ShieldCheck,
   Compass,
+  MessageSquare,
 } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -108,7 +109,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
-      { title: "The future" },
+      { title: "Au Pluriel" },
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -119,21 +120,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Au Pluriel — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
       },
       { name: "author", content: "Au Pluriel" },
-      { property: "og:title", content: "The future" },
+      { property: "og:title", content: "Au Pluriel" },
       {
         property: "og:description",
         content: "Signaux, backtest et marchés en temps réel via Deriv.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "The future" },
-      { name: "description", content: "The future" },
-      { property: "og:description", content: "The future" },
-      { name: "twitter:description", content: "The future" },
-      { property: "og:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
-      { property: "og:image:width", content: "600" },
-      { property: "og:image:height", content: "400" },
-      { name: "twitter:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
+      { name: "twitter:title", content: "Au Pluriel" },
+      { property: "og:image", content: "https://aupluriel.com/favicon.png" },
+      { property: "og:image:width", content: "509" },
+      { property: "og:image:height", content: "512" },
+      { name: "twitter:image", content: "https://aupluriel.com/favicon.png" },
     ],
     links: [
       { rel: "manifest", href: "/manifest.json" },
@@ -201,10 +199,11 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
   "/strategies": { label: "Stratégies", icon: Workflow },
-  "/notes": { label: "Notes", icon: NotebookPen },
+  "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
   "/alerts": { label: "Alertes", icon: Bell },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
+  "/messenger": { label: "Messagerie", icon: MessageSquare },
 };
 
 function getPageMeta(pathname: string) {
@@ -389,11 +388,12 @@ function RootComponent() {
             </header>
 
             {/* Breathing room below the sticky header */}
-            <div className="h-6 shrink-0" />
+            <div className="h-2 shrink-0" />
 
-            {/* Strong signal banner */}
-            {hasAlerts && (
-              <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
+            {/* Strong signal banner — hidden on the messenger page: it eats into the
+                chat panel's carefully-budgeted viewport height and is irrelevant there */}
+            {hasAlerts && pathname !== "/messenger" && (
+              <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
@@ -422,7 +422,10 @@ function RootComponent() {
             <div className="hidden md:block">
               <TickerBar />
             </div>
-            <main className="flex-1 min-w-0 pb-16 md:pb-0">
+            <main className={cn(
+              "flex-1 min-w-0 pb-16 md:pb-0",
+              pathname === "/messenger" && "pb-0 overflow-hidden"
+            )}>
               <Outlet />
             </main>
           </div>

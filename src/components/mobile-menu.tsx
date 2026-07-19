@@ -2,8 +2,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
   LayoutDashboard, Radar, Zap, BriefcaseBusiness, FlaskConical,
-  BarChart3, CandlestickChart, Workflow, NotebookPen, Bell, Settings,
-  ShieldCheck, LogOut, X,
+  BarChart3, CandlestickChart, Workflow, NotebookPen, Settings,
+  ShieldCheck, LogOut, X, MessageSquare,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,8 +24,8 @@ const NAV_MORE = [
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
   { title: "Stratégies",      url: "/strategies",      icon: Workflow,         hover: "hover:bg-mint/[0.04] hover:text-mint/80" },
-  { title: "Notes",           url: "/notes",           icon: NotebookPen,     hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
-  { title: "Alertes",         url: "/alerts",          icon: Bell,             hover: "hover:bg-yellow-500/[0.04] hover:text-yellow-300" },
+  { title: "Notes",           url: "/carnet-de-notes", icon: NotebookPen,     hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
+  { title: "Messagerie",      url: "/messenger",       icon: MessageSquare,    hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];
 
@@ -33,6 +33,13 @@ export function MobileMenu() {
   const { openMobile, setOpenMobile } = useSidebar();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
+
+  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
+  const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
+
+  const filteredNavMore = NAV_MORE.filter(
+    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/messenger" || showChat)
+  );
 
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const close = () => setOpenMobile(false);
@@ -167,7 +174,7 @@ export function MobileMenu() {
               Plus
             </p>
             <div className="space-y-0.5">
-              {NAV_MORE.map((item) => {
+              {filteredNavMore.map((item) => {
                 const active = isActive(item.url);
                 return (
                   <Link

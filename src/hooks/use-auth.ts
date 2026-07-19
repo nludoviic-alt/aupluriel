@@ -8,6 +8,7 @@ interface User {
   email_verified?: number;
   status?: string;
   is_admin?: number;
+  chat_enabled?: number;
   created_at: number;
 }
 

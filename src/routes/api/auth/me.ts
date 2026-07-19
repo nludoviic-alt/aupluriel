@@ -10,9 +10,9 @@ export const Route = createFileRoute("/api/auth/me")({
         if (!auth) return json({ error: "Non authentifié" }, 401);
 
         const db = getDb();
-        const user = db
+         const user = db
           .prepare(
-            "SELECT id, email, username, email_verified, status, is_admin, created_at FROM users WHERE id = ?",
+            "SELECT id, email, username, email_verified, status, is_admin, chat_enabled, created_at FROM users WHERE id = ?",
           )
           .get(auth.userId) as
           | {
@@ -22,6 +22,7 @@ export const Route = createFileRoute("/api/auth/me")({
               email_verified: number;
               status: string;
               is_admin: number;
+              chat_enabled: number;
               created_at: number;
             }
           | undefined;

@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import bcrypt from "bcryptjs";
 
 const DB_PATH = process.env.DB_PATH ?? path.join(process.cwd(), "lio23.db");
 
@@ -218,6 +219,37 @@ function migrate(db: Database.Database) {
       content    TEXT    NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    CREATE TABLE IF NOT EXISTS notes (
+      id         TEXT    PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title      TEXT    NOT NULL,
+      content    TEXT    NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_groups (
+      id           TEXT    PRIMARY KEY,
+      name         TEXT    NOT NULL,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      is_direct    INTEGER NOT NULL DEFAULT 0,
+      recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id         TEXT    PRIMARY KEY,
+      group_id   TEXT    NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+      sender_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content    TEXT    NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_group_members (
+      group_id   TEXT    REFERENCES chat_groups(id) ON DELETE CASCADE,
+      user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY (group_id, user_id)
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---
@@ -233,6 +265,13 @@ function migrate(db: Database.Database) {
   }
   if (!userCols.has("is_admin")) {
     db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!userCols.has("chat_enabled")) {
+    db.exec("ALTER TABLE users ADD COLUMN chat_enabled INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!userCols.has("admin_note")) {
+    // Free-text note an admin can leave on a user's profile (typo history, VIP status, etc.) — never shown to the user themselves.
+    db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");
   }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---
@@ -272,6 +311,24 @@ function migrate(db: Database.Database) {
     // never applies to a "live" mode bot (see auto-backtest.server.ts).
     db.exec("ALTER TABLE user_settings ADD COLUMN auto_backtest_enabled INTEGER NOT NULL DEFAULT 0");
   }
+  // --- Additive column migrations on `chat_groups` (idempotent) ---
+  const chatGroupCols = new Set(
+    (db.prepare("PRAGMA table_info(chat_groups)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!chatGroupCols.has("is_direct")) {
+    db.exec("ALTER TABLE chat_groups ADD COLUMN is_direct INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!chatGroupCols.has("recipient_id")) {
+    db.exec("ALTER TABLE chat_groups ADD COLUMN recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
+  }
+
+  // --- Additive column migrations on `chat_messages` (idempotent) ---
+  const chatMessageCols = new Set(
+    (db.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!chatMessageCols.has("read_at")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN read_at INTEGER");
+  }
 
   seedChangelogIfEmpty(db);
 
@@ -281,6 +338,44 @@ function migrate(db: Database.Database) {
     db.prepare(
       "UPDATE users SET is_admin = 1, status = 'approved', email_verified = 1 WHERE email = ?",
     ).run(adminEmail);
+  }
+
+  // Migrate old user_notes to new notes table if new notes is empty
+  try {
+    const { noteCount } = db.prepare("SELECT COUNT(*) AS noteCount FROM notes").get() as { noteCount: number };
+    if (noteCount === 0) {
+      const oldNotes = db.prepare("SELECT user_id, content, updated_at FROM user_notes WHERE content != ''").all() as { user_id: number; content: string; updated_at: number }[];
+      if (oldNotes.length > 0) {
+        const insertNote = db.prepare("INSERT INTO notes (id, user_id, title, content, updated_at) VALUES (?, ?, ?, ?, ?)");
+        const migrateAll = db.transaction((rows) => {
+          for (const row of rows) {
+            const id = `migrated_${row.user_id}_${row.updated_at}`;
+            insertNote.run(id, row.user_id, "Note Importée", row.content, row.updated_at);
+          }
+        });
+        migrateAll(oldNotes);
+      }
+    }
+  } catch (err) {
+    console.error("Migration error user_notes -> notes:", err);
+  }
+
+  // Seed a test user if only the admin user exists in the database
+  try {
+    const { userCount } = db.prepare("SELECT COUNT(*) AS userCount FROM users").get() as { userCount: number };
+    if (userCount === 1) {
+      const passwordHash = bcrypt.hashSync("password123", 10);
+      db.prepare(
+        "INSERT INTO users (email, username, password_hash, email_verified, status, is_admin) VALUES (?, ?, ?, 1, 'approved', 0)"
+      ).run("testuser@aupluriel.com", "TraderTest", passwordHash);
+      
+      const lastId = db.prepare("SELECT last_insert_rowid() AS id").get() as { id: number };
+      db.prepare("INSERT INTO user_settings (user_id) VALUES (?)").run(lastId.id);
+      
+      console.log("Seeded a test user: TraderTest (password: password123)");
+    }
+  } catch (err) {
+    console.error("Error seeding test user:", err);
   }
 }
 

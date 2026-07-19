@@ -1,19 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LineChart, Zap, ShieldCheck, X, Menu } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Zap, ShieldCheck, X, Menu, LineChart } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
-
-// App-like mobile nav: only the destinations someone taps every session.
-// Signaux/Portfolio/Marchés/Journal/Paramètres/etc. moved to the header
-// drawer (still one tap away) — Auto-Trader keeps its own nav slot since
-// it's the bot control surface, the app's core loop.
-const PRIMARY_ITEMS = [
-  { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
-  { title: "Backtest",    url: "/backtest",   icon: LineChart },
-  { title: "Auto-Trader", url: "/autotrader", icon: Zap },
-] as const;
 
 const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const;
 
@@ -22,7 +12,18 @@ export function BottomNav() {
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const { toggleSidebar, openMobile } = useSidebar();
   const { user } = useAuth();
-  const items = user?.is_admin ? [...PRIMARY_ITEMS, ADMIN_ITEM] : PRIMARY_ITEMS;
+
+  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
+
+  const primaryItems = [
+    { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
+    showChat
+      ? { title: "Messenger",   url: "/messenger",  icon: MessageSquare }
+      : { title: "Backtest",    url: "/backtest",   icon: LineChart },
+    { title: "Auto-Trader", url: "/autotrader", icon: Zap },
+  ];
+
+  const items = user?.is_admin ? [...primaryItems, ADMIN_ITEM] : primaryItems;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border/60 bg-background/95 backdrop-blur-xl safe-area-bottom">
