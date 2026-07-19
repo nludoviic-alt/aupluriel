@@ -49,7 +49,7 @@ jobs:
           fi
           BODY=$(printf 'Commit %s : %s\n\nStatut : %s\n%s' "${COMMIT_SHA:0:7}" "$COMMIT_MSG" "$DEPLOY_STATUS" "$RUN_URL")
           PAYLOAD=$(jq -n \
-            --arg from "Déploiement Au Pluriel <onboarding@resend.dev>" \
+            --arg from "Déploiement Au Pluriel <deploy@aupluriel.com>" \
             --arg to "nludoviic@gmail.com" \
             --arg subject "$SUBJECT" \
             --arg text "$BODY" \

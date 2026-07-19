@@ -435,7 +435,11 @@ function RootComponent() {
               // needs a definite-height ancestor to resolve as a percentage,
               // flex-1 doesn't, so this can't silently under-fill the space
               // and leave a gap above the bottom nav.
-              pathname === "/messenger" && "pb-20 md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
+              // BottomNav's real height is h-16 (4rem) plus its own
+              // safe-area-bottom padding — pb-20 alone under-reserves on
+              // phones with a home indicator, letting the composer's bottom
+              // edge sit under/behind the nav bar.
+              pathname === "/messenger" && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>

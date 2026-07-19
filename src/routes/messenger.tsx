@@ -1701,7 +1701,9 @@ function MessengerPage() {
                                           <img
                                             src={msg.content}
                                             alt="Image envoyée"
-                                            className="max-w-full max-h-[300px] rounded-[16px] object-contain cursor-pointer hover:brightness-110 transition-all duration-200"
+                                            draggable={false}
+                                            className="max-w-full max-h-[300px] rounded-[16px] object-contain cursor-pointer hover:brightness-110 transition-all duration-200 select-none"
+                                            style={{ WebkitTouchCallout: "none" }}
                                             onClick={() => {
                                               setReactionPickerFor(null);
                                               setShowEmojiPicker(false);
@@ -1709,7 +1711,15 @@ function MessengerPage() {
                                             }}
                                           />
                                         ) : (
-                                          <div className="whitespace-pre-wrap break-words break-all max-w-full">
+                                          // select-none + touch-callout: none stop mobile Safari/Chrome from
+                                          // treating a long-press as "select this text" (native selection
+                                          // handles + Copy/Look Up bubble) — that native UI would otherwise
+                                          // win the race against startLongPress() below and hijack the
+                                          // gesture before our own reply/copy/react action menu can open.
+                                          <div
+                                            className="whitespace-pre-wrap break-words break-all max-w-full select-none"
+                                            style={{ WebkitTouchCallout: "none" }}
+                                          >
                                             {isEmojiMsg ? msg.content : formatMessageContent(msg.content)}
                                           </div>
                                         )}
