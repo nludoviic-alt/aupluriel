@@ -445,8 +445,8 @@ function RootComponent() {
             <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
               pathname === "/messenger"
-                ? (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
-                : "pb-[calc(4rem+env(safe-area-inset-bottom))]",
+                ? (compactForKeyboard ? "pb-0" : "pb-[calc(50px+env(safe-area-inset-bottom))]")
+                : "pb-[calc(50px+env(safe-area-inset-bottom))]",
               pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />

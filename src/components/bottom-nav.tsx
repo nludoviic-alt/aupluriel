@@ -27,7 +27,7 @@ export function BottomNav() {
 
   return (
     <nav id="bottom-nav-bar" className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border/60 bg-background/95 backdrop-blur-xl safe-area-bottom">
-      <div className="flex items-stretch h-16">
+      <div className="flex items-stretch h-[50px]">
         {items.map((item) => {
           const active = isActive(item.url);
           return (
