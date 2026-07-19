@@ -18,9 +18,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
+import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
-import { useHeartbeat } from "@/hooks/use-heartbeat";
-import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -38,7 +37,6 @@ import {
   Settings,
   ShieldCheck,
   Compass,
-  MessageSquare,
 } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -109,8 +107,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" },
-      { title: "Au Pluriel" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
+      { title: "The future" },
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -121,18 +119,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Au Pluriel — trading quantitative pour Crypto & Forex, connectée à l'API Deriv. Signaux, backtest, marchés en temps réel.",
       },
       { name: "author", content: "Au Pluriel" },
-      { property: "og:title", content: "Au Pluriel" },
+      { property: "og:title", content: "The future" },
       {
         property: "og:description",
         content: "Signaux, backtest et marchés en temps réel via Deriv.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Au Pluriel" },
-      { property: "og:image", content: "https://aupluriel.com/favicon.png" },
-      { property: "og:image:width", content: "509" },
-      { property: "og:image:height", content: "512" },
-      { name: "twitter:image", content: "https://aupluriel.com/favicon.png" },
+      { name: "twitter:title", content: "The future" },
+      { name: "description", content: "The future" },
+      { property: "og:description", content: "The future" },
+      { name: "twitter:description", content: "The future" },
+      { property: "og:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
+      { property: "og:image:width", content: "600" },
+      { property: "og:image:height", content: "400" },
+      { name: "twitter:image", content: "https://aupluriel.com/logo-lio23-banner.jpg" },
     ],
     links: [
       { rel: "manifest", href: "/manifest.json" },
@@ -200,11 +201,10 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
   "/strategies": { label: "Stratégies", icon: Workflow },
-  "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
+  "/notes": { label: "Notes", icon: NotebookPen },
   "/alerts": { label: "Alertes", icon: Bell },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
-  "/messenger": { label: "Messagerie", icon: MessageSquare },
 };
 
 function getPageMeta(pathname: string) {
@@ -253,18 +253,7 @@ function RootComponent() {
   const pageMeta = useMemo(() => getPageMeta(pathname), [pathname]);
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
-  useHeartbeat(!isPublicRoute && !!user);
-  // Messenger-only: bind the shell to the visual viewport height on mobile
-  // so the chat never grows taller than the visible area (iOS keyboard
-  // avoidance). Desktop keeps h-dvh. No translateY — offsetTop handling was
-  // breaking fixed positioned children and creating an empty band on PWA.
-  const vv = useVisualViewportFrame();
-  const isMessenger = pathname === "/messenger";
-  const compactForKeyboard = vv.keyboardOpen && isMessenger;
-  const messengerMobileShell =
-    isMessenger && vv.height != null
-      ? { height: vv.height }
-      : undefined;
+  usePriceAlerts(!isPublicRoute && !!user);
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -296,27 +285,11 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div
-          className={cn(
-            "flex w-full",
-            isMessenger ? "h-dvh overflow-hidden md:transform-none" : "min-h-screen"
-          )}
-          style={messengerMobileShell}
-        >
+        <div className="flex min-h-screen w-full">
           <AppSidebar />
-          {/* h-full + overflow-hidden here (messenger only) is the ancestor
-              chain messenger.tsx's own h-full needs to resolve to a real
-              pixel height instead of collapsing — every other route is
-              untouched (plain flex-col, natural document scroll). */}
-          <div className={cn(
-            "flex-1 flex flex-col min-w-0",
-            isMessenger && "h-full overflow-hidden"
-          )}>
+          <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}
-            <header className={cn(
-              "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0",
-              isMessenger && "hidden md:flex"
-            )}>
+            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -415,14 +388,12 @@ function RootComponent() {
               </div>
             </header>
 
-            {/* Breathing room below the sticky header — hidden on mobile
-                messenger to reclaim height for the chat thread */}
-            <div className={cn("h-2 shrink-0", isMessenger && "hidden md:block")} />
+            {/* Breathing room below the sticky header */}
+            <div className="h-6 shrink-0" />
 
-            {/* Strong signal banner — hidden on the messenger page: it eats into the
-                chat panel's carefully-budgeted viewport height and is irrelevant there */}
-            {hasAlerts && !isMessenger && (
-              <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
+            {/* Strong signal banner */}
+            {hasAlerts && (
+              <div className="border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
@@ -451,13 +422,7 @@ function RootComponent() {
             <div className="hidden md:block">
               <TickerBar />
             </div>
-            <main id="main-content-area" className={cn(
-              "flex-1 min-w-0 md:pb-0",
-              isMessenger
-                ? (compactForKeyboard ? "pb-0" : "pb-[calc(50px+env(safe-area-inset-bottom))]")
-                : "pb-[calc(50px+env(safe-area-inset-bottom))]",
-              isMessenger && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
-            )}>
+            <main className="flex-1 min-w-0 pb-16 md:pb-0">
               <Outlet />
             </main>
           </div>

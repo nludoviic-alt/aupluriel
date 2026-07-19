@@ -266,15 +266,6 @@ class ServerBotEngine {
     this.lastActiveSessions = currentActiveSessions();
   }
 
-  // Hot-swaps the config an in-flight engine reads on its next tick — used by
-  // the admin's per-user adjustment panel so a suggestion can be applied
-  // without stopping/restarting the bot. `mode` is deliberately excluded by
-  // the caller: this.conn is bound to demo/live at construction time and
-  // wouldn't follow a mode change here.
-  updateConfig(newConfig: AutoTraderConfig) {
-    this.config = newConfig;
-  }
-
   get pausedUntil(): number {
     const row = getDb().prepare("SELECT paused_until FROM bot_state WHERE user_id = ?").get(this.userId) as { paused_until: number | null } | undefined;
     return row?.paused_until ?? 0;
@@ -849,18 +840,6 @@ const engines = new Map<number, ServerBotEngine>();
 
 export function isBotRunning(userId: number): boolean {
   return engines.has(userId);
-}
-
-/**
- * Persists a config change to bot_state and, if this user's bot is currently
- * running, hot-swaps it into the live engine so it applies on the next scan
- * tick instead of waiting for a manual stop/restart.
- */
-export function updateConfigForUser(userId: number, config: AutoTraderConfig): void {
-  getDb()
-    .prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ?")
-    .run(JSON.stringify(config), userId);
-  engines.get(userId)?.updateConfig(config);
 }
 
 /**

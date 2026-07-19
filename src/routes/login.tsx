@@ -329,7 +329,7 @@ function LoginPage() {
       {/* Subtle Watermark */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0 whitespace-nowrap">
         <h1 className="text-7xl sm:text-8xl md:text-[10rem] font-black uppercase tracking-[0.15em] md:tracking-[0.25em] text-white/[0.04] leading-none">
-          AU PLURIEL
+          The Future
         </h1>
       </div>
     </div>

@@ -19,10 +19,4 @@ export default defineConfig({
   // better-sqlite3). Produces `.output/server/index.mjs` — run with `node`.
   // Setting an explicit preset also force-enables Nitro outside the sandbox.
   nitro: { preset: "node-server" },
-  vite: {
-    server: {
-      port: 8080,
-      strictPort: true,
-    },
-  },
 });

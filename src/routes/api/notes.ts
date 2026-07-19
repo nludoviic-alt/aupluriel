@@ -1,7 +1,8 @@
+// Personal notes — one free-text blob per user, server-side so it survives
+// switching devices (unlike the old localStorage-only presets).
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getUserFromRequest } from "@/lib/auth.server";
-import { randomUUID } from "crypto";
 
 export const Route = createFileRoute("/api/notes")({
   server: {
@@ -10,93 +11,26 @@ export const Route = createFileRoute("/api/notes")({
         const auth = await getUserFromRequest(request);
         if (!auth) return json({ error: "Non authentifié" }, 401);
 
-        const rows = getDb()
-          .prepare(
-            "SELECT id, title, content, updated_at AS updatedAt FROM notes WHERE user_id = ? ORDER BY updated_at DESC"
-          )
-          .all(auth.userId) as {
-          id: string;
-          title: string;
-          content: string;
-          updatedAt: number;
-        }[];
+        const row = getDb()
+          .prepare("SELECT content, updated_at AS updatedAt FROM user_notes WHERE user_id = ?")
+          .get(auth.userId) as { content: string; updatedAt: number } | undefined;
 
-        return json({ notes: rows });
-      },
-
-      POST: async ({ request }) => {
-        const auth = await getUserFromRequest(request);
-        if (!auth) return json({ error: "Non authentifié" }, 401);
-
-        const newId = randomUUID();
-        const title = "Nouvelle Note";
-        const content = "";
-        const now = Math.floor(Date.now() / 1000);
-
-        getDb()
-          .prepare(
-            "INSERT INTO notes (id, user_id, title, content, updated_at) VALUES (?, ?, ?, ?, ?)"
-          )
-          .run(newId, auth.userId, title, content, now);
-
-        return json({
-          id: newId,
-          title,
-          content,
-          updatedAt: now,
-        });
+        return json({ content: row?.content ?? "", updatedAt: row?.updatedAt ?? null });
       },
 
       PUT: async ({ request }) => {
         const auth = await getUserFromRequest(request);
         if (!auth) return json({ error: "Non authentifié" }, 401);
 
-        const body = (await request.json().catch(() => ({}))) as {
-          id?: string;
-          title?: string;
-          content?: string;
-        };
+        const body = (await request.json().catch(() => ({}))) as { content?: string };
+        if (typeof body.content !== "string") return json({ error: "content requis." }, 400);
 
-        if (!body.id || typeof body.title !== "string" || typeof body.content !== "string") {
-          return json({ error: "id, title et content sont requis." }, 400);
-        }
+        getDb().prepare(`
+          INSERT INTO user_notes (user_id, content, updated_at) VALUES (?, ?, unixepoch())
+          ON CONFLICT(user_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
+        `).run(auth.userId, body.content);
 
-        const db = getDb();
-        // Verify ownership
-        const note = db
-          .prepare("SELECT user_id FROM notes WHERE id = ?")
-          .get(body.id) as { user_id: number } | undefined;
-
-        if (!note) return json({ error: "Note non trouvée" }, 404);
-        if (note.user_id !== auth.userId) return json({ error: "Accès refusé" }, 403);
-
-        const now = Math.floor(Date.now() / 1000);
-        db.prepare(
-          "UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?"
-        ).run(body.title, body.content, now, body.id);
-
-        return json({ ok: true, updatedAt: now });
-      },
-
-      DELETE: async ({ request }) => {
-        const auth = await getUserFromRequest(request);
-        if (!auth) return json({ error: "Non authentifié" }, 401);
-
-        const body = (await request.json().catch(() => ({}))) as { id?: string };
-        if (!body.id) return json({ error: "id requis" }, 400);
-
-        const db = getDb();
-        // Verify ownership
-        const note = db
-          .prepare("SELECT user_id FROM notes WHERE id = ?")
-          .get(body.id) as { user_id: number } | undefined;
-
-        if (!note) return json({ error: "Note non trouvée" }, 404);
-        if (note.user_id !== auth.userId) return json({ error: "Accès refusé" }, 403);
-
-        db.prepare("DELETE FROM notes WHERE id = ?").run(body.id);
-
-        return json({ ok: true });
+        return json({ ok: true, updatedAt: Math.floor(Date.now() / 1000) });
       },
     },
   },

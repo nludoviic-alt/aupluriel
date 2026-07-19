@@ -305,53 +305,6 @@
   padding-top: env(safe-area-inset-top, 0px);
 }
 
-/* When the virtual keyboard opens we freeze the document layout to prevent
-   iOS Safari from scrolling the whole page and leaving a blank gap above
-   the keyboard. The messenger keeps its own internal scroll. */
-body.keyboard-open {
-  overflow: hidden !important;
-  overscroll-behavior: none;
-  touch-action: none;
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* ── iOS PWA Optimizations ── */
-
-/* Smooth momentum scrolling for all scroll containers on iOS */
-* {
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Prevent unwanted callout/selection on buttons and interactive items */
-button, 
-a, 
-[role="button"],
-.select-none {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-/* Restore selection for inputs and textareas */
-input, 
-textarea,
-[contenteditable="true"],
-.select-text {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* Prevent bounce/rubber-banding on the root document to make it feel like a native app */
-html, 
-body {
-  overscroll-behavior: none;
-  height: 100%;
-  background-color: #000;
-}
-
 /* ── LIO23 Toast Notifications ── */
 
 @keyframes lio-toast-in {
@@ -549,42 +502,4 @@ body {
 
 .lio-toast-loader {
   border-color: var(--toast-accent) transparent transparent transparent !important;
-}
-
-
-/* ── iOS Safe Area & PWA standalone custom styling fixes ── */
-
-/* Force html and body background to black to hide system white lines/safe-area gaps on iOS Safari standalone */
-html {
-  background-color: #050505 !important;
-}
-
-/* Force minimum font-size of 16px for input fields on mobile to completely prevent iOS Safari auto-zooming on focus */
-@media (max-width: 767px) {
-  input[type="text"],
-  input[type="number"],
-  input[type="email"],
-  input[type="password"],
-  input[type="search"],
-  textarea,
-  select {
-    font-size: 16px !important;
-  }
-}
-
-/* Hide bottom navigation bar and pull main content to the bottom when a chat conversation is active on mobile */
-@media (max-width: 767px) {
-  body.chat-active {
-    overflow: hidden !important;
-    overscroll-behavior: none;
-    touch-action: manipulation;
-  }
-  body.chat-active #bottom-nav-bar {
-    display: none !important;
-  }
-  /* Composer owns safe-area padding — do NOT also pad main, or a black
-     gap appears under the input bar (double inset). */
-  body.chat-active #main-content-area {
-    padding-bottom: 0 !important;
-  }
 }

@@ -212,7 +212,6 @@ import {
   type Veto4hMode,
 } from "@/lib/autotrader";
 import { api } from "@/lib/api";
-import { relayPush } from "@/lib/notify-push";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -521,11 +520,13 @@ function AutoTraderPage() {
     if (log.status === "won") {
       playWinSound();
       toast.success(`🎉 ${log.symbol} — Gagné +$${log.profit.toFixed(2)}`);
-      relayPush(
-        `🎉 Au Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`,
-        `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
-        "/autotrader"
-      );
+
+      // Notification de bureau native (HTML5 API) pour alerter en tâche de fond
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`🎉 Au Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`, {
+          body: `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
+        });
+      }
 
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
@@ -533,11 +534,12 @@ function AutoTraderPage() {
     if (log.status === "lost") {
       playLossSound();
       toast.error(`${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
-      relayPush(
-        `Au Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`,
-        `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
-        "/autotrader"
-      );
+
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`Au Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`, {
+          body: `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
+        });
+      }
 
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
@@ -545,11 +547,12 @@ function AutoTraderPage() {
     if (log.status === "open") {
       playOpenSound();
       toast.info(`Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
-      relayPush(
-        "Au Pluriel — Position ouverte",
-        `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
-        "/autotrader"
-      );
+
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`Au Pluriel — Position ouverte`, {
+          body: `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
+        });
+      }
     }
     if (log.status === "error") toast.error(`Erreur sur ${log.symbol}`);
     if (log.status === "pending") {

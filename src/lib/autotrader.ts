@@ -4,7 +4,6 @@
 // Only executes trades when strict signal quality thresholds are met.
 
 import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
-import { relayPush } from "./notify-push";
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
@@ -326,15 +325,26 @@ export function updatePresetPerformance(
 // ─── Risk notification ─────────────────────────────────────────────────────────
 
 export function notifyRiskStop(reasons: string[]) {
-  relayPush("Au Pluriel — Auto-trader arrêté (risque détecté)", reasons.join("\n"), "/autotrader");
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const n = new Notification("Au Pluriel — Auto-trader arrêté (risque détecté)", {
+    body: reasons.join("\n"),
+    icon: "/favicon.ico",
+    tag: "lio23-risk-stop",
+    requireInteraction: true,
+  });
+  setTimeout(() => n.close(), 15000);
 }
 
 export function notifyTradeTaken(symbol: string, direction: string, confidence: number) {
-  relayPush(
-    `Au Pluriel — Trade pris sur ${symbol}`,
-    `${direction} · Confiance ${confidence}% · Position favorable (PREMIUM)`,
-    "/autotrader"
-  );
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  const n = new Notification(`Au Pluriel — Trade pris sur ${symbol}`, {
+    body: `${direction} · Confiance ${confidence}% · Position favorable (PREMIUM)`,
+    icon: "/favicon.ico",
+    tag: `lio23-trade-${symbol}`,
+  });
+  setTimeout(() => n.close(), 8000);
 }
 
 // ─── Real Kelly-criterion stake ────────────────────────────────────────────────

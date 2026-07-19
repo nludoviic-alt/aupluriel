@@ -6,7 +6,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
-import { getUserInsights } from "@/lib/journal-insights.server";
 
 // Prediction from the offline replay harness (52 days, 2717 trades, exact live
 // pipeline, neutral weights, no lookahead — commit 3629f36). Live trades are
@@ -87,19 +86,7 @@ export const Route = createFileRoute("/api/admin/stats")({
                FROM bot_trades WHERE user_id = ? ORDER BY time DESC LIMIT 200`,
             )
             .all(userId);
-
-          const configRow = db
-            .prepare("SELECT config FROM bot_state WHERE user_id = ?")
-            .get(userId) as { config: string } | undefined;
-
-          return json({
-            trades,
-            config: configRow ? JSON.parse(configRow.config) : null,
-            insights: {
-              demo: getUserInsights(userId, "demo"),
-              live: getUserInsights(userId, "live"),
-            },
-          });
+          return json({ trades });
         }
 
         // Démo et live ne doivent jamais être additionnés dans un même total —

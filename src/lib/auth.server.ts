@@ -9,12 +9,9 @@ export interface FullUser {
   id: number;
   email: string;
   username: string;
-  avatar: string | null;
-  online_status: "online" | "offline";
   email_verified: number;
   status: string;
   is_admin: number;
-  chat_enabled: number;
   created_at: number;
 }
 
@@ -31,7 +28,7 @@ export async function getFullUserFromRequest(request: Request): Promise<FullUser
   return (
     (db
       .prepare(
-        "SELECT id, email, username, avatar, online_status, email_verified, status, is_admin, chat_enabled, created_at FROM users WHERE id = ?",
+        "SELECT id, email, username, email_verified, status, is_admin, created_at FROM users WHERE id = ?",
       )
       .get(auth.userId) as FullUser | undefined) ?? null
   );
