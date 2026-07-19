@@ -288,7 +288,10 @@ function RootComponent() {
         <MobileMenu />
         <div className="flex h-dvh w-full" style={{ height: "var(--app-height, 100dvh)" }}>
           <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className={cn(
+            "flex-1 flex flex-col min-w-0",
+            pathname === "/messenger" && "h-full overflow-hidden"
+          )}>
             {/* Header for main content */}
             <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
               {/* Ambient glow blobs matching the orange theme */}
@@ -432,7 +435,7 @@ function RootComponent() {
               // needs a definite-height ancestor to resolve as a percentage,
               // flex-1 doesn't, so this can't silently under-fill the space
               // and leave a gap above the bottom nav.
-              pathname === "/messenger" && "pb-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
+              pathname === "/messenger" && "pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>
