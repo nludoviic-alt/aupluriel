@@ -20,7 +20,7 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
-import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -254,12 +254,20 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
-  // Messenger-only: with the keyboard open, the shrunk viewport can't afford
-  // the bottom-nav padding reserved for a nav that's behind the keyboard
-  // anyway — dropping it gives the conversation + composer that space back,
-  // Telegram-style. Scoped to /messenger; every other page is untouched.
-  const keyboardOpen = useKeyboardOpen();
-  const compactForKeyboard = keyboardOpen && pathname === "/messenger";
+  // Messenger-only: bind the shell to visualViewport on mobile so the
+  // composer stays above the iOS keyboard (WhatsApp/Telegram). Desktop
+  // keeps h-dvh. Dropping bottom-nav padding when the keyboard is open
+  // gives the thread that space back. Scoped to /messenger.
+  const vv = useVisualViewportFrame();
+  const isMessenger = pathname === "/messenger";
+  const compactForKeyboard = vv.keyboardOpen && isMessenger;
+  const messengerMobileShell =
+    isMessenger && vv.height != null
+      ? {
+          height: vv.height,
+          transform: vv.offsetTop ? `translateY(${vv.offsetTop}px)` : undefined,
+        }
+      : undefined;
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -291,10 +299,13 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className={cn(
-          "flex w-full",
-          pathname === "/messenger" ? "h-dvh overflow-hidden" : "min-h-screen"
-        )}>
+        <div
+          className={cn(
+            "flex w-full",
+            isMessenger ? "h-dvh overflow-hidden md:transform-none" : "min-h-screen"
+          )}
+          style={messengerMobileShell}
+        >
           <AppSidebar />
           {/* h-full + overflow-hidden here (messenger only) is the ancestor
               chain messenger.tsx's own h-full needs to resolve to a real
@@ -302,12 +313,12 @@ function RootComponent() {
               untouched (plain flex-col, natural document scroll). */}
           <div className={cn(
             "flex-1 flex flex-col min-w-0",
-            pathname === "/messenger" && "h-full overflow-hidden"
+            isMessenger && "h-full overflow-hidden"
           )}>
             {/* Header for main content */}
             <header className={cn(
               "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0",
-              pathname === "/messenger" && "hidden md:flex"
+              isMessenger && "hidden md:flex"
             )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
@@ -407,12 +418,13 @@ function RootComponent() {
               </div>
             </header>
 
-            {/* Breathing room below the sticky header */}
-            <div className="h-2 shrink-0" />
+            {/* Breathing room below the sticky header — hidden on mobile
+                messenger to reclaim height for the chat thread */}
+            <div className={cn("h-2 shrink-0", isMessenger && "hidden md:block")} />
 
             {/* Strong signal banner — hidden on the messenger page: it eats into the
                 chat panel's carefully-budgeted viewport height and is irrelevant there */}
-            {hasAlerts && pathname !== "/messenger" && (
+            {hasAlerts && !isMessenger && (
               <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
@@ -444,10 +456,10 @@ function RootComponent() {
             </div>
             <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
-              pathname === "/messenger"
+              isMessenger
                 ? (compactForKeyboard ? "pb-0" : "pb-[calc(50px+env(safe-area-inset-bottom))]")
                 : "pb-[calc(50px+env(safe-area-inset-bottom))]",
-              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
+              isMessenger && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>

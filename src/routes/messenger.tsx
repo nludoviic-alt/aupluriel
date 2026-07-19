@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush } from "@/lib/push";
@@ -386,21 +386,59 @@ function MessengerPage() {
   // NOT stop it (Safari treats the page as scrollable for keyboard-avoidance
   // purposes regardless of CSS overflow), leaving the chat card scrolled out
   // of view — a blank gap, composer nowhere to be seen. Pinning body to
-  // `position: fixed` removes the scrollable box entirely, so there is
-  // nothing left for Safari to scroll against. Self-contained to this page —
-  // mounted/unmounted only while messenger is the active route.
+  // `position: fixed` on mobile removes the scrollable box entirely, so there
+  // is nothing left for Safari to scroll against. Self-contained to this page
+  // — mounted/unmounted only while messenger is the active route. Desktop
+  // keeps normal document flow (md+).
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
+    const mq = window.matchMedia("(max-width: 767px)");
+
     const prev = {
       htmlOverflow: html.style.overflow,
       bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      bodyBottom: body.style.bottom,
+      bodyWidth: body.style.width,
     };
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
+
+    const applyMobileLock = () => {
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      if (mq.matches) {
+        body.style.position = "fixed";
+        body.style.top = "0";
+        body.style.left = "0";
+        body.style.right = "0";
+        body.style.bottom = "0";
+        body.style.width = "100%";
+      } else {
+        body.style.position = prev.bodyPosition;
+        body.style.top = prev.bodyTop;
+        body.style.left = prev.bodyLeft;
+        body.style.right = prev.bodyRight;
+        body.style.bottom = prev.bodyBottom;
+        body.style.width = prev.bodyWidth;
+      }
+    };
+
+    applyMobileLock();
+    mq.addEventListener("change", applyMobileLock);
+
     return () => {
+      mq.removeEventListener("change", applyMobileLock);
       html.style.overflow = prev.htmlOverflow;
       body.style.overflow = prev.bodyOverflow;
+      body.style.position = prev.bodyPosition;
+      body.style.top = prev.bodyTop;
+      body.style.left = prev.bodyLeft;
+      body.style.right = prev.bodyRight;
+      body.style.bottom = prev.bodyBottom;
+      body.style.width = prev.bodyWidth;
     };
   }, []);
 
@@ -434,25 +472,8 @@ function MessengerPage() {
     };
   }, [activeGroupId]);
 
-  const handleInputFocus = () => {
-    const html = document.documentElement;
-    const body = document.body;
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.top = "0px";
-    body.style.width = "100%";
-  };
-
-  const handleInputBlur = () => {
-    const html = document.documentElement;
-    const body = document.body;
-    html.style.overflow = "";
-    body.style.overflow = "";
-    body.style.position = "";
-    body.style.top = "";
-    body.style.width = "";
-  };
+  // Body lock is permanent on mobile while messenger is mounted — focus/blur
+  // no longer toggle position:fixed (that caused overflow reset races).
 
   // Clipboard Paste Image upload handler
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -501,14 +522,17 @@ function MessengerPage() {
     }
   };
 
-  // Auto-grow the composer textarea like WhatsApp, capped at ~5 lines with dynamic scrollbar
+  // Auto-grow the composer textarea like WhatsApp — ~6 lines on mobile
+  // (taller line-height), ~5 lines desktop. Cap kept in sync with max-h CSS.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    const maxHeight = isMobile ? 156 : 120;
     el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, 120);
+    const newHeight = Math.min(el.scrollHeight, maxHeight);
     el.style.height = `${newHeight}px`;
-    el.style.overflowY = el.scrollHeight > 120 ? "auto" : "hidden";
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [inputText]);
 
   // Emoji picker popover state
@@ -947,16 +971,26 @@ function MessengerPage() {
     }
   }
 
-  // Keyboard opening shrinks the thread — keep the latest messages (and the
-  // reply context the user is typing against) in view, like Telegram does.
-  // Small delay lets the viewport finish resizing before we measure.
-  const keyboardOpen = useKeyboardOpen();
+  // Keyboard opening / visualViewport resize shrinks the thread — keep the
+  // latest messages in view, like Telegram. Height changes also fire while
+  // the user types multilines and the composer auto-grows.
+  const { keyboardOpen, height: vvHeight } = useVisualViewportFrame();
+  useEffect(() => {
+    if (keyboardOpen) {
+      document.body.classList.add("keyboard-open");
+    } else {
+      document.body.classList.remove("keyboard-open");
+    }
+    return () => {
+      document.body.classList.remove("keyboard-open");
+    };
+  }, [keyboardOpen]);
   useEffect(() => {
     if (!keyboardOpen) return;
     const t = setTimeout(() => scrollToBottom(true), 80);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyboardOpen]);
+  }, [keyboardOpen, vvHeight]);
 
   // Handle message send
   // Sends one piece of content optimistically: it appears in the thread
@@ -2250,8 +2284,13 @@ function MessengerPage() {
               )}
 
               {/* INPUT BAR — tighter bottom padding on mobile only, so the
-                  composer sits closer to the bottom nav bar below it */}
-              <div className="px-3 pt-3 pb-1.5 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
+                  composer sits closer to the bottom nav bar below it.
+                  When the keyboard is open, drop residual padding so the
+                  pill sits flush above the keyboard (WhatsApp-style). */}
+              <div className={cn(
+                "px-2.5 pt-2 sm:px-4 sm:pt-4 border-t border-white/[0.06] bg-gradient-to-b from-black/40 to-black/60 md:from-transparent md:to-black/30 shrink-0 relative z-10",
+                keyboardOpen ? "pb-0" : "pb-1.5 sm:pb-4"
+              )}>
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                   <>
@@ -2306,20 +2345,20 @@ function MessengerPage() {
                 />
 
                 {replyingTo && (
-                  <div className="relative p-2.5 mb-2 rounded-xl border border-white/10 bg-white/[0.03] flex items-center gap-2.5 shrink-0">
+                  <div className="relative px-3 py-2 mb-2 rounded-2xl border-l-[3px] border-l-amber-400 border border-white/[0.08] bg-white/[0.04] flex items-center gap-2.5 shrink-0">
                     <Reply className="h-4 w-4 text-amber-400 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-semibold text-amber-400 truncate">
+                      <div className="text-[12px] font-semibold text-amber-400 truncate leading-tight">
                         Réponse à {replyingTo.senderId === user?.id ? "vous-même" : replyingTo.senderUsername}
                       </div>
-                      <div className="text-xs text-muted-foreground truncate">
+                      <div className="text-[12px] text-muted-foreground/80 truncate mt-0.5 leading-snug">
                         {replyingTo.content.startsWith("data:image/") ? "📷 Photo" : replyingTo.content}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={cancelReply}
-                      className="p-1 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      className="p-1.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -2327,16 +2366,16 @@ function MessengerPage() {
                 )}
 
                 {editingMessage && (
-                  <div className="relative p-2.5 mb-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] flex items-center gap-2.5 shrink-0">
+                  <div className="relative px-3 py-2 mb-2 rounded-2xl border-l-[3px] border-l-amber-400 border border-amber-500/20 bg-amber-500/[0.08] flex items-center gap-2.5 shrink-0">
                     <Pencil className="h-4 w-4 text-amber-400 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-semibold text-amber-400">Modification du message</div>
-                      <div className="text-xs text-muted-foreground truncate">{editingMessage.content}</div>
+                      <div className="text-[12px] font-semibold text-amber-400 leading-tight">Modification du message</div>
+                      <div className="text-[12px] text-muted-foreground/80 truncate mt-0.5 leading-snug">{editingMessage.content}</div>
                     </div>
                     <button
                       type="button"
                       onClick={cancelEdit}
-                      className="p-1 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      className="p-1.5 rounded-full text-muted-foreground hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -2344,7 +2383,7 @@ function MessengerPage() {
                 )}
 
                 {selectedImage && (
-                  <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center gap-3 shrink-0">
+                  <div className="relative p-2.5 sm:p-3 mb-2 rounded-2xl border border-white/10 bg-white/[0.04] flex items-center gap-3 shrink-0">
                     <div className="relative h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-xl overflow-hidden border border-white/10 bg-black/40 shadow-inner">
                       <img src={selectedImage} alt="Aperçu" className="h-full w-full object-cover" />
                       <button
@@ -2355,7 +2394,7 @@ function MessengerPage() {
                         <X className="h-3 w-3" />
                       </button>
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[12px] text-muted-foreground leading-snug">
                       Image prête à être envoyée. Appuyez sur envoyer pour l'expédier.
                     </div>
                       </div>
@@ -2366,20 +2405,23 @@ function MessengerPage() {
                         field / next field / done" navigation bar above the
                         keyboard. Enter-to-send and the button's onClick both
                         already call handleSendMessage() directly. */}
-                    <div className="flex items-end gap-2.5 pb-2 md:pb-0">
-                      {/* WhatsApp-style rounded composer pill */}
-                      <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[24px] md:rounded-[26px] border border-white/[0.05] md:border-white/[0.08] bg-white/[0.02] md:bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/20 md:focus-within:border-amber-500/40 focus-within:bg-white/[0.04] md:focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/30 md:shadow-black/40">
+                    <div className={cn(
+                      "flex items-end gap-2 md:gap-2.5 md:pb-0",
+                      keyboardOpen ? "pb-0" : "pb-1.5 md:pb-0"
+                    )}>
+                      {/* WhatsApp-style rounded composer pill — richer fill on mobile */}
+                      <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[22px] md:rounded-[26px] border border-white/[0.08] bg-[#1c1c1e] md:bg-white/[0.04] pl-1 pr-1.5 py-0.5 md:py-1 focus-within:border-amber-500/30 md:focus-within:border-amber-500/40 focus-within:bg-[#232325] md:focus-within:bg-white/[0.06] transition-colors duration-200 shadow-md shadow-black/40">
                         {/* Smiley Button */}
                         <button
                           type="button"
                           onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                           title="Ajouter un emoji"
                           className={cn(
-                            "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground/70 hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90 mb-0.5",
                             showEmojiPicker && "text-amber-400 bg-white/[0.06]"
                           )}
                         >
-                          <Smile className="h-5 w-5" />
+                          <Smile className="h-[22px] w-[22px] md:h-5 md:w-5" />
                         </button>
 
                         <textarea
@@ -2390,21 +2432,23 @@ function MessengerPage() {
                             setInputText(e.target.value);
                             notifyTyping();
                           }}
-                          onFocus={handleInputFocus}
-                          onBlur={handleInputBlur}
                           onKeyDown={(e) => {
+                            // Desktop: Enter sends, Shift+Enter newline.
+                            // Mobile: Enter always newline (send via button) —
+                            // matches WhatsApp / Telegram soft-keyboard UX.
                             if (e.key === "Enter" && !e.shiftKey) {
+                              const isMobile = window.matchMedia("(max-width: 767px)").matches;
+                              if (isMobile) return;
                               e.preventDefault();
                               handleSendMessage(e);
                             }
                           }}
                           onPaste={handlePaste}
-                          placeholder={selectedImage ? "Ajouter un commentaire..." : "Message"}
-                          // 16px minimum — iOS Safari auto-zooms the whole page on focus
-                          // for any text input under that size, no matter what the
-                          // viewport meta says. Below sm: (real mobile widths) we need
-                          // the full 16px; desktop can afford the tighter 14px.
-                          className="flex-1 min-w-0 bg-transparent border-none text-[16px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
+                          enterKeyHint="enter"
+                          placeholder={selectedImage ? "Ajouter un commentaire…" : "Message"}
+                          // 16px on mobile — required to prevent iOS Safari auto-zoom.
+                          // Desktop uses a slightly tighter 15px.
+                          className="flex-1 min-w-0 bg-transparent border-none text-[16px] md:text-[15px] text-foreground placeholder:text-muted-foreground/45 focus:outline-none focus:ring-0 resize-none max-h-[9.75rem] md:max-h-[7.5rem] overflow-y-auto leading-[1.375] py-[10px] md:py-2 tracking-[-0.01em]"
                         />
 
                         {/* Paperclip/Image Attachment Button */}
@@ -2412,13 +2456,13 @@ function MessengerPage() {
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           title="Partager une image"
-                          className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground/70 hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90 mb-0.5"
                         >
-                          <Paperclip className="h-5 w-5" />
+                          <Paperclip className="h-[20px] w-[20px] md:h-5 md:w-5" />
                         </button>
                       </div>
 
-                      {/* Action Button (Send) */}
+                      {/* Action Button (Send) — aligned to first line of composer */}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -2429,10 +2473,10 @@ function MessengerPage() {
                         disabled={sending || (!inputText.trim() && !selectedImage)}
                         title={editingMessage ? "Enregistrer les modifications" : "Envoyer"}
                         className={cn(
-                          "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer shadow-lg active:scale-90",
+                          "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer shadow-lg active:scale-90 mb-0.5",
                           (inputText.trim() || selectedImage)
-                            ? "scale-105 bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/20 md:scale-100 md:from-amber-400 md:to-amber-600 md:hover:from-amber-500 md:hover:to-amber-700 md:shadow-amber-950/30"
-                            : "scale-95 bg-white/[0.03] text-muted-foreground/20 cursor-not-allowed opacity-40 border border-white/[0.04] md:scale-100 md:bg-white/5 md:text-muted-foreground/30 md:opacity-50 md:border-none"
+                            ? "bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/25 md:from-amber-400 md:to-amber-600 md:hover:from-amber-500 md:hover:to-amber-700 md:shadow-amber-950/30"
+                            : "bg-[#1c1c1e] md:bg-white/5 text-muted-foreground/25 md:text-muted-foreground/30 cursor-not-allowed opacity-50 border border-white/[0.06] md:border-none"
                         )}
                       >
                         {sending ? (
@@ -2440,7 +2484,7 @@ function MessengerPage() {
                         ) : editingMessage ? (
                           <Check className="h-5 w-5" />
                         ) : (
-                          <Send className="h-5 w-5 fill-current" />
+                          <Send className="h-[18px] w-[18px] md:h-5 md:w-5 fill-current" />
                         )}
                       </button>
                     </div>
