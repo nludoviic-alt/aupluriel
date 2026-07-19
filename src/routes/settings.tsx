@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
+import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -11,6 +11,8 @@ import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
+import { AvatarPicker } from "@/components/avatar-picker";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Paramètres — Au Pluriel" }] }),
@@ -25,6 +27,11 @@ const KEYS = {
 };
 
 function SettingsPage() {
+  const { user, refresh: refreshAuth } = useAuth();
+  const [avatar, setAvatar] = useState(user?.avatar ?? "");
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState<"online" | "offline">(user?.online_status ?? "online");
+  const [statusSaving, setStatusSaving] = useState(false);
   const [token, setToken] = useState("");
   const [show, setShow] = useState(false);
   const [account, setAccount] = useState<"demo" | "live">("demo");
@@ -55,6 +62,8 @@ function SettingsPage() {
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
       if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
+      if (s.avatar) setAvatar(s.avatar as string);
+      if (s.online_status) setOnlineStatus(s.online_status as "online" | "offline");
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -65,6 +74,36 @@ function SettingsPage() {
       .catch(() => {})
       .finally(() => setPushChecked(true));
   }, []);
+
+  async function handleAvatarSelect(newAvatar: string) {
+    setAvatar(newAvatar);
+    setAvatarSaving(true);
+    try {
+      await api.put("/api/settings", { avatar: newAvatar });
+      await refreshAuth();
+      toast.success("Avatar mis à jour");
+    } catch {
+      toast.error("Échec de la mise à jour de l'avatar");
+    } finally {
+      setAvatarSaving(false);
+    }
+  }
+
+  async function toggleStatus(v: boolean) {
+    const newStatus = v ? "online" : "offline";
+    setOnlineStatus(newStatus);
+    setStatusSaving(true);
+    try {
+      await api.put("/api/settings", { online_status: newStatus });
+      await refreshAuth();
+      toast.success(v ? "Vous êtes maintenant en ligne" : "Vous êtes maintenant hors ligne");
+    } catch {
+      setOnlineStatus(onlineStatus); // revert
+      toast.error("Échec de la mise à jour du statut");
+    } finally {
+      setStatusSaving(false);
+    }
+  }
 
   async function togglePush(v: boolean) {
     setPushSaving(true);
@@ -142,6 +181,65 @@ function SettingsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto pb-24">
+      {/* Profil & Avatar */}
+      <CollapsibleSection
+        title="Profil & Avatar"
+        icon={<UserCircle className="h-5.5 w-5.5 shrink-0 text-amber-400" />}
+        defaultOpen={true}
+      >
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-6">
+            <div className="relative h-20 w-20 rounded-3xl bg-amber-500/10 border-2 border-amber-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-lg shadow-amber-950/20">
+              {avatar ? (
+                <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <UserCircle className="h-10 w-10 text-amber-400/40" />
+              )}
+              {avatarSaving && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                </div>
+              )}
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground mb-1">{user?.username}</h2>
+              <p className="text-sm text-muted-foreground mb-1">{user?.email}</p>
+              <div className="flex items-center gap-2">
+                <span className={cn("flex h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500" : "bg-muted-foreground/30")} />
+                <span className={cn("text-[10px] font-bold uppercase tracking-widest", onlineStatus === "online" ? "text-emerald-500/80" : "text-muted-foreground/50")}>
+                  {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {user?.is_admin === 1 && (
+            <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-bold text-foreground">Mode de présence</h3>
+                <p className="text-[11px] text-muted-foreground">En mode hors ligne, vous n'apparaissez pas avec le point vert.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
+                <Switch 
+                  checked={onlineStatus === "online"} 
+                  onCheckedChange={toggleStatus}
+                  disabled={statusSaving}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-white/5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 mb-4 flex items-center gap-2">
+              <span className="h-1 w-1 rounded-full bg-amber-500" />
+              Choisir un Avatar
+            </h3>
+            <AvatarPicker currentAvatar={avatar} onSelect={handleAvatarSelect} />
+          </div>
+        </div>
+      </CollapsibleSection>
+
       {/* Header Panel */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-white/[0.01] border border-white/5 p-4.5 rounded-2xl shadow-sm">
         <div>

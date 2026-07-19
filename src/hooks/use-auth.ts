@@ -5,6 +5,8 @@ interface User {
   id: number;
   email: string;
   username: string;
+  avatar?: string;
+  online_status?: "online" | "offline";
   email_verified?: number;
   status?: string;
   is_admin?: number;

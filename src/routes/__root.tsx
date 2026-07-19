@@ -20,6 +20,7 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -253,6 +254,12 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
+  // Messenger-only: with the keyboard open, the shrunk viewport can't afford
+  // the bottom-nav padding reserved for a nav that's behind the keyboard
+  // anyway — dropping it gives the conversation + composer that space back,
+  // Telegram-style. Scoped to /messenger; every other page is untouched.
+  const keyboardOpen = useKeyboardOpen();
+  const compactForKeyboard = keyboardOpen && pathname === "/messenger";
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -284,9 +291,16 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex min-h-screen w-full">
+        <div className="flex h-dvh w-full">
           <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
+          {/* h-full + overflow-hidden here (messenger only) is the ancestor
+              chain messenger.tsx's own h-full needs to resolve to a real
+              pixel height instead of collapsing — every other route is
+              untouched (plain flex-col, natural document scroll). */}
+          <div className={cn(
+            "flex-1 flex flex-col min-w-0",
+            pathname === "/messenger" && "h-full overflow-hidden"
+          )}>
             {/* Header for main content */}
             <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
               {/* Ambient glow blobs matching the orange theme */}
@@ -424,7 +438,22 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "pb-0 overflow-hidden"
+              // flex + forcing the direct child (whatever <Outlet/> renders)
+              // to flex-1/min-h-0 makes messenger's own h-full chain robust
+              // against <main> not being a flex container itself — h-full
+              // needs a definite-height ancestor to resolve as a percentage,
+              // flex-1 doesn't, so this can't silently under-fill the space
+              // and leave a gap above the bottom nav.
+              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0",
+              // Reserve exactly the BottomNav's real height so the messenger
+              // content bottoms out flush against it, same as every other
+              // page. The nav is h-16 (4rem) + its own safe-area-bottom
+              // padding — matching that here (not 5rem) removes the ~15px
+              // dead gap that made /messenger look shorter than other pages.
+              // Keyboard open: the nav is behind the keyboard, so drop the
+              // padding entirely and let the composer sit against it.
+              pathname === "/messenger" &&
+                (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
             )}>
               <Outlet />
             </main>

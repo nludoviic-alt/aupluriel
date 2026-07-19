@@ -25,3 +25,36 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H 51.79.70.153 >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes ubuntu@51.79.70.153
+
+      # Fires whether the deploy above succeeded or failed. No-ops until the
+      # RESEND_API_KEY repo secret is set (Settings → Secrets and variables →
+      # Actions), so adding this step is safe even before that's configured.
+      - name: Notify deploy result by email
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DEPLOY_STATUS: ${{ job.status }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$RESEND_API_KEY" ]; then
+            echo "RESEND_API_KEY secret not set — skipping email notification"
+            exit 0
+          fi
+          if [ "$DEPLOY_STATUS" = "success" ]; then
+            SUBJECT="✅ Déploiement aupluriel.com réussi"
+          else
+            SUBJECT="❌ Échec du déploiement aupluriel.com"
+          fi
+          BODY=$(printf 'Commit %s : %s\n\nStatut : %s\n%s' "${COMMIT_SHA:0:7}" "$COMMIT_MSG" "$DEPLOY_STATUS" "$RUN_URL")
+          PAYLOAD=$(jq -n \
+            --arg from "Déploiement Au Pluriel <deploy@aupluriel.com>" \
+            --arg to "nludoviic@gmail.com" \
+            --arg subject "$SUBJECT" \
+            --arg text "$BODY" \
+            '{from: $from, to: [$to], subject: $subject, text: $text}')
+          curl -s -X POST 'https://api.resend.com/emails' \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD"
