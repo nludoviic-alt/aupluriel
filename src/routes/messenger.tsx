@@ -1417,7 +1417,8 @@ function MessengerPage() {
                 placeholder="Rechercher..."
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
-                className="w-full bg-white/[0.02] md:bg-white/[0.03] border border-white/[0.05] md:border-white/[0.06] rounded-[18px] md:rounded-2xl py-2.5 pl-10 pr-4 text-[16px] sm:text-[14px] placeholder:text-muted-foreground/25 focus:outline-none focus:border-amber-500/20 focus:bg-white/[0.04] transition-all"
+                disabled={!!activeGroupId}
+                className="w-full bg-white/[0.02] md:bg-white/[0.03] border border-white/[0.05] md:border-white/[0.06] rounded-[18px] md:rounded-2xl py-2.5 pl-10 pr-4 text-[16px] placeholder:text-muted-foreground/25 focus:outline-none focus:border-amber-500/20 focus:bg-white/[0.04] transition-all"
               />
             </div>
           </div>
@@ -2403,7 +2404,7 @@ function MessengerPage() {
                           // for any text input under that size, no matter what the
                           // viewport meta says. Below sm: (real mobile widths) we need
                           // the full 16px; desktop can afford the tighter 14px.
-                          className="flex-1 min-w-0 bg-transparent border-none text-[16px] sm:text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
+                          className="flex-1 min-w-0 bg-transparent border-none text-[16px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
                         />
 
                         {/* Paperclip/Image Attachment Button */}
