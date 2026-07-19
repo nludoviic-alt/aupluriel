@@ -1660,18 +1660,21 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] md:border-b-white/[0.1] bg-[#0a0a0c]/90 md:bg-black/60 backdrop-blur-2xl px-2.5 sm:px-6 py-2.5 sm:py-3 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-amber-500/20 after:to-transparent md:after:hidden">
+              <div className="relative flex items-center justify-between gap-3 border-b border-white/[0.06] md:border-b-white/[0.1] bg-gradient-to-b from-[#0a0a0c]/95 via-[#0a0a0c]/90 to-[#0a0a0c]/80 md:bg-black/60 backdrop-blur-2xl px-3 sm:px-6 py-3 sm:py-3.5 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.45)] after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-amber-500/25 after:to-transparent md:after:hidden">
                 <div className="flex items-center min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
-                    className="md:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.03] border border-white/[0.06] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] transition-all active:scale-90 mr-2"
+                    className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.04] border border-white/[0.08] text-amber-400 hover:text-amber-300 hover:bg-white/[0.08] hover:border-white/[0.12] transition-all active:scale-90 mr-2.5"
                     title="Retour"
                   >
-                    <ChevronLeft className="h-5.5 w-5.5" />
+                    <ChevronLeft className="h-5 w-5" />
                   </button>
                   
                   <div className="relative shrink-0">
-                    <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-white/10 text-sm font-bold shadow-lg transition-transform duration-200 overflow-hidden bg-background">
+                    <div className={cn(
+                      "flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border text-sm font-bold shadow-lg transition-transform duration-200 overflow-hidden bg-background ring-2 ring-white/5",
+                      isActiveDirect ? "border-white/10" : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                    )}>
                       {isActiveDirect ? (
                         activeGroupId && groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar ? (
                           <img src={groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar} alt={activeGroupName} className="w-full h-full object-cover" />
@@ -1689,7 +1692,7 @@ function MessengerPage() {
                   </div>
 
                   <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
-                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-tight">
+                    <h2 className="font-black text-[17px] sm:text-lg bg-gradient-to-r from-white via-white to-white/80 bg-clip-text text-transparent tracking-tight font-sans truncate leading-tight">
                       {activeGroupName}
                     </h2>
                     
@@ -1701,8 +1704,8 @@ function MessengerPage() {
                       ) : (
                         activePartnerId !== undefined && (
                           <span className={cn(
-                            "text-[11px] font-medium transition-colors flex items-center gap-1.5 leading-none",
-                            onlineUserIds.has(activePartnerId) ? "text-emerald-400/80" : "text-muted-foreground/40"
+                            "text-[11px] sm:text-xs font-medium transition-colors flex items-center gap-1.5 leading-none",
+                            onlineUserIds.has(activePartnerId) ? "text-emerald-400/90" : "text-muted-foreground/50"
                           )}>
                             <span className={cn(
                               "h-1.5 w-1.5 rounded-full shrink-0",

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert, UserCircle } from "lucide-react";
+import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert, UserCircle, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -188,49 +188,79 @@ function SettingsPage() {
         defaultOpen={true}
       >
         <div className="p-4 space-y-6">
-          <div className="flex items-center gap-6">
-            <div className="relative h-20 w-20 rounded-3xl bg-amber-500/10 border-2 border-amber-500/20 flex items-center justify-center overflow-hidden shrink-0 shadow-lg shadow-amber-950/20">
-              {avatar ? (
-                <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <UserCircle className="h-10 w-10 text-amber-400/40" />
-              )}
-              {avatarSaving && (
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-sm">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="relative h-22 w-22 rounded-3xl bg-gradient-to-br from-amber-500/30 via-amber-500/5 to-transparent p-0.5 flex items-center justify-center shrink-0">
+                <div className="h-full w-full rounded-[22px] bg-[#0a0a0c] border border-amber-500/10 overflow-hidden">
+                  {avatar ? (
+                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <UserCircle className="h-10 w-10 text-amber-400/40" />
+                    </div>
+                  )}
+                  {avatarSaving && (
+                    <div className="absolute inset-0.5 bg-black/50 backdrop-blur-sm rounded-[22px] flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-foreground mb-1">{user?.username}</h2>
-              <p className="text-sm text-muted-foreground mb-1">{user?.email}</p>
-              <div className="flex items-center gap-2">
-                <span className={cn("flex h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500" : "bg-muted-foreground/30")} />
-                <span className={cn("text-[10px] font-bold uppercase tracking-widest", onlineStatus === "online" ? "text-emerald-500/80" : "text-muted-foreground/50")}>
-                  {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
-                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-foreground truncate">{user?.username}</h2>
+                <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-colors",
+                    onlineStatus === "online"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  )}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
+                    {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
+                  </span>
+                </div>
               </div>
             </div>
+
+            {user?.is_admin === 1 && (
+              <div className="flex items-center gap-3 shrink-0">
+                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
+                <div className="inline-flex p-1 rounded-full bg-white/[0.04] border border-white/[0.08]" role="radiogroup" aria-label="Mode de présence">
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(true)}
+                    disabled={statusSaving}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
+                      onlineStatus === "online"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Wifi className="h-3.5 w-3.5" />
+                    En ligne
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(false)}
+                    disabled={statusSaving}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
+                      onlineStatus === "offline"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <WifiOff className="h-3.5 w-3.5" />
+                    Hors ligne
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {user?.is_admin === 1 && (
-            <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <h3 className="text-sm font-bold text-foreground">Mode de présence</h3>
-                <p className="text-[11px] text-muted-foreground">En mode hors ligne, vous n'apparaissez pas avec le point vert.</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
-                <Switch 
-                  checked={onlineStatus === "online"} 
-                  onCheckedChange={toggleStatus}
-                  disabled={statusSaving}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="pt-4 border-t border-white/5">
+          <div className="pt-6 border-t border-white/5">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 mb-4 flex items-center gap-2">
               <span className="h-1 w-1 rounded-full bg-amber-500" />
               Choisir un Avatar

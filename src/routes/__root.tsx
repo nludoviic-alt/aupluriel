@@ -254,19 +254,16 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
-  // Messenger-only: bind the shell to visualViewport on mobile so the
-  // composer stays above the iOS keyboard (WhatsApp/Telegram). Desktop
-  // keeps h-dvh. Dropping bottom-nav padding when the keyboard is open
-  // gives the thread that space back. Scoped to /messenger.
+  // Messenger-only: bind the shell to the visual viewport height on mobile
+  // so the chat never grows taller than the visible area (iOS keyboard
+  // avoidance). Desktop keeps h-dvh. No translateY — offsetTop handling was
+  // breaking fixed positioned children and creating an empty band on PWA.
   const vv = useVisualViewportFrame();
   const isMessenger = pathname === "/messenger";
   const compactForKeyboard = vv.keyboardOpen && isMessenger;
   const messengerMobileShell =
     isMessenger && vv.height != null
-      ? {
-          height: vv.height,
-          transform: vv.offsetTop ? `translateY(${vv.offsetTop}px)` : undefined,
-        }
+      ? { height: vv.height }
       : undefined;
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
