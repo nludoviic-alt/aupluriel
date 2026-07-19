@@ -345,8 +345,8 @@ export function AppSidebar() {
         {user && (
           <div className="mb-3 flex items-center gap-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5 transition-all duration-200 hover:bg-white/[0.05] hover:border-white/[0.1]">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[14.5px] font-semibold text-foreground leading-tight">{user.username}</div>
-              <div className="truncate text-[12px] text-muted-foreground/50 mt-1.5 leading-tight">{user.email}</div>
+              <div className="truncate text-[14.5px] font-semibold text-foreground leading-none">{user.username}</div>
+              <div className="truncate text-[12px] text-muted-foreground/50 mt-1.5 leading-none">{user.email}</div>
             </div>
             <button
               onClick={logout}

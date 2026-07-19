@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
@@ -20,8 +20,6 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
-import { useAppViewportHeight } from "@/hooks/use-app-viewport-height";
-import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -45,50 +43,6 @@ import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
 import { cn } from "@/lib/utils";
-
-// Live viewport telemetry, enabled only with ?vvdebug in the URL — the iOS
-// keyboard pan/resize bugs can't be reproduced in desktop tooling, so this
-// overlay is how we read the real numbers off an actual phone. Follows the
-// keyboard pan via --app-offset-top so it stays readable mid-bug.
-function ViewportDebugHud() {
-  const [info, setInfo] = useState("");
-  useEffect(() => {
-    if (!window.location.search.includes("vvdebug")) return;
-    let raf = 0;
-    const tick = () => {
-      const vv = window.visualViewport;
-      const root = document.documentElement;
-      const standalone = (navigator as { standalone?: boolean }).standalone ? 1 : 0;
-      setInfo(
-        `kb4 pwa:${standalone} vvH:${vv ? Math.round(vv.height) : "—"} ` +
-          `off:${vv ? Math.round(vv.offsetTop) : "—"} innerH:${window.innerHeight} ` +
-          `scrollY:${Math.round(window.scrollY)} appH:${root.style.getPropertyValue("--app-height") || "—"}`
-      );
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  if (!info) return null;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: "calc(env(safe-area-inset-top, 0px) + var(--app-offset-top, 0px))",
-        left: 0,
-        zIndex: 99999,
-        background: "rgba(0,0,0,0.85)",
-        color: "#4ade80",
-        font: "11px/1.6 monospace",
-        padding: "2px 8px",
-        pointerEvents: "none",
-        maxWidth: "100vw",
-      }}
-    >
-      {info}
-    </div>
-  );
-}
 
 function NotFoundComponent() {
   return (
@@ -154,11 +108,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      // interactive-widget=resizes-content makes Chrome/Android (108+)
-      // shrink the layout viewport when the keyboard opens instead of
-      // overlaying it. iOS Safari does NOT support it — there the keyboard
-      // pan is cancelled via --app-offset-top (use-app-viewport-height.ts).
-      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
       { title: "Au Pluriel" },
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
@@ -303,13 +253,6 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
-  useAppViewportHeight();
-  // With the keyboard open on /messenger, the ~377px of visible viewport
-  // can't afford the global header (~80px) nor the bottom-nav padding
-  // (~114px, reserved for a nav that's behind the keyboard anyway) — both
-  // collapse so the conversation + composer get the space, Telegram-style.
-  const keyboardOpen = useKeyboardOpen();
-  const compactForKeyboard = keyboardOpen && pathname === "/messenger";
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -341,27 +284,11 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        {/* translateY cancels iOS Safari's keyboard pan — see
-            use-app-viewport-height.ts for the full story. */}
-        <div className="flex h-dvh w-full" style={{ height: "var(--app-height, 100dvh)", transform: "translateY(var(--app-offset-top, 0px))" }}>
+        <div className="flex min-h-screen w-full">
           <AppSidebar />
-          <div className={cn(
-            "flex-1 flex flex-col min-w-0",
-            pathname === "/messenger" && "h-full overflow-hidden"
-          )}>
+          <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}
-            <header className={cn(
-              // shrink-0 is essential: without it, tall scrolling pages
-              // flex-crush this header toward ~1px (it would vanish on mobile
-              // everywhere except messenger's clamped layout). Pinning its
-              // height keeps the header bar visible and identical on every
-              // mobile page.
-              "relative shrink-0 sticky top-0 z-[100] h-[calc(4.5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300",
-              // Only hidden while the keyboard is up on messenger, to give the
-              // chat every pixel; otherwise shown on all pages. Hide on mobile 
-              // for messenger to use messenger's own header.
-              compactForKeyboard || (pathname === "/messenger" && "hidden md:flex") ? "hidden md:flex" : "flex"
-            )}>
+            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -497,29 +424,13 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              // flex + forcing the direct child (whatever <Outlet/> renders)
-              // to flex-1/min-h-0 makes messenger's own h-full chain robust
-              // against <main> not being a flex container itself — h-full
-              // needs a definite-height ancestor to resolve as a percentage,
-              // flex-1 doesn't, so this can't silently under-fill the space
-              // and leave a gap above the bottom nav.
-              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0",
-              // Reserve exactly the BottomNav's real height so the messenger
-              // content bottoms out flush against it, same as every other
-              // page. The nav is h-16 (4rem) + its own safe-area-bottom
-              // padding — matching that here (not 5rem) removes the ~15px
-              // dead gap that made /messenger look shorter than other pages.
-              // Keyboard open: the nav is behind the keyboard, so drop the
-              // padding entirely and let the composer sit against it.
-              pathname === "/messenger" &&
-                (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
+              pathname === "/messenger" && "pb-0 overflow-hidden"
             )}>
               <Outlet />
             </main>
           </div>
         </div>
         <BottomNav />
-        <ViewportDebugHud />
         <Toaster />
       </SidebarProvider>
     </QueryClientProvider>

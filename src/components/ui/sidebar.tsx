@@ -131,18 +131,11 @@ const SidebarProvider = React.forwardRef<
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
                 "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                // var(--app-height) (set by useAppViewportHeight, falling
-                // back to 100dvh before it runs) instead of h-dvh alone —
-                // some mobile WebViews/PWAs don't recompute 100dvh reliably
-                // right after the on-screen keyboard closes, leaving the app
-                // shell stuck at the shorter "keyboard open" height, which
-                // drags "fixed" chrome like the chat composer up with it.
-                height: "var(--app-height, 100dvh)",
                 ...style,
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex w-full has-[[data-variant=inset]]:bg-sidebar",
+              "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}
             ref={ref}
