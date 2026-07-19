@@ -16,13 +16,13 @@ import {
   Trash2,
   Smile,
   X,
+  Search,
   ChevronRight,
   ChevronLeft,
   Bell,
   Paperclip,
   Check,
   CheckCheck,
-  Mic,
   Square,
   CircleDot,
   Ban,
@@ -30,10 +30,11 @@ import {
   Forward,
   Copy,
   Pencil,
+  Video,
+  Phone,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import { useWhisper } from "@/hooks/use-whisper";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush } from "@/lib/push";
@@ -323,70 +324,8 @@ function MessengerPage() {
   const [inputText, setInputText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Voice recording states and handlers
-  const [recordDuration, setRecordDuration] = useState(0);
-  const recordIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isCancelledRef = useRef<boolean>(false);
-
-  const { listening, supported: whisperSupported, toggle: toggleVoice } = useWhisper({
-    onTranscript: (text) => {
-      if (isCancelledRef.current) {
-        isCancelledRef.current = false;
-        return;
-      }
-      setInputText((prev) => {
-        const space = prev && !prev.endsWith(" ") ? " " : "";
-        return prev + space + text;
-      });
-      // Focus textarea back after transcription
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 50);
-      toast.success("Enregistrement vocal transcrit !");
-    },
-    onError: (err) => {
-      if (isCancelledRef.current) {
-        isCancelledRef.current = false;
-        return;
-      }
-      toast.error(err);
-    }
-  });
-
-  // Track recording duration when listening changes
-  useEffect(() => {
-    if (listening) {
-      isCancelledRef.current = false;
-      setRecordDuration(0);
-      recordIntervalRef.current = setInterval(() => {
-        setRecordDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (recordIntervalRef.current) {
-        clearInterval(recordIntervalRef.current);
-        recordIntervalRef.current = null;
-      }
-    }
-    return () => {
-      if (recordIntervalRef.current) {
-        clearInterval(recordIntervalRef.current);
-      }
-    };
-  }, [listening]);
-
-  const handleCancelVoice = () => {
-    isCancelledRef.current = true;
-    if (listening) {
-      toggleVoice();
-    }
-    toast.info("Enregistrement vocal annulé");
-  };
-
-  const formatDuration = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const secs = sec % 60;
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  };
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [sidebarFilter, setSidebarFilter] = useState<"all" | "personal" | "groups">("all");
 
   // Clipboard Paste Image upload handler
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -560,29 +499,81 @@ function MessengerPage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
-  // Swipe-down-to-dismiss for the fullscreen image (WhatsApp-style) — tracks
-  // the vertical drag offset live so the image follows the finger and the
-  // backdrop fades out, then either commits the close or snaps back.
+  // Lightbox Zoom and Pan states
+  const [lightboxScale, setLightboxScale] = useState(1);
+  const [lightboxOffset, setLightboxOffset] = useState({ x: 0, y: 0 });
+  const lastTouchRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const isPanningRef = useRef(false);
+
+  // Swipe-down-to-dismiss for the fullscreen image (WhatsApp-style)
   const [lightboxDragY, setLightboxDragY] = useState(0);
   const [lightboxDragging, setLightboxDragging] = useState(false);
-  const lightboxDragStartRef = useRef<number | null>(null);
+  const lightboxDragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   function handleLightboxTouchStart(e: React.TouchEvent) {
-    lightboxDragStartRef.current = e.touches[0].clientY;
+    const touch = e.touches[0];
+    const now = Date.now();
+    
+    // Double tap detection
+    if (lastTouchRef.current && now - lastTouchRef.current.time < 300) {
+      const dist = Math.hypot(touch.clientX - lastTouchRef.current.x, touch.clientY - lastTouchRef.current.y);
+      if (dist < 30) {
+        if (lightboxScale > 1) {
+          setLightboxScale(1);
+          setLightboxOffset({ x: 0, y: 0 });
+        } else {
+          setLightboxScale(2.5);
+        }
+        lastTouchRef.current = null;
+        return;
+      }
+    }
+    
+    lastTouchRef.current = { x: touch.clientX, y: touch.clientY, time: now };
+    lightboxDragStartRef.current = { x: touch.clientX, y: touch.clientY };
     setLightboxDragging(true);
+    
+    if (lightboxScale > 1) {
+      isPanningRef.current = true;
+    }
   }
+
   function handleLightboxTouchMove(e: React.TouchEvent) {
-    if (lightboxDragStartRef.current === null) return;
-    const delta = e.touches[0].clientY - lightboxDragStartRef.current;
-    if (delta > 0) setLightboxDragY(delta);
+    if (!lightboxDragStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - lightboxDragStartRef.current.x;
+    const deltaY = touch.clientY - lightboxDragStartRef.current.y;
+
+    if (lightboxScale > 1) {
+      // Panning mode
+      setLightboxOffset(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
+      lightboxDragStartRef.current = { x: touch.clientX, y: touch.clientY };
+    } else {
+      // Dismiss drag mode
+      if (deltaY > 0) {
+        setLightboxDragY(deltaY);
+      }
+    }
   }
+
   function handleLightboxTouchEnd() {
     lightboxDragStartRef.current = null;
     setLightboxDragging(false);
-    if (lightboxDragY > 110) {
-      setFullscreenImage(null);
+    isPanningRef.current = false;
+
+    if (lightboxScale === 1) {
+      if (lightboxDragY > 110) {
+        setFullscreenImage(null);
+        setLightboxDragY(0);
+      } else {
+        setLightboxDragY(0);
+      }
     } else {
-      setLightboxDragY(0);
+      // Clamp offset when zoomed to keep image in view (simple version)
+      // If we wanted to be perfect we'd calculate bounds based on image size vs screen
     }
   }
 
@@ -597,6 +588,8 @@ function MessengerPage() {
       window.addEventListener("keydown", handleKeyDown);
     } else {
       setLightboxDragY(0);
+      setLightboxScale(1);
+      setLightboxOffset({ x: 0, y: 0 });
     }
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
@@ -650,8 +643,17 @@ function MessengerPage() {
     }
   }
 
+  // Scroll to bottom button visibility
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const messagesThreadRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeGroupIdRef = useRef<string | null>(null);
+
+  const handleThreadScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const isScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight > 400;
+    setShowScrollBottom(isScrolledUp);
+  };
   activeGroupIdRef.current = activeGroupId;
 
   // Load sidebar data (Groups & Users if admin)
@@ -1178,69 +1180,37 @@ function MessengerPage() {
       : "quelqu'un écrit…";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background">
-      {/* Desktop-only: caps the workspace width and centers it so the sidebar
-          and message bubbles don't stretch edge-to-edge on wide monitors. */}
-      <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1400px] md:mx-auto">
-      {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
-      <div className={cn("items-center justify-between border-b border-white/[0.06] bg-white/[0.01] px-4 py-3 md:px-6 md:py-4 shrink-0", activeGroupId ? "hidden md:flex" : "flex")}>
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-inner shrink-0">
-            <MessageSquare className="h-4.5 w-4.5 md:h-5 md:w-5" />
+    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-[#08080a] md:p-4 lg:p-6">
+      {/* Main Premium Container — floating card effect on desktop */}
+      <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1240px] md:mx-auto md:rounded-[32px] border border-white/[0.08] bg-black/10 backdrop-blur-xl shadow-2xl overflow-hidden relative">
+        {/* Subtle Ambient background flares within the container */}
+        <div className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 bg-amber-500/[0.03] blur-[100px] rounded-full" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 bg-violet-600/[0.03] blur-[100px] rounded-full" />
+
+        {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
+        <div className={cn("items-center justify-between border-b border-white/[0.08] bg-white/[0.02] backdrop-blur-xl px-4 py-3 md:px-6 md:py-4 shrink-0 relative z-10", activeGroupId ? "hidden md:flex" : "flex")}>
+        <div className="flex items-center gap-4 min-w-0 flex-1">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] shrink-0">
+            <MessageSquare className="h-5.5 w-5.5" />
           </div>
-          <div className="min-w-0">
-            <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground font-sans truncate">Mes Messages</h1>
-            <p className="text-xs text-muted-foreground truncate hidden sm:block">Discussions de groupe, conversations personnelles et vocaux</p>
+          <div className="min-w-0 flex flex-col justify-center">
+            <h1 className="text-[19px] md:text-2xl font-bold tracking-tight text-foreground font-sans truncate leading-none mb-1.5">Mes Messages</h1>
+            <div className="flex items-center gap-2">
+              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-[11px] md:text-xs text-muted-foreground/50 font-medium truncate leading-none uppercase tracking-wider">Services Actifs</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {!pushEnabled && pushIosNonSafari && (
-            <div
-              title="Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple. Ouvre aupluriel.com dans Safari, puis Partager → « Sur l'écran d'accueil »."
-              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border border-red-500/20 bg-red-500/5 text-red-400 shadow-sm cursor-help"
-            >
-              <Bell className="h-4 w-4 shrink-0" />
-              <span className="hidden md:inline whitespace-nowrap">Ouvrir dans Safari</span>
-            </div>
-          )}
-
-          {!pushEnabled && !pushIosNonSafari && pushSupported && pushIosNonStandalone && (
-            <div
-              title="Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications — un onglet Safari classique ne peut pas les recevoir téléphone verrouillé."
-              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-400 shadow-sm cursor-help"
-            >
-              <Bell className="h-4 w-4 shrink-0" />
-              <span className="hidden md:inline whitespace-nowrap">Ajouter à l'accueil</span>
-            </div>
-          )}
-
-          {pushSupported && !pushEnabled && !pushIosNonSafari && !pushIosNonStandalone && (
-            <button
-              onClick={handleEnablePush}
-              className={cn(
-                "flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer shadow-sm active:scale-95",
-                pushPermissionDenied
-                  ? "border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10"
-                  : "border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10"
-              )}
-              title={pushPermissionDenied ? "Notifications bloquées. Activez-les dans les réglages du navigateur." : "Activer les notifications push sur ce téléphone"}
-            >
-              <Bell className="h-4 w-4 animate-bounce shrink-0" />
-              <span className="hidden md:inline whitespace-nowrap">
-                {pushPermissionDenied ? "Notifications bloquées" : "M'alerter"}
-              </span>
-            </button>
-          )}
-
+        <div className="flex items-center gap-3 shrink-0">
           {!!user?.is_admin && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex h-10 items-center justify-center gap-1.5 px-2.5 md:px-3.5 text-xs font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black shadow-md shadow-amber-950/20 transition-all duration-200 cursor-pointer shrink-0 active:scale-95"
+              className="flex h-10 md:h-11 items-center justify-center gap-2 px-4 md:px-5 text-[13px] font-bold rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/20 transition-all duration-300 cursor-pointer shrink-0 active:scale-95 hover:scale-[1.02]"
               title="Créer un groupe"
             >
               <Plus className="h-4.5 w-4.5 shrink-0" />
-              <span className="hidden md:inline whitespace-nowrap">Créer un groupe</span>
+              <span className="hidden md:inline whitespace-nowrap">Nouveau Groupe</span>
             </button>
           )}
         </div>
@@ -1249,356 +1219,299 @@ function MessengerPage() {
       {/* CHAT WORKSPACE */}
       <div className="flex flex-1 min-h-0 divide-x divide-white/[0.06] overflow-hidden">
         {/* SIDEBAR COL */}
-        <div className={cn("flex flex-col bg-white/[0.01] overflow-y-auto overscroll-contain space-y-5 p-2.5 sm:p-3", activeGroupId ? "hidden md:flex md:w-80 shrink-0" : "w-full md:w-80 shrink-0")}>
-          {loadingSidebar ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map((n) => (
-                <div
-                  key={n}
-                  className="h-16 animate-pulse rounded-xl border border-white/[0.05] bg-white/[0.02]"
-                />
-              ))}
+        <div className={cn("flex flex-col bg-white/[0.01] overflow-hidden space-y-0", activeGroupId ? "hidden md:flex md:w-[350px] shrink-0" : "w-full md:w-[350px] shrink-0")}>
+          {/* SEARCH BAR (WhatsApp/Example style) */}
+          <div className="p-3 sm:p-4 pb-2">
+            <div className="relative group">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-amber-400 transition-colors" />
+              <input 
+                type="text"
+                placeholder="Rechercher..."
+                value={sidebarSearch}
+                onChange={(e) => setSidebarSearch(e.target.value)}
+                className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-10 pr-4 text-[14px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-amber-500/30 focus:bg-white/[0.05] transition-all"
+              />
             </div>
-          ) : (
-            <>
-              {/* PUBLIC GROUPS */}
-              <div className="space-y-1">
-                <div className="px-2.5 sm:px-3 mb-2 flex items-center gap-2 select-none">
-                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-950/30">
-                    <Hash className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-violet-300">Groupes & Salons</div>
-                    <div className="text-[8.5px] sm:text-[9.5px] text-muted-foreground/60">{publicGroups.length} {publicGroups.length === 1 ? 'groupe' : 'groupes'}</div>
-                  </div>
-                </div>
-                {publicGroups.map((group) => {
-                  const isActive = group.id === activeGroupId;
-                  return (
-                    <div key={group.id} className="relative group">
-                      <button
-                        onClick={() => setActiveGroupId(group.id)}
-                        className={cn(
-                          "w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
-                          !!user?.is_admin && "pr-11",
-                          isActive
-                            ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                            : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                        )}
-                      >
-                        {isActive && (
-                          <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                        )}
-                        <span className={cn(
-                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
-                          isActive
-                            ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-                            : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
-                        )}>
-                          <Hash className="h-4.5 w-4.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-[14px] leading-snug truncate">
-                            {group.name}
-                          </div>
-                          <div className="text-[10.5px] text-muted-foreground/45 truncate mt-0.5">
-                            Salon de groupe
-                          </div>
-                        </div>
-                        <ChevronRight
-                          className={cn(
-                            "h-4 w-4 shrink-0 transition-transform duration-200",
-                            isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
-                          )}
-                        />
-                      </button>
-                      {!!user?.is_admin && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteGroup(group.id);
-                          }}
-                          title="Supprimer ce salon"
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+          </div>
 
-              {/* PRIVATE MESSAGES */}
-              <div className="space-y-1">
-                <div className="px-2.5 sm:px-3 mb-2 flex items-center gap-2 select-none">
-                  <div className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-950/30">
-                    <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
-                  </div>
-                  <div>
-                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-300">Messages Personnels</div>
-                    <div className="text-[8.5px] sm:text-[9.5px] text-muted-foreground/60">{verifiedUsers.length} {verifiedUsers.length === 1 ? 'utilisateur' : 'utilisateurs'}</div>
-                  </div>
-                </div>
-
-                {!!user?.is_admin ? (
-                  // Admin sees list of verified users to chat with
-                  verifiedUsers.length === 0 ? (
-                    <div className="text-[12px] text-muted-foreground/50 px-3 py-4 italic bg-white/[0.01] border border-white/[0.04] rounded-xl text-center leading-relaxed">
-                      Aucun autre utilisateur enregistré.<br />
-                      <span className="text-[9.5px] text-amber-500/60 font-semibold block mt-1">Créez un second compte pour tester</span>
-                    </div>
-                  ) : (
-                    verifiedUsers.map((u) => {
-                      const isActive = u.groupId === activeGroupId;
-                      return (
-                        <div key={u.id} className="relative group">
-                          <button
-                            type="button"
-                            onClick={() => setActiveGroupId(u.groupId)}
-                            className={cn(
-                              "w-full flex items-center gap-3 p-3 sm:p-3.5 pr-11 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
-                              isActive
-                                ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                                : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                            )}
-                          >
-                            {isActive && (
-                              <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                            )}
-                            <span className={cn(
-                              "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border bg-gradient-to-br text-sm font-bold transition-all duration-150",
-                              getAvatarStyle(u.username)
-                            )}>
-                              {getInitial(u.username)}
-                              {onlineUserIds.has(u.id) && (
-                                <span
-                                  title="En ligne"
-                                  className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background"
-                                />
-                              )}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-bold text-[14px] leading-snug truncate">
-                                {u.username}
-                              </div>
-                              <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
-                                {u.email}
-                              </div>
-                            </div>
-                            <ChevronRight
-                              className={cn(
-                                "h-4 w-4 shrink-0 transition-transform duration-200",
-                                isActive ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
-                              )}
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteGroup(u.groupId);
-                            }}
-                            title="Supprimer cette discussion"
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      );
-                    })
-                  )
-                ) : (
-                  // Regular user sees only their direct chat with the Admin
-                  userDmGroup && (
-                    <div className="relative group">
-                      <button
-                        type="button"
-                        onClick={() => setActiveGroupId(userDmGroup.id)}
-                        className={cn(
-                          "w-full flex items-center gap-3 p-3 sm:p-3.5 pr-11 rounded-xl border transition-all duration-150 text-left relative cursor-pointer active:scale-[0.98]",
-                          userDmGroup.id === activeGroupId
-                            ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground"
-                            : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.02] hover:text-foreground"
-                        )}
-                      >
-                        {userDmGroup.id === activeGroupId && (
-                          <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-amber-400" />
-                        )}
-                        <span className={cn(
-                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm transition-all duration-150",
-                          userDmGroup.id === activeGroupId
-                            ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
-                            : "bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover:text-foreground group-hover:border-white/10"
-                        )}>
-                          <Shield className="h-4.5 w-4.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-[14px] leading-snug truncate">
-                            Support Admin
-                          </div>
-                          <div className="text-[10.5px] text-muted-foreground/50 truncate mt-0.5">
-                            Conversation privée
-                          </div>
-                        </div>
-                        <ChevronRight
-                          className={cn(
-                            "h-4 w-4 shrink-0 transition-transform duration-200",
-                            userDmGroup.id === activeGroupId ? "text-amber-400 translate-x-0.5" : "text-muted-foreground/20 group-hover:text-muted-foreground/40"
-                          )}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteGroup(userDmGroup.id);
-                        }}
-                        title="Supprimer cette discussion"
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 cursor-pointer active:scale-90"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )
+                  {/* FILTER TABS (Example style) */}
+          <div className="flex items-center gap-2 px-3 sm:px-4 pb-4 overflow-x-auto scrollbar-none shrink-0 pr-6 border-b border-white/[0.03] mb-2">
+            {[
+              { id: "all", label: "Tous", count: groups.length + (!!user?.is_admin ? verifiedUsers.length : 0) },
+              { id: "personal", label: "Personnels", count: !!user?.is_admin ? verifiedUsers.length : (userDmGroup ? 1 : 0) },
+              { id: "groups", label: "Groupes", count: publicGroups.length },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSidebarFilter(tab.id as any)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap active:scale-95",
+                  sidebarFilter === tab.id
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+                    : "bg-white/[0.03] border border-white/[0.06] text-muted-foreground/60 hover:text-foreground"
                 )}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={cn(
+                    "flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[9px] font-bold",
+                    sidebarFilter === tab.id ? "bg-amber-500/20" : "bg-white/10"
+                  )}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 pb-4">
+            {loadingSidebar ? (
+              <div className="flex flex-col gap-3">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <div
+                    key={n}
+                    className="h-16 animate-pulse rounded-2xl border border-white/[0.05] bg-white/[0.02]"
+                  />
+                ))}
               </div>
-            </>
-          )}
+            ) : (
+              <div className="space-y-1">
+                {(() => {
+                  // Combine all potential conversation rows
+                  const allRows: Array<{
+                    id: string;
+                    name: string;
+                    type: "group" | "personal";
+                    lastMessage?: string;
+                    time?: string;
+                    unread?: number;
+                    avatar?: string;
+                    isActive: boolean;
+                    onClick: () => void;
+                  }> = [];
+
+                  // Public Groups
+                  if (sidebarFilter === "all" || sidebarFilter === "groups") {
+                    publicGroups.forEach(g => {
+                      if (sidebarSearch && !g.name.toLowerCase().includes(sidebarSearch.toLowerCase())) return;
+                      allRows.push({
+                        id: g.id,
+                        name: g.name,
+                        type: "group",
+                        lastMessage: "Cliquez pour voir les messages",
+                        time: new Date(g.createdAt * 1000).toLocaleDateString() === new Date().toLocaleDateString() 
+                          ? new Date(g.createdAt * 1000).toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })
+                          : new Date(g.createdAt * 1000).toLocaleDateString("fr-FR", { day: 'numeric', month: 'short' }),
+                        isActive: g.id === activeGroupId,
+                        onClick: () => setActiveGroupId(g.id)
+                      });
+                    });
+                  }
+
+                  // Personal / DMs
+                  if (sidebarFilter === "all" || sidebarFilter === "personal") {
+                    if (!!user?.is_admin) {
+                      verifiedUsers.forEach(u => {
+                        if (sidebarSearch && !u.username.toLowerCase().includes(sidebarSearch.toLowerCase())) return;
+                        allRows.push({
+                          id: u.groupId,
+                          name: u.username,
+                          type: "personal",
+                          lastMessage: u.email,
+                          avatar: u.username,
+                          isActive: u.groupId === activeGroupId,
+                          onClick: () => setActiveGroupId(u.groupId)
+                        });
+                      });
+                    } else if (userDmGroup) {
+                      if (!sidebarSearch || userDmGroup.name.toLowerCase().includes(sidebarSearch.toLowerCase())) {
+                        allRows.push({
+                          id: userDmGroup.id,
+                          name: "Support Admin",
+                          type: "personal",
+                          lastMessage: "Discussion privée",
+                          isActive: userDmGroup.id === activeGroupId,
+                          onClick: () => setActiveGroupId(userDmGroup.id)
+                        });
+                      }
+                    }
+                  }
+
+                  if (allRows.length === 0) {
+                    return (
+                      <div className="py-20 flex flex-col items-center justify-center text-center space-y-3 px-6">
+                        <div className="h-12 w-12 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center text-muted-foreground/20">
+                          <Search className="h-6 w-6" />
+                        </div>
+                        <p className="text-sm text-muted-foreground/40 font-medium">Aucun résultat trouvé</p>
+                      </div>
+                    );
+                  }
+
+                  return allRows.map((row) => (
+                    <button
+                      key={row.id}
+                      onClick={row.onClick}
+                      className={cn(
+                        "w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-left relative cursor-pointer active:scale-[0.98] group/row",
+                        row.isActive
+                          ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground shadow-lg shadow-black/20"
+                          : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.03] hover:text-foreground hover:border-white/[0.08]"
+                      )}
+                    >
+                      <div className="relative shrink-0">
+                        <span className={cn(
+                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-transform duration-200 group-hover/row:scale-105",
+                          row.type === "personal"
+                            ? cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name))
+                            : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                        )}>
+                          {row.type === "personal" ? getInitial(row.avatar || row.name) : <Hash className="h-5 w-5" />}
+                        </span>
+                        {row.type === "personal" && row.id && verifiedUsers.find(u => u.groupId === row.id && onlineUserIds.has(u.id)) && (
+                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-500 animate-pulse" />
+                        )}
+                      </div>
+                      
+                      <div className="min-w-0 flex-1 flex flex-col justify-center -space-y-0.5">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <div className="font-bold text-[14.5px] sm:text-[15px] leading-tight truncate">
+                            {row.name}
+                          </div>
+                          {row.time && (
+                            <div className="text-[10px] font-medium text-muted-foreground/40 whitespace-nowrap">
+                              {row.time}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className={cn(
+                            "text-[12px] truncate leading-tight",
+                            row.isActive ? "text-muted-foreground" : "text-muted-foreground/50"
+                          )}>
+                            {row.lastMessage}
+                          </div>
+                          {row.unread && row.unread > 0 && (
+                            <div className="h-4 min-w-[1rem] px-1 flex items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black shadow-lg shadow-amber-950/20">
+                              {row.unread}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* CHAT WINDOW */}
         <div className={cn("flex-1 flex flex-col bg-background/40 overflow-hidden relative min-h-0", activeGroupId ? "flex" : "hidden md:flex")}>
-          {/* Subtle Ambient Background glow blobs matching the application style */}
+          {/* Subtle Wallpaper Pattern (WhatsApp style) */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none select-none" 
+               style={{ backgroundImage: `url("https://www.transparenttextures.com/patterns/cubes.png")` }} />
+          
+          {/* Subtle Ambient Background glow blobs */}
           <div className="pointer-events-none absolute -bottom-32 -right-32 h-72 w-72 rounded-full bg-amber-500/[0.02] blur-[90px]" />
           <div className="pointer-events-none absolute -top-32 -left-32 h-72 w-72 rounded-full bg-violet-500/[0.02] blur-[90px]" />
 
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-black/60 backdrop-blur-md px-3 sm:px-6 py-3 sm:py-4 shrink-0 z-20 sticky top-0 sm:pt-4">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3 border-b border-white/[0.1] bg-black/60 backdrop-blur-xl px-2 sm:px-6 py-2 sm:py-3 shrink-0 z-30 sticky top-0">
+                <div className="flex items-center min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
-                    className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground cursor-pointer mr-0.5 transition-all duration-200 active:scale-90"
-                    title="Retour aux conversations"
+                    className="md:hidden flex h-11 w-10 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground transition-all active:scale-90"
+                    title="Retour"
                   >
-                    <ChevronLeft className="h-4.5 w-4.5" />
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
-                  <span className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold shadow-sm",
-                    isActiveDirect
-                      ? cn("bg-gradient-to-br", getAvatarStyle(activeGroupName))
-                      : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                  )}>
-                    {isActiveDirect ? getInitial(activeGroupName) : <Hash className="h-4 w-4" />}
-                  </span>
-                  <span className="min-w-0 flex-1 flex flex-col justify-center">
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-bold text-[14.5px] sm:text-[15px] text-foreground tracking-tight font-sans truncate">
-                        {isActiveDirect ? `${activeGroupName} (Privé)` : activeGroupName}
-                      </span>
-                      {activePartnerId !== undefined && (
-                        <span
-                          title={onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
-                          className={cn(
-                            "h-1.5 w-1.5 rounded-full shrink-0",
-                            onlineUserIds.has(activePartnerId) ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/30"
-                          )}
-                        />
-                      )}
+                  
+                  <div className="relative shrink-0 ml-1 md:ml-0">
+                    <span className={cn(
+                      "flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-white/10 text-sm font-bold shadow-lg transition-transform duration-200",
+                      isActiveDirect
+                        ? cn("bg-gradient-to-br", getAvatarStyle(activeGroupName))
+                        : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                    )}>
+                      {isActiveDirect ? getInitial(activeGroupName) : <Hash className="h-5 w-5" />}
                     </span>
-                    {typingUserIds.length > 0 && (
-                      <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400">
-                        <span className="flex items-center gap-0.5">
-                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.3s]" />
-                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.15s]" />
-                          <span className="h-1 w-1 rounded-full bg-amber-400 animate-bounce" />
+                  </div>
+
+                  <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
+                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-none mb-0.5">
+                      {isActiveDirect ? activeGroupName : activeGroupName}
+                    </h2>
+                    
+                    <div className="flex items-center gap-1.5 h-3.5">
+                      {typingUserIds.length > 0 ? (
+                        <span className="text-[11.5px] font-medium text-amber-400 animate-in fade-in">
+                          {typingLabel}
                         </span>
-                        {typingLabel}
-                      </span>
-                    )}
-                  </span>
+                      ) : activePartnerId !== undefined ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            onlineUserIds.has(activePartnerId) ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/30"
+                          )} />
+                          <span className={cn(
+                            "text-[11.5px] font-medium transition-colors duration-300",
+                            onlineUserIds.has(activePartnerId) ? "text-emerald-400/90" : "text-muted-foreground/50"
+                          )}>
+                            {onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-medium text-muted-foreground/40 italic">
+                          Salon de discussion
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                  {!pushEnabled && pushIosNonSafari && (
-                    <div
-                      title="Sur iPhone, Chrome ne peut pas activer les notifications — c'est une restriction d'Apple. Ouvre aupluriel.com dans Safari, puis Partager → « Sur l'écran d'accueil »."
-                      className="md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 text-red-400 cursor-help"
-                    >
-                      <Bell className="h-3.5 w-3.5" />
-                    </div>
-                  )}
-
-                  {!pushEnabled && !pushIosNonSafari && pushSupported && pushIosNonStandalone && (
-                    <div
-                      title="Sur iPhone, ajoute Au Pluriel à l'écran d'accueil (Partager → « Sur l'écran d'accueil ») pour activer les notifications."
-                      className="md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400 cursor-help"
-                    >
-                      <Bell className="h-3.5 w-3.5" />
-                    </div>
-                  )}
-
-                  {pushSupported && !pushEnabled && !pushIosNonSafari && !pushIosNonStandalone && (
-                    <button
-                      onClick={handleEnablePush}
-                      title={pushPermissionDenied ? "Notifications bloquées. Activez-les dans les réglages du navigateur." : "Activer les notifications push sur ce téléphone"}
-                      className={cn(
-                        "md:hidden flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border transition-all duration-200 cursor-pointer active:scale-95",
-                        pushPermissionDenied
-                          ? "border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10"
-                          : "border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10"
-                      )}
-                    >
-                      <Bell className="h-3.5 w-3.5 animate-bounce" />
-                    </button>
-                  )}
-
+                <div className="flex items-center gap-2 shrink-0">
                   {!isActiveDirect && !!user?.is_admin && (
                     <button
                       onClick={handleOpenMembersModal}
-                      title="Gérer les membres du groupe"
-                      className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-95"
+                      title="Gérer les membres"
+                      className="flex h-9 w-9 sm:h-10 sm:px-3 sm:w-auto items-center justify-center gap-2 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.05] text-muted-foreground hover:text-foreground hover:bg-white/[0.1] hover:border-white/20 transition-all duration-200 active:scale-95 shadow-sm"
                     >
-                      <Settings2 className="h-3.5 w-3.5 text-amber-400" />
+                      <Settings2 className="h-4 w-4 text-amber-400" />
                       <span className="hidden sm:inline whitespace-nowrap">Membres</span>
-                    </button>
-                  )}
-
-                  {(!!user?.is_admin || isActiveDirect) && (
-                    <button
-                      onClick={() => handleDeleteGroup()}
-                      title="Supprimer la discussion"
-                      className="flex h-9 items-center gap-1.5 px-2.5 sm:px-3 text-xs font-semibold rounded-lg border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 hover:border-red-500/30 text-red-400 transition-all duration-200 cursor-pointer active:scale-95"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline whitespace-nowrap">Supprimer</span>
                     </button>
                   )}
                 </div>
               </div>
 
               {/* MESSAGES THREAD */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 flex flex-col justify-end gap-4 relative">
-                {/* Real spacer element, not container padding-top — with
-                    justify-end on an overflowing flex column, browsers can
-                    swallow leading padding when scrolled to the very top,
-                    clipping the first message. An actual flex child's height
-                    is always respected. */}
-                {messages.length > 0 && <div className="shrink-0 h-6" />}
+              <div 
+                ref={messagesThreadRef}
+                onScroll={handleThreadScroll}
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 flex flex-col justify-end gap-4 relative scroll-smooth"
+              >
+                <div className="shrink-0 h-10" />
                 {loadingMessages && messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />
+                  <div className="flex flex-col items-center justify-center h-full space-y-4">
+                    <Loader2 className="h-10 w-10 animate-spin text-amber-500/40" />
+                    <p className="text-sm font-medium text-muted-foreground/40 animate-pulse">Chargement de vos messages...</p>
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground/40 space-y-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.05] text-muted-foreground/30">
-                      <MessageSquare className="h-6 w-6" />
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6">
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-amber-500/20 blur-2xl rounded-full" />
+                      <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-black/40 border border-white/10 text-amber-400/80 shadow-2xl">
+                        <MessageSquare className="h-10 w-10" />
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold">Aucun message dans ce salon.</div>
-                    <div className="text-xs text-muted-foreground/60">Soyez le premier à envoyer un message !</div>
+                    <div className="space-y-2 max-w-[240px]">
+                      <h3 className="text-lg font-bold text-foreground">C'est le début d'une histoire</h3>
+                      <p className="text-sm text-muted-foreground/60 leading-relaxed">
+                        Envoyez votre premier message pour démarrer la conversation dans <span className="text-amber-400/80 font-semibold">{activeGroupName}</span>.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   messages.map((msg, idx) => {
@@ -1606,6 +1519,8 @@ function MessengerPage() {
                     const isAdminSender = msg.senderIsAdmin === 1;
                     const isDeleted = !!msg.deletedAt;
                     const isImage = !isDeleted && msg.content.startsWith("data:image/");
+                    const emojiCount = !isImage && !isDeleted ? getEmojiOnlyCount(msg.content) : null;
+                    const isEmojiMsg = emojiCount !== null;
                     const userColor = getUserColor(msg.senderUsername);
                     const pickerOpen = reactionPickerFor === msg.id;
                     const prevMsg = messages[idx - 1];
@@ -1696,89 +1611,107 @@ function MessengerPage() {
                               <Reply className="h-3.5 w-3.5" />
                             </div>
                           )}
-                          {isDeleted ? (
-                            <div
-                              className={cn(
-                                "flex items-center gap-1.5 italic rounded-2xl text-[13px] px-4 py-2.5 text-muted-foreground/50 border border-white/[0.06] bg-white/[0.02]",
-                                isMe ? "rounded-tr-none" : "rounded-tl-none"
-                              )}
-                            >
-                              <Ban className="h-3.5 w-3.5 shrink-0" />
-                              Message supprimé
-                            </div>
-                          ) : (
-                            (() => {
-                              const emojiCount = !isImage ? getEmojiOnlyCount(msg.content) : null;
-                              const isEmojiMsg = emojiCount !== null;
-                              return (
-                                <div
-                                  className={cn(
-                                    isEmojiMsg
-                                      ? cn(
-                                          "select-none p-1",
-                                          emojiCount === 1 && "text-5xl",
-                                          emojiCount === 2 && "text-4xl",
-                                          emojiCount === 3 && "text-3xl"
-                                        )
-                                      : cn(
-                                          "rounded-2xl text-[13.5px] leading-relaxed shadow-md",
-                                          isImage ? "p-1.5 overflow-hidden" : "px-4 py-2.5",
-                                          isMe
-                                            ? cn(
-                                                "text-white rounded-tr-none bg-gradient-to-br border shadow-md",
-                                                userColor.bg,
-                                                userColor.border,
-                                                userColor.shadow
-                                              )
-                                            : cn(
-                                                "text-foreground rounded-tl-none border border-white/[0.07] backdrop-blur-sm",
-                                                userColor.border,
-                                                userColor.bgSubtle
-                                              )
-                                        )
-                                  )}
-                                >
-                                  {msg.replyToId && (
+                                  {isDeleted ? (
                                     <div
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        scrollToMessage(msg.replyToId!);
-                                      }}
                                       className={cn(
-                                        "mb-1.5 rounded-lg border-l-2 pl-2 pr-2 py-1 cursor-pointer text-[11.5px] max-w-full",
-                                        isMe ? "bg-black/15 border-white/50" : "bg-white/[0.05] border-amber-400/60"
+                                        "flex items-center gap-1.5 italic rounded-2xl text-[13px] px-4 py-2.5 text-muted-foreground/50 border border-white/[0.06] bg-white/[0.02]",
+                                        isMe ? "rounded-tr-none" : "rounded-tl-none"
                                       )}
                                     >
-                                      <div className={cn("font-semibold truncate", isMe ? "text-white/85" : "text-amber-400")}>
-                                        {msg.replyToSenderUsername ?? "Message"}
-                                      </div>
-                                      <div className={cn("truncate", isMe ? "text-white/60" : "text-muted-foreground/60")}>
-                                        {msg.replyToContent === null
-                                          ? "Message supprimé"
-                                          : msg.replyToContent.startsWith("data:image/")
-                                            ? "📷 Photo"
-                                            : msg.replyToContent}
-                                      </div>
+                                      <Ban className="h-3.5 w-3.5 shrink-0" />
+                                      Message supprimé
                                     </div>
-                                  )}
-                                  {isImage ? (
-                                    <img
-                                      src={msg.content}
-                                      alt="Image envoyée"
-                                      className="max-w-full max-h-[260px] rounded-lg object-contain cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                                      onClick={() => {
-                                        setFullscreenImage(msg.content);
-                                      }}
-                                    />
                                   ) : (
-                                    <div className="whitespace-pre-wrap break-words break-all max-w-full">
-                                      {isEmojiMsg ? msg.content : formatMessageContent(msg.content)}
+                                    <div className="relative group/msg">
+                                      <div
+                                        className={cn(
+                                          isEmojiMsg
+                                            ? cn(
+                                                "select-none p-1",
+                                                emojiCount === 1 && "text-5xl",
+                                                emojiCount === 2 && "text-4xl",
+                                                emojiCount === 3 && "text-3xl"
+                                              )
+                                            : cn(
+                                                "rounded-[22px] text-[14.5px] sm:text-[15px] leading-relaxed relative shadow-md",
+                                                isImage ? "p-1 overflow-hidden" : "px-4 py-2.5 pb-6 min-w-[90px] max-w-full",
+                                                isMe
+                                                  ? "text-white bg-gradient-to-br from-amber-500 to-orange-600 border-none shadow-lg rounded-tr-none"
+                                                  : "text-foreground border border-white/[0.05] backdrop-blur-md bg-[#202020] rounded-tl-none shadow-sm"
+                                              )
+                                        )}
+                                      >
+                                        {msg.replyToId && (
+                                          <div
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              scrollToMessage(msg.replyToId!);
+                                            }}
+                                            className={cn(
+                                              "mb-2 rounded-xl border-l-4 pl-3 pr-2 py-1.5 cursor-pointer text-[12.5px] max-w-full overflow-hidden",
+                                              isMe ? "bg-black/20 border-white/40" : "bg-white/5 border-amber-500/60"
+                                            )}
+                                          >
+                                            <div className={cn("font-bold truncate mb-0.5", isMe ? "text-white/90" : "text-amber-400")}>
+                                              {msg.replyToSenderUsername ?? "Message"}
+                                            </div>
+                                            <div className={cn("truncate opacity-70 text-[11.5px]", isMe ? "text-white" : "text-muted-foreground")}>
+                                              {msg.replyToContent === null
+                                                ? "Message supprimé"
+                                                : msg.replyToContent.startsWith("data:image/")
+                                                  ? "📷 Photo"
+                                                  : msg.replyToContent}
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {isImage ? (
+                                          <img
+                                            src={msg.content}
+                                            alt="Image envoyée"
+                                            className="max-w-full max-h-[300px] rounded-[16px] object-contain cursor-pointer hover:brightness-110 transition-all duration-200"
+                                            onClick={() => {
+                                              setReactionPickerFor(null);
+                                              setShowEmojiPicker(false);
+                                              setFullscreenImage(msg.content);
+                                            }}
+                                          />
+                                        ) : (
+                                          <div className="whitespace-pre-wrap break-words break-all max-w-full">
+                                            {isEmojiMsg ? msg.content : formatMessageContent(msg.content)}
+                                          </div>
+                                        )}
+
+                                        {/* Integrated Timestamp & Status */}
+                                        {!isEmojiMsg && (
+                                          <div className={cn(
+                                            "absolute bottom-1.5 right-3.5 flex items-center gap-1 select-none pointer-events-none",
+                                            isMe ? "text-white/60" : "text-muted-foreground/40"
+                                          )}>
+                                            <span className="text-[10px] font-medium uppercase">
+                                              {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })}
+                                            </span>
+                                            {isMe && (
+                                              <div className="flex items-center scale-90">
+                                                {msg.pending ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : msg.readAt ? (
+                                                  <CheckCheck className="h-3 w-3 text-blue-400" />
+                                                ) : msg.deliveredAt ? (
+                                                  <CheckCheck className="h-3 w-3" />
+                                                ) : (
+                                                  <Check className="h-3 w-3" />
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   )}
-                                </div>
-                              );
-                            })()
-                          )}
 
                           {!msg.pending && !isDeleted && (
                             <button
@@ -1796,10 +1729,10 @@ function MessengerPage() {
 
                           {pickerOpen && (
                             <>
-                              <div className="fixed inset-0 z-30" onClick={() => setReactionPickerFor(null)} />
+                              <div className="fixed inset-0 z-[100]" onClick={() => setReactionPickerFor(null)} />
                               <div
                                 className={cn(
-                                  "absolute bottom-full mb-1.5 z-40 rounded-2xl border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
+                                  "absolute bottom-full mb-1.5 z-[101] rounded-2xl border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
                                   isMe ? "right-0" : "left-0"
                                 )}
                               >
@@ -1885,31 +1818,17 @@ function MessengerPage() {
                           </div>
                         )}
 
-                        {/* Msg timestamp and read receipt */}
-                        <div className="flex items-center gap-1.5 mt-1.5 px-1 select-none">
-                          {msg.editedAt && !isDeleted && (
-                            <span className="text-[9px] text-muted-foreground/35 italic">modifié</span>
-                          )}
-                          <span className="text-[9px] text-muted-foreground/35">
-                            {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          {isMe && (
-                            <div className="flex items-center">
-                              {msg.pending ? (
-                                <Loader2 className="h-3 w-3 text-muted-foreground/40 animate-spin" />
-                              ) : msg.readAt ? (
-                                <CheckCheck className="h-3 w-3 text-blue-400" />
-                              ) : msg.deliveredAt ? (
-                                <CheckCheck className="h-3 w-3 text-muted-foreground/40" />
-                              ) : (
-                                <Check className="h-3 w-3 text-muted-foreground/40" />
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        {/* Msg timestamp and read receipt - Hidden if inside bubble */}
+                        {isDeleted && (
+                          <div className="flex items-center gap-1.5 mt-1.5 px-1 select-none">
+                            <span className="text-[9px] text-muted-foreground/35">
+                              {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        )}
                         </div>
                       </Fragment>
                     );
@@ -1918,17 +1837,27 @@ function MessengerPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* INPUT BAR — tighter bottom padding on mobile only, so the
-                  composer sits closer to the bottom nav bar below it */}
-              <div className="px-2.5 pt-2.5 pb-1 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
+              {/* FLOATING SCROLL BOTTOM BUTTON */}
+              {showScrollBottom && (
+                <button
+                  onClick={() => scrollToBottom(false)}
+                  className="absolute bottom-24 right-6 z-30 h-10 w-10 flex items-center justify-center rounded-full bg-amber-500 text-black shadow-lg shadow-amber-950/40 border border-amber-400/20 hover:scale-110 active:scale-95 transition-all animate-in zoom-in fade-in duration-200 cursor-pointer"
+                  title="Aller aux derniers messages"
+                >
+                  <ChevronRight className="h-5 w-5 rotate-90" />
+                </button>
+              )}
+
+              {/* INPUT BAR — tighter bottom padding on mobile only */}
+              <div className="px-3 py-3 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                   <>
                     <div
-                      className="fixed inset-0 z-30"
+                      className="fixed inset-0 z-[100]"
                       onClick={() => setShowEmojiPicker(false)}
                     />
-                    <div className="absolute bottom-[4rem] sm:bottom-[4.5rem] left-1/2 -translate-x-1/2 z-40 bg-[oklch(0.16_0.03_250)] border border-white/[0.08] rounded-2xl shadow-2xl w-[min(21rem,calc(100vw-1.5rem))] animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+                    <div className="absolute bottom-[4rem] sm:bottom-[4.5rem] left-1/2 -translate-x-1/2 z-[101] bg-[oklch(0.16_0.03_250)] border border-white/[0.08] rounded-2xl shadow-2xl w-[min(21rem,calc(100vw-1.5rem))] animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
                       {/* Category tabs */}
                       <div className="flex items-center gap-1 p-2 border-b border-white/[0.06] overflow-x-auto scrollbar-none">
                         {EMOJI_CATEGORIES.map((cat, idx) => (
@@ -2038,125 +1967,112 @@ function MessengerPage() {
                     <div className="flex items-end gap-1.5 sm:gap-2">
                       {/* WhatsApp-style rounded composer pill */}
                       <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[26px] border border-white/[0.08] bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/40 focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/40">
-                        {listening ? (
-                          <div className="flex-1 flex items-center justify-between px-3 py-1.5 min-w-0">
-                            <div className="flex items-center gap-2 text-red-500 shrink-0">
-                              <CircleDot className="h-4 w-4 fill-red-500 animate-ping" />
-                              <span className="text-[14px] font-semibold">Enregistrement...</span>
-                              <span className="text-[13px] text-muted-foreground ml-1">{formatDuration(recordDuration)}</span>
-                            </div>
-                            
-                            <div className="flex items-center gap-1.5">
-                              {/* Cancel button */}
-                              <button
-                                type="button"
-                                onClick={handleCancelVoice}
-                                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 text-muted-foreground hover:text-red-400 transition-all duration-150 cursor-pointer"
-                                title="Annuler l'enregistrement"
-                              >
-                                <Trash2 className="h-5 w-5" />
-                              </button>
-                              
-                              {/* Stop & Transcribe button */}
-                              <button
-                                type="button"
-                                onClick={() => toggleVoice()}
-                                className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all duration-150 cursor-pointer animate-pulse"
-                                title="Arrêter et transcrire"
-                              >
-                                <Square className="h-4 w-4 fill-current" />
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            {/* Smiley Button */}
-                            <button
-                              type="button"
-                              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                              title="Ajouter un emoji"
-                              className={cn(
-                                "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
-                                showEmojiPicker && "text-amber-400 bg-white/[0.06]"
-                              )}
-                            >
-                              <Smile className="h-5 w-5" />
-                            </button>
+                        {/* Smiley Button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          title="Ajouter un emoji"
+                          className={cn(
+                            "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90",
+                            showEmojiPicker && "text-amber-400 bg-white/[0.06]"
+                          )}
+                        >
+                          <Smile className="h-5 w-5" />
+                        </button>
 
-                            <textarea
-                              ref={textareaRef}
-                              rows={1}
-                              value={inputText}
-                              onChange={(e) => {
-                                setInputText(e.target.value);
-                                notifyTyping();
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSendMessage(e);
-                                }
-                              }}
-                              onPaste={handlePaste}
-                              placeholder={selectedImage ? "Ajouter un commentaire..." : "Message"}
-                              className="flex-1 min-w-0 bg-transparent border-none text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
-                            />
+                        <textarea
+                          ref={textareaRef}
+                          rows={1}
+                          value={inputText}
+                          onChange={(e) => {
+                            setInputText(e.target.value);
+                            notifyTyping();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage(e);
+                            }
+                          }}
+                          onPaste={handlePaste}
+                          placeholder={selectedImage ? "Ajouter un commentaire..." : "Message"}
+                          className="flex-1 min-w-0 bg-transparent border-none text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
+                        />
 
-                            {/* Paperclip/Image Attachment Button */}
-                            <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              title="Partager une image"
-                              className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
-                            >
-                              <Paperclip className="h-5 w-5" />
-                            </button>
-                          </>
-                        )}
+                        {/* Paperclip/Image Attachment Button */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Partager une image"
+                          className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.06] text-muted-foreground hover:text-amber-400 transition-all duration-150 cursor-pointer active:scale-90"
+                        >
+                          <Paperclip className="h-5 w-5" />
+                        </button>
                       </div>
 
-                      {/* Action Button (Send vs Microphone) */}
+                      {/* Action Button (Send) */}
                       <button
                         type="button"
                         onClick={(e) => {
-                          if (!inputText.trim() && !selectedImage) {
-                            if (whisperSupported) {
-                              toggleVoice();
-                            } else {
-                              toast.error("L'enregistrement audio n'est pas supporté par votre navigateur.");
-                            }
-                            return;
+                          if (inputText.trim() || selectedImage) {
+                            handleSendMessage(e);
                           }
-                          handleSendMessage(e);
                         }}
-                        disabled={sending}
-                        title={editingMessage ? "Enregistrer les modifications" : inputText.trim() || selectedImage ? "Envoyer" : "Enregistrer la voix"}
+                        disabled={sending || (!inputText.trim() && !selectedImage)}
+                        title={editingMessage ? "Enregistrer les modifications" : "Envoyer"}
                         className={cn(
                           "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90 shadow-lg",
                           (inputText.trim() || selectedImage)
                             ? "bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-black shadow-amber-950/30"
-                            : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
+                            : "bg-white/5 text-muted-foreground/30 cursor-not-allowed opacity-50"
                         )}
                       >
                         {sending ? (
                           <Loader2 className="h-5 w-5 animate-spin" />
                         ) : editingMessage ? (
                           <Check className="h-5 w-5" />
-                        ) : (inputText.trim() || selectedImage) ? (
-                          <Send className="h-5 w-5 fill-current" />
                         ) : (
-                          <Mic className="h-5 w-5" />
+                          <Send className="h-5 w-5 fill-current" />
                         )}
                       </button>
                     </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-muted-foreground/40 space-y-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.05] text-muted-foreground/20">
-                <MessageSquare className="h-7 w-7" />
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-8 relative overflow-hidden">
+              {/* Subtle background flare */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-amber-500/[0.03] rounded-full blur-[100px]" />
+              
+              <div className="relative">
+                <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full scale-150" />
+                <div className="relative flex h-28 w-28 items-center justify-center rounded-[40px] bg-gradient-to-br from-white/[0.05] to-transparent border border-white/10 text-muted-foreground/30 shadow-2xl transition-transform duration-500 hover:rotate-12">
+                  <MessageSquare className="h-12 w-12" />
+                </div>
               </div>
-              <div className="text-sm font-semibold px-4">Sélectionnez un groupe ou un utilisateur pour commencer à échanger.</div>
+              
+              <div className="relative space-y-3 max-w-[320px]">
+                <h3 className="text-xl font-bold text-foreground tracking-tight">Votre messagerie Au Pluriel</h3>
+                <p className="text-sm text-muted-foreground/50 leading-relaxed">
+                  Connectez-vous avec vos partenaires et votre équipe. Sélectionnez une discussion dans la liste de gauche pour commencer.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-6 pt-4 text-muted-foreground/20">
+                <div className="flex flex-col items-center gap-1.5">
+                  <Users className="h-5 w-5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Groupes</span>
+                </div>
+                <div className="h-8 w-px bg-white/[0.05]" />
+                <div className="flex flex-col items-center gap-1.5">
+                  <Shield className="h-5 w-5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Sécurisé</span>
+                </div>
+                <div className="h-8 w-px bg-white/[0.05]" />
+                <div className="flex flex-col items-center gap-1.5">
+                  <Bell className="h-5 w-5" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Direct</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -2393,36 +2309,73 @@ function MessengerPage() {
         </div>
       )}
 
-      {/* FULLSCREEN IMAGE LIGHTBOX (WhatsApp style) */}
+      {/* FULLSCREEN IMAGE LIGHTBOX (WhatsApp style with Zoom) */}
       {fullscreenImage && (
         <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl p-0 sm:p-4 animate-in fade-in duration-300 select-none"
           style={{
-            opacity: lightboxDragY > 0 ? Math.max(0.25, 1 - lightboxDragY / 300) : 1,
-            transition: lightboxDragging ? "none" : "opacity 200ms",
+            opacity: lightboxDragY > 0 && lightboxScale === 1 ? Math.max(0.25, 1 - lightboxDragY / 300) : 1,
+            transition: lightboxDragging ? "none" : "opacity 300ms, backdrop-blur 300ms",
           }}
-          onClick={() => setFullscreenImage(null)}
+          onClick={() => {
+            if (lightboxScale === 1) setFullscreenImage(null);
+          }}
         >
-          {/* Close button — sits below the notch/status bar, opaque enough
-              to read at a glance, with a visible pressed state on tap since
-              hover never fires on touch. */}
-          <button
-            type="button"
-            onClick={() => setFullscreenImage(null)}
-            style={{ top: "calc(1rem + env(safe-area-inset-top))" }}
-            className="absolute right-4 z-50 p-2.5 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/30 active:scale-90 text-white shadow-lg transition-all duration-150 cursor-pointer"
-            title="Fermer"
+          {/* Header Controls */}
+          <div 
+            className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent"
+            style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}
           >
-            <X className="h-6 w-6" />
-          </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenImage(null);
+                }}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition-all cursor-pointer backdrop-blur-md"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+            </div>
 
-          {/* Fullscreen Image container — drag down to dismiss */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (lightboxScale > 1) {
+                    setLightboxScale(1);
+                    setLightboxOffset({ x: 0, y: 0 });
+                  } else {
+                    setLightboxScale(2.5);
+                  }
+                }}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition-all cursor-pointer backdrop-blur-md"
+                title={lightboxScale > 1 ? "Dézoomer" : "Zoomer"}
+              >
+                {lightboxScale > 1 ? <Square className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenImage(null);
+                }}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition-all cursor-pointer backdrop-blur-md"
+                title="Fermer"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Fullscreen Image container — drag down to dismiss (if not zoomed) or pan (if zoomed) */}
           <div
-            className="relative max-w-[95vw] max-h-[85vh] flex items-center justify-center select-none touch-none"
-            style={{
-              transform: `translateY(${lightboxDragY}px)`,
-              transition: lightboxDragging ? "none" : "transform 200ms",
-            }}
+            className={cn(
+              "relative w-full h-full flex items-center justify-center overflow-hidden touch-none",
+              lightboxScale > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+            )}
             onClick={(e) => e.stopPropagation()}
             onTouchStart={handleLightboxTouchStart}
             onTouchMove={handleLightboxTouchMove}
@@ -2432,9 +2385,23 @@ function MessengerPage() {
             <img
               src={fullscreenImage}
               alt="Aperçu plein écran"
-              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none animate-in zoom-in-95 duration-200"
+              draggable={false}
+              className="max-w-full max-h-full object-contain shadow-2xl transition-transform duration-300 ease-out will-change-transform"
+              style={{
+                transform: lightboxScale > 1 
+                  ? `translate(${lightboxOffset.x}px, ${lightboxOffset.y}px) scale(${lightboxScale})`
+                  : `translateY(${lightboxDragY}px) scale(1)`,
+                transition: lightboxDragging ? "none" : "transform 300ms cubic-bezier(0.2, 0, 0, 1)",
+              }}
             />
           </div>
+
+          {/* Zoom hint for users */}
+          {lightboxScale === 1 && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white/60 text-xs font-medium animate-in fade-in slide-in-from-bottom-4 duration-700 delay-500 pointer-events-none">
+              Double-tapez pour zoomer
+            </div>
+          )}
         </div>
       )}
     </div>
