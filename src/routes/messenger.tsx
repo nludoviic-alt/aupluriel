@@ -1264,7 +1264,10 @@ function MessengerPage() {
         <div className="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 bg-violet-600/[0.03] blur-[100px] rounded-full" />
 
         {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
-        <div className={cn("items-center justify-between border-b border-white/[0.08] bg-white/[0.02] backdrop-blur-xl px-4 py-3 md:px-6 md:py-4 shrink-0 relative z-10", activeGroupId ? "hidden md:flex" : "flex")}>
+        <div className={cn(
+          "items-center justify-between border-b border-white/[0.08] bg-white/[0.02] backdrop-blur-xl px-4 py-3 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
+          activeGroupId ? "hidden md:flex" : "flex"
+        )}>
         <div className="flex items-center gap-4 min-w-0 flex-1">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] shrink-0">
             <MessageSquare className="h-5.5 w-5.5" />
@@ -1503,7 +1506,7 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[0.1] bg-black/60 backdrop-blur-xl px-2 sm:px-6 py-2 sm:py-3 shrink-0 z-30 sticky top-0">
+              <div className="flex items-center justify-between gap-3 border-b border-white/[0.1] bg-black/60 backdrop-blur-xl px-2 sm:px-6 py-2 sm:py-3 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0">
                 <div className="flex items-center min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
@@ -1533,13 +1536,13 @@ function MessengerPage() {
 
                   <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
                     <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-tight mb-0.5 flex items-center gap-2">
-                      {isActiveDirect ? activeGroupName : activeGroupName}
                       {activePartnerId !== undefined && (
                         <span className={cn(
                           "h-2 w-2 rounded-full shrink-0",
                           onlineUserIds.has(activePartnerId) ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" : "bg-muted-foreground/30"
                         )} />
                       )}
+                      {activeGroupName}
                     </h2>
                     
                     <div className="flex items-center gap-1.5 h-3.5">

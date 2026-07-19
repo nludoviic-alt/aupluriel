@@ -282,6 +282,10 @@ function migrate(db: Database.Database) {
   if (!userCols.has("avatar")) {
     db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
   }
+  if (!userCols.has("online_status")) {
+    // 'online' | 'offline' — admin manual override.
+    db.exec("ALTER TABLE users ADD COLUMN online_status TEXT NOT NULL DEFAULT 'online'");
+  }
   if (!userCols.has("admin_note")) {
     // Free-text note an admin can leave on a user's profile (typo history, VIP status, etc.) — never shown to the user themselves.
     db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");

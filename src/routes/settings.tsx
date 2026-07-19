@@ -30,6 +30,8 @@ function SettingsPage() {
   const { user, refresh: refreshAuth } = useAuth();
   const [avatar, setAvatar] = useState(user?.avatar ?? "");
   const [avatarSaving, setAvatarSaving] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState<"online" | "offline">(user?.online_status ?? "online");
+  const [statusSaving, setStatusSaving] = useState(false);
   const [token, setToken] = useState("");
   const [show, setShow] = useState(false);
   const [account, setAccount] = useState<"demo" | "live">("demo");
@@ -61,6 +63,7 @@ function SettingsPage() {
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
       if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
       if (s.avatar) setAvatar(s.avatar as string);
+      if (s.online_status) setOnlineStatus(s.online_status as "online" | "offline");
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -83,6 +86,22 @@ function SettingsPage() {
       toast.error("Échec de la mise à jour de l'avatar");
     } finally {
       setAvatarSaving(false);
+    }
+  }
+
+  async function toggleStatus(v: boolean) {
+    const newStatus = v ? "online" : "offline";
+    setOnlineStatus(newStatus);
+    setStatusSaving(true);
+    try {
+      await api.put("/api/settings", { online_status: newStatus });
+      await refreshAuth();
+      toast.success(v ? "Vous êtes maintenant en ligne" : "Vous êtes maintenant hors ligne");
+    } catch {
+      setOnlineStatus(onlineStatus); // revert
+      toast.error("Échec de la mise à jour du statut");
+    } finally {
+      setStatusSaving(false);
     }
   }
 
@@ -165,7 +184,7 @@ function SettingsPage() {
       {/* Profil & Avatar */}
       <CollapsibleSection
         title="Profil & Avatar"
-        icon={UserCircle}
+        icon={<UserCircle className="h-5.5 w-5.5 shrink-0 text-amber-400" />}
         defaultOpen={true}
       >
         <div className="p-4 space-y-6">
@@ -186,11 +205,30 @@ function SettingsPage() {
               <h2 className="text-lg font-bold text-foreground mb-1">{user?.username}</h2>
               <p className="text-sm text-muted-foreground mb-1">{user?.email}</p>
               <div className="flex items-center gap-2">
-                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500/80">Compte Actif</span>
+                <span className={cn("flex h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500" : "bg-muted-foreground/30")} />
+                <span className={cn("text-[10px] font-bold uppercase tracking-widest", onlineStatus === "online" ? "text-emerald-500/80" : "text-muted-foreground/50")}>
+                  {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
+                </span>
               </div>
             </div>
           </div>
+
+          {user?.is_admin === 1 && (
+            <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-bold text-foreground">Mode de présence</h3>
+                <p className="text-[11px] text-muted-foreground">En mode hors ligne, vous n'apparaissez pas avec le point vert.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
+                <Switch 
+                  checked={onlineStatus === "online"} 
+                  onCheckedChange={toggleStatus}
+                  disabled={statusSaving}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="pt-4 border-t border-white/5">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 mb-4 flex items-center gap-2">

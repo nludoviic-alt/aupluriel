@@ -356,10 +356,11 @@ function RootComponent() {
               // everywhere except messenger's clamped layout). Pinning its
               // height keeps the header bar visible and identical on every
               // mobile page.
-              "relative shrink-0 sticky top-0 z-30 h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300",
+              "relative shrink-0 sticky top-0 z-[100] h-[calc(4.5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300",
               // Only hidden while the keyboard is up on messenger, to give the
-              // chat every pixel; otherwise shown on all pages.
-              compactForKeyboard ? "hidden md:flex" : "flex"
+              // chat every pixel; otherwise shown on all pages. Hide on mobile 
+              // for messenger to use messenger's own header.
+              compactForKeyboard || (pathname === "/messenger" && "hidden md:flex") ? "hidden md:flex" : "flex"
             )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />

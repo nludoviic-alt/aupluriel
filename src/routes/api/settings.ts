@@ -31,11 +31,15 @@ export const Route = createFileRoute("/api/settings")({
           default_stake_usd?: number;
           auto_backtest_enabled?: boolean;
           avatar?: string;
+          online_status?: "online" | "offline";
         };
 
         const db = getDb();
         if (body.avatar !== undefined) {
           db.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(body.avatar, auth.userId);
+        }
+        if (body.online_status !== undefined) {
+          db.prepare("UPDATE users SET online_status = ? WHERE id = ?").run(body.online_status, auth.userId);
         }
 
         db.prepare(`
