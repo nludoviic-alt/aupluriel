@@ -12,13 +12,14 @@ export const Route = createFileRoute("/api/auth/me")({
         const db = getDb();
          const user = db
           .prepare(
-            "SELECT id, email, username, email_verified, status, is_admin, chat_enabled, created_at FROM users WHERE id = ?",
+            "SELECT id, email, username, avatar, email_verified, status, is_admin, chat_enabled, created_at FROM users WHERE id = ?",
           )
           .get(auth.userId) as
           | {
               id: number;
               email: string;
               username: string;
+              avatar: string | null;
               email_verified: number;
               status: string;
               is_admin: number;

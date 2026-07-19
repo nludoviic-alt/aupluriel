@@ -30,9 +30,14 @@ export const Route = createFileRoute("/api/settings")({
           max_drawdown?: number;
           default_stake_usd?: number;
           auto_backtest_enabled?: boolean;
+          avatar?: string;
         };
 
         const db = getDb();
+        if (body.avatar !== undefined) {
+          db.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(body.avatar, auth.userId);
+        }
+
         db.prepare(`
           UPDATE user_settings
           SET deriv_token = COALESCE(?, deriv_token),

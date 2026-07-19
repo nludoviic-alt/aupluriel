@@ -1198,6 +1198,14 @@ function MessengerPage() {
       ? `${typingUsernames.join(", ")} ${typingUsernames.length > 1 ? "écrivent" : "écrit"}…`
       : "quelqu'un écrit…";
 
+  const groupsWithAvatars = groups.map((g) => {
+    if (g.is_direct && g.recipient_id) {
+      const u = verifiedUsers.find((v) => v.id === g.recipient_id);
+      if (u?.avatar) return { ...g, avatar: u.avatar };
+    }
+    return g;
+  });
+
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 bg-[#08080a] md:p-4 lg:p-6">
       {/* Main Premium Container — floating card effect on desktop */}
@@ -1254,9 +1262,9 @@ function MessengerPage() {
           </div>
 
                   {/* FILTER TABS (Example style) */}
-          <div className="flex items-center gap-2 px-3 sm:px-4 pb-4 overflow-x-auto scrollbar-none shrink-0 pr-6 border-b border-white/[0.03] mb-2">
+          <div className="flex items-center gap-2 px-3 sm:px-4 pb-4 overflow-x-auto scrollbar-none shrink-0 pr-6 mb-2">
             {[
-              { id: "all", label: "Tous", count: groups.length + (!!user?.is_admin ? verifiedUsers.length : 0) },
+              { id: "all", label: "Tous", count: groupsWithAvatars.length + (!!user?.is_admin ? verifiedUsers.length : 0) },
               { id: "personal", label: "Personnels", count: !!user?.is_admin ? verifiedUsers.length : (userDmGroup ? 1 : 0) },
               { id: "groups", label: "Groupes", count: publicGroups.length },
             ].map((tab) => (
@@ -1337,7 +1345,7 @@ function MessengerPage() {
                           name: u.username,
                           type: "personal",
                           lastMessage: u.email,
-                          avatar: u.username,
+                          avatar: u.avatar || u.username,
                           isActive: u.groupId === activeGroupId,
                           onClick: () => setActiveGroupId(u.groupId)
                         });
@@ -1379,14 +1387,22 @@ function MessengerPage() {
                       )}
                     >
                       <div className="relative shrink-0">
-                        <span className={cn(
-                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-transform duration-200 group-hover/row:scale-105",
+                        <div className={cn(
+                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-transform duration-200 group-hover/row:scale-105 overflow-hidden bg-background",
                           row.type === "personal"
-                            ? cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name))
+                            ? (row.avatar && row.avatar.startsWith("http") ? "" : cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name)))
                             : "bg-amber-500/10 border-amber-500/20 text-amber-400"
                         )}>
-                          {row.type === "personal" ? getInitial(row.avatar || row.name) : <Hash className="h-5 w-5" />}
-                        </span>
+                          {row.type === "personal" ? (
+                            row.avatar && row.avatar.startsWith("http") ? (
+                              <img src={row.avatar} alt={row.name} className="w-full h-full object-cover" />
+                            ) : (
+                              getInitial(row.avatar || row.name)
+                            )
+                          ) : (
+                            <Hash className="h-5 w-5" />
+                          )}
+                        </div>
                         {row.type === "personal" && row.id && verifiedUsers.find(u => u.groupId === row.id && onlineUserIds.has(u.id)) && (
                           <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-500 animate-pulse" />
                         )}
@@ -1449,42 +1465,38 @@ function MessengerPage() {
                   </button>
                   
                   <div className="relative shrink-0 ml-1 md:ml-0">
-                    <span className={cn(
-                      "flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-white/10 text-sm font-bold shadow-lg transition-transform duration-200",
-                      isActiveDirect
-                        ? cn("bg-gradient-to-br", getAvatarStyle(activeGroupName))
-                        : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                    )}>
-                      {isActiveDirect ? getInitial(activeGroupName) : <Hash className="h-5 w-5" />}
-                    </span>
+                    <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-white/10 text-sm font-bold shadow-lg transition-transform duration-200 overflow-hidden bg-background">
+                      {isActiveDirect ? (
+                        activeGroupId && groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar ? (
+                          <img src={groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar} alt={activeGroupName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className={cn("w-full h-full flex items-center justify-center bg-gradient-to-br", getAvatarStyle(activeGroupName))}>
+                            {getInitial(activeGroupName)}
+                          </div>
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-amber-500/10 border-amber-500/20 text-amber-400">
+                          <Hash className="h-5 w-5" />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
-                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-tight mb-0.5">
+                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-tight mb-0.5 flex items-center gap-2">
                       {isActiveDirect ? activeGroupName : activeGroupName}
+                      {activePartnerId !== undefined && (
+                        <span className={cn(
+                          "h-2 w-2 rounded-full shrink-0",
+                          onlineUserIds.has(activePartnerId) ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" : "bg-muted-foreground/30"
+                        )} />
+                      )}
                     </h2>
                     
                     <div className="flex items-center gap-1.5 h-3.5">
-                      {typingUserIds.length > 0 ? (
+                      {typingUserIds.length > 0 && (
                         <span className="text-[11.5px] font-medium text-amber-400 animate-in fade-in">
                           {typingLabel}
-                        </span>
-                      ) : activePartnerId !== undefined ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className={cn(
-                            "h-1.5 w-1.5 rounded-full",
-                            onlineUserIds.has(activePartnerId) ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/30"
-                          )} />
-                          <span className={cn(
-                            "text-[11.5px] font-medium transition-colors duration-300",
-                            onlineUserIds.has(activePartnerId) ? "text-emerald-400/90" : "text-muted-foreground/50"
-                          )}>
-                            {onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] font-medium text-muted-foreground/40 italic">
-                          Salon de discussion
                         </span>
                       )}
                     </div>
@@ -1509,6 +1521,7 @@ function MessengerPage() {
               <div 
                 ref={messagesThreadRef}
                 onScroll={handleThreadScroll}
+                onClick={() => reactionPickerFor && setReactionPickerFor(null)}
                 className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 flex flex-col justify-end gap-4 relative scroll-smooth"
               >
                 <div className="shrink-0 h-10" />
@@ -1860,10 +1873,10 @@ function MessengerPage() {
               {showScrollBottom && (
                 <button
                   onClick={() => scrollToBottom(false)}
-                  className="absolute bottom-24 right-6 z-30 h-10 w-10 flex items-center justify-center rounded-full bg-amber-500 text-black shadow-lg shadow-amber-950/40 border border-amber-400/20 hover:scale-110 active:scale-95 transition-all animate-in zoom-in fade-in duration-200 cursor-pointer"
+                  className="absolute bottom-24 right-4 sm:right-6 z-30 h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-amber-500 text-black shadow-lg shadow-amber-950/40 border border-amber-400/20 hover:scale-110 active:scale-95 transition-all animate-in zoom-in fade-in duration-200 cursor-pointer"
                   title="Aller aux derniers messages"
                 >
-                  <ChevronRight className="h-5 w-5 rotate-90" />
+                  <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 rotate-90" />
                 </button>
               )}
 

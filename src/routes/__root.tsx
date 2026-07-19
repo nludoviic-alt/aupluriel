@@ -435,7 +435,7 @@ function RootComponent() {
               // needs a definite-height ancestor to resolve as a percentage,
               // flex-1 doesn't, so this can't silently under-fill the space
               // and leave a gap above the bottom nav.
-              pathname === "/messenger" && "pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
+              pathname === "/messenger" && "pb-20 md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>

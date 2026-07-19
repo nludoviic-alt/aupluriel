@@ -5,6 +5,7 @@ interface User {
   id: number;
   email: string;
   username: string;
+  avatar?: string;
   email_verified?: number;
   status?: string;
   is_admin?: number;
