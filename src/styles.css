@@ -503,12 +503,3 @@
 .lio-toast-loader {
   border-color: var(--toast-accent) transparent transparent transparent !important;
 }
-
-/* ── Mobile Chat Layout Fixes ── */
-body.chat-active nav.fixed.bottom-0 {
-  display: none !important;
-}
-
-body.chat-active main {
-  padding-bottom: 0 !important;
-}
