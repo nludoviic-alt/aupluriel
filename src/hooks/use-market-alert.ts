@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { generateSignal } from "@/lib/indicators";
 import { mapWithConcurrency } from "@/lib/utils";
@@ -14,23 +14,8 @@ export interface MarketAlert {
 
 const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
 const CHECK_INTERVAL_MS = 15 * 60_000; // every 15 minutes
-const ALERT_STORAGE_KEY = "lio23.last_alert_times";
 const MIN_CONFIDENCE = 75;
 const MIN_AGREEMENT = 3;
-
-function loadLastAlertTimes(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(ALERT_STORAGE_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveLastAlertTimes(times: Record<string, number>) {
-  try {
-    localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(times));
-  } catch {}
-}
 
 async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === "undefined" || !("Notification" in window)) return false;
@@ -38,18 +23,6 @@ async function requestNotificationPermission(): Promise<boolean> {
   if (Notification.permission === "denied") return false;
   const result = await Notification.requestPermission();
   return result === "granted";
-}
-
-function sendBrowserNotification(alert: MarketAlert) {
-  if (typeof window === "undefined" || Notification.permission !== "granted") return;
-  const n = new Notification(`Au Pluriel — Signal fort sur ${alert.label}`, {
-    body: `${alert.direction} · Confiance ${alert.confidence}% · ${alert.agreement}/4 TF · Marché favorable`,
-    icon: "/favicon.ico",
-    tag: `lio23-${alert.symbol}`, // replace previous for same symbol
-    requireInteraction: false,
-  });
-  // Auto-close after 8s
-  setTimeout(() => n.close(), 8000);
 }
 
 async function analyzeSymbol(
@@ -82,7 +55,6 @@ async function analyzeSymbol(
 export function useMarketAlert(enabled = true) {
   const [activeAlerts, setActiveAlerts] = useState<MarketAlert[]>([]);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
-  const lastAlertTimesRef = useRef<Record<string, number>>(loadLastAlertTimes());
 
   // Read permission status
   useEffect(() => {
@@ -127,23 +99,14 @@ export function useMarketAlert(enabled = true) {
       if (result.confidence < MIN_CONFIDENCE) continue;
       if (result.agreement < MIN_AGREEMENT) continue;
 
-      const alert: MarketAlert = {
+      newAlerts.push({
         symbol: sym.deriv,
         label: sym.label,
         direction: result.direction,
         confidence: Math.round(result.confidence),
         agreement: result.agreement,
         time: now,
-      };
-      newAlerts.push(alert);
-
-      // Only send notification if we haven't alerted on this symbol in the last 30 min
-      const lastTime = lastAlertTimesRef.current[sym.deriv] ?? 0;
-      if (now - lastTime > 30 * 60_000) {
-        sendBrowserNotification(alert);
-        lastAlertTimesRef.current[sym.deriv] = now;
-        saveLastAlertTimes(lastAlertTimesRef.current);
-      }
+      });
     }
 
     setActiveAlerts(newAlerts);

@@ -250,6 +250,16 @@ function migrate(db: Database.Database) {
       user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
       PRIMARY KEY (group_id, user_id)
     );
+
+    -- One reaction per (message, user) — picking a new emoji replaces the
+    -- previous one, same as WhatsApp/iMessage rather than stacking many.
+    CREATE TABLE IF NOT EXISTS chat_message_reactions (
+      message_id TEXT    NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      emoji      TEXT    NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (message_id, user_id)
+    );
   `);
 
   // --- Additive column migrations on `users` (idempotent) ---
@@ -269,9 +279,31 @@ function migrate(db: Database.Database) {
   if (!userCols.has("chat_enabled")) {
     db.exec("ALTER TABLE users ADD COLUMN chat_enabled INTEGER NOT NULL DEFAULT 0");
   }
+  if (!userCols.has("avatar")) {
+    db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+  }
+  if (!userCols.has("online_status")) {
+    // 'online' | 'offline' — admin manual override.
+    db.exec("ALTER TABLE users ADD COLUMN online_status TEXT NOT NULL DEFAULT 'online'");
+  }
   if (!userCols.has("admin_note")) {
     // Free-text note an admin can leave on a user's profile (typo history, VIP status, etc.) — never shown to the user themselves.
     db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");
+  }
+
+  // --- Additive column migrations on `alerts` (idempotent) ---
+  // The API/table existed but was never wired to the UI (alerts.tsx and
+  // use-price-alerts.ts both ran on localStorage instead) — now that alerts
+  // are checked server-side (price-alerts.server.ts) so they push even with
+  // the app closed, these two columns are what that scheduler needs.
+  const alertCols = new Set(
+    (db.prepare("PRAGMA table_info(alerts)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!alertCols.has("symbol")) {
+    db.exec("ALTER TABLE alerts ADD COLUMN symbol TEXT"); // deriv symbol code, 'price' alerts only
+  }
+  if (!alertCols.has("last_fired_at")) {
+    db.exec("ALTER TABLE alerts ADD COLUMN last_fired_at INTEGER");
   }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---
@@ -328,6 +360,24 @@ function migrate(db: Database.Database) {
   );
   if (!chatMessageCols.has("read_at")) {
     db.exec("ALTER TABLE chat_messages ADD COLUMN read_at INTEGER");
+  }
+  if (!chatMessageCols.has("delivered_at")) {
+    // Set once the recipient's client is confirmed running (heartbeat) or has
+    // fetched the group's messages — distinct from read_at, which only fires
+    // once they've actually opened this specific conversation.
+    db.exec("ALTER TABLE chat_messages ADD COLUMN delivered_at INTEGER");
+  }
+  if (!chatMessageCols.has("reply_to_id")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN reply_to_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL");
+  }
+  if (!chatMessageCols.has("edited_at")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER");
+  }
+  if (!chatMessageCols.has("deleted_at")) {
+    // Soft delete ("supprimer pour tout le monde") — content is replaced with
+    // a tombstone marker client-side rather than erased, so ordering/read
+    // receipts stay intact.
+    db.exec("ALTER TABLE chat_messages ADD COLUMN deleted_at INTEGER");
   }
 
   seedChangelogIfEmpty(db);

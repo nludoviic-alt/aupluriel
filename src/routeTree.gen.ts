@@ -31,6 +31,8 @@ import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
+import { Route as ApiPresenceRouteImport } from './routes/api/presence'
+import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -40,6 +42,7 @@ import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiChatUsersRouteImport } from './routes/api/chat/users'
 import { Route as ApiChatTypingRouteImport } from './routes/api/chat/typing'
+import { Route as ApiChatReactionsRouteImport } from './routes/api/chat/reactions'
 import { Route as ApiChatMessagesRouteImport } from './routes/api/chat/messages'
 import { Route as ApiChatGroupsRouteImport } from './routes/api/chat/groups'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
@@ -168,6 +171,16 @@ const ApiPushRoute = ApiPushRouteImport.update({
   path: '/api/push',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPresenceRoute = ApiPresenceRouteImport.update({
+  id: '/api/presence',
+  path: '/api/presence',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNotifyMeRoute = ApiNotifyMeRouteImport.update({
+  id: '/api/notify-me',
+  path: '/api/notify-me',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiNotesRoute = ApiNotesRouteImport.update({
   id: '/api/notes',
   path: '/api/notes',
@@ -211,6 +224,11 @@ const ApiChatUsersRoute = ApiChatUsersRouteImport.update({
 const ApiChatTypingRoute = ApiChatTypingRouteImport.update({
   id: '/api/chat/typing',
   path: '/api/chat/typing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiChatReactionsRoute = ApiChatReactionsRouteImport.update({
+  id: '/api/chat/reactions',
+  path: '/api/chat/reactions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatMessagesRoute = ApiChatMessagesRouteImport.update({
@@ -325,6 +343,8 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -346,6 +366,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/reactions': typeof ApiChatReactionsRoute
   '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
@@ -375,6 +396,8 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -396,6 +419,7 @@ export interface FileRoutesByTo {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/reactions': typeof ApiChatReactionsRoute
   '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
@@ -426,6 +450,8 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/strategies': typeof ApiStrategiesRoute
@@ -447,6 +473,7 @@ export interface FileRoutesById {
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
+  '/api/chat/reactions': typeof ApiChatReactionsRoute
   '/api/chat/typing': typeof ApiChatTypingRoute
   '/api/chat/users': typeof ApiChatUsersRoute
   '/api/chat/groups/members': typeof ApiChatGroupsMembersRoute
@@ -478,6 +505,8 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notify-me'
+    | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -499,6 +528,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/reactions'
     | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
@@ -528,6 +558,8 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notify-me'
+    | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -549,6 +581,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/reactions'
     | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
@@ -578,6 +611,8 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notify-me'
+    | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/strategies'
@@ -599,6 +634,7 @@ export interface FileRouteTypes {
     | '/api/auth/verify-email'
     | '/api/chat/groups'
     | '/api/chat/messages'
+    | '/api/chat/reactions'
     | '/api/chat/typing'
     | '/api/chat/users'
     | '/api/chat/groups/members'
@@ -629,6 +665,8 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
   ApiNotesRoute: typeof ApiNotesRoute
+  ApiNotifyMeRoute: typeof ApiNotifyMeRoute
+  ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
@@ -650,6 +688,7 @@ export interface RootRouteChildren {
   ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
   ApiChatGroupsRoute: typeof ApiChatGroupsRouteWithChildren
   ApiChatMessagesRoute: typeof ApiChatMessagesRoute
+  ApiChatReactionsRoute: typeof ApiChatReactionsRoute
   ApiChatTypingRoute: typeof ApiChatTypingRoute
   ApiChatUsersRoute: typeof ApiChatUsersRoute
 }
@@ -810,6 +849,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPushRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/presence': {
+      id: '/api/presence'
+      path: '/api/presence'
+      fullPath: '/api/presence'
+      preLoaderRoute: typeof ApiPresenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notify-me': {
+      id: '/api/notify-me'
+      path: '/api/notify-me'
+      fullPath: '/api/notify-me'
+      preLoaderRoute: typeof ApiNotifyMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/notes': {
       id: '/api/notes'
       path: '/api/notes'
@@ -871,6 +924,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat/typing'
       fullPath: '/api/chat/typing'
       preLoaderRoute: typeof ApiChatTypingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/chat/reactions': {
+      id: '/api/chat/reactions'
+      path: '/api/chat/reactions'
+      fullPath: '/api/chat/reactions'
+      preLoaderRoute: typeof ApiChatReactionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat/messages': {
@@ -1032,6 +1092,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
   ApiNotesRoute: ApiNotesRoute,
+  ApiNotifyMeRoute: ApiNotifyMeRoute,
+  ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
@@ -1053,6 +1115,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
   ApiChatGroupsRoute: ApiChatGroupsRouteWithChildren,
   ApiChatMessagesRoute: ApiChatMessagesRoute,
+  ApiChatReactionsRoute: ApiChatReactionsRoute,
   ApiChatTypingRoute: ApiChatTypingRoute,
   ApiChatUsersRoute: ApiChatUsersRoute,
 }

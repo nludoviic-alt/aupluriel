@@ -5,6 +5,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 
+import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
+
 const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const;
 
 export function BottomNav() {
@@ -12,6 +14,7 @@ export function BottomNav() {
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
   const { toggleSidebar, openMobile } = useSidebar();
   const { user } = useAuth();
+  const { keyboardOpen } = useVisualViewportFrame();
 
   const showChat = !!user?.is_admin || user?.chat_enabled === 1;
 
@@ -26,8 +29,11 @@ export function BottomNav() {
   const items = user?.is_admin ? [...primaryItems, ADMIN_ITEM] : primaryItems;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border/60 bg-background/95 backdrop-blur-xl safe-area-bottom">
-      <div className="flex items-stretch h-16">
+    <nav id="bottom-nav-bar" className={cn(
+      "fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border/60 bg-background/95 backdrop-blur-xl safe-area-bottom",
+      keyboardOpen && "hidden"
+    )}>
+      <div className="flex items-stretch h-[50px]">
         {items.map((item) => {
           const active = isActive(item.url);
           return (

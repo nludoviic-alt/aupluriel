@@ -18,8 +18,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
-import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { useDerivSession } from "@/hooks/use-deriv-session";
+import { useHeartbeat } from "@/hooks/use-heartbeat";
+import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -108,7 +109,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
+      { name: "viewport", content: "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" },
       { title: "Au Pluriel" },
       { name: "theme-color", content: "#050505" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
@@ -252,7 +253,18 @@ function RootComponent() {
   const pageMeta = useMemo(() => getPageMeta(pathname), [pathname]);
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
-  usePriceAlerts(!isPublicRoute && !!user);
+  useHeartbeat(!isPublicRoute && !!user);
+  // Messenger-only: bind the shell to the visual viewport height on mobile
+  // so the chat never grows taller than the visible area (iOS keyboard
+  // avoidance). Desktop keeps h-dvh. No translateY — offsetTop handling was
+  // breaking fixed positioned children and creating an empty band on PWA.
+  const vv = useVisualViewportFrame();
+  const isMessenger = pathname === "/messenger";
+  const compactForKeyboard = vv.keyboardOpen && isMessenger;
+  const messengerMobileShell =
+    isMessenger && vv.height != null
+      ? { height: vv.height }
+      : undefined;
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -284,11 +296,27 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex min-h-screen w-full">
+        <div
+          className={cn(
+            "flex w-full",
+            isMessenger ? "h-dvh overflow-hidden md:transform-none" : "min-h-screen"
+          )}
+          style={messengerMobileShell}
+        >
           <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
+          {/* h-full + overflow-hidden here (messenger only) is the ancestor
+              chain messenger.tsx's own h-full needs to resolve to a real
+              pixel height instead of collapsing — every other route is
+              untouched (plain flex-col, natural document scroll). */}
+          <div className={cn(
+            "flex-1 flex flex-col min-w-0",
+            isMessenger && "h-full overflow-hidden"
+          )}>
             {/* Header for main content */}
-            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
+            <header className={cn(
+              "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0",
+              isMessenger && "hidden md:flex"
+            )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -387,12 +415,13 @@ function RootComponent() {
               </div>
             </header>
 
-            {/* Breathing room below the sticky header */}
-            <div className="h-2 shrink-0" />
+            {/* Breathing room below the sticky header — hidden on mobile
+                messenger to reclaim height for the chat thread */}
+            <div className={cn("h-2 shrink-0", isMessenger && "hidden md:block")} />
 
             {/* Strong signal banner — hidden on the messenger page: it eats into the
                 chat panel's carefully-budgeted viewport height and is irrelevant there */}
-            {hasAlerts && pathname !== "/messenger" && (
+            {hasAlerts && !isMessenger && (
               <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
@@ -422,9 +451,12 @@ function RootComponent() {
             <div className="hidden md:block">
               <TickerBar />
             </div>
-            <main className={cn(
-              "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "pb-0 overflow-hidden"
+            <main id="main-content-area" className={cn(
+              "flex-1 min-w-0 md:pb-0",
+              isMessenger
+                ? (compactForKeyboard ? "pb-0" : "pb-[calc(50px+env(safe-area-inset-bottom))]")
+                : "pb-[calc(50px+env(safe-area-inset-bottom))]",
+              isMessenger && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>

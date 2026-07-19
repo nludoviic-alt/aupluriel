@@ -3,6 +3,53 @@ import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest, requireAdmin } from "@/lib/auth.server";
 import { randomUUID } from "crypto";
 
+interface GroupRow {
+  id: string;
+  name: string;
+  isDirect: number;
+  recipientId: number | null;
+  createdBy: number | null;
+  createdAt: number;
+}
+
+// Sidebar preview data (last message + unread count) for a batch of groups —
+// one small query per group is fine here since a user's group count is
+// always small (a handful of DMs/salons, not thousands).
+function attachPreview(db: ReturnType<typeof getDb>, rows: GroupRow[], userId: number) {
+  const lastMessageStmt = db.prepare(`
+    SELECT content, created_at AS createdAt, sender_id AS senderId
+    FROM chat_messages
+    WHERE group_id = ? AND deleted_at IS NULL
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  const unreadStmt = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM chat_messages
+    WHERE group_id = ? AND sender_id != ? AND read_at IS NULL AND deleted_at IS NULL
+  `);
+
+  return rows.map((g) => {
+    const last = lastMessageStmt.get(g.id) as
+      | { content: string; createdAt: number; senderId: number }
+      | undefined;
+    const { count } = unreadStmt.get(g.id, userId) as { count: number };
+
+    return {
+      ...g,
+      lastMessage: last
+        ? {
+            content: last.content,
+            createdAt: last.createdAt,
+            senderId: last.senderId,
+            isImage: last.content.startsWith("data:image/"),
+          }
+        : null,
+      unreadCount: count,
+    };
+  });
+}
+
 export const Route = createFileRoute("/api/chat/groups")({
   server: {
     handlers: {
@@ -27,16 +74,9 @@ export const Route = createFileRoute("/api/chat/groups")({
               WHERE g.is_direct = 0 OR (g.is_direct = 1 AND u.id IS NOT NULL)
               ORDER BY g.is_direct ASC, name ASC
             `)
-            .all() as {
-            id: string;
-            name: string;
-            isDirect: number;
-            recipientId: number | null;
-            createdBy: number | null;
-            createdAt: number;
-          }[];
+            .all() as GroupRow[];
 
-          return json({ groups: rows });
+          return json({ groups: attachPreview(db, rows, user.id) });
         } else {
           // Regular user sees their DM conversation with Admin,
           // plus public groups where they have been added as a member.
@@ -66,16 +106,9 @@ export const Route = createFileRoute("/api/chat/groups")({
               
               ORDER BY isDirect ASC, createdAt ASC
             `)
-            .all(user.id, user.id) as {
-            id: string;
-            name: string;
-            isDirect: number;
-            recipientId: number | null;
-            createdBy: number | null;
-            createdAt: number;
-          }[];
+            .all(user.id, user.id) as GroupRow[];
 
-          return json({ groups: rows });
+          return json({ groups: attachPreview(db, rows, user.id) });
         }
       },
 
@@ -125,6 +158,8 @@ export const Route = createFileRoute("/api/chat/groups")({
           recipientId: null,
           createdBy: admin.id,
           createdAt: now,
+          lastMessage: null,
+          unreadCount: 0,
         });
       },
 

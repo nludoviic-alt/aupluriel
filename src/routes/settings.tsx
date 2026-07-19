@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert } from "lucide-react";
+import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert, UserCircle, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -11,6 +11,8 @@ import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
+import { AvatarPicker } from "@/components/avatar-picker";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Paramètres — Au Pluriel" }] }),
@@ -25,6 +27,11 @@ const KEYS = {
 };
 
 function SettingsPage() {
+  const { user, refresh: refreshAuth } = useAuth();
+  const [avatar, setAvatar] = useState(user?.avatar ?? "");
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState<"online" | "offline">(user?.online_status ?? "online");
+  const [statusSaving, setStatusSaving] = useState(false);
   const [token, setToken] = useState("");
   const [show, setShow] = useState(false);
   const [account, setAccount] = useState<"demo" | "live">("demo");
@@ -55,6 +62,8 @@ function SettingsPage() {
       if (s.risk_per_trade) setRisk(s.risk_per_trade as number);
       if (s.max_drawdown) setMaxDd(s.max_drawdown as number);
       if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
+      if (s.avatar) setAvatar(s.avatar as string);
+      if (s.online_status) setOnlineStatus(s.online_status as "online" | "offline");
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -65,6 +74,36 @@ function SettingsPage() {
       .catch(() => {})
       .finally(() => setPushChecked(true));
   }, []);
+
+  async function handleAvatarSelect(newAvatar: string) {
+    setAvatar(newAvatar);
+    setAvatarSaving(true);
+    try {
+      await api.put("/api/settings", { avatar: newAvatar });
+      await refreshAuth();
+      toast.success("Avatar mis à jour");
+    } catch {
+      toast.error("Échec de la mise à jour de l'avatar");
+    } finally {
+      setAvatarSaving(false);
+    }
+  }
+
+  async function toggleStatus(v: boolean) {
+    const newStatus = v ? "online" : "offline";
+    setOnlineStatus(newStatus);
+    setStatusSaving(true);
+    try {
+      await api.put("/api/settings", { online_status: newStatus });
+      await refreshAuth();
+      toast.success(v ? "Vous êtes maintenant en ligne" : "Vous êtes maintenant hors ligne");
+    } catch {
+      setOnlineStatus(onlineStatus); // revert
+      toast.error("Échec de la mise à jour du statut");
+    } finally {
+      setStatusSaving(false);
+    }
+  }
 
   async function togglePush(v: boolean) {
     setPushSaving(true);
@@ -142,6 +181,95 @@ function SettingsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto pb-24">
+      {/* Profil & Avatar */}
+      <CollapsibleSection
+        title="Profil & Avatar"
+        icon={<UserCircle className="h-5.5 w-5.5 shrink-0 text-amber-400" />}
+        defaultOpen={true}
+      >
+        <div className="p-4 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-sm">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="relative h-22 w-22 rounded-3xl bg-gradient-to-br from-amber-500/30 via-amber-500/5 to-transparent p-0.5 flex items-center justify-center shrink-0">
+                <div className="h-full w-full rounded-[22px] bg-[#0a0a0c] border border-amber-500/10 overflow-hidden">
+                  {avatar ? (
+                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <UserCircle className="h-10 w-10 text-amber-400/40" />
+                    </div>
+                  )}
+                  {avatarSaving && (
+                    <div className="absolute inset-0.5 bg-black/50 backdrop-blur-sm rounded-[22px] flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-foreground truncate">{user?.username}</h2>
+                <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-colors",
+                    onlineStatus === "online"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  )}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
+                    {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {user?.is_admin === 1 && (
+              <div className="flex items-center gap-3 shrink-0">
+                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
+                <div className="inline-flex p-1 rounded-full bg-white/[0.04] border border-white/[0.08]" role="radiogroup" aria-label="Mode de présence">
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(true)}
+                    disabled={statusSaving}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
+                      onlineStatus === "online"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Wifi className="h-3.5 w-3.5" />
+                    En ligne
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(false)}
+                    disabled={statusSaving}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
+                      onlineStatus === "offline"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <WifiOff className="h-3.5 w-3.5" />
+                    Hors ligne
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-6 border-t border-white/5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 mb-4 flex items-center gap-2">
+              <span className="h-1 w-1 rounded-full bg-amber-500" />
+              Choisir un Avatar
+            </h3>
+            <AvatarPicker currentAvatar={avatar} onSelect={handleAvatarSelect} />
+          </div>
+        </div>
+      </CollapsibleSection>
+
       {/* Header Panel */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-white/[0.01] border border-white/5 p-4.5 rounded-2xl shadow-sm">
         <div>

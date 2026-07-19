@@ -32,6 +32,26 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[health] Démarrage échoué:", e));
   }, 6000);
 
+  // Notification schedulers moved server-side so they push even with the app
+  // closed — they used to only fire while a browser tab happened to be open
+  // at the right moment (market session open/close, market-wide signal scan,
+  // user-configured price/drawdown alerts).
+  setTimeout(() => {
+    import("./lib/market-session-notify.server")
+      .then((m) => m.startMarketSessionScheduler())
+      .catch((e) => console.error("[market-session] Démarrage échoué:", e));
+  }, 7000);
+  setTimeout(() => {
+    import("./lib/signal-scan.server")
+      .then((m) => m.startSignalScanScheduler())
+      .catch((e) => console.error("[signal-scan] Démarrage échoué:", e));
+  }, 8000);
+  setTimeout(() => {
+    import("./lib/price-alerts.server")
+      .then((m) => m.startPriceAlertsScheduler())
+      .catch((e) => console.error("[price-alerts] Démarrage échoué:", e));
+  }, 9000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so
