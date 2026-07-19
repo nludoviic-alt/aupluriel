@@ -404,6 +404,24 @@ function MessengerPage() {
     };
   }, []);
 
+
+
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
+  const lastTypingSentRef = useRef<number>(0);
+  const [loadingSidebar, setLoadingSidebar] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [sidebarFilter, setSidebarFilter] = useState<"all" | "personal" | "groups">("all");
+
   // Track if a conversation is active on mobile to hide the bottom nav bar
   useEffect(() => {
     if (activeGroupId) {
@@ -435,22 +453,6 @@ function MessengerPage() {
     body.style.top = "";
     body.style.width = "";
   };
-
-  const [groups, setGroups] = useState<ChatGroup[]>([]);
-  const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
-  const lastTypingSentRef = useRef<number>(0);
-  const [loadingSidebar, setLoadingSidebar] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [inputText, setInputText] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const [sidebarSearch, setSidebarSearch] = useState("");
-  const [sidebarFilter, setSidebarFilter] = useState<"all" | "personal" | "groups">("all");
 
   // Clipboard Paste Image upload handler
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
