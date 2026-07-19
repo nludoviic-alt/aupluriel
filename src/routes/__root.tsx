@@ -495,16 +495,16 @@ function RootComponent() {
               // needs a definite-height ancestor to resolve as a percentage,
               // flex-1 doesn't, so this can't silently under-fill the space
               // and leave a gap above the bottom nav.
-              // BottomNav's real height is h-16 (4rem) plus its own
-              // safe-area-bottom padding — pb-20 alone under-reserves on
-              // phones with a home indicator, letting the composer's bottom
-              // edge sit under/behind the nav bar.
               pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0",
-              // Keyboard open: the nav is behind the keyboard, so its
-              // reserved padding would just be a dead band pushing the
-              // composer away from the keyboard.
+              // Reserve exactly the BottomNav's real height so the messenger
+              // content bottoms out flush against it, same as every other
+              // page. The nav is h-16 (4rem) + its own safe-area-bottom
+              // padding — matching that here (not 5rem) removes the ~15px
+              // dead gap that made /messenger look shorter than other pages.
+              // Keyboard open: the nav is behind the keyboard, so drop the
+              // padding entirely and let the composer sit against it.
               pathname === "/messenger" &&
-                (compactForKeyboard ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]")
+                (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
             )}>
               <Outlet />
             </main>
