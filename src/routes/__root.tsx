@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
@@ -44,6 +44,50 @@ import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
 import { cn } from "@/lib/utils";
+
+// Live viewport telemetry, enabled only with ?vvdebug in the URL — the iOS
+// keyboard pan/resize bugs can't be reproduced in desktop tooling, so this
+// overlay is how we read the real numbers off an actual phone. Follows the
+// keyboard pan via --app-offset-top so it stays readable mid-bug.
+function ViewportDebugHud() {
+  const [info, setInfo] = useState("");
+  useEffect(() => {
+    if (!window.location.search.includes("vvdebug")) return;
+    let raf = 0;
+    const tick = () => {
+      const vv = window.visualViewport;
+      const root = document.documentElement;
+      const standalone = (navigator as { standalone?: boolean }).standalone ? 1 : 0;
+      setInfo(
+        `kb4 pwa:${standalone} vvH:${vv ? Math.round(vv.height) : "—"} ` +
+          `off:${vv ? Math.round(vv.offsetTop) : "—"} innerH:${window.innerHeight} ` +
+          `scrollY:${Math.round(window.scrollY)} appH:${root.style.getPropertyValue("--app-height") || "—"}`
+      );
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  if (!info) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: "calc(env(safe-area-inset-top, 0px) + var(--app-offset-top, 0px))",
+        left: 0,
+        zIndex: 99999,
+        background: "rgba(0,0,0,0.85)",
+        color: "#4ade80",
+        font: "11px/1.6 monospace",
+        padding: "2px 8px",
+        pointerEvents: "none",
+        maxWidth: "100vw",
+      }}
+    >
+      {info}
+    </div>
+  );
+}
 
 function NotFoundComponent() {
   return (
@@ -452,6 +496,7 @@ function RootComponent() {
           </div>
         </div>
         <BottomNav />
+        <ViewportDebugHud />
         <Toaster />
       </SidebarProvider>
     </QueryClientProvider>

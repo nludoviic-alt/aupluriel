@@ -32,8 +32,12 @@ export function useAppViewportHeight() {
       root.style.setProperty("--app-height", `${height}px`);
       root.style.setProperty("--app-offset-top", `${offsetTop}px`);
       // The shell is a fixed-height box, so any document scroll is pure
-      // keyboard-avoidance drift Safari left behind — undo it.
+      // keyboard-avoidance drift Safari left behind — undo it through every
+      // channel iOS uses (window scroll AND element scrollTop; standalone
+      // PWAs have been seen drifting one without the other).
       if (window.scrollY !== 0) window.scrollTo(0, 0);
+      if (root.scrollTop !== 0) root.scrollTop = 0;
+      if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
     }
 
     function reapplySoon() {
@@ -45,6 +49,9 @@ export function useAppViewportHeight() {
     window.addEventListener("resize", apply);
     viewport?.addEventListener("resize", apply);
     viewport?.addEventListener("scroll", apply);
+    // Keyboard open AND close both occasionally skip the final resize event
+    // in standalone iOS PWAs — re-measure a few beats after focus moves.
+    window.addEventListener("focusin", reapplySoon);
     window.addEventListener("focusout", reapplySoon);
 
     return () => {
@@ -52,6 +59,7 @@ export function useAppViewportHeight() {
       window.removeEventListener("resize", apply);
       viewport?.removeEventListener("resize", apply);
       viewport?.removeEventListener("scroll", apply);
+      window.removeEventListener("focusin", reapplySoon);
       window.removeEventListener("focusout", reapplySoon);
     };
   }, []);
