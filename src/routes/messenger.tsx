@@ -674,6 +674,11 @@ function MessengerPage() {
     }
   }
 
+  // Scroll window to top on mount to reset any page scroll offset
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   useEffect(() => {
     if (user) {
       loadSidebarData();
@@ -1441,7 +1446,7 @@ function MessengerPage() {
                   </div>
 
                   <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
-                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-none mb-0.5">
+                    <h2 className="font-bold text-[16px] sm:text-[17.5px] text-foreground tracking-tight font-sans truncate leading-tight mb-0.5">
                       {isActiveDirect ? activeGroupName : activeGroupName}
                     </h2>
                     
