@@ -535,12 +535,9 @@ html {
   body.chat-active #bottom-nav-bar {
     display: none !important;
   }
+  /* Composer owns safe-area padding — do NOT also pad main, or a black
+     gap appears under the input bar (double inset). */
   body.chat-active #main-content-area {
-    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-  }
-  /* When the keyboard is open the shell is sized to visualViewport — drop
-     residual safe-area padding so the composer sits flush above the keyboard */
-  body.chat-active.keyboard-open #main-content-area {
     padding-bottom: 0 !important;
   }
 }
