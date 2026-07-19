@@ -291,7 +291,10 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex h-dvh w-full">
+        <div className={cn(
+          "flex w-full",
+          pathname === "/messenger" ? "h-dvh overflow-hidden" : "min-h-screen"
+        )}>
           <AppSidebar />
           {/* h-full + overflow-hidden here (messenger only) is the ancestor
               chain messenger.tsx's own h-full needs to resolve to a real
@@ -302,7 +305,7 @@ function RootComponent() {
             pathname === "/messenger" && "h-full overflow-hidden"
           )}>
             {/* Header for main content */}
-            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
+            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0">
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />

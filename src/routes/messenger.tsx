@@ -1351,7 +1351,7 @@ function MessengerPage() {
 
         {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
         <div className={cn(
-          "items-center justify-between border-b border-white/[0.08] bg-white/[0.02] backdrop-blur-xl px-4 py-3 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
+          "items-center justify-between border-b border-white/[0.06] md:border-b-white/[0.08] bg-white/[0.01] md:bg-white/[0.02] backdrop-blur-xl px-5 py-4 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
           activeGroupId ? "hidden md:flex" : "flex"
         )}>
         <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -1359,10 +1359,10 @@ function MessengerPage() {
             <MessageSquare className="h-5.5 w-5.5" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
-            <h1 className="text-[19px] md:text-2xl font-bold tracking-tight text-foreground font-sans truncate leading-none mb-1.5">Mes Messages</h1>
+            <h1 className="text-[19px] md:text-2xl font-bold tracking-tight text-foreground font-sans truncate leading-none mb-1">Mes Messages</h1>
             <div className="flex items-center gap-2">
               <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-[11px] md:text-xs text-muted-foreground/50 font-medium truncate leading-none uppercase tracking-wider">Services Actifs</p>
+              <p className="text-[10px] md:text-xs text-muted-foreground/40 md:text-muted-foreground/50 font-bold truncate leading-none uppercase tracking-widest">Services Actifs</p>
             </div>
           </div>
         </div>
@@ -1371,7 +1371,7 @@ function MessengerPage() {
           {!!user?.is_admin && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex h-10 md:h-11 items-center justify-center gap-2 px-4 md:px-5 text-[13px] font-bold rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/20 transition-all duration-300 cursor-pointer shrink-0 active:scale-95 hover:scale-[1.02]"
+              className="flex h-10 md:h-11 items-center justify-center gap-2 px-4 md:px-5 text-[13px] font-bold rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/20 transition-all duration-300 cursor-pointer shrink-0 active:scale-95 hover:scale-[1.02] border border-amber-300/10"
               title="Créer un groupe"
             >
               <Plus className="h-4.5 w-4.5 shrink-0" />
@@ -1386,21 +1386,21 @@ function MessengerPage() {
         {/* SIDEBAR COL */}
         <div className={cn("flex flex-col bg-white/[0.01] overflow-hidden space-y-0", activeGroupId ? "hidden md:flex md:w-[350px] shrink-0" : "w-full md:w-[350px] shrink-0")}>
           {/* SEARCH BAR (WhatsApp/Example style) */}
-          <div className="p-3 sm:p-4 pb-2">
+          <div className="p-3.5 sm:p-4 pb-2">
             <div className="relative group">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-amber-400 transition-colors" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 group-focus-within:text-amber-400 transition-colors" />
               <input 
                 type="text"
                 placeholder="Rechercher..."
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
-                className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-10 pr-4 text-[16px] sm:text-[14px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-amber-500/30 focus:bg-white/[0.05] transition-all"
+                className="w-full bg-white/[0.02] md:bg-white/[0.03] border border-white/[0.05] md:border-white/[0.06] rounded-[18px] md:rounded-2xl py-2.5 pl-10 pr-4 text-[16px] sm:text-[14px] placeholder:text-muted-foreground/25 focus:outline-none focus:border-amber-500/20 focus:bg-white/[0.04] transition-all"
               />
             </div>
           </div>
 
                   {/* FILTER TABS (Example style) */}
-          <div className="flex items-center gap-2 px-3 sm:px-4 pb-4 overflow-x-auto scrollbar-none shrink-0 pr-6 mb-2">
+          <div className="flex items-center gap-1 md:gap-2 p-1 md:p-0 mx-3.5 md:mx-0 sm:mx-4 pb-0 md:pb-4 mb-4 md:mb-2 bg-white/[0.02] md:bg-transparent border border-white/[0.05] md:border-none rounded-2xl md:rounded-none overflow-x-auto scrollbar-none shrink-0">
             {[
               { id: "all", label: "Tous", count: groupsWithAvatars.length + (!!user?.is_admin ? verifiedUsers.length : 0) },
               { id: "personal", label: "Personnels", count: !!user?.is_admin ? verifiedUsers.length : (userDmGroup ? 1 : 0) },
@@ -1410,16 +1410,16 @@ function MessengerPage() {
                 key={tab.id}
                 onClick={() => setSidebarFilter(tab.id as any)}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap active:scale-95",
+                  "flex-1 md:flex-initial flex items-center justify-center gap-2 px-3 py-2 md:py-1.5 md:px-4 rounded-xl md:rounded-full text-[13px] font-bold md:font-semibold transition-all whitespace-nowrap active:scale-95 cursor-pointer",
                   sidebarFilter === tab.id
-                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-400"
-                    : "bg-white/[0.03] border border-white/[0.06] text-muted-foreground/60 hover:text-foreground"
+                    ? "bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[inset_0_1px_0_rgba(245,158,11,0.15)] md:shadow-none"
+                    : "bg-transparent md:bg-white/[0.03] border-transparent md:border-white/[0.06] text-muted-foreground/50 md:text-muted-foreground/60 hover:text-foreground"
                 )}
               >
                 {tab.label}
                 {tab.count > 0 && (
                   <span className={cn(
-                    "flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[9px] font-bold",
+                    "flex h-4.5 min-w-[1.125rem] items-center justify-center rounded-full px-1 text-[9px] font-black",
                     sidebarFilter === tab.id ? "bg-amber-500/20" : "bg-white/10"
                   )}>
                     {tab.count}
@@ -1519,66 +1519,70 @@ function MessengerPage() {
                     );
                   }
 
-                  return allRows.map((row) => (
-                    <button
-                      key={row.id}
-                      onClick={row.onClick}
-                      className={cn(
-                        "w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-left relative cursor-pointer active:scale-[0.98] group/row",
-                        row.isActive
-                          ? "bg-amber-500/[0.08] border-amber-500/25 text-foreground shadow-lg shadow-black/20"
-                          : "bg-transparent border-transparent text-muted-foreground hover:bg-white/[0.03] hover:text-foreground hover:border-white/[0.08]"
-                      )}
-                    >
-                      <div className="relative shrink-0">
-                        <div className={cn(
-                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-transform duration-200 group-hover/row:scale-105 overflow-hidden bg-background",
-                          row.type === "personal"
-                            ? (row.avatar && row.avatar.startsWith("http") ? "" : cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name)))
-                            : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                        )}>
-                          {row.type === "personal" ? (
-                            row.avatar && row.avatar.startsWith("http") ? (
-                              <img src={row.avatar} alt={row.name} className="w-full h-full object-cover" />
-                            ) : (
-                              getInitial(row.avatar || row.name)
-                            )
-                          ) : (
-                            <Hash className="h-5 w-5" />
-                          )}
-                        </div>
-                        {row.type === "personal" && row.id && verifiedUsers.find(u => u.groupId === row.id && onlineUserIds.has(u.id)) && (
-                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-500 animate-pulse" />
+                  return allRows.map((row) => {
+                    const isOnline = row.type === "personal" && row.id && verifiedUsers.find(u => u.groupId === row.id && onlineUserIds.has(u.id));
+                    return (
+                      <button
+                        key={row.id}
+                        onClick={row.onClick}
+                        className={cn(
+                          "w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-left relative cursor-pointer active:scale-[0.98] group/row mb-1.5 bg-white/[0.01] border-white/[0.02] md:bg-transparent md:border-transparent",
+                          row.isActive
+                            ? "bg-gradient-to-r from-amber-500/[0.06] to-orange-500/[0.01] border-l-2 border-l-amber-500 border-y-transparent border-r-transparent text-foreground shadow-lg shadow-black/10 md:border-none md:bg-amber-500/[0.08] md:border-amber-500/25 md:shadow-black/20"
+                            : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground hover:border-white/[0.08]"
                         )}
-                      </div>
-                      
-                      <div className="min-w-0 flex-1 flex flex-col justify-center -space-y-0.5">
-                        <div className="flex items-center justify-between gap-2 mb-0.5">
-                          <div className="font-bold text-[14.5px] sm:text-[15px] leading-tight truncate">
-                            {row.name}
-                          </div>
-                          {row.time && (
-                            <div className="text-[10px] font-medium text-muted-foreground/40 whitespace-nowrap">
-                              {row.time}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
+                      >
+                        <div className="relative shrink-0">
                           <div className={cn(
-                            "text-[12px] truncate leading-tight",
-                            row.isActive ? "text-muted-foreground" : "text-muted-foreground/50"
+                            "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold shadow-md transition-all duration-200 group-hover/row:scale-105 overflow-hidden bg-background",
+                            row.type === "personal"
+                              ? (row.avatar && row.avatar.startsWith("http") ? "" : cn("bg-gradient-to-br", getAvatarStyle(row.avatar || row.name)))
+                              : "bg-amber-500/10 border-amber-500/20 text-amber-400",
+                            isOnline && "ring-2 ring-emerald-500/35 ring-offset-2 ring-offset-black"
                           )}>
-                            {row.lastMessage}
+                            {row.type === "personal" ? (
+                              row.avatar && row.avatar.startsWith("http") ? (
+                                <img src={row.avatar} alt={row.name} className="w-full h-full object-cover" />
+                              ) : (
+                                getInitial(row.avatar || row.name)
+                              )
+                            ) : (
+                              <Hash className="h-5 w-5" />
+                            )}
                           </div>
-                          {!!row.unread && row.unread > 0 && (
-                            <div className="h-4 min-w-[1rem] px-1 flex items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black shadow-lg shadow-amber-950/20">
-                              {row.unread}
-                            </div>
+                          {isOnline && (
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-emerald-500 animate-pulse" />
                           )}
                         </div>
-                      </div>
-                    </button>
-                  ));
+                        
+                        <div className="min-w-0 flex-1 flex flex-col justify-center -space-y-0.5">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <div className="font-bold text-[14.5px] sm:text-[15px] leading-tight truncate">
+                              {row.name}
+                            </div>
+                            {row.time && (
+                              <div className="text-[10px] font-medium text-muted-foreground/35 md:text-muted-foreground/40 whitespace-nowrap">
+                                {row.time}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className={cn(
+                              "text-[12.5px] md:text-[12px] truncate leading-tight",
+                              row.isActive ? "text-muted-foreground" : "text-muted-foreground/45 md:text-muted-foreground/50"
+                            )}>
+                              {row.lastMessage}
+                            </div>
+                            {!!row.unread && row.unread > 0 && (
+                              <div className="h-4.5 min-w-[1.125rem] px-1.5 flex items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-[9.5px] font-black text-black shadow-lg shadow-amber-950/20">
+                                {row.unread}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  });
                 })()}
               </div>
             )}
@@ -1598,17 +1602,17 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="flex items-center justify-between gap-3 border-b border-white/[0.1] bg-black/60 backdrop-blur-xl px-2 sm:px-6 py-2 sm:py-3 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0">
+              <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] md:border-b-white/[0.1] bg-black/30 md:bg-black/60 backdrop-blur-2xl px-2.5 sm:px-6 py-2.5 sm:py-3 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0">
                 <div className="flex items-center min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
-                    className="md:hidden flex h-11 w-10 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground transition-all active:scale-90"
+                    className="md:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.03] border border-white/[0.06] text-muted-foreground hover:text-foreground hover:bg-white/[0.08] transition-all active:scale-90 mr-2"
                     title="Retour"
                   >
-                    <ChevronLeft className="h-6 w-6" />
+                    <ChevronLeft className="h-5.5 w-5.5" />
                   </button>
                   
-                  <div className="relative shrink-0 ml-1 md:ml-0">
+                  <div className="relative shrink-0">
                     <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-white/10 text-sm font-bold shadow-lg transition-transform duration-200 overflow-hidden bg-background">
                       {isActiveDirect ? (
                         activeGroupId && groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar ? (
@@ -1638,10 +1642,20 @@ function MessengerPage() {
                     </h2>
                     
                     <div className="flex items-center gap-1.5 h-3.5">
-                      {typingUserIds.length > 0 && (
+                      {typingUserIds.length > 0 ? (
                         <span className="text-[11.5px] font-medium text-amber-400 animate-in fade-in">
                           {typingLabel}
                         </span>
+                      ) : (
+                        activePartnerId !== undefined && (
+                          <span className={cn(
+                            "text-[11px] font-medium transition-colors flex items-center gap-1 leading-none",
+                            onlineUserIds.has(activePartnerId) ? "text-emerald-400/80" : "text-muted-foreground/35"
+                          )}>
+                            {onlineUserIds.has(activePartnerId) && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                            {onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
+                          </span>
+                        )
                       )}
                     </div>
                   </div>
@@ -1851,8 +1865,8 @@ function MessengerPage() {
                                                 "rounded-[22px] text-[14.5px] sm:text-[15px] leading-relaxed relative shadow-md",
                                                 isImage ? "p-1 overflow-hidden" : "px-4 py-2.5 pb-6 min-w-[90px] max-w-full",
                                                 isMe
-                                                  ? "text-white bg-gradient-to-br from-amber-500 to-orange-600 border-none shadow-lg"
-                                                  : "text-foreground border border-white/[0.05] backdrop-blur-md bg-[#202020] shadow-sm",
+                                                  ? "md:text-white md:bg-gradient-to-br md:from-amber-500 md:to-orange-600 md:shadow-lg text-black bg-gradient-to-br from-amber-400 to-orange-500 shadow-xl shadow-amber-950/10 border border-amber-300/10"
+                                                  : "md:text-foreground md:border-white/[0.05] md:bg-[#202020] md:shadow-sm md:backdrop-blur-md text-white bg-white/[0.02] border border-white/[0.04] backdrop-blur-xl shadow-md",
                                                 // The "tail" corner only belongs on the last bubble of a
                                                 // consecutive run (mobile-only grouping — desktop always
                                                 // shows the tail on every bubble, as before).
@@ -1917,7 +1931,7 @@ function MessengerPage() {
                                         {!isEmojiMsg && (
                                           <div className={cn(
                                             "absolute bottom-1.5 right-3.5 flex items-center gap-1 select-none pointer-events-none",
-                                            isMe ? "text-white/60" : "text-muted-foreground/40"
+                                            isMe ? "text-black/60 md:text-white/60" : "text-muted-foreground/40"
                                           )}>
                                             <span className="text-[10px] font-medium uppercase">
                                               {new Date(msg.createdAt * 1000).toLocaleTimeString("fr-FR", {
@@ -1930,7 +1944,7 @@ function MessengerPage() {
                                                 {msg.pending ? (
                                                   <Loader2 className="h-3 w-3 animate-spin" />
                                                 ) : msg.readAt ? (
-                                                  <CheckCheck className="h-3 w-3 text-blue-400" />
+                                                  <CheckCheck className="h-3 w-3 text-blue-600 md:text-blue-400" />
                                                 ) : msg.deliveredAt ? (
                                                   <CheckCheck className="h-3 w-3" />
                                                 ) : (
@@ -2042,7 +2056,7 @@ function MessengerPage() {
                               />
                               <div
                                 className={cn(
-                                  "fixed z-[201] w-[min(18rem,calc(100vw-2rem))] rounded-[26px] border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
+                                  "fixed z-[201] w-[min(18rem,calc(100vw-2rem))] rounded-[26px] border border-white/[0.06] bg-black/40 backdrop-blur-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
                                   isMe ? "origin-top-right" : "origin-top-left"
                                 )}
                                 style={getMobileContextMenuStyle(contextMenuAnchor, isMe)}
@@ -2073,14 +2087,14 @@ function MessengerPage() {
                                     onClick={() => { startReplyMessage(msg); closeMessageMenu(); }}
                                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
                                   >
-                                    <Reply className="h-4.5 w-4.5" /> Répondre
+                                    <Reply className="h-4.5 w-4.5 text-blue-400" /> Répondre
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => { openForwardModal(msg); closeMessageMenu(); }}
                                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
                                   >
-                                    <Forward className="h-4.5 w-4.5" /> Transférer
+                                    <Forward className="h-4.5 w-4.5 text-indigo-400" /> Transférer
                                   </button>
                                   {!isImage && (
                                     <button
@@ -2088,7 +2102,7 @@ function MessengerPage() {
                                       onClick={() => { copyMessageText(msg.content); closeMessageMenu(); }}
                                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
                                     >
-                                      <Copy className="h-4.5 w-4.5" /> Copier
+                                      <Copy className="h-4.5 w-4.5 text-emerald-400" /> Copier
                                     </button>
                                   )}
                                   {isMe && !isImage && (
@@ -2097,7 +2111,7 @@ function MessengerPage() {
                                       onClick={() => { startEditMessage(msg); closeMessageMenu(); }}
                                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
                                     >
-                                      <Pencil className="h-4.5 w-4.5" /> Modifier
+                                      <Pencil className="h-4.5 w-4.5 text-amber-400" /> Modifier
                                     </button>
                                   )}
                                   {isMe && (
@@ -2106,7 +2120,7 @@ function MessengerPage() {
                                       onClick={() => { deleteMessage(msg); closeMessageMenu(); }}
                                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition-colors cursor-pointer"
                                     >
-                                      <Trash2 className="h-4.5 w-4.5" /> Supprimer
+                                      <Trash2 className="h-4.5 w-4.5 text-rose-400" /> Supprimer
                                     </button>
                                   )}
                                 </div>
@@ -2328,9 +2342,9 @@ function MessengerPage() {
                         field / next field / done" navigation bar above the
                         keyboard. Enter-to-send and the button's onClick both
                         already call handleSendMessage() directly. */}
-                    <div className="flex items-end gap-1.5 sm:gap-2">
+                    <div className="flex items-end gap-2.5 pb-2 md:pb-0">
                       {/* WhatsApp-style rounded composer pill */}
-                      <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[26px] border border-white/[0.08] bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/40 focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/40">
+                      <div className="flex flex-1 min-w-0 items-end gap-0.5 rounded-[24px] md:rounded-[26px] border border-white/[0.05] md:border-white/[0.08] bg-white/[0.02] md:bg-white/[0.04] pl-1 pr-1 py-1 focus-within:border-amber-500/20 md:focus-within:border-amber-500/40 focus-within:bg-white/[0.04] md:focus-within:bg-white/[0.06] transition-all duration-200 shadow-lg shadow-black/30 md:shadow-black/40">
                         {/* Smiley Button */}
                         <button
                           type="button"
@@ -2389,10 +2403,10 @@ function MessengerPage() {
                         disabled={sending || (!inputText.trim() && !selectedImage)}
                         title={editingMessage ? "Enregistrer les modifications" : "Envoyer"}
                         className={cn(
-                          "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer active:scale-90 shadow-lg",
+                          "flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full transition-all duration-200 cursor-pointer shadow-lg active:scale-90",
                           (inputText.trim() || selectedImage)
-                            ? "bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-500 hover:to-amber-700 text-black shadow-amber-950/30"
-                            : "bg-white/5 text-muted-foreground/30 cursor-not-allowed opacity-50"
+                            ? "scale-105 bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black shadow-xl shadow-amber-950/20 md:scale-100 md:from-amber-400 md:to-amber-600 md:hover:from-amber-500 md:hover:to-amber-700 md:shadow-amber-950/30"
+                            : "scale-95 bg-white/[0.03] text-muted-foreground/20 cursor-not-allowed opacity-40 border border-white/[0.04] md:scale-100 md:bg-white/5 md:text-muted-foreground/30 md:opacity-50 md:border-none"
                         )}
                       >
                         {sending ? (
