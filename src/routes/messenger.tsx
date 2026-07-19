@@ -311,23 +311,40 @@ function MessengerPage() {
     }
   }, [user, navigate]);
 
-  // Focusing the composer on iOS Safari normally makes the browser scroll
-  // the whole document to keep the input above the keyboard — on top of
-  // useAppViewportHeight's own visualViewport-driven resize, the two fights
-  // and leaves the chat card scrolled out of view (a blank gap, composer
-  // nowhere to be seen) until the keyboard closes and the two disagree on
-  // the app's height again. Locking body/html scroll removes the browser's
-  // native scroll-into-view entirely, so the visualViewport resize is the
-  // only thing moving anything.
+  // Focusing the composer on iOS Safari makes it scroll the whole document
+  // to keep the input above the keyboard — this happens at the WebKit/
+  // visual-viewport level and, critically, `overflow: hidden` alone does
+  // NOT stop it (Safari treats the page as scrollable for keyboard-avoidance
+  // purposes regardless of CSS overflow). That native scroll fights
+  // useAppViewportHeight's own visualViewport-driven resize and leaves the
+  // chat card scrolled out of view — a blank gap, composer nowhere to be
+  // seen — stuck short again once the keyboard closes. Pinning body to
+  // `position: fixed` removes the scrollable box entirely, so there is
+  // nothing left for Safari to scroll; the visualViewport resize becomes
+  // the only thing moving anything.
   useEffect(() => {
     const html = document.documentElement;
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = html.style.overflow;
-    document.body.style.overflow = "hidden";
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyWidth: body.style.width,
+    };
     html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
     return () => {
-      document.body.style.overflow = prevBodyOverflow;
-      html.style.overflow = prevHtmlOverflow;
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      body.style.position = prev.bodyPosition;
+      body.style.top = prev.bodyTop;
+      body.style.width = prev.bodyWidth;
+      window.scrollTo(0, scrollY);
     };
   }, []);
 
