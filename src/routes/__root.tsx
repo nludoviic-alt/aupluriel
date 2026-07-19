@@ -20,6 +20,7 @@ import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
+import { useAppViewportHeight } from "@/hooks/use-app-viewport-height";
 import {
   Bell,
   Loader2,
@@ -253,6 +254,7 @@ function RootComponent() {
   const PageIcon = pageMeta.icon;
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
+  useAppViewportHeight();
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -284,7 +286,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex h-dvh w-full">
+        <div className="flex h-dvh w-full" style={{ height: "var(--app-height, 100dvh)" }}>
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Header for main content */}

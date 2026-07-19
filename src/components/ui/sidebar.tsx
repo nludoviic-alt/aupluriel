@@ -131,18 +131,18 @@ const SidebarProvider = React.forwardRef<
               {
                 "--sidebar-width": SIDEBAR_WIDTH,
                 "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                // var(--app-height) (set by useAppViewportHeight, falling
+                // back to 100dvh before it runs) instead of h-dvh alone —
+                // some mobile WebViews/PWAs don't recompute 100dvh reliably
+                // right after the on-screen keyboard closes, leaving the app
+                // shell stuck at the shorter "keyboard open" height, which
+                // drags "fixed" chrome like the chat composer up with it.
+                height: "var(--app-height, 100dvh)",
                 ...style,
               } as React.CSSProperties
             }
             className={cn(
-              // h-dvh (not min-h-svh) so the box is a stable, fixed height —
-              // mobile browsers otherwise shift 100vh/100svh as the address
-              // bar collapses/expands, occasionally making the page taller
-              // than the viewport and triggering native page-scroll instead
-              // of the intended internal scroll areas (e.g. messenger.tsx's
-              // message thread), which drags "fixed" chrome like the chat
-              // composer along with it.
-              "group/sidebar-wrapper flex h-dvh w-full has-[[data-variant=inset]]:bg-sidebar",
+              "group/sidebar-wrapper flex w-full has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}
             ref={ref}

@@ -1848,8 +1848,9 @@ function MessengerPage() {
                 </button>
               )}
 
-              {/* INPUT BAR — tighter bottom padding on mobile only */}
-              <div className="px-3 py-3 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
+              {/* INPUT BAR — tighter bottom padding on mobile only, so the
+                  composer sits closer to the bottom nav bar below it */}
+              <div className="px-3 pt-3 pb-1.5 sm:p-4 border-t border-white/[0.06] bg-gradient-to-b from-transparent to-black/30 shrink-0 relative z-10">
                 {/* Emoji Picker Popover */}
                 {showEmojiPicker && (
                   <>
