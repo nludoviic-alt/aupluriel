@@ -21,6 +21,7 @@ import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
 import { useAppViewportHeight } from "@/hooks/use-app-viewport-height";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import {
   Bell,
   Loader2,
@@ -303,6 +304,12 @@ function RootComponent() {
   useMarketOpenNotify(!isPublicRoute && !!user);
   useHeartbeat(!isPublicRoute && !!user);
   useAppViewportHeight();
+  // With the keyboard open on /messenger, the ~377px of visible viewport
+  // can't afford the global header (~80px) nor the bottom-nav padding
+  // (~114px, reserved for a nav that's behind the keyboard anyway) — both
+  // collapse so the conversation + composer get the space, Telegram-style.
+  const keyboardOpen = useKeyboardOpen();
+  const compactForKeyboard = keyboardOpen && pathname === "/messenger";
   const deriv = useDerivSession(!isPublicRoute && !!user);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
@@ -343,7 +350,10 @@ function RootComponent() {
             pathname === "/messenger" && "h-full overflow-hidden"
           )}>
             {/* Header for main content */}
-            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300">
+            <header className={cn(
+              "relative sticky top-0 z-30 h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300",
+              compactForKeyboard ? "hidden md:flex" : "flex"
+            )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -489,7 +499,12 @@ function RootComponent() {
               // safe-area-bottom padding — pb-20 alone under-reserves on
               // phones with a home indicator, letting the composer's bottom
               // edge sit under/behind the nav bar.
-              pathname === "/messenger" && "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
+              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0",
+              // Keyboard open: the nav is behind the keyboard, so its
+              // reserved padding would just be a dead band pushing the
+              // composer away from the keyboard.
+              pathname === "/messenger" &&
+                (compactForKeyboard ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]")
             )}>
               <Outlet />
             </main>

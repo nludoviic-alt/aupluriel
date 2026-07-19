@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush } from "@/lib/push";
@@ -837,6 +838,17 @@ function MessengerPage() {
       });
     }
   }
+
+  // Keyboard opening shrinks the thread — keep the latest messages (and the
+  // reply context the user is typing against) in view, like Telegram does.
+  // Small delay lets the viewport finish resizing before we measure.
+  const keyboardOpen = useKeyboardOpen();
+  useEffect(() => {
+    if (!keyboardOpen) return;
+    const t = setTimeout(() => scrollToBottom(true), 80);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboardOpen]);
 
   // Handle message send
   // Sends one piece of content optimistically: it appears in the thread
