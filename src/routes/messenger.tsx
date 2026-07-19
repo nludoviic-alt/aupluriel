@@ -1256,7 +1256,7 @@ function MessengerPage() {
                 placeholder="Rechercher..."
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
-                className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-10 pr-4 text-[14px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-amber-500/30 focus:bg-white/[0.05] transition-all"
+                className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-10 pr-4 text-[16px] sm:text-[14px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-amber-500/30 focus:bg-white/[0.05] transition-all"
               />
             </div>
           </div>
@@ -2039,7 +2039,11 @@ function MessengerPage() {
                           }}
                           onPaste={handlePaste}
                           placeholder={selectedImage ? "Ajouter un commentaire..." : "Message"}
-                          className="flex-1 min-w-0 bg-transparent border-none text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
+                          // 16px minimum — iOS Safari auto-zooms the whole page on focus
+                          // for any text input under that size, no matter what the
+                          // viewport meta says. Below sm: (real mobile widths) we need
+                          // the full 16px; desktop can afford the tighter 14px.
+                          className="flex-1 min-w-0 bg-transparent border-none text-[16px] sm:text-[14px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none max-h-[7.5rem] overflow-y-auto leading-relaxed py-2"
                         />
 
                         {/* Paperclip/Image Attachment Button */}
@@ -2145,7 +2149,7 @@ function MessengerPage() {
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder="ex. Signaux & Analyses"
-                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4.5 py-3 text-sm text-foreground focus:border-amber-500/40 outline-none transition-all duration-150"
+                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4.5 py-3 text-[16px] sm:text-sm text-foreground focus:border-amber-500/40 outline-none transition-all duration-150"
                 />
               </div>
 
