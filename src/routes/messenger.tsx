@@ -792,7 +792,13 @@ function MessengerPage() {
   }
 
   function scrollToBottom(instant = false) {
-    messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth" });
+    const el = messagesThreadRef.current;
+    if (el) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: instant ? "auto" : "smooth"
+      });
+    }
   }
 
   // Handle message send
@@ -966,8 +972,16 @@ function MessengerPage() {
 
   function scrollToMessage(messageId: string) {
     const el = messageRefs.current.get(messageId);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const container = messagesThreadRef.current;
+    if (!el || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+    const targetScrollTop = relativeTop - container.clientHeight / 2 + el.clientHeight / 2;
+    container.scrollTo({
+      top: targetScrollTop,
+      behavior: "smooth"
+    });
     el.classList.add("ring-2", "ring-amber-400/60");
     setTimeout(() => el.classList.remove("ring-2", "ring-amber-400/60"), 900);
   }
