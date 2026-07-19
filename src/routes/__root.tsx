@@ -440,23 +440,11 @@ function RootComponent() {
               <TickerBar />
             </div>
             <main className={cn(
-              "flex-1 min-w-0 pb-16 md:pb-0",
-              // flex + forcing the direct child (whatever <Outlet/> renders)
-              // to flex-1/min-h-0 makes messenger's own h-full chain robust
-              // against <main> not being a flex container itself — h-full
-              // needs a definite-height ancestor to resolve as a percentage,
-              // flex-1 doesn't, so this can't silently under-fill the space
-              // and leave a gap above the bottom nav.
-              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0",
-              // Reserve exactly the BottomNav's real height so the messenger
-              // content bottoms out flush against it, same as every other
-              // page. The nav is h-16 (4rem) + its own safe-area-bottom
-              // padding — matching that here (not 5rem) removes the ~15px
-              // dead gap that made /messenger look shorter than other pages.
-              // Keyboard open: the nav is behind the keyboard, so drop the
-              // padding entirely and let the composer sit against it.
-              pathname === "/messenger" &&
-                (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
+              "flex-1 min-w-0 md:pb-0",
+              pathname === "/messenger"
+                ? (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")
+                : "pb-[calc(4rem+env(safe-area-inset-bottom))]",
+              pathname === "/messenger" && "md:pb-0 min-h-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>
