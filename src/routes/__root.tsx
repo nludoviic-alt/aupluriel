@@ -305,7 +305,10 @@ function RootComponent() {
             pathname === "/messenger" && "h-full overflow-hidden"
           )}>
             {/* Header for main content */}
-            <header className="relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0">
+            <header className={cn(
+              "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0",
+              pathname === "/messenger" && "hidden md:flex"
+            )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
               <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
@@ -439,7 +442,7 @@ function RootComponent() {
             <div className="hidden md:block">
               <TickerBar />
             </div>
-            <main className={cn(
+            <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
               pathname === "/messenger"
                 ? (compactForKeyboard ? "pb-0" : "pb-[calc(4rem+env(safe-area-inset-bottom))]")

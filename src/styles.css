@@ -524,3 +524,13 @@ html {
     font-size: 16px !important;
   }
 }
+
+/* Hide bottom navigation bar and pull main content to the bottom when a chat conversation is active on mobile */
+@media (max-width: 767px) {
+  body.chat-active #bottom-nav-bar {
+    display: none !important;
+  }
+  body.chat-active #main-content-area {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+}

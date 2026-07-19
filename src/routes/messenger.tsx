@@ -404,6 +404,18 @@ function MessengerPage() {
     };
   }, []);
 
+  // Track if a conversation is active on mobile to hide the bottom nav bar
+  useEffect(() => {
+    if (activeGroupId) {
+      document.body.classList.add("chat-active");
+    } else {
+      document.body.classList.remove("chat-active");
+    }
+    return () => {
+      document.body.classList.remove("chat-active");
+    };
+  }, [activeGroupId]);
+
   const handleInputFocus = () => {
     const html = document.documentElement;
     const body = document.body;
