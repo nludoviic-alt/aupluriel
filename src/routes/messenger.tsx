@@ -45,6 +45,13 @@ export const Route = createFileRoute("/messenger")({
   component: MessengerPage,
 });
 
+interface ChatGroupLastMessage {
+  content: string;
+  createdAt: number;
+  senderId: number;
+  isImage: boolean;
+}
+
 interface ChatGroup {
   id: string;
   name: string;
@@ -52,6 +59,9 @@ interface ChatGroup {
   recipientId: number | null;
   createdBy: number | null;
   createdAt: number;
+  lastMessage: ChatGroupLastMessage | null;
+  unreadCount: number;
+  avatar?: string;
 }
 
 interface MessageReaction {
@@ -72,6 +82,7 @@ interface ChatMessage {
   deletedAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
+  senderAvatar?: string | null;
   reactions: MessageReaction[];
   replyToId: string | null;
   replyToContent: string | null;
@@ -83,6 +94,7 @@ interface VerifiedUser {
   id: number;
   username: string;
   email: string;
+  avatar: string | null;
   groupId: string;
 }
 
@@ -119,6 +131,40 @@ function getUserColor(username: string): { bg: string; border: string; shadow: s
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+// Telegram-style consecutive-message grouping: same sender, no date
+// separator between them, within this many seconds of each other.
+const MESSAGE_GROUP_GAP_SECONDS = 60;
+function isGroupedMessagePair(a: ChatMessage | undefined, b: ChatMessage | undefined): boolean {
+  if (!a || !b) return false;
+  if (a.senderId !== b.senderId) return false;
+  if (!isSameDay(a.createdAt, b.createdAt)) return false;
+  return Math.abs(b.createdAt - a.createdAt) < MESSAGE_GROUP_GAP_SECONDS;
+}
+
+// Positions the mobile full-screen context menu next to the bubble's
+// captured on-screen rect — flips above/below depending on available
+// space so it's never pushed off-screen top or bottom.
+function getMobileContextMenuStyle(
+  anchor: { top: number; bottom: number; left: number; right: number },
+  isMe: boolean
+): React.CSSProperties {
+  const estimatedHeight = 320;
+  const viewportH = window.innerHeight;
+  const viewportW = window.innerWidth;
+  const margin = 16;
+
+  const showAbove = anchor.bottom + estimatedHeight > viewportH - margin;
+  const vertical: React.CSSProperties = showAbove
+    ? { bottom: `${Math.max(margin, viewportH - anchor.top + 8)}px` }
+    : { top: `${Math.min(viewportH - margin, anchor.bottom + 8)}px` };
+
+  const horizontal: React.CSSProperties = isMe
+    ? { right: `${Math.max(margin, viewportW - anchor.right)}px` }
+    : { left: `${Math.max(margin, anchor.left)}px` };
+
+  return { ...vertical, ...horizontal };
+}
 
 const EMOJI_CATEGORIES = [
   {
@@ -272,6 +318,28 @@ function formatDateSeparator(timestamp: number): string {
   if (isSameDay(timestamp, now)) return "Aujourd'hui";
   if (isSameDay(timestamp, now - 86400)) return "Hier";
   return date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+// Sidebar row timestamp — Telegram/WhatsApp convention: bare time today,
+// short date otherwise.
+function formatSidebarTime(timestamp: number): string {
+  const now = Date.now() / 1000;
+  return isSameDay(timestamp, now)
+    ? new Date(timestamp * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    : new Date(timestamp * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+// Sidebar row preview text — real last message instead of a placeholder,
+// with the "Vous : " prefix and photo/truncation handling chat apps use.
+function formatSidebarPreview(
+  lastMessage: ChatGroupLastMessage | null | undefined,
+  currentUserId: number | undefined
+): string | undefined {
+  if (!lastMessage) return undefined;
+  const prefix = lastMessage.senderId === currentUserId ? "Vous : " : "";
+  if (lastMessage.isImage) return `${prefix}📷 Photo`;
+  const text = lastMessage.content.length > 42 ? `${lastMessage.content.slice(0, 42)}…` : lastMessage.content;
+  return `${prefix}${text}`;
 }
 
 // Custom parser for WhatsApp styles
@@ -429,6 +497,15 @@ function MessengerPage() {
   // Opened by clicking the reveal-on-hover button (desktop) or a long-press
   // on the bubble (touch).
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  // Bubble's on-screen position when its menu opened, captured once so the
+  // mobile full-screen context menu (rendered via fixed positioning, to
+  // escape the scrollable thread's clipping) can anchor near it regardless
+  // of scroll. Unused on desktop, which keeps its small anchored popover.
+  const [contextMenuAnchor, setContextMenuAnchor] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
+  // Full emoji grid for reacting (mobile menu's "+" past the 6 quick
+  // reactions) — id of the message it's open for, reusing EMOJI_CATEGORIES.
+  const [reactionEmojiPickerFor, setReactionEmojiPickerFor] = useState<string | null>(null);
+  const [reactionEmojiCategory, setReactionEmojiCategory] = useState(0);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMovedRef = useRef(false);
   // True once the long-press timer actually fired — lets touchend suppress
@@ -511,6 +588,16 @@ function MessengerPage() {
     }
   }
 
+  function openMessageMenu(messageId: string) {
+    const rect = bubbleRowRefs.current.get(messageId)?.getBoundingClientRect();
+    if (rect) setContextMenuAnchor({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right });
+    setReactionPickerFor(messageId);
+  }
+  function closeMessageMenu() {
+    setReactionPickerFor(null);
+    setContextMenuAnchor(null);
+  }
+
   function startLongPress(messageId: string) {
     longPressMovedRef.current = false;
     longPressFiredRef.current = false;
@@ -519,7 +606,7 @@ function MessengerPage() {
       if (!longPressMovedRef.current) {
         longPressFiredRef.current = true;
         if (typeof navigator.vibrate === "function") navigator.vibrate(15);
-        setReactionPickerFor(messageId);
+        openMessageMenu(messageId);
       }
     }, 450);
   }
@@ -867,6 +954,7 @@ function MessengerPage() {
       deletedAt: null,
       senderUsername: user.username,
       senderIsAdmin: user.is_admin ?? 0,
+      senderAvatar: user.avatar,
       reactions: [],
       replyToId: replyTo?.id ?? null,
       replyToContent: replyTo?.content ?? null,
@@ -1246,8 +1334,8 @@ function MessengerPage() {
       : "quelqu'un écrit…";
 
   const groupsWithAvatars = groups.map((g) => {
-    if (g.is_direct && g.recipient_id) {
-      const u = verifiedUsers.find((v) => v.id === g.recipient_id);
+    if (g.isDirect && g.recipientId) {
+      const u = verifiedUsers.find((v) => v.id === g.recipientId);
       if (u?.avatar) return { ...g, avatar: u.avatar };
     }
     return g;
@@ -1375,10 +1463,9 @@ function MessengerPage() {
                         id: g.id,
                         name: g.name,
                         type: "group",
-                        lastMessage: "Cliquez pour voir les messages",
-                        time: new Date(g.createdAt * 1000).toLocaleDateString() === new Date().toLocaleDateString() 
-                          ? new Date(g.createdAt * 1000).toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })
-                          : new Date(g.createdAt * 1000).toLocaleDateString("fr-FR", { day: 'numeric', month: 'short' }),
+                        lastMessage: formatSidebarPreview(g.lastMessage, user?.id),
+                        time: formatSidebarTime(g.lastMessage?.createdAt ?? g.createdAt),
+                        unread: g.unreadCount,
                         isActive: g.id === activeGroupId,
                         onClick: () => setActiveGroupId(g.id)
                       });
@@ -1390,11 +1477,16 @@ function MessengerPage() {
                     if (!!user?.is_admin) {
                       verifiedUsers.forEach(u => {
                         if (sidebarSearch && !u.username.toLowerCase().includes(sidebarSearch.toLowerCase())) return;
+                        // The DM's preview/unread data lives on the matching chat_groups
+                        // row (is_direct=1), not on the /api/chat/users row itself.
+                        const dmGroup = groups.find((g) => g.id === u.groupId);
                         allRows.push({
                           id: u.groupId,
                           name: u.username,
                           type: "personal",
-                          lastMessage: u.email,
+                          lastMessage: dmGroup ? formatSidebarPreview(dmGroup.lastMessage, user?.id) : u.email,
+                          time: dmGroup ? formatSidebarTime(dmGroup.lastMessage?.createdAt ?? dmGroup.createdAt) : undefined,
+                          unread: dmGroup?.unreadCount,
                           avatar: u.avatar || u.username,
                           isActive: u.groupId === activeGroupId,
                           onClick: () => setActiveGroupId(u.groupId)
@@ -1406,7 +1498,9 @@ function MessengerPage() {
                           id: userDmGroup.id,
                           name: "Support Admin",
                           type: "personal",
-                          lastMessage: "Discussion privée",
+                          lastMessage: formatSidebarPreview(userDmGroup.lastMessage, user?.id) ?? "Discussion privée",
+                          time: formatSidebarTime(userDmGroup.lastMessage?.createdAt ?? userDmGroup.createdAt),
+                          unread: userDmGroup.unreadCount,
                           isActive: userDmGroup.id === activeGroupId,
                           onClick: () => setActiveGroupId(userDmGroup.id)
                         });
@@ -1476,7 +1570,7 @@ function MessengerPage() {
                           )}>
                             {row.lastMessage}
                           </div>
-                          {row.unread && row.unread > 0 && (
+                          {!!row.unread && row.unread > 0 && (
                             <div className="h-4 min-w-[1rem] px-1 flex items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black shadow-lg shadow-amber-950/20">
                               {row.unread}
                             </div>
@@ -1567,13 +1661,23 @@ function MessengerPage() {
                 </div>
               </div>
 
-              {/* MESSAGES THREAD */}
-              <div 
+              {/* MESSAGES THREAD — the scroll container itself must be a plain
+                  overflow-y-auto box with no flex-direction/justify-content of
+                  its own: combining those on the same element as the overflow
+                  broke scrollHeight measurement on desktop (it kept reporting
+                  scrollHeight === clientHeight no matter how much content
+                  overflowed, so wheel/trackpad scroll silently did nothing —
+                  the overflow spilled into the parent's own overflow-hidden
+                  instead). The inner wrapper below carries the actual
+                  flex-col/justify-end/gap ("pin short threads to the bottom,
+                  WhatsApp-style") — decoupled from the element that scrolls. */}
+              <div
                 ref={messagesThreadRef}
                 onScroll={handleThreadScroll}
-                onClick={() => reactionPickerFor && setReactionPickerFor(null)}
-                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 flex flex-col justify-end gap-4 relative scroll-smooth"
+                onClick={() => reactionPickerFor && closeMessageMenu()}
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 relative scroll-smooth"
               >
+              <div className="min-h-full flex flex-col justify-end gap-4">
                 <div className="shrink-0 h-10" />
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -1606,7 +1710,13 @@ function MessengerPage() {
                     const userColor = getUserColor(msg.senderUsername);
                     const pickerOpen = reactionPickerFor === msg.id;
                     const prevMsg = messages[idx - 1];
+                    const nextMsg = messages[idx + 1];
                     const showDateSeparator = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
+                    // Grouping only looks within the same sender run — a
+                    // date separator always breaks a group even if the gap
+                    // check alone wouldn't have.
+                    const isGroupedWithPrev = !showDateSeparator && !isDeleted && isGroupedMessagePair(prevMsg, msg);
+                    const isGroupedWithNext = !isDeleted && !nextMsg?.deletedAt && isGroupedMessagePair(msg, nextMsg);
 
                     return (
                       <Fragment key={msg.id}>
@@ -1625,7 +1735,7 @@ function MessengerPage() {
                           onContextMenu={(e) => {
                             if (isDeleted || msg.pending) return;
                             e.preventDefault();
-                            setReactionPickerFor(pickerOpen ? null : msg.id);
+                            if (pickerOpen) closeMessageMenu(); else openMessageMenu(msg.id);
                           }}
                           onTouchStart={(e) => {
                             if (isDeleted || msg.pending) return;
@@ -1653,11 +1763,16 @@ function MessengerPage() {
                           className={cn(
                             "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity rounded-lg",
                             isMe ? "ml-auto items-end" : "mr-auto items-start",
-                            msg.pending && "opacity-60"
+                            msg.pending && "opacity-60",
+                            // Consecutive same-sender messages sit closer
+                            // together, Telegram-style — mobile only,
+                            // desktop keeps its original even spacing.
+                            isGroupedWithPrev && "-mt-2.5 sm:mt-0"
                           )}
                         >
-                        {/* Sender labels */}
-                        {!isActiveDirect && !isMe && (
+                        {/* Sender labels — only on the first bubble of a
+                            consecutive run from this sender */}
+                        {!isActiveDirect && !isMe && !isGroupedWithPrev && (
                           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/50 mb-1 px-1 select-none">
                             <span className={cn("font-semibold", userColor.text)}>
                               {msg.senderUsername}
@@ -1681,6 +1796,24 @@ function MessengerPage() {
                           style={{ touchAction: "pan-y" }}
                           className={cn("relative flex items-end gap-1", isMe ? "flex-row-reverse" : "flex-row")}
                         >
+                          {/* Sender avatar, group chats only — reserved as a
+                              spacer on every bubble in a run so they all line
+                              up, but only actually drawn on the last bubble
+                              of the run (bottom-anchored, Telegram-style).
+                              Mobile only; desktop is untouched. */}
+                          {!isActiveDirect && !isMe && (
+                            <div className="md:hidden shrink-0 mb-0.5 h-6 w-6 rounded-full overflow-hidden">
+                              {!isGroupedWithNext && (
+                                msg.senderAvatar ? (
+                                  <img src={msg.senderAvatar} alt={msg.senderUsername} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className={cn("h-full w-full flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-br", userColor.bg)}>
+                                    {getInitial(msg.senderUsername)}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          )}
                           {!isDeleted && !msg.pending && (
                             <div
                               ref={(el) => {
@@ -1718,8 +1851,14 @@ function MessengerPage() {
                                                 "rounded-[22px] text-[14.5px] sm:text-[15px] leading-relaxed relative shadow-md",
                                                 isImage ? "p-1 overflow-hidden" : "px-4 py-2.5 pb-6 min-w-[90px] max-w-full",
                                                 isMe
-                                                  ? "text-white bg-gradient-to-br from-amber-500 to-orange-600 border-none shadow-lg rounded-tr-none"
-                                                  : "text-foreground border border-white/[0.05] backdrop-blur-md bg-[#202020] rounded-tl-none shadow-sm"
+                                                  ? "text-white bg-gradient-to-br from-amber-500 to-orange-600 border-none shadow-lg"
+                                                  : "text-foreground border border-white/[0.05] backdrop-blur-md bg-[#202020] shadow-sm",
+                                                // The "tail" corner only belongs on the last bubble of a
+                                                // consecutive run (mobile-only grouping — desktop always
+                                                // shows the tail on every bubble, as before).
+                                                isMe
+                                                  ? (isGroupedWithNext ? "md:rounded-tr-none" : "rounded-tr-none")
+                                                  : (isGroupedWithNext ? "md:rounded-tl-none" : "rounded-tl-none")
                                               )
                                         )}
                                       >
@@ -1808,7 +1947,7 @@ function MessengerPage() {
                           {!msg.pending && !isDeleted && (
                             <button
                               type="button"
-                              onClick={() => setReactionPickerFor(pickerOpen ? null : msg.id)}
+                              onClick={() => (pickerOpen ? closeMessageMenu() : openMessageMenu(msg.id))}
                               title="Réagir / Actions"
                               className={cn(
                                 "shrink-0 mb-0.5 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
@@ -1823,8 +1962,8 @@ function MessengerPage() {
                           )}
 
                           {pickerOpen && (
-                            <>
-                              <div className="fixed inset-0 z-[100]" onClick={() => setReactionPickerFor(null)} />
+                            <div className="hidden md:block">
+                              <div className="fixed inset-0 z-[100]" onClick={closeMessageMenu} />
                               <div
                                 className={cn(
                                   "absolute bottom-full mb-1.5 z-[101] rounded-2xl border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
@@ -1887,7 +2026,135 @@ function MessengerPage() {
                                   )}
                                 </div>
                               </div>
-                            </>
+                            </div>
+                          )}
+
+                          {/* Mobile — full-screen blurred context menu, Telegram-style.
+                              Positioned with `fixed` from the bubble's captured on-screen
+                              rect (contextMenuAnchor) so it always lands next to the
+                              message regardless of scroll, and is never clipped by the
+                              thread's overflow-y-auto (fixed positioning escapes that). */}
+                          {pickerOpen && contextMenuAnchor && (
+                            <div className="md:hidden">
+                              <div
+                                className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+                                onClick={closeMessageMenu}
+                              />
+                              <div
+                                className={cn(
+                                  "fixed z-[201] w-[min(18rem,calc(100vw-2rem))] rounded-[26px] border border-white/[0.08] bg-[oklch(0.16_0.03_250)] shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden",
+                                  isMe ? "origin-top-right" : "origin-top-left"
+                                )}
+                                style={getMobileContextMenuStyle(contextMenuAnchor, isMe)}
+                              >
+                                <div className="flex items-center justify-between gap-0.5 px-2 py-2.5 border-b border-white/[0.06]">
+                                  {QUICK_REACTIONS.map((emoji) => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() => { toggleReaction(msg.id, emoji); closeMessageMenu(); }}
+                                      className="flex h-10 w-10 items-center justify-center text-2xl rounded-full hover:bg-white/[0.08] active:scale-90 transition-all duration-100 cursor-pointer"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    title="Plus de réactions"
+                                    onClick={() => setReactionEmojiPickerFor(msg.id)}
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-white/[0.08] active:scale-90 transition-all duration-100 cursor-pointer text-muted-foreground"
+                                  >
+                                    <Plus className="h-5 w-5" />
+                                  </button>
+                                </div>
+                                <div className="flex flex-col p-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => { startReplyMessage(msg); closeMessageMenu(); }}
+                                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
+                                  >
+                                    <Reply className="h-4.5 w-4.5" /> Répondre
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { openForwardModal(msg); closeMessageMenu(); }}
+                                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
+                                  >
+                                    <Forward className="h-4.5 w-4.5" /> Transférer
+                                  </button>
+                                  {!isImage && (
+                                    <button
+                                      type="button"
+                                      onClick={() => { copyMessageText(msg.content); closeMessageMenu(); }}
+                                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
+                                    >
+                                      <Copy className="h-4.5 w-4.5" /> Copier
+                                    </button>
+                                  )}
+                                  {isMe && !isImage && (
+                                    <button
+                                      type="button"
+                                      onClick={() => { startEditMessage(msg); closeMessageMenu(); }}
+                                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-foreground/90 hover:bg-white/[0.06] active:bg-white/[0.08] transition-colors cursor-pointer"
+                                    >
+                                      <Pencil className="h-4.5 w-4.5" /> Modifier
+                                    </button>
+                                  )}
+                                  {isMe && (
+                                    <button
+                                      type="button"
+                                      onClick={() => { deleteMessage(msg); closeMessageMenu(); }}
+                                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 className="h-4.5 w-4.5" /> Supprimer
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Full emoji grid for reacting — opened from the "+" above,
+                              reuses EMOJI_CATEGORIES (same data as the composer picker). */}
+                          {reactionEmojiPickerFor === msg.id && (
+                            <div className="md:hidden">
+                              <div
+                                className="fixed inset-0 z-[210] bg-black/70 backdrop-blur-md animate-in fade-in duration-150"
+                                onClick={() => setReactionEmojiPickerFor(null)}
+                              />
+                              <div className="fixed inset-x-4 bottom-8 z-[211] bg-[oklch(0.16_0.03_250)] border border-white/[0.08] rounded-[26px] shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                <div className="flex items-center gap-1 p-2 border-b border-white/[0.06] overflow-x-auto scrollbar-none">
+                                  {EMOJI_CATEGORIES.map((cat, idx) => (
+                                    <button
+                                      key={cat.name}
+                                      type="button"
+                                      onClick={() => setReactionEmojiCategory(idx)}
+                                      title={cat.name}
+                                      className={cn(
+                                        "flex h-9 w-9 shrink-0 items-center justify-center text-[16px] rounded-xl transition-all duration-150 cursor-pointer",
+                                        idx === reactionEmojiCategory
+                                          ? "bg-amber-500/15 border border-amber-500/25"
+                                          : "hover:bg-white/[0.06] border border-transparent"
+                                      )}
+                                    >
+                                      {cat.icon}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="grid grid-cols-6 gap-1 p-2.5 max-h-64 overflow-y-auto">
+                                  {EMOJI_CATEGORIES[reactionEmojiCategory].emojis.map((emoji, idx) => (
+                                    <button
+                                      key={`${emoji}-${idx}`}
+                                      type="button"
+                                      onClick={() => { toggleReaction(msg.id, emoji); setReactionEmojiPickerFor(null); closeMessageMenu(); }}
+                                      className="flex h-9 w-9 items-center justify-center text-[18px] rounded-xl hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-95 transition-all duration-100 cursor-pointer"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
 
@@ -1930,6 +2197,7 @@ function MessengerPage() {
                   })
                 )}
                 <div ref={messagesEndRef} />
+              </div>
               </div>
 
               {/* FLOATING SCROLL BOTTOM BUTTON */}

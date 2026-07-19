@@ -18,7 +18,7 @@ export const Route = createFileRoute("/api/chat/users")({
         // a user not yet enabled by the admin shouldn't appear as a chattable contact.
         const users = db
           .prepare(`
-            SELECT u.id, u.username, u.email, g.id AS groupId
+            SELECT u.id, u.username, u.email, u.avatar, g.id AS groupId
             FROM users u
             LEFT JOIN chat_groups g ON g.is_direct = 1 AND g.recipient_id = u.id
             WHERE u.id != ? AND u.chat_enabled = 1
@@ -28,6 +28,7 @@ export const Route = createFileRoute("/api/chat/users")({
           id: number;
           username: string;
           email: string;
+          avatar: string | null;
           groupId: string | null;
         }[];
 

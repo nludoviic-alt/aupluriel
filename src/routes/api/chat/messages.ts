@@ -17,6 +17,7 @@ interface MessageRow {
   deletedAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
+  senderAvatar: string | null;
   replyToId: string | null;
   replyToContent: string | null;
   replyToSenderUsername: string | null;
@@ -61,6 +62,7 @@ function serializeMessage(r: MessageRow) {
     deletedAt: r.deletedAt,
     senderUsername: r.senderUsername,
     senderIsAdmin: r.senderIsAdmin,
+    senderAvatar: r.senderAvatar,
     replyToId: r.replyToId,
     replyToContent: r.replyToDeletedAt ? null : r.replyToContent,
     replyToSenderUsername: r.replyToSenderUsername,
@@ -92,7 +94,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           .prepare(`
             SELECT m.id, m.group_id AS groupId, m.sender_id AS senderId, m.content, m.created_at AS createdAt,
                    m.read_at AS readAt, m.delivered_at AS deliveredAt, m.edited_at AS editedAt, m.deleted_at AS deletedAt,
-                   u.username AS senderUsername, u.is_admin AS senderIsAdmin,
+                   u.username AS senderUsername, u.is_admin AS senderIsAdmin, u.avatar AS senderAvatar,
                    m.reply_to_id AS replyToId, p.content AS replyToContent, pu.username AS replyToSenderUsername,
                    p.deleted_at AS replyToDeletedAt
             FROM chat_messages m
@@ -215,6 +217,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           deletedAt: null,
           senderUsername: user.username,
           senderIsAdmin: user.is_admin,
+          senderAvatar: user.avatar,
           replyToId,
           replyToContent,
           replyToSenderUsername,
