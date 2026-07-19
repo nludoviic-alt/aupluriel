@@ -311,6 +311,26 @@ function MessengerPage() {
     }
   }, [user, navigate]);
 
+  // Focusing the composer on iOS Safari normally makes the browser scroll
+  // the whole document to keep the input above the keyboard — on top of
+  // useAppViewportHeight's own visualViewport-driven resize, the two fights
+  // and leaves the chat card scrolled out of view (a blank gap, composer
+  // nowhere to be seen) until the keyboard closes and the two disagree on
+  // the app's height again. Locking body/html scroll removes the browser's
+  // native scroll-into-view entirely, so the visualViewport resize is the
+  // only thing moving anything.
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = html.style.overflow;
+    document.body.style.overflow = "hidden";
+    html.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      html.style.overflow = prevHtmlOverflow;
+    };
+  }, []);
+
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -1761,8 +1781,11 @@ function MessengerPage() {
                               onClick={() => setReactionPickerFor(pickerOpen ? null : msg.id)}
                               title="Réagir / Actions"
                               className={cn(
-                                "shrink-0 mb-0.5 hidden sm:flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
-                                pickerOpen ? "opacity-100 bg-white/[0.06] text-amber-400" : "opacity-0 group-hover:opacity-100"
+                                "shrink-0 mb-0.5 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground/40 hover:text-amber-400 hover:bg-white/[0.06] transition-all duration-150 cursor-pointer",
+                                // Always visible on touch (no hover to reveal it there) —
+                                // same tap-to-open-menu affordance as the desktop hover
+                                // button, which stays hover-revealed from sm: up.
+                                pickerOpen ? "opacity-100 bg-white/[0.06] text-amber-400" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                               )}
                             >
                               <Smile className="h-4 w-4" />
