@@ -456,6 +456,11 @@ function MessengerPage() {
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressMovedRef = useRef(false);
+  // True once the long-press timer actually fired — lets touchend suppress
+  // the browser's synthetic "click" that follows a touch sequence, which
+  // otherwise immediately reopened the image lightbox right on top of the
+  // reaction picker we just opened (images have their own onClick to zoom).
+  const longPressFiredRef = useRef(false);
 
   // Reply-to-message composer state — the message currently being quoted
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -533,9 +538,11 @@ function MessengerPage() {
 
   function startLongPress(messageId: string) {
     longPressMovedRef.current = false;
+    longPressFiredRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       if (!longPressMovedRef.current) {
+        longPressFiredRef.current = true;
         if (typeof navigator.vibrate === "function") navigator.vibrate(15);
         setReactionPickerFor(messageId);
       }
@@ -1573,10 +1580,14 @@ function MessengerPage() {
                 </div>
               </div>
 
-              {/* MESSAGES THREAD — extra top padding so the very first message
-                  (and its date separator) is never flush against the top
-                  edge when scrolled all the way up */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-16 pb-4 z-10 flex flex-col justify-end gap-4 relative">
+              {/* MESSAGES THREAD */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 pt-4 pb-4 z-10 flex flex-col justify-end gap-4 relative">
+                {/* Real spacer element, not container padding-top — with
+                    justify-end on an overflowing flex column, browsers can
+                    swallow leading padding when scrolled to the very top,
+                    clipping the first message. An actual flex child's height
+                    is always respected. */}
+                {messages.length > 0 && <div className="shrink-0 h-6" />}
                 {loadingMessages && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-7 w-7 animate-spin text-amber-400/80" />
@@ -1629,13 +1640,18 @@ function MessengerPage() {
                             cancelLongPress();
                             if (!isDeleted && !msg.pending) handleSwipeTouchMove(e, msg.id);
                           }}
-                          onTouchEnd={() => {
+                          onTouchEnd={(e) => {
                             cancelLongPress();
                             handleSwipeTouchEnd(msg.id, msg);
+                            if (longPressFiredRef.current) {
+                              e.preventDefault();
+                              longPressFiredRef.current = false;
+                            }
                           }}
                           onTouchCancel={() => {
                             cancelLongPress();
                             handleSwipeTouchEnd(msg.id, msg);
+                            longPressFiredRef.current = false;
                           }}
                           className={cn(
                             "group flex flex-col max-w-[85%] sm:max-w-[75%] md:max-w-[65%] animate-in fade-in-50 duration-200 transition-opacity rounded-lg",
