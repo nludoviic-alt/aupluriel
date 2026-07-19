@@ -351,6 +351,19 @@ function MessengerPage() {
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
+  // Toggle body class "chat-active" based on activeGroupId on mobile to hide the bottom nav
+  useEffect(() => {
+    if (activeGroupId) {
+      document.body.classList.add("chat-active");
+    } else {
+      document.body.classList.remove("chat-active");
+    }
+    return () => {
+      document.body.classList.remove("chat-active");
+    };
+  }, [activeGroupId]);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
