@@ -352,7 +352,14 @@ function RootComponent() {
             {/* Header for main content */}
             <header className={cn(
               "relative sticky top-0 z-30 h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300",
-              compactForKeyboard ? "hidden md:flex" : "flex"
+              // On mobile every scrolling page's tall content flex-crushes this
+              // global header to ~1px, so it effectively never shows there —
+              // except /messenger, whose clamped (overflow-hidden) layout keeps
+              // it at full 80px, making messenger the only mobile page with a
+              // header bar (its content started 80px lower than the rest).
+              // Messenger has its own in-card "Mes Messages" header, so hide the
+              // global one on mobile there too; desktop keeps it via md:flex.
+              (pathname === "/messenger" || compactForKeyboard) ? "hidden md:flex" : "flex"
             )}>
               {/* Ambient glow blobs matching the orange theme */}
               <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
