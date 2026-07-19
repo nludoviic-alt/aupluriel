@@ -391,29 +391,38 @@ function MessengerPage() {
   // mounted/unmounted only while messenger is the active route.
   useEffect(() => {
     const html = document.documentElement;
-    const scrollY = window.scrollY;
     const body = document.body;
     const prev = {
       htmlOverflow: html.style.overflow,
       bodyOverflow: body.style.overflow,
-      bodyPosition: body.style.position,
-      bodyTop: body.style.top,
-      bodyWidth: body.style.width,
     };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+    };
+  }, []);
+
+  const handleInputFocus = () => {
+    const html = document.documentElement;
+    const body = document.body;
     html.style.overflow = "hidden";
     body.style.overflow = "hidden";
     body.style.position = "fixed";
     body.style.top = "0px";
     body.style.width = "100%";
-    return () => {
-      html.style.overflow = prev.htmlOverflow;
-      body.style.overflow = prev.bodyOverflow;
-      body.style.position = prev.bodyPosition;
-      body.style.top = prev.bodyTop;
-      body.style.width = prev.bodyWidth;
-      window.scrollTo(0, scrollY);
-    };
-  }, []);
+  };
+
+  const handleInputBlur = () => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "";
+    body.style.overflow = "";
+    body.style.position = "";
+    body.style.top = "";
+    body.style.width = "";
+  };
 
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -2366,6 +2375,8 @@ function MessengerPage() {
                             setInputText(e.target.value);
                             notifyTyping();
                           }}
+                          onFocus={handleInputFocus}
+                          onBlur={handleInputBlur}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
