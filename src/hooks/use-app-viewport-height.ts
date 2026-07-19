@@ -1,31 +1,58 @@
 import { useEffect } from "react";
 
-// Keeps a `--app-height` custom property on <html> in sync with the actual
-// visible viewport height. CSS `100dvh` alone is enough on most browsers,
-// but some mobile WebViews/PWAs don't recompute it reliably right after the
-// on-screen keyboard closes, leaving app shells stuck at the shorter
-// "keyboard open" height — this measures window.visualViewport (which does
-// track the real usable area) and pushes the corrected value in as a
-// fallback the layout can read via `var(--app-height, 100dvh)`.
+// Keeps the app shell glued to the *visible* viewport on mobile.
+//
+// Two custom properties are maintained on <html>:
+//   --app-height     the visual viewport's height (fallback for 100dvh)
+//   --app-offset-top the visual viewport's offset from the layout viewport
+//
+// Why offset matters: iOS Safari never resizes the layout viewport when the
+// on-screen keyboard opens — it *pans* the visual viewport down so the
+// focused field sits above the keyboard (this is not a CSS scroll: it happens
+// even with overflow:hidden and position:fixed everywhere, and reads as
+// visualViewport.offsetTop > 0). Anything position:fixed to the layout
+// viewport (our app shell, the bottom nav) slides out of view during the pan.
+// Translating the shell by the measured offset cancels the pan exactly, so
+// the shell always covers what the user actually sees.
+//
+// Why the focusout re-measure: standalone PWAs on iOS sometimes dismiss the
+// keyboard without firing a final visualViewport resize, leaving the shell
+// stuck at the shorter "keyboard open" height — the visible blank band under
+// the bottom nav. Re-measuring a few beats after any field loses focus
+// catches that missed event.
 export function useAppViewportHeight() {
   useEffect(() => {
     const root = document.documentElement;
     const viewport = window.visualViewport;
+    let timers: number[] = [];
 
-    function setHeight() {
+    function apply() {
       const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
       root.style.setProperty("--app-height", `${height}px`);
+      root.style.setProperty("--app-offset-top", `${offsetTop}px`);
+      // The shell is a fixed-height box, so any document scroll is pure
+      // keyboard-avoidance drift Safari left behind — undo it.
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
     }
 
-    setHeight();
-    window.addEventListener("resize", setHeight);
-    viewport?.addEventListener("resize", setHeight);
-    viewport?.addEventListener("scroll", setHeight);
+    function reapplySoon() {
+      timers.forEach(clearTimeout);
+      timers = [100, 350, 700].map((ms) => window.setTimeout(apply, ms));
+    }
+
+    apply();
+    window.addEventListener("resize", apply);
+    viewport?.addEventListener("resize", apply);
+    viewport?.addEventListener("scroll", apply);
+    window.addEventListener("focusout", reapplySoon);
 
     return () => {
-      window.removeEventListener("resize", setHeight);
-      viewport?.removeEventListener("resize", setHeight);
-      viewport?.removeEventListener("scroll", setHeight);
+      timers.forEach(clearTimeout);
+      window.removeEventListener("resize", apply);
+      viewport?.removeEventListener("resize", apply);
+      viewport?.removeEventListener("scroll", apply);
+      window.removeEventListener("focusout", reapplySoon);
     };
   }, []);
 }

@@ -109,11 +109,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      // interactive-widget=resizes-content asks supporting browsers (Safari
-      // 16.4+, Chrome 108+) to actually shrink the layout viewport when the
-      // keyboard opens instead of overlaying it — 100dvh/visualViewport then
-      // update in lockstep with no scroll-into-view fight to begin with.
-      // Ignored harmlessly on browsers that don't recognize it.
+      // interactive-widget=resizes-content makes Chrome/Android (108+)
+      // shrink the layout viewport when the keyboard opens instead of
+      // overlaying it. iOS Safari does NOT support it — there the keyboard
+      // pan is cancelled via --app-offset-top (use-app-viewport-height.ts).
       { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" },
       { title: "Au Pluriel" },
       { name: "theme-color", content: "#050505" },
@@ -291,7 +290,9 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <MobileMenu />
-        <div className="flex h-dvh w-full" style={{ height: "var(--app-height, 100dvh)" }}>
+        {/* translateY cancels iOS Safari's keyboard pan — see
+            use-app-viewport-height.ts for the full story. */}
+        <div className="flex h-dvh w-full" style={{ height: "var(--app-height, 100dvh)", transform: "translateY(var(--app-offset-top, 0px))" }}>
           <AppSidebar />
           <div className={cn(
             "flex-1 flex flex-col min-w-0",
