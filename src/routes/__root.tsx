@@ -426,7 +426,13 @@ function RootComponent() {
             </div>
             <main className={cn(
               "flex-1 min-w-0 pb-16 md:pb-0",
-              pathname === "/messenger" && "pb-0 overflow-hidden"
+              // flex + forcing the direct child (whatever <Outlet/> renders)
+              // to flex-1/min-h-0 makes messenger's own h-full chain robust
+              // against <main> not being a flex container itself — h-full
+              // needs a definite-height ancestor to resolve as a percentage,
+              // flex-1 doesn't, so this can't silently under-fill the space
+              // and leave a gap above the bottom nav.
+              pathname === "/messenger" && "pb-0 overflow-hidden flex flex-col [&>*]:flex-1 [&>*]:min-h-0"
             )}>
               <Outlet />
             </main>
