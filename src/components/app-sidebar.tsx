@@ -237,7 +237,7 @@ export function AppSidebar() {
     <Sidebar
       collapsible="offcanvas"
       className={cn(
-        "border-r border-white/[0.05] bg-[oklch(0.175_0.036_255)]",
+        "border-r border-white/[0.04] bg-sidebar",
         "shadow-[4px_0_30px_rgba(0,0,0,0.4)]"
       )}
     >

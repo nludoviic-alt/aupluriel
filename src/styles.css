@@ -66,59 +66,59 @@
   --radius: 0.75rem;
 
   /* ── Trading semantic colors ── */
-  --up:   oklch(0.72 0.18 158);   /* emerald green */
+  --up:   oklch(0.72 0.18 160);   /* emerald green (#00c896) */
   --down: oklch(0.65 0.22 25);    /* red           */
   --bull: var(--up);
   --bear: var(--down);
 
   /* ── Brand palette ── */
   --brand-cyan:   oklch(0.88 0.20 195);   /* electric cyan  */
-  --brand-violet: oklch(0.70 0.24 290);   /* electric violet (primary) */
-  --brand-amber:  oklch(0.83 0.17 85);    /* gold/amber     */
+  --brand-violet: oklch(0.70 0.24 290);   /* electric violet */
+  --brand-amber:  oklch(0.68 0.22 42);    /* trading orange (#f97316) */
   --brand-rose:   oklch(0.72 0.23 350);   /* hot pink       */
-  --brand-mint:   oklch(0.85 0.16 170);   /* mint/turquoise */
+  --brand-mint:   oklch(0.75 0.18 160);   /* mint/emerald   */
 
-  /* ── Surfaces — black style ── */
-  --background:  oklch(0.12 0 0);         /* Black background */
-  --panel:       oklch(0.16 0.01 45);     /* card visible - dark grey with slight warm tint */
-  --panel-light: oklch(0.22 0.01 45);     /* elevated */
+  /* ── Surfaces — Dark Dashboard palette ── */
+  --background:  oklch(0.09 0.008 260);   /* Ultra dark background (#07080c) */
+  --panel:       oklch(0.12 0.012 260);   /* Card surface (#0d0e16) */
+  --panel-light: oklch(0.15 0.015 260);   /* Elevated card surface (#12141f) */
 
   /* ── shadcn tokens ── */
-  --foreground:              oklch(0.97 0.006 250);
+  --foreground:              oklch(0.96 0.005 260);
   --card:                    var(--panel);
   --card-foreground:         var(--foreground);
-  --popover:                 var(--panel);
+  --popover:                 oklch(0.12 0.012 260);
   --popover-foreground:      var(--foreground);
-  --primary:                 oklch(0.70 0.20 45);    /* Orange primary */
-  --primary-foreground:      oklch(0.98 0.005 265);
+  --primary:                 oklch(0.68 0.22 42);    /* Trading orange primary (#f97316) */
+  --primary-foreground:      oklch(0.98 0.005 260);
   --secondary:               var(--panel-light);
   --secondary-foreground:    var(--foreground);
-  --muted:                   var(--panel-light);
-  --muted-foreground:        oklch(0.68 0.022 258);
-  --accent:                  var(--panel-light);
+  --muted:                   oklch(0.16 0.012 260);
+  --muted-foreground:        oklch(0.60 0.015 260);
+  --accent:                  oklch(0.18 0.015 260);
   --accent-foreground:       var(--foreground);
   --destructive:             var(--down);
-  --destructive-foreground:  oklch(0.98 0.005 265);
-  --border:                  oklch(0.25 0.01 45);
-  --input:                   oklch(0.25 0.01 45);
-  --ring:                    oklch(0.70 0.20 45);
+  --destructive-foreground:  oklch(0.98 0.005 260);
+  --border:                  oklch(0.20 0.012 260 / 45%);
+  --input:                   oklch(0.20 0.012 260 / 55%);
+  --ring:                    var(--primary);
 
   /* ── Charts ── */
-  --chart-1: oklch(0.70 0.20 45);
-  --chart-2: oklch(0.72 0.18 158);
+  --chart-1: oklch(0.68 0.22 42);
+  --chart-2: oklch(0.72 0.18 160);
   --chart-3: oklch(0.65 0.22 25);
   --chart-4: oklch(0.83 0.17 85);
   --chart-5: oklch(0.88 0.20 195);
 
   /* ── Sidebar ── */
-  --sidebar:                     oklch(0.10 0 0);
-  --sidebar-foreground:          oklch(0.93 0.008 250);
-  --sidebar-primary:             oklch(0.70 0.20 45);
-  --sidebar-primary-foreground:  oklch(0.12 0 0);
+  --sidebar:                     oklch(0.09 0.008 260);
+  --sidebar-foreground:          oklch(0.85 0.01 260);
+  --sidebar-primary:             var(--primary);
+  --sidebar-primary-foreground:  var(--primary-foreground);
   --sidebar-accent:              var(--panel-light);
   --sidebar-accent-foreground:   var(--foreground);
-  --sidebar-border:              oklch(0.20 0.01 45);
-  --sidebar-ring:                oklch(0.70 0.20 45);
+  --sidebar-border:              oklch(0.20 0.012 260 / 45%);
+  --sidebar-ring:                var(--primary);
 }
 
 /* ── Base styles ── */
@@ -349,7 +349,7 @@ html,
 body {
   overscroll-behavior: none;
   height: 100%;
-  background-color: #000;
+  background-color: #07080c;
 }
 
 /* ── LIO23 Toast Notifications ── */
@@ -556,7 +556,7 @@ body {
 
 /* Force html and body background to black to hide system white lines/safe-area gaps on iOS Safari standalone */
 html {
-  background-color: #050505 !important;
+  background-color: #07080c !important;
 }
 
 /* Force minimum font-size of 16px for input fields on mobile to completely prevent iOS Safari auto-zooming on focus */
