@@ -45,6 +45,22 @@ export function isCallPutAvailable(symbol: string): boolean {
 }
 
 /**
+ * Returns the instrument type for a given symbol, honoring per-symbol overrides.
+ * Crypto symbols default to multiplier, everything else defaults to the global
+ * instrumentType — unless an explicit override is set.
+ */
+export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig): "binary" | "multiplier" {
+  if (config.symbolInstrumentOverrides && config.symbolInstrumentOverrides[symbol]) {
+    return config.symbolInstrumentOverrides[symbol];
+  }
+  // Auto-detect: crypto can only be multiplier, forex/commodity can be either
+  if (symbol.startsWith("cry") && config.instrumentType === "binary") {
+    return "multiplier";
+  }
+  return config.instrumentType;
+}
+
+/**
  * True when the symbol can be traded with the given instrument type.
  * Crypto is Multiplier-only on the Deriv Options API — the old blanket
  * isCallPutAvailable() gate wrongly kept BTC/ETH out of the scan even after
@@ -189,6 +205,9 @@ export interface AutoTraderConfig {
   symbolWinRateLookback: number;  // how many of the symbol's last closed trades the rolling win rate above is computed over
   // --- Instrument: binary (CALL/PUT, fixed expiry) or Multiplier (MULTUP/MULTDOWN, no expiry) ---
   instrumentType: "binary" | "multiplier";
+  // Override par symbole : permet de trader l'or en binaire et BTC en multiplicateur
+  // simultanément. Si un symbole n'est pas dans la map, instrumentType global est utilisé.
+  symbolInstrumentOverrides?: Record<string, "binary" | "multiplier">;
   multiplierLevel: number;        // leverage level for Multiplier trades
   stopLossPctOfStake: number;     // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary) — used when atrStopMode is off
   takeProfitPctOfStake: number;   // Multiplier take-profit, as % of the stake — used when atrStopMode is off
@@ -323,13 +342,15 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // win/loss) that a pure consecutive-loss streak counter never trips.
   minSymbolWinRate: 0.35,
   symbolWinRateLookback: 10,
-  // BINARY (CALL/PUT) au lieu de Multiplier : les données live montrent que
-  // le mode multiplier avait des pertes partielles fréquentes (avg_loss -58%
-  // du stake) et des gains faibles (avg_win 19-64% du stake). Le binaire a un
-  // payout fixe et connu d'avance : win = +stake×payout, loss = -stake. Pas
-  // d'incertitude sur SL/TP, pas de partial fills. Breakeven = 1/(1+payout).
-  // Avec minPayoutRatio 0.75 → breakeven 57.1%. Le bucket <80 avait 62.5%.
+  // BINARY (CALL/PUT) pour forex/or + MULTIPLIER pour BTC : mode hybride.
+  // Forex + Or → binaire (gain/perte fixe, prévisible).
+  // BTC → multiplicateur (le seul mode supporté par Deriv pour les cryptos).
+  // L'override par symbole permet aux deux modes de coexister : le bot utilise
+  // getInstrumentForSymbol() pour déterminer le type à chaque trade.
   instrumentType: "binary",
+  symbolInstrumentOverrides: {
+    "cryBTCUSD": "multiplier",
+  },
   multiplierLevel: 20,
   stopLossPctOfStake: 50,
   takeProfitPctOfStake: 100,

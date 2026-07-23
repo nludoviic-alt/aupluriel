@@ -33,6 +33,7 @@ import {
   isSymbolTradeable,
   isHighRiskWindow,
   isInTradingSession,
+  getInstrumentForSymbol,
   minContractMinutes,
   symbolRollingStats,
   currentActiveSessions,
@@ -623,12 +624,13 @@ class ServerBotEngine {
     // edge on them, and long-term winrate ~50% is a structural loss against the
     // payout (see DEFAULT_CONFIG.symbols comment).
     const candidateSymbols = config.symbolMode === "all-markets"
-      ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, config.instrumentType)).map((s) => s.deriv)
+      ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config))).map((s) => s.deriv)
       : config.symbols;
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
-      if (!isSymbolTradeable(symbol, config.instrumentType)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
+      const symInstrument = getInstrumentForSymbol(symbol, config);
+      if (!isSymbolTradeable(symbol, symInstrument)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
       if (this.activeSymbols.has(symbol)) { scanResults.push({ symbol, action: "open-trade" }); continue; }
       if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
         scanResults.push({ symbol, action: "session-closed" });
@@ -740,7 +742,7 @@ class ServerBotEngine {
         }
       }
 
-      const isMultiplier = config.instrumentType === "multiplier";
+      const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
       // (fixed expiry, and a "payout" that only exists for a fixed-odds
