@@ -232,14 +232,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 10,
   durationMinutes: 15,
-  // 82 : analyse des 30 trades fermés (juil. 2026) — paradoxe critique : plus
-  // la confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
-  // 85-89 → 33.3%, 90+ → 0%. Les signaux à haute confiance sont inversement
-  // corrélés au gain, suggérant un overfitting des indicateurs. Monter à 82
-  // coupe les trades <80 (qui étaient en fait les plus rentables) — NON,
-  // on fait l'inverse : on garde 75 pour garder les signaux <80 qui gagnent,
-  // mais on monte minTfAgreement à 4 pour compenser.
-  minConfidence: 75,
+  // 70 : analyse des 30 trades (juil. 2026) — paradoxe critique : plus la
+  // confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
+  // 85-89 → 33.3%, 90+ → 0%. Les indicateurs sont lagging : quand tout est
+  // aligné (haute confiance), le mouvement est déjà fini. Le bucket <80 était
+  // le SEUL rentable. On baisse à 70 pour capturer ces signaux, compensé par
+  // minTfAgreement=4 (les 4 TFs doivent quand même être d'accord).
+  minConfidence: 70,
   // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
   // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
   // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
@@ -247,9 +246,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // est le tueur n°1. Exiger 4/4 réduit la fréquence mais élimine l'essentiel
   // des pertes. Moins de trades, moins de pertes.
   minTfAgreement: 4,
-  // 15 au lieu de 20 : avec stake fixe $5 et 4/4 TF agreement, la fréquence
-  // baisse — 3 pertes consécutives = -$15, assez pour pause. 20 laissait
-  // 4 pertes avant le stop, trop sur un panier réduit.
+  // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
   maxTradesPerDay: 15,
   // Forex + BTC uniquement : analyse live (30 trades, juil. 2026) —
@@ -278,12 +275,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stopOnRisk: true,
   maxVolatilityPct: 3,
   maxDailyProfitUsd: 0,
-  // Fixe au lieu de percent : avec percent 2% sur ~$675 de capital, le stake
-  // était monté à $13.50 — 2 des 5 derniers trades étaient des pertes totales
-  // (-$13.50 chacun). Le mode multiplier sans stop-loss efficace = une perte
-  // totale possible. Fixer à $5 limite le risque par trade tout en gardant
-  // assez de room pour les gains. avg_win=$3.01 → il faut ~63% win pour
-  // breakeven à $5 stake avec payout ~60% — faisable avec 4/4 TF agreement.
+  // Fixe $5 : en mode binaire, la perte max = $5 (100% du stake) et le gain
+  // = $5 × payout (~$3.75 à 75%). Simple, prévisible, pas de surprise.
   stakeMode: "fixed",
   stakePercent: 1,
   kellyFraction: 0.5,
@@ -302,9 +295,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // biggest signal-frequency killer found in the engine audit. Only a
   // confident (good/premium) 4H veto is honored by default now.
   veto4h: "strong-only",
-  // Break-even win rate at 65% payout is ~60.6% — below that, even a
-  // reasonably confident signal can have negative expected value.
-  minPayoutRatio: 0.70,
+  // 0.75 au lieu de 0.70 : breakeven win rate = 1/(1+0.75) = 57.1% au lieu de
+  // 60.6% avec 0.70. Le bucket <80 avait 62.5% de win rate — au-dessus de 57%.
+  // Exiger un payout plus élevé réduit le nombre de trades mais améliore l'EV.
+  minPayoutRatio: 0.75,
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
@@ -314,29 +308,17 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // win/loss) that a pure consecutive-loss streak counter never trips.
   minSymbolWinRate: 0.35,
   symbolWinRateLookback: 10,
-  // Multiplier replaces CALL/PUT as the shared default: no fixed expiry to
-  // misalign with the signal's timeframe (the whole class of bug fixed
-  // above becomes moot), loss still capped at the stake via stop-loss.
-  // x20 + 12h cap keep it conservative to start — see plan for full reasoning.
-  instrumentType: "multiplier",
+  // BINARY (CALL/PUT) au lieu de Multiplier : les données live montrent que
+  // le mode multiplier avait des pertes partielles fréquentes (avg_loss -58%
+  // du stake) et des gains faibles (avg_win 19-64% du stake). Le binaire a un
+  // payout fixe et connu d'avance : win = +stake×payout, loss = -stake. Pas
+  // d'incertitude sur SL/TP, pas de partial fills. Breakeven = 1/(1+payout).
+  // Avec minPayoutRatio 0.75 → breakeven 57.1%. Le bucket <80 avait 62.5%.
+  instrumentType: "binary",
   multiplierLevel: 20,
-  // Stop-loss serré à 50% au lieu de 100% : 8 pertes totales (-$61) vs 9
-  // partielles (-$22.73) — les pertes totales tuent la rentabilité. Un
-  // stop à 50% limite la perte max à $2.50 sur un stake de $5, au lieu de
-  // $5. Take profit à 100% au lieu de 150% — prendre les gains plus tôt,
-  // car les multiplier positions ont tendance à reverser. avg_win était
-  // seulement $3.01 — un TP plus serré capture le gain avant qu'il disparaisse.
   stopLossPctOfStake: 50,
   takeProfitPctOfStake: 100,
   maxHoldMinutes: 720,
-  // Off by default, same convention as veto4h/vetoDaily — backtest before
-  // flipping this on a live account. A prior 52-day/2717-trade backtest
-  // found ATR stops did NOT improve EV over the flat stopLossPctOfStake/
-  // takeProfitPctOfStake default (see minTfAgreement comment above); this
-  // was briefly flipped to true without a new backtest to justify
-  // reversing that finding — reverted. atrStopMultiple stays at 3.0
-  // (up from 1.5) so re-enabling later starts from the wider, less
-  // trigger-happy distance rather than the old value.
   atrStopMode: false,
   atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
