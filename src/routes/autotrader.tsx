@@ -901,10 +901,6 @@ function AutoTraderPage() {
                     {cloud.todayPnl >= 0 ? "+" : ""}${cloud.todayPnl.toFixed(2)} · {cloud.todayCount} trade{cloud.todayCount > 1 ? "s" : ""}
                   </span>
                 </div>
-                {/* Live scanner — shows what the server bot is analyzing right now */}
-                {cloud.lastScan && (
-                  <CloudScanPanel lastScan={cloud.lastScan} />
-                )}
                 {cloud.lastError && (
                   <p className="text-xs font-semibold text-down">⚠ {cloud.lastError}</p>
                 )}
@@ -2178,6 +2174,13 @@ function AutoTraderPage() {
           </div>
         )}
       </div>
+      </div>
+
+      {/* ── Live server scanner — below the trade journal for better visibility ── */}
+      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
+        {cloud?.enabled && cloud.lastScan && (
+          <CloudScanPanel lastScan={cloud.lastScan} />
+        )}
       </div>
 
       {/* ── Disclaimer modal ── */}
