@@ -232,29 +232,36 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 10,
   durationMinutes: 15,
-  // 80 (au lieu de 75) : sur les 18 premiers trades live, la tranche 75-77
-  // concentrait la moitié des trades et l'essentiel des pertes (2/9 gagnés,
-  // -$38), tandis que les tranches ≥82 étaient quasi à l'équilibre. Petit
-  // échantillon — à réévaluer vers 50-100 trades — mais couper la tranche
-  // la plus faible réduit la fréquence au profit de la qualité.
+  // 82 : analyse des 30 trades fermés (juil. 2026) — paradoxe critique : plus
+  // la confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
+  // 85-89 → 33.3%, 90+ → 0%. Les signaux à haute confiance sont inversement
+  // corrélés au gain, suggérant un overfitting des indicateurs. Monter à 82
+  // coupe les trades <80 (qui étaient en fait les plus rentables) — NON,
+  // on fait l'inverse : on garde 75 pour garder les signaux <80 qui gagnent,
+  // mais on monte minTfAgreement à 4 pour compenser.
   minConfidence: 75,
-  // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
-  // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
-  // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
-  // double presque l'espérance par trade. (Même harnais : les stops ATR
-  // n'améliorent PAS l'EV — atrStopMode reste off.)
-  minTfAgreement: 3,
-  maxDailyLossUsd: 20,
+  // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
+  // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
+  // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
+  // seulement. Le backtest disait EV 4/4 > 3/4 mais le live confirme : 3/4
+  // est le tueur n°1. Exiger 4/4 réduit la fréquence mais élimine l'essentiel
+  // des pertes. Moins de trades, moins de pertes.
+  minTfAgreement: 4,
+  // 15 au lieu de 20 : avec stake fixe $5 et 4/4 TF agreement, la fréquence
+  // baisse — 3 pertes consécutives = -$15, assez pour pause. 20 laissait
+  // 4 pertes avant le stop, trop sur un panier réduit.
+  maxDailyLossUsd: 15,
   maxTradesPerDay: 15,
-  // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
-  // aléatoirement par Deriv — aucun indicateur ne peut les prédire, winrate
-  // long terme ~50% = perte structurelle face au payout <100%. BTC/ETH
-  // (Multiplier) restent au panier mais suivent désormais les sessions
-  // Londres/NY comme le forex (voir isInTradingSession) — le trading crypto
-  // de nuit concentrait l'essentiel des pertes réalisées.
+  // Forex + BTC uniquement : analyse live (30 trades, juil. 2026) —
+  // XAUUSD (1W/3L, -$19.46), XAGUSD (1W/3L, -$22.45) et cryETHUSD (0W/3L,
+  // -$9.92) représentent $-41.91 sur $-44.66 de perte totale (94% !).
+  // Les métaux précieux sont corrélés (XAU+XAG = même pari USD) et le bot
+  // se trompe systématiquement dessus. ETH n'a jamais gagné. BTC reste
+  // (4W/1L, +$15.67 — le meilleur symbole). Les indices synthétiques (R_*,
+  // 1HZ*…) restent exclus — générés aléatoirement par Deriv.
   symbols: [
     "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
-    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "frxXAGUSD", "cryBTCUSD", "cryETHUSD"
+    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "cryBTCUSD"
   ],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
@@ -271,8 +278,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stopOnRisk: true,
   maxVolatilityPct: 3,
   maxDailyProfitUsd: 0,
-  stakeMode: "percent",
-  stakePercent: 2,
+  // Fixe au lieu de percent : avec percent 2% sur ~$675 de capital, le stake
+  // était monté à $13.50 — 2 des 5 derniers trades étaient des pertes totales
+  // (-$13.50 chacun). Le mode multiplier sans stop-loss efficace = une perte
+  // totale possible. Fixer à $5 limite le risque par trade tout en gardant
+  // assez de room pour les gains. avg_win=$3.01 → il faut ~63% win pour
+  // breakeven à $5 stake avec payout ~60% — faisable avec 4/4 TF agreement.
+  stakeMode: "fixed",
+  stakePercent: 1,
   kellyFraction: 0.5,
   sessionEdgeMinutes: 5,
   trailingStopUsd: 0,
@@ -307,8 +320,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // x20 + 12h cap keep it conservative to start — see plan for full reasoning.
   instrumentType: "multiplier",
   multiplierLevel: 20,
-  stopLossPctOfStake: 100,
-  takeProfitPctOfStake: 150,
+  // Stop-loss serré à 50% au lieu de 100% : 8 pertes totales (-$61) vs 9
+  // partielles (-$22.73) — les pertes totales tuent la rentabilité. Un
+  // stop à 50% limite la perte max à $2.50 sur un stake de $5, au lieu de
+  // $5. Take profit à 100% au lieu de 150% — prendre les gains plus tôt,
+  // car les multiplier positions ont tendance à reverser. avg_win était
+  // seulement $3.01 — un TP plus serré capture le gain avant qu'il disparaisse.
+  stopLossPctOfStake: 50,
+  takeProfitPctOfStake: 100,
   maxHoldMinutes: 720,
   // Off by default, same convention as veto4h/vetoDaily — backtest before
   // flipping this on a live account. A prior 52-day/2717-trade backtest
