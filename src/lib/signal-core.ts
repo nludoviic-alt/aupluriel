@@ -257,7 +257,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // aligné (haute confiance), le mouvement est déjà fini. Le bucket <80 était
   // le SEUL rentable. On baisse à 70 pour capturer ces signaux, compensé par
   // minTfAgreement=4 (les 4 TFs doivent quand même être d'accord).
-  minConfidence: 75,
+  minConfidence: 72,
   // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
   // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
   // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
@@ -323,7 +323,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 14h45), chacune sous maxSimultaneousTrades mais sans borne cumulée. La
   // limite de perte journalière ne compte que les trades CLÔTURÉS, donc
   // l'exposition flottante non plafonnée contournait le garde-fou.
-  maxOpenPositions: 4,
+  maxOpenPositions: 5,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
@@ -332,7 +332,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 0.75 au lieu de 0.70 : breakeven win rate = 1/(1+0.75) = 57.1% au lieu de
   // 60.6% avec 0.70. Le bucket <80 avait 62.5% de win rate — au-dessus de 57%.
   // Exiger un payout plus élevé réduit le nombre de trades mais améliore l'EV.
-  minPayoutRatio: 0.80,
+  minPayoutRatio: 0.75,
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
@@ -690,8 +690,8 @@ export function aggregateTfSignals(
 
   // Confidence bonus based on alignment
   let avgConf = totalConf / results.length;
-  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 8); // all 4 TFs agree
-  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 5); // 3 TFs agree
+  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 10); // all 4 TFs agree
+  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 6); // 3 TFs agree
   else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10); // weak alignment
 
   // Pattern bonus (capped at +10 to avoid over-confidence)

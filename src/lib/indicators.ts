@@ -573,12 +573,12 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
     return { direction: "HOLD", confidence: 0, triggers, quality: "weak", blockers };
   }
 
-  // Hard block: no trade in ranging markets (ADX < 20) — indicators generate
-  // noise in directionless conditions, and the 4/4 TF alignment bonus can
-  // push a weak ranging signal past the confidence threshold.
+  // Strong penalty for ranging markets (ADX < 20) — indicators generate noise
+  // in directionless conditions. Don't hard-block (some ranging markets still
+  // have good RSI/pattern signals), but penalize confidence heavily so only
+  // genuinely strong signals pass the threshold.
   if (ranging) {
-    blockers.push(`ADX ${adxNow?.toFixed(0)} < 20 — marché sans tendance, trade bloqué`);
-    return { direction: "HOLD", confidence: 0, triggers, quality: "weak", blockers };
+    blockers.push(`ADX ${adxNow?.toFixed(0)} < 20 — marché sans tendance (pénalité -15)`);
   }
 
   // Require a meaningful net edge AND that the dominant side clearly outweighs the other
@@ -603,7 +603,7 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
     confidence = Math.round((0.5 + ratio * 0.5 - conflict * 0.3) * 100);
     if (veryStrongTrend) confidence += 6;  // ADX > 30 = forte conviction
     else if (strongTrend) confidence += 3;
-    if (ranging) confidence -= 10;
+    if (ranging) confidence -= 15;
     confidence = Math.min(95, Math.max(45, confidence));
   }
 

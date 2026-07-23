@@ -41,7 +41,7 @@ export interface ServerBacktestResult {
 export async function backtestMultiTfServer(
   symbolDeriv: string,
   {
-    minConfidence = 75,
+    minConfidence = 72,
     minTfAgreement = 4,
     durationMinutes = 15,
     testCandles = 150,

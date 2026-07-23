@@ -778,7 +778,7 @@ export interface MultiTfBacktestResult {
 export async function backtestMultiTf(
   symbolDeriv: string,
   {
-    minConfidence = 75,
+    minConfidence = 72,
     minTfAgreement = 4,
     durationMinutes = 15,
     stakeUsd = 5,
