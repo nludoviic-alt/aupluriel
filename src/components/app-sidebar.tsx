@@ -15,7 +15,6 @@ import {
   LogOut,
   ChevronRight,
   Cpu,
-  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -51,7 +50,6 @@ const analysisItems = [
 ];
 
 const toolItems = [
-  { title: "Messagerie",       url: "/messenger",       icon: MessageSquare,    color: "text-amber-400",   glow: "shadow-amber-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
@@ -218,16 +216,13 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
-  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredAnalysisItems = analysisItems.filter(
     (item) => item.url !== "/backtest" || showBacktest
   );
 
-  const filteredToolItems = toolItems.filter(
-    (item) => item.url !== "/messenger" || showChat
-  );
+  const filteredToolItems = toolItems;
 
   if (isMobile) return null;
 
