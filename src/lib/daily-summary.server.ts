@@ -119,6 +119,14 @@ async function tick(): Promise<void> {
       });
     }),
   );
+
+  // Write health status so the admin panel can monitor this scheduler
+  db.prepare(
+    `INSERT INTO health_status (check_key, label, status, detail, checked_at)
+     VALUES ('daily_summary', 'Résumé quotidien & alerte win rate', 'ok', ?, unixepoch())
+     ON CONFLICT(check_key) DO UPDATE SET
+       label = excluded.label, status = excluded.status, detail = excluded.detail, checked_at = excluded.checked_at`,
+  ).run(`${users.length} utilisateur(s) vérifié(s) · heure UTC ${hour}h`);
 }
 
 export function startDailySummaryScheduler(): void {

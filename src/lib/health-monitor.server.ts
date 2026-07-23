@@ -4,7 +4,8 @@
 // a stalled backtest scheduler, an empty push subscription table) surfaces
 // immediately instead of waiting for the next manual audit.
 import { getDb } from "./db.server";
-import { getBotRuntime, isBotRunning } from "./bot-engine.server";
+import { getBotRuntime, isBotRunning, restoreBots, loadBotConfig, startBotForUser } from "./bot-engine.server";
+import { DEFAULT_CONFIG, getInstrumentForSymbol } from "./signal-core";
 
 type Status = "ok" | "warn" | "error";
 interface CheckResult {
@@ -82,6 +83,66 @@ function checkDerivTokens(): CheckResult {
   return { key: "deriv_tokens", label: "Connexion Deriv", status: "error", detail: `Bot actif sans token enregistré : user(s) ${rows.map((r) => r.user_id).join(", ")}.` };
 }
 
+function checkDailySummaryScheduler(): CheckResult {
+  const row = getDb().prepare("SELECT checked_at FROM health_status WHERE check_key = 'daily_summary'").get() as { checked_at: number } | undefined;
+  const now = Math.floor(Date.now() / 1000);
+  if (!row) {
+    return { key: "daily_summary", label: "Résumé quotidien & alerte win rate", status: "warn", detail: "Scheduler démarré mais aucun résumé envoyé encore — attendu après 22h UTC." };
+  }
+  const ageH = (now - row.checked_at) / 3600;
+  if (ageH > 30) {
+    return { key: "daily_summary", label: "Résumé quotidien & alerte win rate", status: "error", detail: `Dernier résumé il y a ${Math.round(ageH)}h — le scheduler semble à l'arrêt.` };
+  }
+  return { key: "daily_summary", label: "Résumé quotidien & alerte win rate", status: "ok", detail: `Dernier cycle il y a ${Math.round((now - row.checked_at) / 60)} min.` };
+}
+
+function checkGoldTrading(): CheckResult {
+  const goldSymbol = "frxXAUUSD";
+  const inConfig = DEFAULT_CONFIG.symbols.includes(goldSymbol);
+  if (!inConfig) {
+    return { key: "gold_trading", label: "Trading de l'Or (XAU/USD)", status: "error", detail: "L'or n'est pas dans la liste des symboles tradés." };
+  }
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayTs = Math.floor(todayStart.getTime() / 1000);
+  const goldToday = getDb().prepare(
+    "SELECT COUNT(*) AS n FROM bot_trades WHERE symbol = ? AND time >= ?",
+  ).get(goldSymbol, todayTs) as { n: number };
+  const goldTotal = getDb().prepare(
+    "SELECT COUNT(*) AS n FROM bot_trades WHERE symbol = ?",
+  ).get(goldSymbol) as { n: number };
+  const volOk = DEFAULT_CONFIG.maxVolatilityPct >= 4;
+  if (!volOk) {
+    return { key: "gold_trading", label: "Trading de l'Or (XAU/USD)", status: "warn", detail: `Or dans la config mais maxVolatilityPct=${DEFAULT_CONFIG.maxVolatilityPct}% — trop bas pour l'or (ATR naturel 2-4%).` };
+  }
+  return {
+    key: "gold_trading",
+    label: "Trading de l'Or (XAU/USD)",
+    status: "ok",
+    detail: `Or actif · ${goldToday.n} trade(s) aujourd'hui · ${goldTotal.n} au total · volatilité max ${DEFAULT_CONFIG.maxVolatilityPct}%`,
+  };
+}
+
+function checkHybridInstrument(): CheckResult {
+  const overrides = DEFAULT_CONFIG.symbolInstrumentOverrides;
+  const btcOverride = overrides?.["cryBTCUSD"];
+  const btcInSymbols = DEFAULT_CONFIG.symbols.includes("cryBTCUSD");
+  if (!btcInSymbols) {
+    return { key: "hybrid_instrument", label: "Mode hybride BTC", status: "warn", detail: "BTC n'est pas dans la liste des symboles tradés." };
+  }
+  if (!btcOverride) {
+    return { key: "hybrid_instrument", label: "Mode hybride BTC", status: "warn", detail: "BTC dans la config mais sans override multiplicateur — ne sera pas tradé en binaire." };
+  }
+  const goldInstrument = getInstrumentForSymbol("frxXAUUSD", DEFAULT_CONFIG);
+  const btcInstrument = getInstrumentForSymbol("cryBTCUSD", DEFAULT_CONFIG);
+  return {
+    key: "hybrid_instrument",
+    label: "Mode hybride BTC",
+    status: "ok",
+    detail: `Or=${goldInstrument} · BTC=${btcInstrument} — les deux instruments coexistent.`,
+  };
+}
+
 const CHECKS: (() => CheckResult)[] = [
   checkBotsRunning,
   checkBotErrors,
@@ -89,6 +150,9 @@ const CHECKS: (() => CheckResult)[] = [
   checkPushSubscriptions,
   checkEmailConfig,
   checkDerivTokens,
+  checkDailySummaryScheduler,
+  checkGoldTrading,
+  checkHybridInstrument,
 ];
 
 async function notifyTransition(result: CheckResult, prevStatus: Status | null): Promise<void> {
@@ -108,6 +172,47 @@ async function notifyTransition(result: CheckResult, prevStatus: Status | null):
   }
 }
 
+// ── Auto-repair: attempt to fix the problem before surfacing it ──
+// Each repair is fire-and-forget — a failure just means the admin push
+// will fire next tick with the still-broken status.
+async function attemptRepair(result: CheckResult): Promise<CheckResult> {
+  if (result.status === "ok") return result;
+
+  try {
+    // Bot enabled in DB but not running → restart it
+    if (result.key === "bots_running") {
+      console.log(`[health] Auto-réparation : redémarrage des bots arrêtés…`);
+      await restoreBots();
+      // Re-check immediately
+      const recheck = checkBotsRunning();
+      if (recheck.status === "ok") {
+        return { ...recheck, detail: `${recheck.detail} (auto-réparé)` };
+      }
+      return recheck;
+    }
+
+    // Daily summary scheduler stalled → restart it
+    if (result.key === "daily_summary" && result.status === "error") {
+      console.log(`[health] Auto-réparation : redémarrage du scheduler daily-summary…`);
+      const { startDailySummaryScheduler } = await import("./daily-summary.server");
+      startDailySummaryScheduler();
+      return { ...result, status: "ok", detail: `Scheduler redémarré automatiquement. ${result.detail}` };
+    }
+
+    // Auto-backtest scheduler stalled → restart it
+    if (result.key === "auto_backtest" && result.status === "error") {
+      console.log(`[health] Auto-réparation : redémarrage du scheduler auto-backtest…`);
+      const { startAutoBacktestScheduler } = await import("./auto-backtest.server");
+      startAutoBacktestScheduler();
+      return { ...result, status: "ok", detail: `Scheduler redémarré automatiquement. ${result.detail}` };
+    }
+  } catch (e) {
+    console.error(`[health] Auto-réparation échouée pour ${result.key}:`, (e as Error).message);
+  }
+
+  return result;
+}
+
 async function tick(): Promise<void> {
   const db = getDb();
   for (const check of CHECKS) {
@@ -116,6 +221,11 @@ async function tick(): Promise<void> {
       result = check();
     } catch (e) {
       result = { key: check.name, label: check.name, status: "error", detail: `Vérification échouée : ${(e as Error).message}` };
+    }
+
+    // ── Auto-repair before surfacing ──
+    if (result.status !== "ok") {
+      result = await attemptRepair(result);
     }
 
     const prev = db.prepare("SELECT status FROM health_status WHERE check_key = ?").get(result.key) as { status: Status } | undefined;

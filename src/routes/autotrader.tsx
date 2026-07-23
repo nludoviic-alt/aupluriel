@@ -1153,73 +1153,9 @@ function AutoTraderPage() {
                 </div>
 
                 {/* Gold live ticker — right below the sessions */}
-                <div className="block">
-                  <GoldTicker />
+                <div className="block mt-5">
+                  <GoldTicker cloudTrades={cloud?.trades ?? []} />
                 </div>
-              </div>
-
-              {/* Journal des Trades (Right side, col-span-1) */}
-              <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-5 shadow-inner flex flex-col animate-fade-in">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200 mb-4 flex items-center gap-2 border-b border-white/5 pb-3">
-                  <Clock className="h-4 w-4 text-violet-400" /> Journal des Trades
-                </h2>
-                {recentClosedTrades.length === 0 ? (
-                  <div className="space-y-2 py-2">
-                    {/* Dotted skeleton logs */}
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-dashed border-white/[0.03] bg-white/[0.002] opacity-50 select-none">
-                        <div className="flex items-center gap-2.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
-                          <div className="space-y-1">
-                            <div className="h-3 w-16 bg-neutral-900 rounded animate-pulse" />
-                            <div className="h-2 w-10 bg-neutral-950 rounded animate-pulse" />
-                          </div>
-                        </div>
-                        <div className="h-5 w-12 bg-neutral-900 rounded animate-pulse" />
-                      </div>
-                    ))}
-                    <p className="text-xs text-muted-foreground/60 text-center uppercase font-bold tracking-wider pt-2">
-                      Aucun trade clôturé
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                    {recentClosedTrades.map((t) => (
-                      <div
-                        key={t.id}
-                        className={cn(
-                          "relative overflow-hidden flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 text-sm shadow-sm",
-                          t.status === "won" 
-                            ? "border-up/10 bg-up/[0.02] hover:bg-up/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-up/60" 
-                            : "border-down/10 bg-down/[0.02] hover:bg-down/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-down/60"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0 pl-1">
-                          <span className={cn(
-                            "h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor]",
-                            t.status === "won" ? "text-up bg-up" : "text-down bg-down"
-                          )} />
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-neutral-100 text-sm">
-                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                            </div>
-                            <div className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wider mt-0.5">
-                              {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                            </div>
-                          </div>
-                        </div>
-                        <div className={cn(
-                          "font-mono-tabular font-black text-xs px-2.5 py-1 rounded bg-black/40 border shrink-0 shadow-inner",
-                          t.status === "won" 
-                            ? "text-up border-up/20 text-glow-green" 
-                            : "text-down border-down/20 text-glow-orange"
-                        )}>
-                          {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           ) : (
@@ -1270,72 +1206,8 @@ function AutoTraderPage() {
               </div>
 
               {/* Gold live ticker — below standby sessions */}
-              <div className="block">
-                <GoldTicker />
-              </div>
-
-              {/* Journal des Trades (Spans full-width inside the right column) */}
-              <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-5 shadow-inner flex flex-col animate-fade-in">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200 mb-4 flex items-center gap-2 border-b border-white/5 pb-3">
-                  <Clock className="h-4 w-4 text-violet-400" /> Journal des Trades
-                </h2>
-                {recentClosedTrades.length === 0 ? (
-                  <div className="space-y-2 py-2">
-                    {/* Dotted skeleton logs */}
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-dashed border-white/[0.03] bg-white/[0.002] opacity-50 select-none">
-                        <div className="flex items-center gap-2.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-800" />
-                          <div className="space-y-1">
-                            <div className="h-3 w-16 bg-neutral-900 rounded animate-pulse" />
-                            <div className="h-2 w-10 bg-neutral-950 rounded animate-pulse" />
-                          </div>
-                        </div>
-                        <div className="h-5 w-12 bg-neutral-900 rounded animate-pulse" />
-                      </div>
-                    ))}
-                    <p className="text-xs text-muted-foreground/60 text-center uppercase font-bold tracking-wider pt-2">
-                      Aucun trade clôturé
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                    {recentClosedTrades.map((t) => (
-                      <div
-                        key={t.id}
-                        className={cn(
-                          "relative overflow-hidden flex items-center justify-between p-3.5 rounded-xl border transition-all duration-200 text-sm shadow-sm",
-                          t.status === "won" 
-                            ? "border-up/10 bg-up/[0.02] hover:bg-up/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-up/60" 
-                            : "border-down/10 bg-down/[0.02] hover:bg-down/[0.04] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-down/60"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0 pl-1">
-                          <span className={cn(
-                            "h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor]",
-                            t.status === "won" ? "text-up bg-up" : "text-down bg-down"
-                          )} />
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-neutral-100 text-sm">
-                              {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                            </div>
-                            <div className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wider mt-0.5">
-                              {t.direction} · {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                            </div>
-                          </div>
-                        </div>
-                        <div className={cn(
-                          "font-mono-tabular font-black text-xs px-2.5 py-1 rounded bg-black/40 border shrink-0 shadow-inner",
-                          t.status === "won" 
-                            ? "text-up border-up/20 text-glow-green" 
-                            : "text-down border-down/20 text-glow-orange"
-                        )}>
-                          {t.profit >= 0 ? "+" : ""}${t.profit.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="block mt-5">
+                <GoldTicker cloudTrades={cloud?.trades ?? []} />
               </div>
             </div>
           )}
@@ -2424,7 +2296,7 @@ function ScanCountdown({
     : "Scan en cours…";
 }
 
-function GoldTicker() {
+function GoldTicker({ cloudTrades }: { cloudTrades: TradeLog[] }) {
   const [price, setPrice] = useState<number | null>(null);
   const [prevPrice, setPrevPrice] = useState<number | null>(null);
   const [dayOpen, setDayOpen] = useState<number | null>(null);
@@ -2459,8 +2331,8 @@ function GoldTicker() {
   const flashClass = price && prevPrice ? (price > prevPrice ? "text-up" : price < prevPrice ? "text-down" : "text-foreground") : "text-foreground";
 
   return (
-    <div className="glass-panel rounded-2xl overflow-hidden mt-4">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
+    <div className="rounded-2xl overflow-hidden mt-4 bg-[#060d1a] border border-amber-500/20">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/15">
         <div className="flex items-center gap-2.5">
           <span className="text-lg">🥇</span>
           <span className="text-sm font-bold uppercase tracking-wider text-foreground">Or / XAU-USD</span>
@@ -2473,29 +2345,123 @@ function GoldTicker() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border/20">
-        <div className="bg-neutral-950/60 px-4 py-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border-y border-amber-500/10">
+        <div className="bg-[#08111f] px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Variation jour</div>
           <div className={cn("mt-1 text-sm font-bold", isUp ? "text-up" : "text-down")}>
             {change !== null ? `${isUp ? "+" : ""}$${change.toFixed(2)}` : "—"}
             {changePct !== null && <span className="ml-1 text-xs">({isUp ? "+" : ""}{changePct.toFixed(2)}%)</span>}
           </div>
         </div>
-        <div className="bg-neutral-950/60 px-4 py-3">
+        <div className="bg-[#08111f] px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Ouverture</div>
           <div className="mt-1 text-sm font-bold text-foreground font-mono">{dayOpen ? `$${dayOpen.toFixed(2)}` : "—"}</div>
         </div>
-        <div className="bg-neutral-950/60 px-4 py-3">
+        <div className="bg-[#08111f] px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Haut 24h</div>
           <div className="mt-1 text-sm font-bold text-up font-mono">{dayHigh ? `$${dayHigh.toFixed(2)}` : "—"}</div>
         </div>
-        <div className="bg-neutral-950/60 px-4 py-3">
+        <div className="bg-[#08111f] px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Bas 24h</div>
           <div className="mt-1 text-sm font-bold text-down font-mono">{dayLow ? `$${dayLow.toFixed(2)}` : "—"}</div>
         </div>
       </div>
 
-      <div className="px-5 py-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+      {/* Gold trading stats from server bot */}
+      {(() => {
+        const goldTrades = cloudTrades.filter((t) => t.symbol === "frxXAUUSD" && t.stake > 0);
+        const goldClosed = goldTrades.filter((t) => t.status === "won" || t.status === "lost");
+        const goldWins = goldClosed.filter((t) => t.status === "won");
+        const goldLosses = goldClosed.filter((t) => t.status === "lost");
+        const goldPnl = goldClosed.reduce((s, t) => s + t.profit, 0);
+        const goldOpen = goldTrades.filter((t) => t.status === "open" || t.status === "pending");
+        const winRate = goldClosed.length > 0 ? (goldWins.length / goldClosed.length) * 100 : null;
+
+        return (
+          <div className="border-t border-amber-500/15 px-5 py-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Stats Bot · Or</span>
+              {goldOpen.length > 0 && (
+                <span className="text-[10px] bg-cyan/15 text-cyan rounded-md px-2 py-0.5 font-bold animate-pulse">
+                  {goldOpen.length} position{goldOpen.length > 1 ? "s" : ""} ouverte{goldOpen.length > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+
+            {goldClosed.length > 0 ? (
+              <>
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Trades</div>
+                    <div className="mt-0.5 text-sm font-bold text-foreground">{goldClosed.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Win Rate</div>
+                    <div className={cn("mt-0.5 text-sm font-bold", winRate !== null && winRate >= 57 ? "text-up" : "text-down")}>
+                      {winRate !== null ? `${winRate.toFixed(0)}%` : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">W / L</div>
+                    <div className="mt-0.5 text-sm font-bold">
+                      <span className="text-up">{goldWins.length}</span>
+                      <span className="text-muted-foreground/40"> / </span>
+                      <span className="text-down">{goldLosses.length}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">P&L</div>
+                    <div className={cn("mt-0.5 text-sm font-bold", goldPnl >= 0 ? "text-up" : "text-down")}>
+                      {goldPnl >= 0 ? "+" : ""}${goldPnl.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent gold trades */}
+                <div className="space-y-1">
+                  {goldTrades.slice(0, 4).map((t) => (
+                    <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/8 px-3 py-1.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-1.5 w-1.5 rounded-full",
+                          t.status === "won" ? "bg-up" : t.status === "lost" ? "bg-down" :
+                          t.status === "open" || t.status === "pending" ? "bg-cyan animate-pulse" : "bg-neutral-600")} />
+                        <span className="text-muted-foreground font-mono">
+                          {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        <span className={cn("font-bold",
+                          t.direction === "CALL" ? "text-up" : t.direction === "PUT" ? "text-down" : "text-amber-400")}>
+                          {t.direction === "MULTUP" ? "MULTUP" : t.direction === "MULTDOWN" ? "MULTDOWN" : t.direction}
+                        </span>
+                        <span className="text-muted-foreground">{t.confidence}% conf</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {t.stake > 0 && <span className="text-muted-foreground/60">${t.stake.toFixed(2)}</span>}
+                        <span className={cn("font-bold",
+                          t.status === "won" ? "text-up" : t.status === "lost" ? "text-down" :
+                          t.status === "open" || t.status === "pending" ? "text-cyan" : "text-muted-foreground")}>
+                          {t.status === "won" && `+$${t.profit.toFixed(2)}`}
+                          {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
+                          {t.status === "open" && "ouverte"}
+                          {t.status === "pending" && "en cours…"}
+                          {t.status === "error" && "erreur"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground/50">
+                {goldOpen.length > 0
+                  ? "Position en cours — en attente de clôture…"
+                  : "Aucun trade sur l'or pour le moment. Le bot analyse ce symbole à chaque cycle."}
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
+      <div className="px-5 py-3 border-t border-amber-500/15 flex items-center justify-between text-xs text-muted-foreground">
         <span>Fréquence bot : scan toutes les 60s · Durée trade : 10 min</span>
         <span className="font-mono">{price ? "● Temps réel" : "Chargement…"}</span>
       </div>
