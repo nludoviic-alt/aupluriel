@@ -15,6 +15,7 @@ interface MessageRow {
   deliveredAt: number | null;
   editedAt: number | null;
   deletedAt: number | null;
+  pinnedAt: number | null;
   senderUsername: string;
   senderIsAdmin: number;
   senderAvatar: string | null;
@@ -60,6 +61,7 @@ function serializeMessage(r: MessageRow) {
     deliveredAt: r.deliveredAt,
     editedAt: r.editedAt,
     deletedAt: r.deletedAt,
+    pinnedAt: r.pinnedAt,
     senderUsername: r.senderUsername,
     senderIsAdmin: r.senderIsAdmin,
     senderAvatar: r.senderAvatar,
@@ -94,6 +96,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           .prepare(`
             SELECT m.id, m.group_id AS groupId, m.sender_id AS senderId, m.content, m.created_at AS createdAt,
                    m.read_at AS readAt, m.delivered_at AS deliveredAt, m.edited_at AS editedAt, m.deleted_at AS deletedAt,
+                   m.pinned_at AS pinnedAt,
                    u.username AS senderUsername, u.is_admin AS senderIsAdmin, u.avatar AS senderAvatar,
                    m.reply_to_id AS replyToId, p.content AS replyToContent, pu.username AS replyToSenderUsername,
                    p.deleted_at AS replyToDeletedAt
@@ -215,6 +218,7 @@ export const Route = createFileRoute("/api/chat/messages")({
           deliveredAt: null,
           editedAt: null,
           deletedAt: null,
+          pinnedAt: null,
           senderUsername: user.username,
           senderIsAdmin: user.is_admin,
           senderAvatar: user.avatar,
@@ -233,7 +237,36 @@ export const Route = createFileRoute("/api/chat/messages")({
           groupId?: string;
           messageId?: string;
           content?: string;
+          action?: "pin" | "unpin";
         };
+
+        // Pin/unpin action — admin only
+        if (body.action === "pin" || body.action === "unpin") {
+          if (!body.groupId || !body.messageId) return json({ error: "groupId et messageId requis." }, 400);
+          if (user.is_admin !== 1) return json({ error: "Réservé aux administrateurs." }, 403);
+
+          const db = getDb();
+          const group = loadGroupWithAccess(db, body.groupId, user);
+          if (!group) return json({ error: "Groupe de chat non trouvé." }, 404);
+
+          const message = db
+            .prepare("SELECT id, deleted_at AS deletedAt FROM chat_messages WHERE id = ? AND group_id = ?")
+            .get(body.messageId, body.groupId) as { id: string; deletedAt: number | null } | undefined;
+
+          if (!message) return json({ error: "Message non trouvé." }, 404);
+          if (message.deletedAt) return json({ error: "Ce message a été supprimé." }, 400);
+
+          if (body.action === "pin") {
+            // Unpin any previously pinned message in this group first (one pin at a time)
+            db.prepare("UPDATE chat_messages SET pinned_at = NULL WHERE group_id = ? AND pinned_at IS NOT NULL").run(body.groupId);
+            const now = Math.floor(Date.now() / 1000);
+            db.prepare("UPDATE chat_messages SET pinned_at = ? WHERE id = ?").run(now, body.messageId);
+            return json({ success: true, pinnedAt: now });
+          } else {
+            db.prepare("UPDATE chat_messages SET pinned_at = NULL WHERE id = ?").run(body.messageId);
+            return json({ success: true, pinnedAt: null });
+          }
+        }
 
         if (!body.groupId || !body.messageId || !body.content || body.content.trim() === "") {
           return json({ error: "groupId, messageId et content requis." }, 400);

@@ -32,6 +32,9 @@ import {
   Pencil,
   Video,
   Phone,
+  Pin,
+  Archive,
+  ChevronDown,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -62,6 +65,7 @@ interface ChatGroup {
   lastMessage: ChatGroupLastMessage | null;
   unreadCount: number;
   avatar?: string;
+  archivedAt?: number | null;
 }
 
 interface MessageReaction {
@@ -87,6 +91,7 @@ interface ChatMessage {
   replyToId: string | null;
   replyToContent: string | null;
   replyToSenderUsername: string | null;
+  pinnedAt: number | null;
   pending?: boolean; // optimistic send — not yet confirmed by the server
 }
 
@@ -350,6 +355,26 @@ function formatSidebarTime(timestamp: number): string {
     : new Date(timestamp * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
+// "Vu pour la dernière fois" — Telegram-style last seen label
+function formatLastSeen(lastSeenMs: number | null | undefined): string | null {
+  if (!lastSeenMs) return null;
+  const ts = lastSeenMs / 1000;
+  const now = Date.now() / 1000;
+  const diffSec = now - ts;
+  if (diffSec < 60) return "Vu à l'instant";
+  if (diffSec < 3600) return `Vu il y a ${Math.floor(diffSec / 60)} min`;
+  if (isSameDay(ts, now)) {
+    const time = new Date(ts * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return `Vu à ${time}`;
+  }
+  if (isSameDay(ts, now - 86400)) {
+    const time = new Date(ts * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return `Vu hier à ${time}`;
+  }
+  const date = new Date(ts * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return `Vu le ${date}`;
+}
+
 // Sidebar row preview text — real last message instead of a placeholder,
 // with the "Vous : " prefix and photo/truncation handling chat apps use.
 function formatSidebarPreview(
@@ -471,6 +496,7 @@ function MessengerPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<number[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
+  const [lastSeenMap, setLastSeenMap] = useState<Record<number, number | null>>({});
   const lastTypingSentRef = useRef<number>(0);
   const [loadingSidebar, setLoadingSidebar] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -480,6 +506,7 @@ function MessengerPage() {
 
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState<"all" | "personal" | "groups">("all");
+  const [showArchived, setShowArchived] = useState(false);
 
   // Track if a conversation is active on mobile to hide the bottom nav bar
   useEffect(() => {
@@ -966,8 +993,13 @@ function MessengerPage() {
     const ids = verifiedUsers.map((u) => u.id);
     let cancelled = false;
     const poll = () => {
-      api.get<{ onlineUserIds: number[] }>(`/api/presence?userIds=${ids.join(",")}`)
-        .then((data) => { if (!cancelled) setOnlineUserIds(new Set(data.onlineUserIds)); })
+      api.get<{ onlineUserIds: number[]; lastSeenMap?: Record<number, number | null> }>(`/api/presence?userIds=${ids.join(",")}`)
+        .then((data) => {
+          if (!cancelled) {
+            setOnlineUserIds(new Set(data.onlineUserIds));
+            if (data.lastSeenMap) setLastSeenMap(data.lastSeenMap);
+          }
+        })
         .catch(() => {});
     };
     poll();
@@ -997,7 +1029,7 @@ function MessengerPage() {
   // Keyboard opening / visualViewport resize shrinks the thread — keep the
   // latest messages in view, like Telegram. Height changes also fire while
   // the user types multilines and the composer auto-grows.
-  const { keyboardOpen, height: vvHeight } = useVisualViewportFrame();
+  const { keyboardOpen, height: vvHeight, offsetTop: vvOffsetTop } = useVisualViewportFrame();
   useEffect(() => {
     if (keyboardOpen) {
       document.body.classList.add("keyboard-open");
@@ -1039,6 +1071,7 @@ function MessengerPage() {
       replyToId: replyTo?.id ?? null,
       replyToContent: replyTo?.content ?? null,
       replyToSenderUsername: replyTo?.senderUsername ?? null,
+      pinnedAt: null,
       pending: true,
     };
     setMessages((prev) => [...prev, optimistic]);
@@ -1164,6 +1197,46 @@ function MessengerPage() {
     setReactionPickerFor(null);
     setForwardingMessage(msg);
     setForwardTargetId(null);
+  }
+
+  async function togglePinMessage(msg: ChatMessage) {
+    setReactionPickerFor(null);
+    if (!activeGroupId) return;
+    const isPinned = !!msg.pinnedAt;
+    try {
+      const res = await api.patch<{ pinnedAt: number | null }>("/api/chat/messages", {
+        groupId: activeGroupId,
+        messageId: msg.id,
+        action: isPinned ? "unpin" : "pin",
+      });
+      setMessages((prev) => prev.map((m) =>
+        m.id === msg.id ? { ...m, pinnedAt: res.pinnedAt } :
+        res.pinnedAt ? { ...m, pinnedAt: null } : m
+      ));
+      toast.success(isPinned ? "Message désépinglé" : "Message épinglé");
+    } catch (err: any) {
+      toast.error(err.message || "Impossible d'épingler le message");
+    }
+  }
+
+  async function handleArchiveGroup(groupId: string) {
+    try {
+      await api.patch("/api/chat/groups", { groupId, action: "archive" });
+      setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, archivedAt: Math.floor(Date.now() / 1000) } : g));
+      toast.success("Discussion archivée");
+    } catch (err: any) {
+      toast.error(err.message || "Impossible d'archiver");
+    }
+  }
+
+  async function handleUnarchiveGroup(groupId: string) {
+    try {
+      await api.patch("/api/chat/groups", { groupId, action: "unarchive" });
+      setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, archivedAt: null } : g));
+      toast.success("Discussion désarchivée");
+    } catch (err: any) {
+      toast.error(err.message || "Impossible de désarchiver");
+    }
   }
 
   async function confirmForward() {
@@ -1422,7 +1495,10 @@ function MessengerPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0 bg-background md:p-4 lg:p-6">
+    <div
+      className="flex flex-col h-full overflow-hidden min-h-0 bg-background md:p-4 lg:p-6"
+      style={vvHeight !== null ? { height: vvHeight, transform: `translateY(${vvOffsetTop}px)` } : undefined}
+    >
       {/* Main Premium Container — floating card effect on desktop */}
       <div className="flex flex-col flex-1 min-h-0 w-full md:max-w-[1280px] md:mx-auto md:rounded-[32px] border border-border/50 bg-card/30 backdrop-blur-xl shadow-[var(--shadow-elevated)] overflow-hidden relative">
         {/* Subtle Ambient background flares within the container */}
@@ -1431,16 +1507,16 @@ function MessengerPage() {
 
         {/* HEADER SECTION - Hidden on mobile if a discussion is active to save height */}
         <div className={cn(
-          "items-center justify-between border-b border-border/40 bg-card/40 backdrop-blur-2xl px-5 py-3.5 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[env(safe-area-inset-top)] md:pt-4",
+          "items-center justify-between border-b border-border/40 bg-card/40 backdrop-blur-2xl px-4 py-2.5 md:px-6 md:py-4 shrink-0 sticky top-0 z-[100] pt-[calc(env(safe-area-inset-top)+0.5rem)] md:pt-4",
           activeGroupId ? "hidden md:flex" : "flex"
         )}>
-        <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className="flex h-10 w-10 md:h-11 md:w-11 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary shrink-0">
-            <MessageSquare className="h-5 w-5 md:h-5.5 md:w-5.5" />
+        <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+          <div className="flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary shrink-0">
+            <MessageSquare className="h-4.5 w-4.5 md:h-5.5 md:w-5.5" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
-            <h1 className="text-lg md:text-2xl font-black tracking-tight text-foreground font-sans truncate leading-none mb-1">Messages</h1>
-            <div className="flex items-center gap-1.5">
+            <h1 className="text-base md:text-2xl font-bold md:font-black tracking-tight text-foreground font-sans truncate leading-none md:mb-1">Messages</h1>
+            <div className="hidden md:flex items-center gap-1.5">
               <span className="flex h-1 w-1 rounded-full bg-emerald-500" />
               <p className="text-[9px] md:text-xs text-muted-foreground font-black truncate leading-none uppercase tracking-[0.15em]">Réseau Sécurisé</p>
             </div>
@@ -1460,11 +1536,11 @@ function MessengerPage() {
           {!!user?.is_admin && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex h-10 md:h-11 items-center justify-center gap-2 px-4 md:px-5 text-[13px] font-bold rounded-2xl bg-primary hover:opacity-90 text-primary-foreground shadow-[var(--shadow-glow-orange)] transition-all duration-300 cursor-pointer shrink-0 active:scale-95 hover:scale-[1.02]"
+              className="hidden md:flex h-11 items-center justify-center gap-2 px-4 md:px-5 text-[13px] font-bold rounded-2xl bg-primary hover:opacity-90 text-primary-foreground shadow-[var(--shadow-glow-orange)] transition-all duration-300 cursor-pointer shrink-0 active:scale-95 hover:scale-[1.02]"
               title="Créer un groupe"
             >
               <Plus className="h-4.5 w-4.5 shrink-0" />
-              <span className="hidden md:inline whitespace-nowrap">Nouveau Groupe</span>
+              <span className="whitespace-nowrap">Nouveau Groupe</span>
             </button>
           )}
         </div>
@@ -1475,7 +1551,7 @@ function MessengerPage() {
         {/* SIDEBAR COL */}
         <div className={cn("flex flex-col bg-sidebar/40 backdrop-blur-xl overflow-hidden space-y-0", activeGroupId ? "hidden md:flex md:w-[350px] shrink-0" : "w-full md:w-[350px] shrink-0")}>
           {/* SEARCH BAR */}
-          <div className="px-4 py-3">
+          <div className="px-3 py-2 md:px-4 md:py-3">
             <div className="relative group">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <input
@@ -1484,13 +1560,13 @@ function MessengerPage() {
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
                 disabled={!!activeGroupId}
-                className="w-full bg-background/60 border border-border rounded-full py-2.5 pl-10 pr-4 text-[15px] placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:bg-background transition-all"
+                className="w-full bg-background/60 border border-border rounded-full py-2 md:py-2.5 pl-10 pr-4 text-[14px] md:text-[15px] placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:bg-background transition-all"
               />
             </div>
           </div>
 
           {/* FILTER TABS */}
-          <div className="flex items-center gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-none shrink-0">
+          <div className="flex items-center gap-1.5 px-3 md:px-4 pb-2 md:pb-3 overflow-x-auto scrollbar-none shrink-0">
             {[
               { id: "all", label: "Tous" },
               { id: "personal", label: "Privés" },
@@ -1500,7 +1576,7 @@ function MessengerPage() {
                 key={tab.id}
                 onClick={() => setSidebarFilter(tab.id as any)}
                 className={cn(
-                  "flex-1 flex items-center justify-center px-3 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap active:scale-95 cursor-pointer border",
+                  "flex-1 flex items-center justify-center px-3 py-1.5 md:py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap active:scale-95 cursor-pointer border",
                   sidebarFilter === tab.id
                     ? "bg-primary/15 border-primary/30 text-primary"
                     : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
@@ -1535,6 +1611,7 @@ function MessengerPage() {
                     avatar?: string;
                     isActive: boolean;
                     onClick: () => void;
+                    archived: boolean;
                   }> = [];
 
                   // Public Groups
@@ -1549,7 +1626,8 @@ function MessengerPage() {
                         time: formatSidebarTime(g.lastMessage?.createdAt ?? g.createdAt),
                         unread: g.unreadCount,
                         isActive: g.id === activeGroupId,
-                        onClick: () => setActiveGroupId(g.id)
+                        onClick: () => setActiveGroupId(g.id),
+                        archived: !!g.archivedAt,
                       });
                     });
                   }
@@ -1571,7 +1649,8 @@ function MessengerPage() {
                           unread: dmGroup?.unreadCount,
                           avatar: u.avatar || u.username,
                           isActive: u.groupId === activeGroupId,
-                          onClick: () => setActiveGroupId(u.groupId)
+                          onClick: () => setActiveGroupId(u.groupId),
+                          archived: !!dmGroup?.archivedAt,
                         });
                       });
                     } else if (userDmGroup) {
@@ -1584,13 +1663,18 @@ function MessengerPage() {
                           time: formatSidebarTime(userDmGroup.lastMessage?.createdAt ?? userDmGroup.createdAt),
                           unread: userDmGroup.unreadCount,
                           isActive: userDmGroup.id === activeGroupId,
-                          onClick: () => setActiveGroupId(userDmGroup.id)
+                          onClick: () => setActiveGroupId(userDmGroup.id),
+                          archived: !!userDmGroup.archivedAt,
                         });
                       }
                     }
                   }
 
-                  if (allRows.length === 0) {
+                  // Split into active and archived
+                  const activeRows = allRows.filter(r => !r.archived);
+                  const archivedRows = allRows.filter(r => r.archived);
+
+                  if (activeRows.length === 0 && archivedRows.length === 0) {
                     return (
                       <div className="py-20 flex flex-col items-center justify-center text-center space-y-3 px-6">
                         <div className="h-12 w-12 rounded-full bg-accent/30 border border-border/50 flex items-center justify-center text-muted-foreground">
@@ -1601,62 +1685,106 @@ function MessengerPage() {
                     );
                   }
 
-                  return allRows.map((row) => {
+                  const renderRow = (row: typeof activeRows[number]) => {
                     const isOnline = row.type === "personal" && row.id && verifiedUsers.find(u => u.groupId === row.id && onlineUserIds.has(u.id));
                     return (
-                      <button
+                      <div
                         key={row.id}
-                        onClick={row.onClick}
-                        className={cn(
-                          "relative w-full flex items-center gap-3.5 p-3 sm:p-4 rounded-2xl border transition-all duration-300 text-left cursor-pointer group/row mb-2",
-                          row.isActive
-                            ? "bg-accent/60 border-border/60"
-                            : "border-transparent hover:bg-accent/30 text-muted-foreground"
-                        )}
+                        className="group/row relative"
                       >
-                        {row.isActive && (
-                          <span className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-primary shadow-[0_0_12px_var(--primary)]" />
-                        )}
-                        <ChatAvatar
-                          label={row.name}
-                          imageUrl={row.avatar && row.avatar.startsWith("http") ? row.avatar : undefined}
-                          seed={row.avatar || row.name}
-                          isGroup={row.type !== "personal"}
-                          status={row.type === "personal" ? (isOnline ? "online" : "offline") : undefined}
-                          size={48}
-                        />
+                        <button
+                          onClick={row.onClick}
+                          className={cn(
+                            "relative w-full flex items-center gap-3 p-2.5 sm:p-3 rounded-xl border transition-all duration-200 text-left cursor-pointer mb-1.5",
+                            row.isActive
+                              ? "bg-accent/50 border-border/40"
+                              : "border-transparent hover:bg-accent/20 text-muted-foreground"
+                          )}
+                        >
+                          {row.isActive && (
+                            <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-primary shadow-[0_0_12px_var(--primary)]" />
+                          )}
+                          <ChatAvatar
+                            label={row.name}
+                            imageUrl={row.avatar && row.avatar.startsWith("http") ? row.avatar : undefined}
+                            seed={row.avatar || row.name}
+                            isGroup={row.type !== "personal"}
+                            status={row.type === "personal" ? (isOnline ? "online" : "offline") : undefined}
+                            size={42}
+                          />
 
-                        <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={cn(
-                              "font-black text-[15px] leading-tight truncate tracking-tight",
-                              row.isActive ? "text-primary" : "text-foreground/90"
-                            )}>
-                              {row.name}
-                            </div>
-                            {row.time && (
-                              <div className={cn("text-[10px] font-mono shrink-0", row.isActive ? "text-primary" : "text-muted-foreground")}>
-                                {row.time}
+                          <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className={cn(
+                                "font-bold text-[14.5px] leading-tight truncate tracking-tight",
+                                row.isActive ? "text-primary" : "text-foreground/90"
+                              )}>
+                                {row.name}
                               </div>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={cn(
-                              "text-[13px] truncate leading-snug font-medium",
-                              row.isActive ? "text-foreground/70" : "text-muted-foreground"
-                            )}>
-                              {row.lastMessage}
+                              {row.time && (
+                                <div className={cn("text-[10px] font-mono shrink-0", row.isActive ? "text-primary" : "text-muted-foreground")}>
+                                  {row.time}
+                                </div>
+                              )}
                             </div>
-                            {!!row.unread && row.unread > 0 && (
-                              <div className="h-5 min-w-[1.25rem] px-1.5 flex items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground shadow-[var(--shadow-glow-orange)] animate-in zoom-in duration-300">
-                                {row.unread}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className={cn(
+                                "text-[12.5px] truncate leading-snug",
+                                row.isActive ? "text-foreground/60" : "text-muted-foreground"
+                              )}>
+                                {row.lastMessage}
                               </div>
-                            )}
+                              {!!row.unread && row.unread > 0 && (
+                                <div className="h-5 min-w-[1.25rem] px-1.5 flex items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground shadow-[var(--shadow-glow-orange)] animate-in zoom-in duration-300">
+                                  {row.unread}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        {/* Archive button — revealed on hover (desktop) / always visible (archived section) */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (row.archived) handleUnarchiveGroup(row.id);
+                            else handleArchiveGroup(row.id);
+                          }}
+                          className={cn(
+                            "absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200 cursor-pointer",
+                            row.archived ? "opacity-100" : "opacity-0 group-hover/row:opacity-100"
+                          )}
+                          title={row.archived ? "Désarchiver" : "Archiver"}
+                        >
+                          {row.archived ? <Archive className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
                     );
-                  });
+                  };
+
+                  return (
+                    <>
+                      {activeRows.map(renderRow)}
+                      {archivedRows.length > 0 && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowArchived(!showArchived)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/70 hover:text-muted-foreground transition-colors cursor-pointer"
+                          >
+                            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", showArchived ? "" : "-rotate-90")} />
+                            <Archive className="h-3.5 w-3.5" />
+                            Archivés ({archivedRows.length})
+                          </button>
+                          {showArchived && (
+                            <div className="space-y-0 opacity-60">
+                              {archivedRows.map(renderRow)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
                 })()}
               </div>
             )}
@@ -1677,11 +1805,11 @@ function MessengerPage() {
           {activeGroupId ? (
             <>
               {/* CHAT WINDOW HEADER */}
-              <div className="relative flex items-center justify-between gap-3 border-b border-border/40 bg-card/40 backdrop-blur-2xl px-3 sm:px-6 py-3 sm:py-3.5 pt-[env(safe-area-inset-top)] md:pt-3 shrink-0 z-[100] sticky top-0">
+              <div className="relative flex items-center justify-between gap-2 md:gap-3 border-b border-border/40 bg-card/40 backdrop-blur-2xl px-2.5 md:px-6 py-2 md:py-3.5 pt-[calc(env(safe-area-inset-top)+0.5rem)] md:pt-3 shrink-0 z-[100] sticky top-0">
                 <div className="flex items-center min-w-0 flex-1">
                   <button
                     onClick={() => setActiveGroupId(null)}
-                    className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/40 border border-border/60 text-primary hover:bg-accent/70 transition-all active:scale-90 mr-2.5"
+                    className="md:hidden flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary hover:bg-accent/50 transition-all active:scale-90 mr-1.5"
                     title="Retour"
                   >
                     <ChevronLeft className="h-5 w-5" />
@@ -1692,11 +1820,11 @@ function MessengerPage() {
                     imageUrl={isActiveDirect ? groupsWithAvatars.find(g => g.id === activeGroupId)?.avatar : undefined}
                     seed={activeGroupName}
                     isGroup={!isActiveDirect}
-                    size={44}
+                    size={38}
                   />
 
-                  <div className="min-w-0 flex-1 flex flex-col justify-center ml-3">
-                    <h2 className="font-black text-[17px] sm:text-lg text-foreground tracking-tight font-sans truncate leading-tight">
+                  <div className="min-w-0 flex-1 flex flex-col justify-center ml-2.5 md:ml-3">
+                    <h2 className="font-bold md:font-black text-[15px] md:text-lg text-foreground tracking-tight font-sans truncate leading-tight">
                       {activeGroupName}
                     </h2>
 
@@ -1715,7 +1843,9 @@ function MessengerPage() {
                               "h-1.5 w-1.5 rounded-full shrink-0",
                               onlineUserIds.has(activePartnerId) ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/50"
                             )} />
-                            {onlineUserIds.has(activePartnerId) ? "En ligne" : "Hors ligne"}
+                            {onlineUserIds.has(activePartnerId)
+                              ? "En ligne"
+                              : (formatLastSeen(lastSeenMap[activePartnerId] ?? null) ?? "Hors ligne")}
                           </span>
                         )
                       )}
@@ -1724,18 +1854,66 @@ function MessengerPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {isActiveDirect && (
+                    <>
+                      <button
+                        type="button"
+                        className="hidden sm:flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-primary hover:bg-accent/50 transition-all duration-200 cursor-pointer"
+                        title="Appel vocal"
+                      >
+                        <Phone className="h-4.5 w-4.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="hidden sm:flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-primary hover:bg-accent/50 transition-all duration-200 cursor-pointer"
+                        title="Appel vidéo"
+                      >
+                        <Video className="h-4.5 w-4.5" />
+                      </button>
+                    </>
+                  )}
                   {!isActiveDirect && !!user?.is_admin && (
                     <button
                       onClick={handleOpenMembersModal}
                       title="Gérer les membres"
-                      className="flex h-9 w-9 sm:h-10 sm:px-3 sm:w-auto items-center justify-center gap-2 text-xs font-semibold rounded-xl border border-border bg-accent/30 text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-200 active:scale-95"
+                      className="flex h-8 w-8 md:h-10 md:px-3 md:w-auto items-center justify-center gap-2 text-xs font-semibold rounded-xl border border-border bg-accent/30 text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-200 active:scale-95"
                     >
                       <Settings2 className="h-4 w-4 text-primary" />
-                      <span className="hidden sm:inline whitespace-nowrap">Membres</span>
+                      <span className="hidden md:inline whitespace-nowrap">Membres</span>
                     </button>
                   )}
                 </div>
               </div>
+
+              {/* PINNED MESSAGE BANNER — shows the most recently pinned message in this conversation */}
+              {(() => {
+                const pinned = messages.find((m) => m.pinnedAt && !m.deletedAt);
+                if (!pinned) return null;
+                const isPinnedImage = pinned.content.startsWith("data:image/");
+                return (
+                  <div
+                    onClick={() => scrollToMessage(pinned.id)}
+                    className="flex items-center gap-2 md:gap-2.5 px-2.5 md:px-6 py-1.5 md:py-2 border-b border-border/40 bg-card/40 backdrop-blur-xl cursor-pointer hover:bg-accent/30 transition-colors shrink-0 z-[90]"
+                  >
+                    <Pin className="h-3.5 w-3.5 text-primary shrink-0 rotate-45" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-bold text-primary uppercase tracking-widest leading-none mb-0.5">Message épinglé</div>
+                      <div className="text-[12px] text-muted-foreground truncate leading-tight">
+                        {isPinnedImage ? "📷 Photo" : pinned.content}
+                      </div>
+                    </div>
+                    {!!user?.is_admin && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); togglePinMessage(pinned); }}
+                        className="h-6 w-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* MESSAGES THREAD — the scroll container itself must be a plain
                   overflow-y-auto box with no flex-direction/justify-content of
@@ -1912,7 +2090,7 @@ function MessengerPage() {
                                       Message supprimé
                                     </div>
                                   ) : (
-                                    <div className="relative group/msg">
+                                    <div className={cn("relative group/msg", msg.pending && "animate-in slide-in-from-bottom-3 fade-in zoom-in-95 duration-300")}>
                                       <div
                                         className={cn(
                                           isEmojiMsg
@@ -1928,6 +2106,7 @@ function MessengerPage() {
                                                 isMe
                                                   ? "bg-gradient-to-br from-primary to-[oklch(0.62_0.2_45)] text-primary-foreground rounded-br-md"
                                                   : "bg-card border border-border text-foreground rounded-bl-md",
+                                                !isGroupedWithPrev && !isEmojiMsg && (isMe ? "before:absolute before:-bottom-1 before:right-2 before:w-3 before:h-3 before:bg-[oklch(0.62_0.2_45)] before:rounded-bl-full before:rotate-45 before:z-0" : "before:absolute before:-bottom-1 before:left-2 before:w-3 before:h-3 before:bg-card before:border-l before:border-b before:border-border before:rounded-br-full before:rotate-45 before:z-0"),
                                               )
                                         )}
                                       >
@@ -2052,6 +2231,15 @@ function MessengerPage() {
                                   ))}
                                 </div>
                                 <div className="flex flex-col p-1 min-w-[9.5rem]">
+                                  {!!user?.is_admin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => togglePinMessage(msg)}
+                                      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] text-popover-foreground hover:bg-accent transition-colors cursor-pointer"
+                                    >
+                                      <Pin className="h-3.5 w-3.5" /> {msg.pinnedAt ? "Désépingler" : "Épingler"}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => startReplyMessage(msg)}
@@ -2137,6 +2325,15 @@ function MessengerPage() {
                                   </button>
                                 </div>
                                 <div className="flex flex-col p-1.5">
+                                  {!!user?.is_admin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => { togglePinMessage(msg); closeMessageMenu(); }}
+                                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] text-popover-foreground hover:bg-accent active:bg-accent/70 transition-colors cursor-pointer"
+                                    >
+                                      <Pin className="h-4.5 w-4.5 text-primary" /> {msg.pinnedAt ? "Désépingler" : "Épingler"}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => { startReplyMessage(msg); closeMessageMenu(); }}
@@ -2283,9 +2480,9 @@ function MessengerPage() {
               {/* INPUT BAR — mobile: floating premium glass bar */}
               <div className={cn(
                 "shrink-0 relative z-[110]",
-                "px-2.5 pb-[env(safe-area-inset-bottom)] md:px-6 md:pb-6 pt-2",
+                "px-2.5 md:px-6 pt-2",
                 "bg-gradient-to-t from-card via-card/80 to-transparent",
-                keyboardOpen && "pb-2"
+                keyboardOpen ? "pb-2" : "pb-[env(safe-area-inset-bottom)] md:pb-6"
               )}>
                 <div className="max-w-[1000px] mx-auto">
                   {showEmojiPicker && (
@@ -2458,45 +2655,35 @@ function MessengerPage() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-8 relative overflow-hidden">
-              {/* Subtle background flare */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-primary/[0.05] rounded-full blur-[100px]" />
-
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-4 relative overflow-hidden">
               <div className="relative">
-                <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full scale-150" />
-                <div className="relative flex h-28 w-28 items-center justify-center rounded-[40px] bg-card border border-border text-muted-foreground shadow-2xl transition-transform duration-500 hover:rotate-12">
-                  <MessageSquare className="h-12 w-12" />
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-card border border-border text-muted-foreground shadow-xl">
+                  <MessageSquare className="h-9 w-9" />
                 </div>
               </div>
 
-              <div className="relative space-y-3 max-w-[320px]">
-                <h3 className="text-xl font-bold text-foreground tracking-tight">Votre messagerie Au Pluriel</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Connectez-vous avec vos partenaires et votre équipe. Sélectionnez une discussion dans la liste de gauche pour commencer.
+              <div className="relative space-y-1.5 max-w-[280px]">
+                <h3 className="text-lg font-bold text-foreground tracking-tight">Votre messagerie</h3>
+                <p className="text-[13px] text-muted-foreground leading-relaxed">
+                  Sélectionnez une discussion pour commencer à discuter.
                 </p>
-              </div>
-
-              <div className="flex items-center gap-6 pt-4 text-muted-foreground/50">
-                <div className="flex flex-col items-center gap-1.5">
-                  <Users className="h-5 w-5" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Groupes</span>
-                </div>
-                <div className="h-8 w-px bg-border" />
-                <div className="flex flex-col items-center gap-1.5">
-                  <Shield className="h-5 w-5" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Sécurisé</span>
-                </div>
-                <div className="h-8 w-px bg-border" />
-                <div className="flex flex-col items-center gap-1.5">
-                  <Bell className="h-5 w-5" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Direct</span>
-                </div>
               </div>
             </div>
           )}
         </div>
       </div>
       </div>
+
+      {/* FLOATING ACTION BUTTON — mobile only, replaces the header "Nouveau Groupe" button */}
+      {!!user?.is_admin && !activeGroupId && (
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="md:hidden fixed bottom-20 right-4 z-40 h-14 w-14 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[var(--shadow-glow-orange)] transition-all duration-300 active:scale-90 hover:scale-105 cursor-pointer"
+          title="Créer un groupe"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      )}
 
       {/* CREATE GROUP MODAL (Admin Only) */}
       {showCreateModal && (

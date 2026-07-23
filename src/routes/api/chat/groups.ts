@@ -10,6 +10,7 @@ interface GroupRow {
   recipientId: number | null;
   createdBy: number | null;
   createdAt: number;
+  archivedAt: number | null;
 }
 
 // Sidebar preview data (last message + unread count) for a batch of groups —
@@ -68,7 +69,8 @@ export const Route = createFileRoute("/api/chat/groups")({
                      g.is_direct AS isDirect,
                      g.recipient_id AS recipientId,
                      g.created_by AS createdBy,
-                     g.created_at AS createdAt
+                     g.created_at AS createdAt,
+                     g.archived_at AS archivedAt
               FROM chat_groups g
               LEFT JOIN users u ON g.recipient_id = u.id
               WHERE g.is_direct = 0 OR (g.is_direct = 1 AND u.id IS NOT NULL)
@@ -93,13 +95,13 @@ export const Route = createFileRoute("/api/chat/groups")({
 
           const rows = db
             .prepare(`
-              SELECT id, name, is_direct AS isDirect, recipient_id AS recipientId, created_by AS createdBy, created_at AS createdAt
+              SELECT id, name, is_direct AS isDirect, recipient_id AS recipientId, created_by AS createdBy, created_at AS createdAt, archived_at AS archivedAt
               FROM chat_groups
               WHERE is_direct = 1 AND recipient_id = ?
               
               UNION
               
-              SELECT g.id, g.name, g.is_direct AS isDirect, g.recipient_id AS recipientId, g.created_by AS createdBy, g.created_at AS createdAt
+              SELECT g.id, g.name, g.is_direct AS isDirect, g.recipient_id AS recipientId, g.created_by AS createdBy, g.created_at AS createdAt, g.archived_at AS archivedAt
               FROM chat_groups g
               JOIN chat_group_members m ON g.id = m.group_id
               WHERE g.is_direct = 0 AND m.user_id = ?
@@ -161,6 +163,39 @@ export const Route = createFileRoute("/api/chat/groups")({
           lastMessage: null,
           unreadCount: 0,
         });
+      },
+
+      PATCH: async ({ request }) => {
+        const user = await getFullUserFromRequest(request);
+        if (!user) return json({ error: "Non authentifié" }, 401);
+
+        const body = (await request.json().catch(() => ({}))) as {
+          groupId?: string;
+          action?: "archive" | "unarchive";
+        };
+
+        if (!body.groupId || !body.action) return json({ error: "groupId et action requis." }, 400);
+
+        const db = getDb();
+        const group = db
+          .prepare("SELECT id, is_direct, recipient_id FROM chat_groups WHERE id = ?")
+          .get(body.groupId) as { id: string; is_direct: number; recipient_id: number | null } | undefined;
+
+        if (!group) return json({ error: "Discussion introuvable." }, 404);
+
+        // Non-admins can only archive their own DM
+        if (user.is_admin === 0 && (group.is_direct !== 1 || group.recipient_id !== user.id)) {
+          return json({ error: "Action non autorisée." }, 403);
+        }
+
+        if (body.action === "archive") {
+          const now = Math.floor(Date.now() / 1000);
+          db.prepare("UPDATE chat_groups SET archived_at = ? WHERE id = ?").run(now, body.groupId);
+          return json({ success: true, archivedAt: now });
+        } else {
+          db.prepare("UPDATE chat_groups SET archived_at = NULL WHERE id = ?").run(body.groupId);
+          return json({ success: true, archivedAt: null });
+        }
       },
 
       DELETE: async ({ request }) => {

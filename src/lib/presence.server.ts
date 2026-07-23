@@ -17,3 +17,17 @@ export function isOnline(userId: number): boolean {
 export function getOnlineUserIds(userIds: number[]): number[] {
   return userIds.filter(isOnline);
 }
+
+/** Returns the last-seen timestamp (epoch ms) for a user, or null if never seen. */
+export function getLastSeen(userId: number): number | null {
+  return lastSeenByUser.get(userId) ?? null;
+}
+
+/** Returns a map of userId → lastSeenMs for the given ids. */
+export function getLastSeenMap(userIds: number[]): Record<number, number | null> {
+  const result: Record<number, number | null> = {};
+  for (const id of userIds) {
+    result[id] = lastSeenByUser.get(id) ?? null;
+  }
+  return result;
+}

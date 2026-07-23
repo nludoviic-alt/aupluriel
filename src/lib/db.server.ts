@@ -353,6 +353,10 @@ function migrate(db: Database.Database) {
   if (!chatGroupCols.has("recipient_id")) {
     db.exec("ALTER TABLE chat_groups ADD COLUMN recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE");
   }
+  if (!chatGroupCols.has("archived_at")) {
+    // Soft archive — conversation hidden from the main sidebar, shown in "Archivés".
+    db.exec("ALTER TABLE chat_groups ADD COLUMN archived_at INTEGER");
+  }
 
   // --- Additive column migrations on `chat_messages` (idempotent) ---
   const chatMessageCols = new Set(
@@ -378,6 +382,10 @@ function migrate(db: Database.Database) {
     // a tombstone marker client-side rather than erased, so ordering/read
     // receipts stay intact.
     db.exec("ALTER TABLE chat_messages ADD COLUMN deleted_at INTEGER");
+  }
+  if (!chatMessageCols.has("pinned_at")) {
+    // Admin-pinned message — shown in a banner at the top of the conversation.
+    db.exec("ALTER TABLE chat_messages ADD COLUMN pinned_at INTEGER");
   }
 
   seedChangelogIfEmpty(db);

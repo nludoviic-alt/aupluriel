@@ -230,14 +230,14 @@ export function computeAtrStopUsd(
 export const DEFAULT_CONFIG: AutoTraderConfig = {
   enabled: false,
   mode: "demo",
-  stakeUsd: 5,
+  stakeUsd: 10,
   durationMinutes: 15,
   // 80 (au lieu de 75) : sur les 18 premiers trades live, la tranche 75-77
   // concentrait la moitié des trades et l'essentiel des pertes (2/9 gagnés,
   // -$38), tandis que les tranches ≥82 étaient quasi à l'équilibre. Petit
   // échantillon — à réévaluer vers 50-100 trades — mais couper la tranche
   // la plus faible réduit la fréquence au profit de la qualité.
-  minConfidence: 80,
+  minConfidence: 75,
   // 3 (sur 4 TFs) au lieu de 2 : backtest honnête (52j, 2717 trades, poids
   // neutres, sans lookahead) — EV/$ par palier d'agreement : 2 → +0.007,
   // 3 → +0.013, 4 → +0.021. Monter le seuil à 3 garde ~55% des trades et
@@ -245,7 +245,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // n'améliorent PAS l'EV — atrStopMode reste off.)
   minTfAgreement: 3,
   maxDailyLossUsd: 20,
-  maxTradesPerDay: 10,
+  maxTradesPerDay: 15,
   // Forex + crypto : les indices synthétiques (R_*, 1HZ*…) sont générés
   // aléatoirement par Deriv — aucun indicateur ne peut les prédire, winrate
   // long terme ~50% = perte structurelle face au payout <100%. BTC/ETH
@@ -271,10 +271,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stopOnRisk: true,
   maxVolatilityPct: 3,
   maxDailyProfitUsd: 0,
-  stakeMode: "fixed",
-  stakePercent: 1,
+  stakeMode: "percent",
+  stakePercent: 2,
   kellyFraction: 0.5,
-  sessionEdgeMinutes: 15,
+  sessionEdgeMinutes: 5,
   trailingStopUsd: 0,
   blockCorrelated: true,
   symbolMode: "all-markets",
@@ -283,7 +283,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 14h45), chacune sous maxSimultaneousTrades mais sans borne cumulée. La
   // limite de perte journalière ne compte que les trades CLÔTURÉS, donc
   // l'exposition flottante non plafonnée contournait le garde-fou.
-  maxOpenPositions: 4,
+  maxOpenPositions: 6,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
@@ -295,7 +295,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
-  vetoDaily: "strong-only",
+  vetoDaily: "off",
   // Same 35% floor computeAdaptiveStake already uses to cut stake by 75% —
   // here it fully pauses the SYMBOL instead, catching a slow bleed (alternating
   // win/loss) that a pure consecutive-loss streak counter never trips.

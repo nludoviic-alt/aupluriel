@@ -5,7 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest } from "@/lib/auth.server";
-import { markOnline, getOnlineUserIds } from "@/lib/presence.server";
+import { markOnline, getOnlineUserIds, getLastSeenMap } from "@/lib/presence.server";
 import { markMessagesDelivered } from "@/lib/chat-delivery.server";
 
 export const Route = createFileRoute("/api/presence")({
@@ -52,7 +52,10 @@ export const Route = createFileRoute("/api/presence")({
         
         const filteredAllowedIds = allowedIds.filter(id => !offlineIds.has(id));
 
-        return json({ onlineUserIds: getOnlineUserIds(filteredAllowedIds) });
+        const onlineUserIds = getOnlineUserIds(filteredAllowedIds);
+        const lastSeenMap = getLastSeenMap(allowedIds);
+
+        return json({ onlineUserIds, lastSeenMap });
       },
     },
   },
