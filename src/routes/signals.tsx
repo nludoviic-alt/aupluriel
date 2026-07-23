@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { Filter, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { Filter, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { SignalCard, type SignalItem } from "@/components/signal-card";
 import { useDerivCandles } from "@/hooks/use-deriv";
 import { generateSignal, type SignalDirection } from "@/lib/indicators";
@@ -63,20 +63,55 @@ function DirBadge({ dir, strong = false }: { dir: SignalDirection | "MIXTE"; str
   );
 }
 
+// Batch size for progressive loading — smaller on mobile to avoid saturating
+// the WebSocket connection with dozens of simultaneous candle requests.
+const MOBILE_BATCH = 6;
+const DESKTOP_BATCH = 12;
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 function SignalsPage() {
   const [filter, setFilter] = useState<"all" | "synthetic" | "indices" | "crypto" | "forex" | "commodity">("all");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(MOBILE_BATCH);
+  const [showMtf, setShowMtf] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     setHistory(loadSignalHistory());
   }, []);
 
-  const filtered = SYMBOLS.filter((s) => filter === "all" || s.market === filter);
+  // Reset visible count when filter or screen size changes
+  useEffect(() => {
+    setVisibleCount(isMobile ? MOBILE_BATCH : DESKTOP_BATCH);
+  }, [filter, isMobile]);
 
-  function onSignalReady(entry: HistoryEntry) {
+  const filtered = useMemo(
+    () => SYMBOLS.filter((s) => filter === "all" || s.market === filter),
+    [filter],
+  );
+
+  const visibleSymbols = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
+
+  const onSignalReady = useCallback((entry: HistoryEntry) => {
     saveSignalHistory(entry);
     setHistory(loadSignalHistory());
+  }, []);
+
+  function loadMore() {
+    setVisibleCount((c) => c + (isMobile ? MOBILE_BATCH : DESKTOP_BATCH));
   }
 
   return (
@@ -118,32 +153,53 @@ function SignalsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((s) => (
+        {visibleSymbols.map((s) => (
           <LiveSignal key={s.deriv} sym={s} onReady={onSignalReady} refreshKey={refreshKey} />
         ))}
       </div>
 
-      {/* Multi-timeframe analysis */}
-      <div>
-        <h2 className="mb-3 text-base font-semibold">Analyse multi-timeframe</h2>
-        <div className="glass-panel overflow-x-auto rounded-xl">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2.5 text-left">Paire</th>
-                {MTF_LABELS.map((tf) => (
-                  <th key={tf} className="px-4 py-2.5 text-center">{tf}</th>
-                ))}
-                <th className="px-4 py-2.5 text-center">Consensus</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((s) => (
-                <MtfRow key={s.deriv} sym={s} refreshKey={refreshKey} />
-              ))}
-            </tbody>
-          </table>
+      {hasMore && (
+        <div className="flex justify-center pt-2 pb-4">
+          <button
+            onClick={loadMore}
+            className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-5 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors"
+          >
+            <ChevronDown className="h-4 w-4" />
+            Afficher plus ({filtered.length - visibleCount} restants)
+          </button>
         </div>
+      )}
+
+      {/* Multi-timeframe analysis — collapsed by default on mobile, always visible on desktop */}
+      <div>
+        <button
+          onClick={() => setShowMtf(!showMtf)}
+          className="md:hidden flex items-center gap-2 mb-3 text-base font-semibold w-full"
+        >
+          Analyse multi-timeframe
+          {showMtf ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        <h2 className="hidden md:block mb-3 text-base font-semibold">Analyse multi-timeframe</h2>
+        {(showMtf || !isMobile) && (
+          <div className="glass-panel overflow-x-auto rounded-xl">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Paire</th>
+                  {MTF_LABELS.map((tf) => (
+                    <th key={tf} className="px-4 py-2.5 text-center">{tf}</th>
+                  ))}
+                  <th className="px-4 py-2.5 text-center">Consensus</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleSymbols.map((s) => (
+                  <MtfRow key={s.deriv} sym={s} refreshKey={refreshKey} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Signal history */}
@@ -210,7 +266,7 @@ function LiveSignal({
   onReady: (entry: HistoryEntry) => void;
   refreshKey: number;
 }) {
-  const { candles, loading } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250, refreshKey);
+  const { candles, loading } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 120, refreshKey);
   const [saved, setSaved] = useState(false);
 
   const sig = useMemo(() => {
@@ -244,10 +300,10 @@ function LiveSignal({
 
 /** Each row loads data for all 4 timeframes independently — hooks called unconditionally. */
 function MtfRow({ sym, refreshKey }: { sym: (typeof SYMBOLS)[number]; refreshKey: number }) {
-  const { candles: c5m } = useDerivCandles(sym.deriv, GRANULARITY["5m"], 250, refreshKey);
-  const { candles: c15m } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 250, refreshKey);
-  const { candles: c1h } = useDerivCandles(sym.deriv, GRANULARITY["1H"], 250, refreshKey);
-  const { candles: c4h } = useDerivCandles(sym.deriv, GRANULARITY["4H"], 250, refreshKey);
+  const { candles: c5m } = useDerivCandles(sym.deriv, GRANULARITY["5m"], 120, refreshKey);
+  const { candles: c15m } = useDerivCandles(sym.deriv, GRANULARITY["15m"], 120, refreshKey);
+  const { candles: c1h } = useDerivCandles(sym.deriv, GRANULARITY["1H"], 120, refreshKey);
+  const { candles: c4h } = useDerivCandles(sym.deriv, GRANULARITY["4H"], 120, refreshKey);
 
   const sigs = useMemo(
     () =>

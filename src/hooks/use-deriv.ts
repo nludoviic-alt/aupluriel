@@ -61,7 +61,15 @@ export function useDerivTicks(symbol: string, maxPoints = 120) {
  * `refreshKey` triggers a refetch without needing to remount the component via
  * a changing React `key` — a full remount discards local state and forces
  * React to tear down/rebuild the DOM subtree, which is unnecessary here.
+ *
+ * In-memory cache: if multiple components request the same symbol+granularity
+ * within the same render cycle (e.g. signal cards + MTF table), the fetch is
+ * shared instead of duplicated — critical on mobile where each candle request
+ * opens a WebSocket round-trip.
  */
+const candleCache = new Map<string, { promise: Promise<DerivCandle[]>; ts: number }>();
+const CACHE_TTL_MS = 30_000; // 30s — fresh enough for signals, avoids refetch storms
+
 export function useDerivCandles(symbol: string, granularity: number, count = 200, refreshKey: number | string = 0) {
   const [candles, setCandles] = useState<DerivCandle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +79,19 @@ export function useDerivCandles(symbol: string, granularity: number, count = 200
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchCandles(symbol, granularity, count)
+
+    const cacheKey = `${symbol}:${granularity}:${count}:${refreshKey}`;
+    const now = Date.now();
+    let entry = candleCache.get(cacheKey);
+    if (!entry || now - entry.ts > CACHE_TTL_MS) {
+      entry = {
+        promise: fetchCandles(symbol, granularity, count),
+        ts: now,
+      };
+      candleCache.set(cacheKey, entry);
+    }
+
+    entry.promise
       .then((c) => {
         if (!cancelled) setCandles(c);
       })
