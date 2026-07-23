@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, MessageSquare, Zap, ShieldCheck, X, Menu, LineChart } from "lucide-react";
+import { LayoutDashboard, Zap, ShieldCheck, X, Menu, LineChart } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -16,13 +16,9 @@ export function BottomNav() {
   const { user } = useAuth();
   const { keyboardOpen } = useVisualViewportFrame();
 
-  const showChat = !!user?.is_admin || user?.chat_enabled === 1;
-
   const primaryItems = [
     { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
-    showChat
-      ? { title: "Messenger",   url: "/messenger",  icon: MessageSquare }
-      : { title: "Backtest",    url: "/backtest",   icon: LineChart },
+    { title: "Backtest",    url: "/backtest",   icon: LineChart },
     { title: "Auto-Trader", url: "/autotrader", icon: Zap },
   ];
 

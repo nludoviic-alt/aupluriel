@@ -38,7 +38,7 @@ export function MobileMenu() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredNavMore = NAV_MORE.filter(
-    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/messenger" || showChat)
+    (item) => (item.url !== "/backtest" || showBacktest) && item.url !== "/messenger"
   );
 
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
