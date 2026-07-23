@@ -51,6 +51,11 @@ if (!g.__lio23_bot_boot__) {
       .then((m) => m.startPriceAlertsScheduler())
       .catch((e) => console.error("[price-alerts] Démarrage échoué:", e));
   }, 9000);
+  setTimeout(() => {
+    import("./lib/daily-summary.server")
+      .then((m) => m.startDailySummaryScheduler())
+      .catch((e) => console.error("[daily-summary] Démarrage échoué:", e));
+  }, 10000);
 
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as StrategiesRouteImport } from './routes/strategies'
+import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -29,6 +30,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
+import { Route as ApiStatsRouteImport } from './routes/api/stats'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiPresenceRouteImport } from './routes/api/presence'
@@ -69,6 +71,11 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
 const StrategiesRoute = StrategiesRouteImport.update({
   id: '/strategies',
   path: '/strategies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatsRoute = StatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignalsRoute = SignalsRouteImport.update({
@@ -159,6 +166,11 @@ const ApiTradesRoute = ApiTradesRouteImport.update({
 const ApiStrategiesRoute = ApiStrategiesRouteImport.update({
   id: '/api/strategies',
   path: '/api/strategies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatsRoute = ApiStatsRouteImport.update({
+  id: '/api/stats',
+  path: '/api/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSettingsRoute = ApiSettingsRouteImport.update({
@@ -334,6 +346,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -347,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
@@ -387,6 +401,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -400,6 +415,7 @@ export interface FileRoutesByTo {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
@@ -441,6 +457,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -454,6 +471,7 @@ export interface FileRoutesById {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
@@ -496,6 +514,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/stats'
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
@@ -509,6 +528,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
@@ -549,6 +569,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/stats'
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
@@ -562,6 +583,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
@@ -602,6 +624,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/stats'
     | '/strategies'
     | '/verify-email'
     | '/api/alerts'
@@ -615,6 +638,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
     | '/api/transcribe'
@@ -656,6 +680,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   SignalsRoute: typeof SignalsRoute
+  StatsRoute: typeof StatsRoute
   StrategiesRoute: typeof StrategiesRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
@@ -669,6 +694,7 @@ export interface RootRouteChildren {
   ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
+  ApiStatsRoute: typeof ApiStatsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
@@ -707,6 +733,13 @@ declare module '@tanstack/react-router' {
       path: '/strategies'
       fullPath: '/strategies'
       preLoaderRoute: typeof StrategiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stats': {
+      id: '/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof StatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signals': {
@@ -833,6 +866,13 @@ declare module '@tanstack/react-router' {
       path: '/api/strategies'
       fullPath: '/api/strategies'
       preLoaderRoute: typeof ApiStrategiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stats': {
+      id: '/api/stats'
+      path: '/api/stats'
+      fullPath: '/api/stats'
+      preLoaderRoute: typeof ApiStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/settings': {
@@ -1083,6 +1123,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   SignalsRoute: SignalsRoute,
+  StatsRoute: StatsRoute,
   StrategiesRoute: StrategiesRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,
@@ -1096,6 +1137,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
+  ApiStatsRoute: ApiStatsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,

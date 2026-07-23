@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
   LayoutDashboard, Radar, Zap, BriefcaseBusiness, FlaskConical,
-  BarChart3, CandlestickChart, Workflow, NotebookPen, Settings,
+  BarChart3, PieChart, CandlestickChart, Workflow, NotebookPen, Settings,
   ShieldCheck, LogOut, X, MessageSquare,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -21,6 +21,7 @@ const NAV_PRIMARY = [
 
 const NAV_MORE = [
   { title: "Backtest",        url: "/backtest",        icon: FlaskConical,     hover: "hover:bg-fuchsia-500/[0.04] hover:text-fuchsia-300" },
+  { title: "Statistiques",     url: "/stats",           icon: PieChart,         hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
   { title: "Stratégies",      url: "/strategies",      icon: Workflow,         hover: "hover:bg-mint/[0.04] hover:text-mint/80" },
