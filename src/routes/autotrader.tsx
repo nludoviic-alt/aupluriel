@@ -1151,6 +1151,11 @@ function AutoTraderPage() {
                     })}
                   </div>
                 </div>
+
+                {/* Gold live ticker — right below the sessions */}
+                <div className="block">
+                  <GoldTicker />
+                </div>
               </div>
 
               {/* Journal des Trades (Right side, col-span-1) */}
@@ -1262,6 +1267,11 @@ function AutoTraderPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Gold live ticker — below standby sessions */}
+              <div className="block">
+                <GoldTicker />
               </div>
 
               {/* Journal des Trades (Spans full-width inside the right column) */}
@@ -2181,11 +2191,6 @@ function AutoTraderPage() {
         {cloud?.enabled && cloud.lastScan && (
           <CloudScanPanel lastScan={cloud.lastScan} />
         )}
-      </div>
-
-      {/* ── Gold live ticker — below the scanner ── */}
-      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
-        <GoldTicker />
       </div>
 
       {/* ── Disclaimer modal ── */}
