@@ -230,8 +230,8 @@ export function computeAtrStopUsd(
 export const DEFAULT_CONFIG: AutoTraderConfig = {
   enabled: false,
   mode: "demo",
-  stakeUsd: 10,
-  durationMinutes: 15,
+  stakeUsd: 5,
+  durationMinutes: 10,
   // 70 : analyse des 30 trades (juil. 2026) — paradoxe critique : plus la
   // confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
   // 85-89 → 33.3%, 90+ → 0%. Les indicateurs sont lagging : quand tout est
@@ -279,7 +279,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   premiumOnly: false,
   stopOnRisk: true,
   maxVolatilityPct: 3,
-  maxDailyProfitUsd: 0,
+  maxDailyProfitUsd: 10,
   // Fixe $5 : en mode binaire, la perte max = $5 (100% du stake) et le gain
   // = $5 × payout (~$3.75 à 75%). Simple, prévisible, pas de surprise.
   stakeMode: "fixed",
