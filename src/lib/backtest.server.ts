@@ -41,17 +41,19 @@ export interface ServerBacktestResult {
 export async function backtestMultiTfServer(
   symbolDeriv: string,
   {
-    minConfidence = 70,
-    minTfAgreement = 2,
+    minConfidence = 75,
+    minTfAgreement = 4,
     durationMinutes = 15,
     testCandles = 150,
     veto4h = "strong-only",
+    vetoDaily = "strong-only",
   }: {
     minConfidence?: number;
     minTfAgreement?: number;
     durationMinutes?: number;
     testCandles?: number;
     veto4h?: Veto4hMode;
+    vetoDaily?: Veto4hMode;
   } = {},
 ): Promise<ServerBacktestResult> {
   const durationCandles = Math.max(1, Math.round(durationMinutes / 15));
@@ -82,7 +84,7 @@ export async function backtestMultiTfServer(
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h);
+    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily);
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;

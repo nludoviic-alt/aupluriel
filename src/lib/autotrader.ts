@@ -778,12 +778,13 @@ export interface MultiTfBacktestResult {
 export async function backtestMultiTf(
   symbolDeriv: string,
   {
-    minConfidence = 70,
-    minTfAgreement = 2,
+    minConfidence = 75,
+    minTfAgreement = 4,
     durationMinutes = 15,
     stakeUsd = 5,
     testCandles = 150, // number of 15m entry points tested (~37.5h of opportunities)
     veto4h = "strong-only",
+    vetoDaily = "strong-only",
   }: {
     minConfidence?: number;
     minTfAgreement?: number;
@@ -791,6 +792,7 @@ export async function backtestMultiTf(
     stakeUsd?: number;
     testCandles?: number;
     veto4h?: Veto4hMode;
+    vetoDaily?: Veto4hMode;
   } = {},
 ): Promise<MultiTfBacktestResult> {
   const LOOKBACK = 250; // same per-TF depth analyzeSymbol() fetches live
@@ -827,7 +829,7 @@ export async function backtestMultiTf(
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights: learnedWeights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h);
+    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily);
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;
