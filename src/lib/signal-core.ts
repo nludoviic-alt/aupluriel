@@ -257,7 +257,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // aligné (haute confiance), le mouvement est déjà fini. Le bucket <80 était
   // le SEUL rentable. On baisse à 70 pour capturer ces signaux, compensé par
   // minTfAgreement=4 (les 4 TFs doivent quand même être d'accord).
-  minConfidence: 70,
+  minConfidence: 75,
   // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
   // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
   // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
@@ -267,7 +267,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
-  maxTradesPerDay: 15,
+  maxTradesPerDay: 12,
   // Forex + Or + BTC : l'or (XAU/USD) est réintégré avec la nouvelle config
   // binaire (CALL/PUT, confiance 70, 4/4 TF). Les pertes historiques (1W/3L)
   // étaient avec l'ancien mode multiplier + confiance 80+ — la nouvelle config
@@ -336,7 +336,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
-  vetoDaily: "off",
+  vetoDaily: "strong-only",
   // Same 35% floor computeAdaptiveStake already uses to cut stake by 75% —
   // here it fully pauses the SYMBOL instead, catching a slow bleed (alternating
   // win/loss) that a pure consecutive-loss streak counter never trips.
