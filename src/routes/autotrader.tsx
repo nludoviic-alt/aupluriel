@@ -2446,45 +2446,47 @@ function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
   const labelFor = (s: string) => SYMBOLS.find((x) => x.deriv === s)?.label ?? s;
 
   return (
-    <div className="rounded-lg bg-neutral-900/40 border border-border/20 p-3 space-y-2.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Scanner live</span>
-          <span className="text-[10px] font-mono text-muted-foreground/50">{total} symboles</span>
+    <div className="glass-panel rounded-2xl overflow-hidden mt-4">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
+        <div className="flex items-center gap-2.5">
+          <span className="h-2 w-2 rounded-full bg-cyan animate-pulse" />
+          <span className="text-sm font-bold uppercase tracking-wider text-foreground">Scanner live</span>
+          <span className="text-xs bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5 font-mono">{total} symboles</span>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground/50 tabular-nums">
-          {secsAgo < 60 ? `${secsAgo}s` : `${Math.floor(secsAgo / 60)}min`}
+        <span className="text-xs font-mono text-muted-foreground tabular-nums">
+          il y a {secsAgo < 60 ? `${secsAgo}s` : `${Math.floor(secsAgo / 60)}min`}
         </span>
       </div>
 
-      {traded.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {traded.map((r) => (
-            <span key={r.symbol} className="inline-flex items-center gap-1 rounded-md bg-up/10 border border-up/20 px-2 py-1 text-[11px] font-bold text-up">
-              {labelFor(r.symbol)} {r.direction} · {r.confidence}%
-            </span>
-          ))}
+      <div className="p-4 space-y-3">
+        {traded.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {traded.map((r) => (
+              <span key={r.symbol} className="inline-flex items-center gap-1.5 rounded-lg bg-up/10 border border-up/30 px-3 py-1.5 text-sm font-bold text-up">
+                {labelFor(r.symbol)} {r.direction} · {r.confidence}%
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          {rejected.map((r) => {
+            const meta = SCAN_ACTION_META[r.action] ?? { label: r.action, dot: "bg-neutral-600", text: "text-neutral-500" };
+            return (
+              <div key={r.symbol} className="flex items-center gap-2.5 rounded-lg bg-muted/8 px-3 py-2 text-sm" title={r.note ?? r.action}>
+                <span className={cn("h-2 w-2 rounded-full shrink-0", meta.dot)} />
+                <span className="text-neutral-200 truncate flex-1 font-medium">{labelFor(r.symbol)}</span>
+                <span className={cn("shrink-0 text-xs font-bold", meta.text)}>{meta.label}</span>
+                {r.confidence ? <span className="text-muted-foreground/60 shrink-0 text-xs tabular-nums w-8 text-right">{r.confidence}%</span> : null}
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      <div className="grid grid-cols-2 gap-1">
-        {rejected.map((r) => {
-          const meta = SCAN_ACTION_META[r.action] ?? { label: r.action, dot: "bg-neutral-600", text: "text-neutral-500" };
-          return (
-            <div key={r.symbol} className="flex items-center gap-1.5 rounded-md bg-muted/5 px-2 py-1 text-[10px] font-medium" title={r.note ?? r.action}>
-              <span className={cn("h-1 w-1 rounded-full shrink-0", meta.dot)} />
-              <span className="text-neutral-300 truncate flex-1">{labelFor(r.symbol)}</span>
-              <span className={cn("shrink-0 font-semibold", meta.text)}>{meta.label}</span>
-              {r.confidence ? <span className="text-muted-foreground/40 shrink-0 tabular-nums">{r.confidence}%</span> : null}
-            </div>
-          );
-        })}
+        {total === 0 && (
+          <p className="text-sm text-muted-foreground/50 text-center py-3">Aucun symbole — hors session ou en pause</p>
+        )}
       </div>
-
-      {total === 0 && (
-        <p className="text-[10px] text-muted-foreground/40 text-center py-1">Aucun symbole — hors session ou en pause</p>
-      )}
     </div>
   );
 }
