@@ -258,7 +258,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 1HZ*…) restent exclus — générés aléatoirement par Deriv.
   symbols: [
     "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
-    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "cryBTCUSD"
+    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "cryBTCUSD"
   ],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
