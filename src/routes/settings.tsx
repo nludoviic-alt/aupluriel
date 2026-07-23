@@ -45,6 +45,11 @@ function SettingsPage() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSaving, setPushSaving] = useState(false);
   const [pushChecked, setPushChecked] = useState(false);
+  const [krakenKey, setKrakenKey] = useState("");
+  const [krakenSecret, setKrakenSecret] = useState("");
+  const [krakenShow, setKrakenShow] = useState(false);
+  const [krakenLoading, setKrakenLoading] = useState(false);
+  const [krakenInfo, setKrakenInfo] = useState<{ balance?: number } | null>(null);
   const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
@@ -64,6 +69,8 @@ function SettingsPage() {
       if (s.default_stake_usd) { setStake(s.default_stake_usd as number); saveDefaultStake(s.default_stake_usd as number); }
       if (s.avatar) setAvatar(s.avatar as string);
       if (s.online_status) setOnlineStatus(s.online_status as "online" | "offline");
+      if (s.kraken_api_key) setKrakenKey(s.kraken_api_key as string);
+      if (s.kraken_api_secret) setKrakenSecret(s.kraken_api_secret as string);
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -134,6 +141,21 @@ function SettingsPage() {
       toast.error("Échec de l'enregistrement");
     } finally {
       setAutoBacktestSaving(false);
+    }
+  }
+
+  async function saveKraken() {
+    setKrakenLoading(true);
+    try {
+      await api.put("/api/settings", {
+        kraken_api_key: krakenKey || null,
+        kraken_api_secret: krakenSecret || null,
+      });
+      toast.success("Clés Kraken enregistrées");
+    } catch {
+      toast.error("Échec de l'enregistrement Kraken");
+    } finally {
+      setKrakenLoading(false);
     }
   }
 
@@ -396,6 +418,85 @@ function SettingsPage() {
                     {info.balance !== undefined && (
                       <div>Solde : <span className="text-neutral-200 font-bold">{info.balance.toFixed(2)} {info.currency}</span></div>
                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+
+          {/* Kraken Connection */}
+          <CollapsibleSection
+            icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-violet-400" />}
+            title="Connexion Kraken (Crypto)"
+            description="Pour trader le BTC/ETH en spot avec sortie libre. Optionnel — sans Kraken, le crypto reste sur Deriv multiplier."
+            accentClassName="border-violet-500/25 bg-gradient-to-b from-violet-500/[0.02] to-transparent"
+          >
+            <div className="space-y-4">
+              <div className="text-xs md:text-sm text-muted-foreground leading-relaxed">
+                Créez une clé API sur{" "}
+                <a
+                  href="https://www.kraken.com/u/settings/api"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 hover:underline font-semibold"
+                >
+                  kraken.com → Settings → API
+                </a>. Permissions requises : <span className="text-neutral-300 font-semibold">Query funds</span> +{" "}
+                <span className="text-neutral-300 font-semibold">Create & modify orders</span>. Stockée côté serveur uniquement.
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API Kraken</span>
+                <input
+                  type={krakenShow ? "text" : "password"}
+                  value={krakenKey}
+                  onChange={(e) => setKrakenKey(e.target.value)}
+                  placeholder="ex: k1a2b3c4..."
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-violet-500/50 outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Secret API Kraken</span>
+                <div className="relative">
+                  <input
+                    type={krakenShow ? "text" : "password"}
+                    value={krakenSecret}
+                    onChange={(e) => setKrakenSecret(e.target.value)}
+                    placeholder="ex: s5d6f7g8..."
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-violet-500/50 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setKrakenShow((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {krakenShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  onClick={saveKraken}
+                  disabled={krakenLoading || (!krakenKey && !krakenSecret)}
+                  className="w-full bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 hover:from-violet-500/35 hover:to-fuchsia-500/35 text-violet-400 border border-violet-500/30 font-bold h-10 text-xs md:text-sm rounded-xl shadow-sm transition-all"
+                >
+                  {krakenLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                  Enregistrer Kraken
+                </Button>
+              </div>
+
+              {krakenKey && (
+                <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3.5 text-xs">
+                  <div className="font-bold text-violet-400 flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
+                    </span>
+                    Kraken configuré
+                  </div>
+                  <div className="text-muted-foreground mt-1.5 text-[11px] md:text-xs">
+                    Le bot utilisera Kraken pour le BTC/ETH en spot (frais 0.26%, sortie libre). Forex/or restent sur Deriv.
                   </div>
                 </div>
               )}
