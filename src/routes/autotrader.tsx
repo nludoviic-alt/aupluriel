@@ -2411,21 +2411,21 @@ function ScanCountdown({
     : "Scan en cours…";
 }
 
-const SCAN_ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  "traded":          { label: "✅ Trade",       color: "text-up" },
-  "low-confidence":  { label: "Confiance",     color: "text-amber-400" },
-  "low-agreement":   { label: "Accord TF",     color: "text-amber-400" },
-  "low-payout":      { label: "Payout",        color: "text-amber-400" },
-  "no-signal":       { label: "Pas signal",    color: "text-muted-foreground" },
-  "session-closed":  { label: "Session",       color: "text-muted-foreground" },
-  "news-block":      { label: "News",          color: "text-muted-foreground" },
-  "volatility":      { label: "Volatilité",    color: "text-amber-400" },
-  "cooldown":        { label: "Cooldown",      color: "text-amber-400" },
-  "correlated":      { label: "Corrélation",   color: "text-muted-foreground" },
-  "daily-limit":     { label: "Limite",        color: "text-muted-foreground" },
-  "open-trade":      { label: "Ouvert",        color: "text-cyan" },
-  "not-tradeable":   { label: "N/A",           color: "text-muted-foreground" },
-  "not-premium":     { label: "Pas premium",   color: "text-muted-foreground" },
+const SCAN_ACTION_META: Record<string, { label: string; dot: string; text: string }> = {
+  "traded":          { label: "Trade",    dot: "bg-up",    text: "text-up" },
+  "low-confidence":  { label: "Confiance", dot: "bg-amber-400", text: "text-amber-400" },
+  "low-agreement":   { label: "Accord",   dot: "bg-amber-400", text: "text-amber-400" },
+  "low-payout":      { label: "Payout",   dot: "bg-amber-400", text: "text-amber-400" },
+  "no-signal":       { label: "No signal", dot: "bg-neutral-600", text: "text-neutral-500" },
+  "session-closed":  { label: "Session",  dot: "bg-neutral-600", text: "text-neutral-500" },
+  "news-block":      { label: "News",     dot: "bg-neutral-600", text: "text-neutral-500" },
+  "volatility":      { label: "Volatilité", dot: "bg-amber-400", text: "text-amber-400" },
+  "cooldown":        { label: "Cooldown", dot: "bg-amber-400", text: "text-amber-400" },
+  "correlated":      { label: "Corrélé",   dot: "bg-neutral-600", text: "text-neutral-500" },
+  "daily-limit":     { label: "Limite",   dot: "bg-neutral-600", text: "text-neutral-500" },
+  "open-trade":      { label: "Ouvert",   dot: "bg-cyan",  text: "text-cyan" },
+  "not-tradeable":   { label: "N/A",      dot: "bg-neutral-600", text: "text-neutral-500" },
+  "not-premium":     { label: "Premium",  dot: "bg-neutral-600", text: "text-neutral-500" },
 };
 
 function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
@@ -2439,38 +2439,48 @@ function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
   const secsAgo = Math.floor((now - lastScan.time) / 1000);
   const traded = lastScan.results.filter((r) => r.action === "traded");
   const rejected = lastScan.results.filter((r) => r.action !== "traded");
+  const total = lastScan.results.length;
+  const labelFor = (s: string) => SYMBOLS.find((x) => x.deriv === s)?.label ?? s;
 
   return (
-    <div className="rounded-lg bg-muted/10 border border-border/30 p-2.5 space-y-2">
+    <div className="rounded-lg bg-neutral-900/40 border border-border/20 p-3 space-y-2.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Scanner serveur</span>
-        <span className="text-[10px] font-mono text-muted-foreground/60">
-          {secsAgo < 60 ? `il y a ${secsAgo}s` : `il y a ${Math.floor(secsAgo / 60)}min`}
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">Scanner live</span>
+          <span className="text-[10px] font-mono text-muted-foreground/50">{total} symboles</span>
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground/50 tabular-nums">
+          {secsAgo < 60 ? `${secsAgo}s` : `${Math.floor(secsAgo / 60)}min`}
         </span>
       </div>
+
       {traded.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {traded.map((r) => (
-            <span key={r.symbol} className="inline-flex items-center gap-1 rounded-md bg-up/15 px-2 py-0.5 text-[10px] font-bold text-up">
-              {SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol} {r.direction} · {r.confidence}%
+            <span key={r.symbol} className="inline-flex items-center gap-1 rounded-md bg-up/10 border border-up/20 px-2 py-1 text-[11px] font-bold text-up">
+              {labelFor(r.symbol)} {r.direction} · {r.confidence}%
             </span>
           ))}
         </div>
       )}
-      <div className="flex flex-wrap gap-1">
-        {rejected.slice(0, 12).map((r) => {
-          const meta = SCAN_ACTION_LABELS[r.action] ?? { label: r.action, color: "text-muted-foreground" };
+
+      <div className="grid grid-cols-2 gap-1">
+        {rejected.map((r) => {
+          const meta = SCAN_ACTION_META[r.action] ?? { label: r.action, dot: "bg-neutral-600", text: "text-neutral-500" };
           return (
-            <span key={r.symbol} className="inline-flex items-center gap-0.5 rounded-md bg-muted/20 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground/80" title={r.note ?? r.action}>
-              {SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol}
-              <span className={cn("ml-0.5", meta.color)}>{meta.label}</span>
-              {r.confidence ? ` ${r.confidence}%` : ""}
-            </span>
+            <div key={r.symbol} className="flex items-center gap-1.5 rounded-md bg-muted/5 px-2 py-1 text-[10px] font-medium" title={r.note ?? r.action}>
+              <span className={cn("h-1 w-1 rounded-full shrink-0", meta.dot)} />
+              <span className="text-neutral-300 truncate flex-1">{labelFor(r.symbol)}</span>
+              <span className={cn("shrink-0 font-semibold", meta.text)}>{meta.label}</span>
+              {r.confidence ? <span className="text-muted-foreground/40 shrink-0 tabular-nums">{r.confidence}%</span> : null}
+            </div>
           );
         })}
       </div>
-      {lastScan.results.length === 0 && (
-        <p className="text-[10px] text-muted-foreground/50">Aucun symbole analysé — hors session ou en pause.</p>
+
+      {total === 0 && (
+        <p className="text-[10px] text-muted-foreground/40 text-center py-1">Aucun symbole — hors session ou en pause</p>
       )}
     </div>
   );
