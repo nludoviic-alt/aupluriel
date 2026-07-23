@@ -263,7 +263,12 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 30,
-  tradingSessions: ["london", "newyork"],
+  // Londres + New York + Asie : couvre 23h-22h UTC (Asie 23h-08h, Londres
+  // 07h-16h, NY 13h-22h). BTC trade déjà 24/7 indépendamment. La session Asie
+  // ajoute ~8h de fenêtre sur les paires forex — moins de volatilité mais plus
+  // d'opportunités. Le newsFilter bloque les ouvertures de session les plus
+  // volatiles.
+  tradingSessions: ["london", "newyork", "asia"],
   adaptiveStake: true,
   // premiumOnly exigeait qu'au moins un timeframe note le signal ≥80 de
   // confiance EN PLUS du seuil moyen (minConfidence 75) et de l'accord
