@@ -659,7 +659,7 @@ function AutoTraderPage() {
     : "bg-primary/10 hover:bg-primary/18";
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-3 md:p-4 space-y-6 max-w-[1600px] mx-auto">
 
       {/* ── Header — description and quick-action shortcuts are power-user
           extras already reachable from Configuration, so they're desktop-only
