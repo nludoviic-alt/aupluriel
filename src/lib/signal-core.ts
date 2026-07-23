@@ -249,13 +249,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
   maxTradesPerDay: 15,
-  // Forex + BTC uniquement : analyse live (30 trades, juil. 2026) —
-  // XAUUSD (1W/3L, -$19.46), XAGUSD (1W/3L, -$22.45) et cryETHUSD (0W/3L,
-  // -$9.92) représentent $-41.91 sur $-44.66 de perte totale (94% !).
-  // Les métaux précieux sont corrélés (XAU+XAG = même pari USD) et le bot
-  // se trompe systématiquement dessus. ETH n'a jamais gagné. BTC reste
-  // (4W/1L, +$15.67 — le meilleur symbole). Les indices synthétiques (R_*,
-  // 1HZ*…) restent exclus — générés aléatoirement par Deriv.
+  // Forex + Or + BTC : l'or (XAU/USD) est réintégré avec la nouvelle config
+  // binaire (CALL/PUT, confiance 70, 4/4 TF). Les pertes historiques (1W/3L)
+  // étaient avec l'ancien mode multiplier + confiance 80+ — la nouvelle config
+  // devrait mieux performer. L'or est très liquide et volatil : gros potentiel
+  // de gain si le bot capte les bonnes tendances. maxVolatilityPct relevé à 5
+  // pour ne pas bloquer les signaux (l'or évolue naturellement à 2-4% ATR).
+  // ETH reste exclu (0W/3L, jamais gagné). BTC reste (4W/1L, +$15.67).
+  // Les indices synthétiques (R_*, 1HZ*…) restent exclus — RNG Deriv.
   symbols: [
     "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
     "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "cryBTCUSD"
@@ -278,8 +279,17 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // entières de trades valides.
   premiumOnly: false,
   stopOnRisk: true,
-  maxVolatilityPct: 3,
-  maxDailyProfitUsd: 10,
+  // 5 : relevé de 3 à 5 pour accommoder l'or (XAU/USD) dont l'ATR%
+  // naturel est de 2-4%, contre 0.5-1.5% pour les paires forex majeures.
+  // Avec maxVolatilityPct=3, la plupart des signaux sur l'or étaient bloqués.
+  // Le filtre volatilityRatio > 3 (3x la normale de CE marché) reste actif
+  // et bloque les pics anormaux spécifiques à chaque symbole.
+  maxVolatilityPct: 5,
+  // 20 : objectif journalier relevé à $20 pour capitaliser sur l'or,
+  // qui a un plus gros potentiel de gain grâce à sa volatilité élevée.
+  // Avec stake $5 et payout ~75%, un trade gagnant = +$3.75. 5-6 trades
+  // gagnants suffisent pour atteindre l'objectif.
+  maxDailyProfitUsd: 20,
   // Fixe $5 : en mode binaire, la perte max = $5 (100% du stake) et le gain
   // = $5 × payout (~$3.75 à 75%). Simple, prévisible, pas de surprise.
   stakeMode: "fixed",
