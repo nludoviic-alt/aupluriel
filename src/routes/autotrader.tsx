@@ -174,7 +174,7 @@ function playOpenSound() {
 }
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { SYMBOLS } from "@/lib/deriv";
+import { SYMBOLS, subscribeTicks, fetchCandles, GRANULARITY } from "@/lib/deriv";
 import {
   addToCumulativePnl,
   backtestMultiTf,
@@ -2183,6 +2183,11 @@ function AutoTraderPage() {
         )}
       </div>
 
+      {/* ── Gold live ticker — below the scanner ── */}
+      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
+        <GoldTicker />
+      </div>
+
       {/* ── Disclaimer modal ── */}
       {/* ── Save params popup ── */}
       {showSaveParams && (
@@ -2412,6 +2417,85 @@ function ScanCountdown({
   return secsLeft > 0
     ? `Prochain scan dans ${secsLeft}s · confiance min ${config.minConfidence}% · ${config.minTfAgreement}/4 TF`
     : "Scan en cours…";
+}
+
+function GoldTicker() {
+  const [price, setPrice] = useState<number | null>(null);
+  const [prevPrice, setPrevPrice] = useState<number | null>(null);
+  const [dayOpen, setDayOpen] = useState<number | null>(null);
+  const [dayHigh, setDayHigh] = useState<number | null>(null);
+  const [dayLow, setDayLow] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Fetch daily candle for open/high/low
+    fetchCandles("frxXAUUSD", GRANULARITY["1H"], 24)
+      .then((candles) => {
+        if (candles.length > 0) {
+          setDayOpen(candles[0].open);
+          setDayHigh(Math.max(...candles.map((c) => c.high)));
+          setDayLow(Math.min(...candles.map((c) => c.low)));
+        }
+      })
+      .catch(() => {});
+
+    // Subscribe to live ticks
+    const unsub = subscribeTicks("frxXAUUSD", (tick) => {
+      setPrice((prev) => {
+        setPrevPrice(prev);
+        return tick.quote;
+      });
+    });
+    return unsub;
+  }, []);
+
+  const change = price && dayOpen ? price - dayOpen : null;
+  const changePct = price && dayOpen ? (change! / dayOpen) * 100 : null;
+  const isUp = (change ?? 0) >= 0;
+  const flashClass = price && prevPrice ? (price > prevPrice ? "text-up" : price < prevPrice ? "text-down" : "text-foreground") : "text-foreground";
+
+  return (
+    <div className="glass-panel rounded-2xl overflow-hidden mt-4">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
+        <div className="flex items-center gap-2.5">
+          <span className="text-lg">🥇</span>
+          <span className="text-sm font-bold uppercase tracking-wider text-foreground">Or / XAU-USD</span>
+          <span className="text-xs bg-amber-500/15 text-amber-400 rounded-md px-2 py-0.5 font-bold">Live</span>
+        </div>
+        {price && (
+          <span className={cn("text-lg font-bold font-mono tabular-nums transition-colors", flashClass)}>
+            ${price.toFixed(2)}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border/20">
+        <div className="bg-neutral-950/60 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Variation jour</div>
+          <div className={cn("mt-1 text-sm font-bold", isUp ? "text-up" : "text-down")}>
+            {change !== null ? `${isUp ? "+" : ""}$${change.toFixed(2)}` : "—"}
+            {changePct !== null && <span className="ml-1 text-xs">({isUp ? "+" : ""}{changePct.toFixed(2)}%)</span>}
+          </div>
+        </div>
+        <div className="bg-neutral-950/60 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Ouverture</div>
+          <div className="mt-1 text-sm font-bold text-foreground font-mono">{dayOpen ? `$${dayOpen.toFixed(2)}` : "—"}</div>
+        </div>
+        <div className="bg-neutral-950/60 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Haut 24h</div>
+          <div className="mt-1 text-sm font-bold text-up font-mono">{dayHigh ? `$${dayHigh.toFixed(2)}` : "—"}</div>
+        </div>
+        <div className="bg-neutral-950/60 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Bas 24h</div>
+          <div className="mt-1 text-sm font-bold text-down font-mono">{dayLow ? `$${dayLow.toFixed(2)}` : "—"}</div>
+        </div>
+      </div>
+
+      <div className="px-5 py-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+        <span>Fréquence bot : scan toutes les 60s · Durée trade : 10 min</span>
+        <span className="font-mono">{price ? "● Temps réel" : "Chargement…"}</span>
+      </div>
+    </div>
+  );
 }
 
 const SCAN_ACTION_META: Record<string, { label: string; dot: string; text: string }> = {
