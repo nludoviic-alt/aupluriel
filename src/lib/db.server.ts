@@ -343,6 +343,12 @@ function migrate(db: Database.Database) {
     // never applies to a "live" mode bot (see auto-backtest.server.ts).
     db.exec("ALTER TABLE user_settings ADD COLUMN auto_backtest_enabled INTEGER NOT NULL DEFAULT 0");
   }
+  if (!settingsCols.has("kraken_api_key")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN kraken_api_key TEXT");
+  }
+  if (!settingsCols.has("kraken_api_secret")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN kraken_api_secret TEXT");
+  }
   // --- Additive column migrations on `chat_groups` (idempotent) ---
   const chatGroupCols = new Set(
     (db.prepare("PRAGMA table_info(chat_groups)").all() as { name: string }[]).map((c) => c.name),

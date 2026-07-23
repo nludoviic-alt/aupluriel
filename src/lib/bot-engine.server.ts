@@ -16,7 +16,8 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer } from "./deriv.server";
+import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, closePublicSocket } from "./deriv.server";
+import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indicator-weights.server";
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
@@ -247,6 +248,7 @@ class ServerBotEngine {
   private stopped = false;
   private ticking = false;
   private conn: DerivTradingConnection;
+  private krakenConn: KrakenTradingConnection | null;
   private logs: TradeLog[];
   private activeSymbols = new Map<string, "CALL" | "PUT">();
   private symbolCooldowns = new Map<string, number>();
@@ -261,8 +263,10 @@ class ServerBotEngine {
     public readonly userId: number,
     private config: AutoTraderConfig,
     derivToken: string,
+    krakenConn: KrakenTradingConnection | null = null,
   ) {
     this.conn = new DerivTradingConnection(derivToken, config.mode === "live" ? "live" : "demo");
+    this.krakenConn = krakenConn;
     this.logs = loadRecentTrades(userId);
     this.lastActiveSessions = currentActiveSessions();
   }
@@ -482,6 +486,66 @@ class ServerBotEngine {
     this.fallbackTimers.add(maxHoldTimer);
   }
 
+  /**
+   * Track a Kraken spot position — poll the order status periodically and
+   * resolve the trade when the stop-loss/take-profit fills or the max-hold
+   * timer fires. Kraken doesn't have a contract subscription like Deriv, so
+   * we poll the order status every 30s instead.
+   */
+  private trackKrakenPosition(openLog: TradeLog, orderId: string, volume: number) {
+    this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
+    let resolved = false;
+
+    const finalize = (won: boolean, profit: number) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(pollTimer);
+      this.fallbackTimers.delete(pollTimer);
+      clearTimeout(maxHoldTimer);
+      this.fallbackTimers.delete(maxHoldTimer);
+      this.activeSymbols.delete(openLog.symbol);
+      this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
+      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+    };
+
+    // Poll order status every 30s
+    const pollTimer = setInterval(async () => {
+      if (resolved || this.stopped || !this.krakenConn) return;
+      try {
+        const info = await this.krakenConn.getOrderInfo(orderId);
+        if (info.status === "closed" || info.status === "canceled" || info.status === "expired") {
+          // Get the current price to compute profit
+          const currentPrice = await this.krakenConn.getAssetPrice(openLog.symbol);
+          const entryPrice = openLog.entryPrice ?? currentPrice;
+          const isBuy = openLog.direction === "MULTUP";
+          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const profit = Math.round(priceDiff * volume * 100) / 100;
+          finalize(profit > 0, profit);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 30_000);
+    this.fallbackTimers.add(pollTimer);
+
+    // Safety net: force-close after maxHoldMinutes
+    const maxHoldMs = Math.max(60_000, this.config.maxHoldMinutes * 60_000);
+    const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
+    const maxHoldTimer = setTimeout(async () => {
+      if (resolved || this.stopped || !this.krakenConn) return;
+      try {
+        await this.krakenConn.closeOrder(orderId, openLog.symbol, volume);
+        const currentPrice = await this.krakenConn.getAssetPrice(openLog.symbol);
+        const entryPrice = openLog.entryPrice ?? currentPrice;
+        const isBuy = openLog.direction === "MULTUP";
+        const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+        const profit = Math.round(priceDiff * volume * 100) / 100;
+        finalize(profit > 0, profit);
+      } catch {
+        finalize(false, -openLog.stake);
+      }
+    }, remainingMs);
+    this.fallbackTimers.add(maxHoldTimer);
+  }
+
   start() {
     this.tick().catch((e) => { this.lastError = (e as Error).message; });
     this.interval = setInterval(() => {
@@ -497,6 +561,7 @@ class ServerBotEngine {
     for (const unsub of this.contractUnsubs.values()) unsub();
     this.contractUnsubs.clear();
     this.conn.close();
+    this.krakenConn?.close();
   }
 
   private nextUtcMidnight(): number {
@@ -679,12 +744,20 @@ class ServerBotEngine {
     if (!toAnalyze.length) return finishScan();
 
     // ── Analysis (shared decision core + cross-user learned weights) ──
+    // Candle fetcher that routes crypto symbols to Kraken and the rest to Deriv
+    const candleFetcher = async (symbol: string, granularity: number, count: number) => {
+      if (isKrakenSymbol(symbol) && this.krakenConn) {
+        return fetchKrakenCandles(symbol, granularity, count);
+      }
+      return fetchCandlesServer(symbol, granularity, count);
+    };
+
     const analyzed = await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
       let weights: ReturnType<typeof getLearnedWeightsServer> | undefined;
       try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
       return {
         symbol,
-        analysis: (await analyzeSymbolCore(symbol, fetchCandlesServer, {
+        analysis: (await analyzeSymbolCore(symbol, candleFetcher, {
           weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
         })).analysis,
       };
@@ -743,13 +816,14 @@ class ServerBotEngine {
       }
 
       const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
+      const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
       // (fixed expiry, and a "payout" that only exists for a fixed-odds
-      // contract). A Multiplier has neither — no expiry to misalign with the
-      // signal's timeframe, and its cost is a flat ~0.02% commission instead.
+      // contract). A Multiplier and Kraken spot have neither — no expiry to
+      // misalign with the signal's timeframe, and the cost is a spread/commission.
       let tradeDuration = 0;
-      if (!isMultiplier) {
+      if (!isMultiplier && !useKraken) {
         tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
         // Confidence alone doesn't guard against a thin payout — Deriv's actual
         // payout varies by instrument/duration/volatility, and a low one raises
@@ -773,8 +847,12 @@ class ServerBotEngine {
 
       let entryPrice = 0;
       try {
-        const entryCandles = await fetchCandlesServer(symbol, 60, 1);
-        entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
+        if (useKraken) {
+          entryPrice = await this.krakenConn!.getAssetPrice(symbol);
+        } else {
+          const entryCandles = await fetchCandlesServer(symbol, 60, 1);
+          entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
+        }
       } catch { /* ignore */ }
 
       // stop_loss/take_profit are absolute $ amounts Deriv expects, derived
@@ -797,24 +875,50 @@ class ServerBotEngine {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),
         symbol,
-        direction: isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction,
+        direction: useKraken ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction),
         stake: stakeForTrade,
         payout: 0,
         status: "pending",
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `☁️ serveur · TAS ${analysis.trendAlignmentScore}/4`,
+        note: useKraken ? `🦑 Kraken spot · TAS ${analysis.trendAlignmentScore}/4` : `☁️ serveur · TAS ${analysis.trendAlignmentScore}/4`,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
-        ...(isMultiplier
-          ? { multiplier: effMultiplier, stopLossUsd, takeProfitUsd }
-          : { durationMinutes: tradeDuration, expiry: Date.now() + tradeDuration * 60_000 }),
+        ...(useKraken
+          ? { multiplier: 1, stopLossUsd, takeProfitUsd }
+          : isMultiplier
+            ? { multiplier: effMultiplier, stopLossUsd, takeProfitUsd }
+            : { durationMinutes: tradeDuration, expiry: Date.now() + tradeDuration * 60_000 }),
       };
       this.emit(pendingLog);
 
       try {
-        if (isMultiplier) {
+        if (useKraken) {
+          // Kraken spot: buy/sell the base asset at market price
+          // Volume = stake / current price (how many BTC/ETH you get for $stake)
+          const volume = stakeForTrade / (entryPrice || 1);
+          // Calculate stop-loss/take-profit prices from the $ amounts
+          const slPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
+            : entryPrice * (1 + stopLossUsd / stakeForTrade);
+          const tpPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
+            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+
+          const bought = await this.krakenConn!.placeMarketOrder({
+            symbol,
+            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            volume,
+            stopLossPrice: slPrice,
+            takeProfitPrice: tpPrice,
+          });
+          // Kraken order IDs are strings, not numbers — use a hash for contractId
+          const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
+          this.emit(openLog);
+          this.trackKrakenPosition(openLog, bought.orderId, volume);
+        } else if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
             symbol, amount: stakeForTrade, direction: analysis.direction,
             multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
@@ -890,13 +994,33 @@ export function getBotRuntime(userId: number): { running: boolean; pausedUntil: 
 
 export async function startBotForUser(userId: number, config: AutoTraderConfig): Promise<void> {
   if (engines.has(userId)) return;
-  if (config.mode === "simulation") throw new Error("Le bot serveur trade sur Deriv (demo/live) — le mode simulation reste dans le navigateur.");
+  if (config.mode === "simulation") throw new Error("Le bot serveur trade sur Deriv/Kraken (demo/live) — le mode simulation reste dans le navigateur.");
 
   const settings = getDb()
-    .prepare("SELECT deriv_token FROM user_settings WHERE user_id = ?")
-    .get(userId) as { deriv_token?: string } | undefined;
-  if (!settings?.deriv_token) {
+    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret FROM user_settings WHERE user_id = ?")
+    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string } | undefined;
+
+  // Deriv connection (forex/or binaire + multiplier)
+  let derivToken: string | null = null;
+  if (settings?.deriv_token) {
+    derivToken = settings.deriv_token;
+  }
+
+  // Kraken connection (crypto spot)
+  let krakenConn: KrakenTradingConnection | null = null;
+  if (settings?.kraken_api_key && settings?.kraken_api_secret) {
+    krakenConn = new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret);
+  }
+
+  // Determine which broker(s) are needed based on config symbols
+  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s));
+  const needsKraken = config.symbols.some((s) => isKrakenSymbol(s));
+
+  if (needsDeriv && !derivToken) {
     throw new Error("Aucun token Deriv enregistré côté serveur — va dans Paramètres et clique « Tester & enregistrer ».");
+  }
+  if (needsKraken && !krakenConn) {
+    throw new Error("Aucune clé API Kraken enregistrée — va dans Paramètres pour configurer Kraken.");
   }
 
   getDb().prepare(`
@@ -904,7 +1028,7 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
     ON CONFLICT(user_id) DO UPDATE SET enabled = 1, config = excluded.config, updated_at = unixepoch()
   `).run(userId, JSON.stringify(config));
 
-  const engine = new ServerBotEngine(userId, config, settings.deriv_token);
+  const engine = new ServerBotEngine(userId, config, derivToken ?? "", krakenConn);
   engines.set(userId, engine);
   await engine.reconcile().catch(() => {});
   engine.start();
@@ -977,6 +1101,8 @@ export function shutdownAllEngines(): void {
     try { engine.stop(); } catch { /* closing anyway */ }
   }
   engines.clear();
+  closePublicSocket();
+  closeKrakenSocket();
 }
 
 /** Called once at server boot: resume every bot that was enabled before the restart. */

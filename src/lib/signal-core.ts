@@ -222,6 +222,8 @@ export interface AutoTraderConfig {
   atrStopMode: boolean;           // off by default — backtest before enabling on a live account
   atrStopMultiple: number;        // stop distance = this many multiples of the 15m ATR%
   riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
+  // --- Broker: which exchange executes the trades ---
+  broker: "deriv" | "kraken";     // deriv = forex/or binaire+multiplier, kraken = crypto spot
 }
 
 /**
@@ -358,6 +360,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   atrStopMode: false,
   atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
+  broker: "deriv",
 };
 
 export const SCAN_INTERVAL_MS = 60_000;

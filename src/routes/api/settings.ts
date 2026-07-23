@@ -32,6 +32,8 @@ export const Route = createFileRoute("/api/settings")({
           auto_backtest_enabled?: boolean;
           avatar?: string;
           online_status?: "online" | "offline";
+          kraken_api_key?: string;
+          kraken_api_secret?: string;
         };
 
         const db = getDb();
@@ -51,7 +53,9 @@ export const Route = createFileRoute("/api/settings")({
               risk_per_trade = COALESCE(?, risk_per_trade),
               max_drawdown = COALESCE(?, max_drawdown),
               default_stake_usd = COALESCE(?, default_stake_usd),
-              auto_backtest_enabled = COALESCE(?, auto_backtest_enabled)
+              auto_backtest_enabled = COALESCE(?, auto_backtest_enabled),
+              kraken_api_key = COALESCE(?, kraken_api_key),
+              kraken_api_secret = COALESCE(?, kraken_api_secret)
           WHERE user_id = ?
         `).run(
           body.deriv_token ?? null,
@@ -62,6 +66,8 @@ export const Route = createFileRoute("/api/settings")({
           body.max_drawdown ?? null,
           body.default_stake_usd ?? null,
           body.auto_backtest_enabled === undefined ? null : (body.auto_backtest_enabled ? 1 : 0),
+          body.kraken_api_key ?? null,
+          body.kraken_api_secret ?? null,
           auth.userId,
         );
 
