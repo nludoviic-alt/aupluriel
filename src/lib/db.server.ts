@@ -349,6 +349,21 @@ function migrate(db: Database.Database) {
   if (!settingsCols.has("kraken_api_secret")) {
     db.exec("ALTER TABLE user_settings ADD COLUMN kraken_api_secret TEXT");
   }
+  if (!settingsCols.has("binance_api_key")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN binance_api_key TEXT");
+  }
+  if (!settingsCols.has("binance_api_secret")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN binance_api_secret TEXT");
+  }
+  if (!settingsCols.has("oanda_api_key")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN oanda_api_key TEXT");
+  }
+  if (!settingsCols.has("oanda_account_id")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN oanda_account_id TEXT");
+  }
+  if (!settingsCols.has("oanda_is_practice")) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN oanda_is_practice INTEGER NOT NULL DEFAULT 1");
+  }
   // --- Additive column migrations on `chat_groups` (idempotent) ---
   const chatGroupCols = new Set(
     (db.prepare("PRAGMA table_info(chat_groups)").all() as { name: string }[]).map((c) => c.name),

@@ -18,6 +18,8 @@
 import { getDb } from "./db.server";
 import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, closePublicSocket } from "./deriv.server";
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
+import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
+import { OandaTradingConnection, isOandaSymbol, derivToOandaSymbol, fetchOandaCandles, OANDA_DERIV_SYMBOLS, closeOandaSocket } from "./oanda.server";
 import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indicator-weights.server";
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
@@ -249,6 +251,8 @@ class ServerBotEngine {
   private ticking = false;
   private conn: DerivTradingConnection;
   private krakenConn: KrakenTradingConnection | null;
+  private binanceConn: BinanceTradingConnection | null;
+  private oandaConn: OandaTradingConnection | null;
   private logs: TradeLog[];
   private activeSymbols = new Map<string, "CALL" | "PUT">();
   private symbolCooldowns = new Map<string, number>();
@@ -264,9 +268,13 @@ class ServerBotEngine {
     private config: AutoTraderConfig,
     derivToken: string,
     krakenConn: KrakenTradingConnection | null = null,
+    binanceConn: BinanceTradingConnection | null = null,
+    oandaConn: OandaTradingConnection | null = null,
   ) {
     this.conn = new DerivTradingConnection(derivToken, config.mode === "live" ? "live" : "demo");
     this.krakenConn = krakenConn;
+    this.binanceConn = binanceConn;
+    this.oandaConn = oandaConn;
     this.logs = loadRecentTrades(userId);
     this.lastActiveSessions = currentActiveSessions();
   }
@@ -320,19 +328,19 @@ class ServerBotEngine {
       let payload;
       if (closed) {
         payload = {
-          title: log.status === "won" ? `🎉 Gagné ${sign}$${log.profit.toFixed(2)}` : `❌ Perdu ${sign}$${log.profit.toFixed(2)}`,
+          title: log.status === "won" ? `Gagné ${sign}$${log.profit.toFixed(2)}` : `Perdu ${sign}$${log.profit.toFixed(2)}`,
           body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
           url: "/autotrader",
         };
       } else if (opened) {
         payload = {
-          title: `🚀 Position ouverte : ${log.symbol}`,
+          title: `Position ouverte : ${log.symbol}`,
           body: `${log.direction} · Mise : $${log.stake.toFixed(2)} · Confiance : ${log.confidence}% · Mode : ${this.config.mode === "live" ? "Réel" : "Démo"}`,
           url: "/autotrader",
         };
       } else if (error) {
         payload = {
-          title: `⚠️ Erreur sur ${log.symbol}`,
+          title: `Erreur sur ${log.symbol}`,
           body: log.note ?? "Échec de l'ouverture de position",
           url: "/autotrader",
         };
@@ -546,6 +554,105 @@ class ServerBotEngine {
     this.fallbackTimers.add(maxHoldTimer);
   }
 
+  /**
+   * Track a Binance spot position — poll order status and resolve when closed.
+   */
+  private trackBinancePosition(openLog: TradeLog, orderId: number, baseAmount: number) {
+    this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
+    let resolved = false;
+
+    const finalize = (won: boolean, profit: number) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(pollTimer);
+      this.fallbackTimers.delete(pollTimer);
+      clearTimeout(maxHoldTimer);
+      this.fallbackTimers.delete(maxHoldTimer);
+      this.activeSymbols.delete(openLog.symbol);
+      this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
+      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+    };
+
+    const pollTimer = setInterval(async () => {
+      if (resolved || this.stopped || !this.binanceConn) return;
+      try {
+        const info = await this.binanceConn.getOrderInfo(orderId, openLog.symbol);
+        if (info.status === "FILLED" || info.status === "CANCELED" || info.status === "EXPIRED") {
+          const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
+          const entryPrice = openLog.entryPrice ?? currentPrice;
+          const isBuy = openLog.direction === "MULTUP";
+          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const profit = Math.round(priceDiff * baseAmount * 100) / 100;
+          finalize(profit > 0, profit);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 30_000);
+    this.fallbackTimers.add(pollTimer);
+
+    const maxHoldMs = Math.max(60_000, this.config.maxHoldMinutes * 60_000);
+    const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
+    const maxHoldTimer = setTimeout(async () => {
+      if (resolved || this.stopped || !this.binanceConn) return;
+      try {
+        await this.binanceConn.closeOrder(orderId, openLog.symbol, baseAmount);
+        const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
+        const entryPrice = openLog.entryPrice ?? currentPrice;
+        const isBuy = openLog.direction === "MULTUP";
+        const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+        const profit = Math.round(priceDiff * baseAmount * 100) / 100;
+        finalize(profit > 0, profit);
+      } catch {
+        finalize(false, -openLog.stake);
+      }
+    }, remainingMs);
+    this.fallbackTimers.add(maxHoldTimer);
+  }
+
+  /**
+   * Track an OANDA spot position — poll trade status and resolve when closed.
+   */
+  private trackOandaPosition(openLog: TradeLog, tradeId: string, units: number) {
+    this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
+    let resolved = false;
+
+    const finalize = (won: boolean, profit: number) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(pollTimer);
+      this.fallbackTimers.delete(pollTimer);
+      clearTimeout(maxHoldTimer);
+      this.fallbackTimers.delete(maxHoldTimer);
+      this.activeSymbols.delete(openLog.symbol);
+      this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
+      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+    };
+
+    const pollTimer = setInterval(async () => {
+      if (resolved || this.stopped || !this.oandaConn) return;
+      try {
+        const info = await this.oandaConn.getTradeInfo(tradeId);
+        if (info.state === "CLOSE") {
+          finalize(info.unrealizedPL > 0, info.unrealizedPL);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 30_000);
+    this.fallbackTimers.add(pollTimer);
+
+    const maxHoldMs = Math.max(60_000, this.config.maxHoldMinutes * 60_000);
+    const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
+    const maxHoldTimer = setTimeout(async () => {
+      if (resolved || this.stopped || !this.oandaConn) return;
+      try {
+        await this.oandaConn.closeTrade(tradeId, units);
+        const info = await this.oandaConn.getTradeInfo(tradeId);
+        finalize(info.unrealizedPL > 0, info.unrealizedPL);
+      } catch {
+        finalize(false, -openLog.stake);
+      }
+    }, remainingMs);
+    this.fallbackTimers.add(maxHoldTimer);
+  }
+
   start() {
     this.tick().catch((e) => { this.lastError = (e as Error).message; });
     this.interval = setInterval(() => {
@@ -562,6 +669,8 @@ class ServerBotEngine {
     this.contractUnsubs.clear();
     this.conn.close();
     this.krakenConn?.close();
+    this.binanceConn?.close();
+    this.oandaConn?.close();
   }
 
   private nextUtcMidnight(): number {
@@ -613,7 +722,7 @@ class ServerBotEngine {
 
             for (const s of relevantOpened) {
               await sendPushToUser(this.userId, {
-                title: `🟢 Session ${sessionLabels[s] || s} ouverte`,
+                title: `Session ${sessionLabels[s] || s} ouverte`,
                 body: `La session ${sessionLabels[s] || s} vient d'ouvrir. Le bot commence l'analyse de ce marché.`,
                 url: "/autotrader",
               }).catch(() => {});
@@ -621,7 +730,7 @@ class ServerBotEngine {
 
             for (const s of relevantClosed) {
               await sendPushToUser(this.userId, {
-                title: `🔴 Session ${sessionLabels[s] || s} fermée`,
+                title: `Session ${sessionLabels[s] || s} fermée`,
                 body: `La session ${sessionLabels[s] || s} est maintenant fermée. Le bot suspend le trading sur ce marché.`,
                 url: "/autotrader",
               }).catch(() => {});
@@ -744,10 +853,16 @@ class ServerBotEngine {
     if (!toAnalyze.length) return finishScan();
 
     // ── Analysis (shared decision core + cross-user learned weights) ──
-    // Candle fetcher that routes crypto symbols to Kraken and the rest to Deriv
+    // Candle fetcher that routes symbols to the appropriate broker
     const candleFetcher = async (symbol: string, granularity: number, count: number) => {
       if (isKrakenSymbol(symbol) && this.krakenConn) {
         return fetchKrakenCandles(symbol, granularity, count);
+      }
+      if (isBinanceSymbol(symbol) && this.binanceConn) {
+        return fetchBinanceCandles(symbol, granularity, count);
+      }
+      if (isOandaSymbol(symbol) && this.oandaConn) {
+        return fetchOandaCandles(symbol, granularity, count, this.oandaConn.apiKey, this.oandaConn.accountId, this.oandaConn.isPractice);
       }
       return fetchCandlesServer(symbol, granularity, count);
     };
@@ -817,13 +932,15 @@ class ServerBotEngine {
 
       const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
       const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
+      const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
+      const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
+      const useAltBroker = useKraken || useBinance || useOanda;
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
       // (fixed expiry, and a "payout" that only exists for a fixed-odds
-      // contract). A Multiplier and Kraken spot have neither — no expiry to
-      // misalign with the signal's timeframe, and the cost is a spread/commission.
+      // contract). Multiplier, Kraken/Binance spot, and OANDA spot have neither.
       let tradeDuration = 0;
-      if (!isMultiplier && !useKraken) {
+      if (!isMultiplier && !useAltBroker) {
         tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
         // Confidence alone doesn't guard against a thin payout — Deriv's actual
         // payout varies by instrument/duration/volatility, and a low one raises
@@ -849,6 +966,10 @@ class ServerBotEngine {
       try {
         if (useKraken) {
           entryPrice = await this.krakenConn!.getAssetPrice(symbol);
+        } else if (useBinance) {
+          entryPrice = await this.binanceConn!.getAssetPrice(symbol);
+        } else if (useOanda) {
+          entryPrice = await this.oandaConn!.getAssetPrice(symbol);
         } else {
           const entryCandles = await fetchCandlesServer(symbol, 60, 1);
           entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
@@ -871,21 +992,22 @@ class ServerBotEngine {
             takeProfitUsd: Math.round(stakeForTrade * (config.takeProfitPctOfStake / 100) * 100) / 100,
           };
 
+      const brokerLabel = useKraken ? "Kraken" : useBinance ? "Binance" : useOanda ? "OANDA" : "serveur";
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),
         symbol,
-        direction: useKraken ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction),
+        direction: useAltBroker ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction),
         stake: stakeForTrade,
         payout: 0,
         status: "pending",
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: useKraken ? `🦑 Kraken spot · TAS ${analysis.trendAlignmentScore}/4` : `☁️ serveur · TAS ${analysis.trendAlignmentScore}/4`,
+        note: `${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4`,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
-        ...(useKraken
+        ...(useAltBroker
           ? { multiplier: 1, stopLossUsd, takeProfitUsd }
           : isMultiplier
             ? { multiplier: effMultiplier, stopLossUsd, takeProfitUsd }
@@ -896,9 +1018,7 @@ class ServerBotEngine {
       try {
         if (useKraken) {
           // Kraken spot: buy/sell the base asset at market price
-          // Volume = stake / current price (how many BTC/ETH you get for $stake)
           const volume = stakeForTrade / (entryPrice || 1);
-          // Calculate stop-loss/take-profit prices from the $ amounts
           const slPrice = analysis.direction === "CALL"
             ? entryPrice * (1 - stopLossUsd / stakeForTrade)
             : entryPrice * (1 + stopLossUsd / stakeForTrade);
@@ -913,11 +1033,53 @@ class ServerBotEngine {
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
-          // Kraken order IDs are strings, not numbers — use a hash for contractId
           const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
           this.emit(openLog);
           this.trackKrakenPosition(openLog, bought.orderId, volume);
+        } else if (useBinance) {
+          // Binance spot: buy with USD amount or sell base amount
+          const baseAmount = stakeForTrade / (entryPrice || 1);
+          const slPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
+            : entryPrice * (1 + stopLossUsd / stakeForTrade);
+          const tpPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
+            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+
+          const bought = await this.binanceConn!.placeMarketOrder({
+            symbol,
+            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            quoteAmount: stakeForTrade,
+            baseAmount: analysis.direction === "PUT" ? baseAmount : undefined,
+            stopLossPrice: slPrice,
+            takeProfitPrice: tpPrice,
+          });
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.orderId };
+          this.emit(openLog);
+          this.trackBinancePosition(openLog, bought.orderId, baseAmount);
+        } else if (useOanda) {
+          // OANDA spot forex: buy/sell units of base currency
+          // Units = stake / price (approximate, OANDA handles precision)
+          const units = Math.round((stakeForTrade / (entryPrice || 1)) * 1000) / 1000;
+          const slPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
+            : entryPrice * (1 + stopLossUsd / stakeForTrade);
+          const tpPrice = analysis.direction === "CALL"
+            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
+            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+
+          const bought = await this.oandaConn!.placeMarketOrder({
+            symbol,
+            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            units,
+            stopLossPrice: slPrice,
+            takeProfitPrice: tpPrice,
+          });
+          const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
+          this.emit(openLog);
+          this.trackOandaPosition(openLog, bought.orderId, units);
         } else if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
             symbol, amount: stakeForTrade, direction: analysis.direction,
@@ -939,8 +1101,6 @@ class ServerBotEngine {
         }
       } catch (e) {
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
-        // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
-        // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
         this.symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
     }
@@ -997,8 +1157,8 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   if (config.mode === "simulation") throw new Error("Le bot serveur trade sur Deriv/Kraken (demo/live) — le mode simulation reste dans le navigateur.");
 
   const settings = getDb()
-    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret FROM user_settings WHERE user_id = ?")
-    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string } | undefined;
+    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")
+    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string; binance_api_key?: string; binance_api_secret?: string; oanda_api_key?: string; oanda_account_id?: string; oanda_is_practice?: number } | undefined;
 
   // Deriv connection (forex/or binaire + multiplier)
   let derivToken: string | null = null;
@@ -1012,9 +1172,23 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
     krakenConn = new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret);
   }
 
+  // Binance connection (crypto spot — for users in regions where Binance is available)
+  let binanceConn: BinanceTradingConnection | null = null;
+  if (settings?.binance_api_key && settings?.binance_api_secret) {
+    binanceConn = new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret);
+  }
+
+  // OANDA connection (forex spot — for users in Canada)
+  let oandaConn: OandaTradingConnection | null = null;
+  if (settings?.oanda_api_key && settings?.oanda_account_id) {
+    oandaConn = new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice);
+  }
+
   // Determine which broker(s) are needed based on config symbols
-  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s));
+  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s) && !isBinanceSymbol(s) && !isOandaSymbol(s));
   const needsKraken = config.symbols.some((s) => isKrakenSymbol(s));
+  const needsBinance = config.symbols.some((s) => isBinanceSymbol(s));
+  const needsOanda = config.symbols.some((s) => isOandaSymbol(s));
 
   if (needsDeriv && !derivToken) {
     throw new Error("Aucun token Deriv enregistré côté serveur — va dans Paramètres et clique « Tester & enregistrer ».");
@@ -1022,13 +1196,19 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   if (needsKraken && !krakenConn) {
     throw new Error("Aucune clé API Kraken enregistrée — va dans Paramètres pour configurer Kraken.");
   }
+  if (needsBinance && !binanceConn) {
+    throw new Error("Aucune clé API Binance enregistrée — va dans Paramètres pour configurer Binance.");
+  }
+  if (needsOanda && !oandaConn) {
+    throw new Error("Aucune clé API OANDA enregistrée — va dans Paramètres pour configurer OANDA.");
+  }
 
   getDb().prepare(`
     INSERT INTO bot_state (user_id, enabled, config, updated_at) VALUES (?, 1, ?, unixepoch())
     ON CONFLICT(user_id) DO UPDATE SET enabled = 1, config = excluded.config, updated_at = unixepoch()
   `).run(userId, JSON.stringify(config));
 
-  const engine = new ServerBotEngine(userId, config, derivToken ?? "", krakenConn);
+  const engine = new ServerBotEngine(userId, config, derivToken ?? "", krakenConn, binanceConn, oandaConn);
   engines.set(userId, engine);
   await engine.reconcile().catch(() => {});
   engine.start();
@@ -1037,7 +1217,7 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
     try {
       const { sendPushToUser } = await import("./push.server");
       await sendPushToUser(userId, {
-        title: "🤖 Auto-trader démarré",
+        title: "Auto-trader démarré",
         body: `Le bot serveur est actif en mode ${config.mode === "live" ? "Réel" : "Démo"}.`,
         url: "/autotrader",
       });
@@ -1059,7 +1239,7 @@ export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
       try {
         const { sendPushToUser } = await import("./push.server");
         await sendPushToUser(userId, {
-          title: "🛑 Auto-trader arrêté",
+          title: "Auto-trader arrêté",
           body: reason,
           url: "/autotrader",
         });
@@ -1077,7 +1257,7 @@ export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
 
         const { sendPushToUser } = await import("./push.server");
         const payload = {
-          title: `⚠️ Bot arrêté : ${user.username}`,
+          title: `Bot arrêté : ${user.username}`,
           body: reason,
           url: "/admin",
         };
@@ -1103,6 +1283,8 @@ export function shutdownAllEngines(): void {
   engines.clear();
   closePublicSocket();
   closeKrakenSocket();
+  closeBinanceSocket();
+  closeOandaSocket();
 }
 
 /** Called once at server boot: resume every bot that was enabled before the restart. */

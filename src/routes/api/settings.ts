@@ -34,6 +34,11 @@ export const Route = createFileRoute("/api/settings")({
           online_status?: "online" | "offline";
           kraken_api_key?: string;
           kraken_api_secret?: string;
+          binance_api_key?: string;
+          binance_api_secret?: string;
+          oanda_api_key?: string;
+          oanda_account_id?: string;
+          oanda_is_practice?: boolean;
         };
 
         const db = getDb();
@@ -55,7 +60,12 @@ export const Route = createFileRoute("/api/settings")({
               default_stake_usd = COALESCE(?, default_stake_usd),
               auto_backtest_enabled = COALESCE(?, auto_backtest_enabled),
               kraken_api_key = COALESCE(?, kraken_api_key),
-              kraken_api_secret = COALESCE(?, kraken_api_secret)
+              kraken_api_secret = COALESCE(?, kraken_api_secret),
+              binance_api_key = COALESCE(?, binance_api_key),
+              binance_api_secret = COALESCE(?, binance_api_secret),
+              oanda_api_key = COALESCE(?, oanda_api_key),
+              oanda_account_id = COALESCE(?, oanda_account_id),
+              oanda_is_practice = COALESCE(?, oanda_is_practice)
           WHERE user_id = ?
         `).run(
           body.deriv_token ?? null,
@@ -68,6 +78,11 @@ export const Route = createFileRoute("/api/settings")({
           body.auto_backtest_enabled === undefined ? null : (body.auto_backtest_enabled ? 1 : 0),
           body.kraken_api_key ?? null,
           body.kraken_api_secret ?? null,
+          body.binance_api_key ?? null,
+          body.binance_api_secret ?? null,
+          body.oanda_api_key ?? null,
+          body.oanda_account_id ?? null,
+          body.oanda_is_practice === undefined ? null : (body.oanda_is_practice ? 1 : 0),
           auth.userId,
         );
 

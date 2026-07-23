@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { CollapsibleSection } from "@/components/collapsible-section";
+import { HelpBubble } from "@/components/help-bubble";
 import { getExistingPushSubscription, isIosNonSafari, isIosNonStandalone, isPushSupported, subscribeToPush, unsubscribeFromPush } from "@/lib/push";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AvatarPicker } from "@/components/avatar-picker";
@@ -50,6 +51,15 @@ function SettingsPage() {
   const [krakenShow, setKrakenShow] = useState(false);
   const [krakenLoading, setKrakenLoading] = useState(false);
   const [krakenInfo, setKrakenInfo] = useState<{ balance?: number } | null>(null);
+  const [binanceKey, setBinanceKey] = useState("");
+  const [binanceSecret, setBinanceSecret] = useState("");
+  const [binanceShow, setBinanceShow] = useState(false);
+  const [binanceLoading, setBinanceLoading] = useState(false);
+  const [oandaKey, setOandaKey] = useState("");
+  const [oandaAccountId, setOandaAccountId] = useState("");
+  const [oandaPractice, setOandaPractice] = useState(true);
+  const [oandaShow, setOandaShow] = useState(false);
+  const [oandaLoading, setOandaLoading] = useState(false);
   const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
@@ -71,6 +81,11 @@ function SettingsPage() {
       if (s.online_status) setOnlineStatus(s.online_status as "online" | "offline");
       if (s.kraken_api_key) setKrakenKey(s.kraken_api_key as string);
       if (s.kraken_api_secret) setKrakenSecret(s.kraken_api_secret as string);
+      if (s.binance_api_key) setBinanceKey(s.binance_api_key as string);
+      if (s.binance_api_secret) setBinanceSecret(s.binance_api_secret as string);
+      if (s.oanda_api_key) setOandaKey(s.oanda_api_key as string);
+      if (s.oanda_account_id) setOandaAccountId(s.oanda_account_id as string);
+      if (s.oanda_is_practice !== undefined) setOandaPractice(!!s.oanda_is_practice);
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -159,6 +174,37 @@ function SettingsPage() {
     }
   }
 
+  async function saveBinance() {
+    setBinanceLoading(true);
+    try {
+      await api.put("/api/settings", {
+        binance_api_key: binanceKey || null,
+        binance_api_secret: binanceSecret || null,
+      });
+      toast.success("Clés Binance enregistrées");
+    } catch {
+      toast.error("Échec de l'enregistrement Binance");
+    } finally {
+      setBinanceLoading(false);
+    }
+  }
+
+  async function saveOanda() {
+    setOandaLoading(true);
+    try {
+      await api.put("/api/settings", {
+        oanda_api_key: oandaKey || null,
+        oanda_account_id: oandaAccountId || null,
+        oanda_is_practice: oandaPractice,
+      });
+      toast.success("Configuration OANDA enregistrée");
+    } catch {
+      toast.error("Échec de l'enregistrement OANDA");
+    } finally {
+      setOandaLoading(false);
+    }
+  }
+
   async function saveLocal() {
     localStorage.setItem(KEYS.token, token);
     localStorage.setItem(KEYS.account, account);
@@ -202,103 +248,14 @@ function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto pb-24">
-      {/* Profil & Avatar */}
-      <CollapsibleSection
-        title="Profil & Avatar"
-        icon={<UserCircle className="h-5.5 w-5.5 shrink-0 text-amber-400" />}
-        defaultOpen={true}
-      >
-        <div className="p-4 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-3xl bg-white/[0.02] border border-white/[0.06] shadow-sm">
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              <div className="relative h-22 w-22 rounded-3xl bg-gradient-to-br from-amber-500/30 via-amber-500/5 to-transparent p-0.5 flex items-center justify-center shrink-0">
-                <div className="h-full w-full rounded-[22px] bg-[#0a0a0c] border border-amber-500/10 overflow-hidden">
-                  {avatar ? (
-                    <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <UserCircle className="h-10 w-10 text-amber-400/40" />
-                    </div>
-                  )}
-                  {avatarSaving && (
-                    <div className="absolute inset-0.5 bg-black/50 backdrop-blur-sm rounded-[22px] flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-bold text-foreground truncate">{user?.username}</h2>
-                <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className={cn(
-                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-colors",
-                    onlineStatus === "online"
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                      : "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                  )}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", onlineStatus === "online" ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
-                    {onlineStatus === "online" ? "En ligne" : "Hors ligne (Invisible)"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {user?.is_admin === 1 && (
-              <div className="flex items-center gap-3 shrink-0">
-                {statusSaving && <Loader2 className="h-4 w-4 animate-spin text-amber-500" />}
-                <div className="inline-flex p-1 rounded-full bg-white/[0.04] border border-white/[0.08]" role="radiogroup" aria-label="Mode de présence">
-                  <button
-                    type="button"
-                    onClick={() => toggleStatus(true)}
-                    disabled={statusSaving}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
-                      onlineStatus === "online"
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <Wifi className="h-3.5 w-3.5" />
-                    En ligne
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleStatus(false)}
-                    disabled={statusSaving}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200",
-                      onlineStatus === "offline"
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <WifiOff className="h-3.5 w-3.5" />
-                    Hors ligne
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-6 border-t border-white/5">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 mb-4 flex items-center gap-2">
-              <span className="h-1 w-1 rounded-full bg-amber-500" />
-              Choisir un Avatar
-            </h3>
-            <AvatarPicker currentAvatar={avatar} onSelect={handleAvatarSelect} />
-          </div>
-        </div>
-      </CollapsibleSection>
-
+    <div className="p-6 md:p-12 space-y-6 max-w-[1400px] mx-auto pb-24">
       {/* Header Panel */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-white/[0.01] border border-white/5 p-4.5 rounded-2xl shadow-sm">
         <div>
           <h1 className="text-xl md:text-2xl font-black tracking-tight bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-transparent">
             Paramètres
           </h1>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1">Configurez votre accès broker et ajustez la gestion du risque.</p>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">Brokers et risque.</p>
         </div>
         <Button
           variant="outline"
@@ -313,28 +270,16 @@ function SettingsPage() {
       {/* Main Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* LEFT COLUMN: Connection & Broker */}
+        {/* LEFT COLUMN: Deriv + Kraken + Auto-Backtest */}
         <div className="space-y-6">
           <CollapsibleSection
             icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-red-400" />}
-            title="Connexion Broker"
-            description="Associez votre compte réel ou de démonstration pour l'exécution des ordres."
+            title="Connexion Deriv"
+            help="Forex, or, multiplicateurs. Créez une clé sur app.deriv.com → API token. Stockée localement dans ce navigateur."
             defaultOpen
-            accentClassName="border-red-500/25 bg-gradient-to-b from-red-500/[0.02] to-transparent"
+            accentClassName="border-red-500/40 bg-red-500/[0.08]"
           >
             <div className="space-y-4">
-              <div className="text-xs md:text-sm text-muted-foreground leading-relaxed">
-                Créez une clé d'accès sur{" "}
-                <a
-                  href="https://app.deriv.com/account/api-token"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-cyan-400 hover:underline font-semibold"
-                >
-                  app.deriv.com → API token
-                </a>. Stockée localement dans ce navigateur uniquement.
-              </div>
-
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Token API Deriv</span>
                 <div className="relative">
@@ -427,24 +372,11 @@ function SettingsPage() {
           {/* Kraken Connection */}
           <CollapsibleSection
             icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-violet-400" />}
-            title="Connexion Kraken (Crypto)"
-            description="Pour trader le BTC/ETH en spot avec sortie libre. Optionnel — sans Kraken, le crypto reste sur Deriv multiplier."
-            accentClassName="border-violet-500/25 bg-gradient-to-b from-violet-500/[0.02] to-transparent"
+            title="Connexion Kraken"
+            help="Crypto spot (BTC/ETH). Optionnel — sans Kraken, le crypto reste sur Deriv multiplier. Clé sur kraken.com → Settings → API. Permissions : Query funds + Create & modify orders. Stockée serveur."
+            accentClassName="border-violet-500/40 bg-violet-500/[0.08]"
           >
             <div className="space-y-4">
-              <div className="text-xs md:text-sm text-muted-foreground leading-relaxed">
-                Créez une clé API sur{" "}
-                <a
-                  href="https://www.kraken.com/u/settings/api"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-violet-400 hover:underline font-semibold"
-                >
-                  kraken.com → Settings → API
-                </a>. Permissions requises : <span className="text-neutral-300 font-semibold">Query funds</span> +{" "}
-                <span className="text-neutral-300 font-semibold">Create & modify orders</span>. Stockée côté serveur uniquement.
-              </div>
-
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API Kraken</span>
                 <input
@@ -496,7 +428,7 @@ function SettingsPage() {
                     Kraken configuré
                   </div>
                   <div className="text-muted-foreground mt-1.5 text-[11px] md:text-xs">
-                    Le bot utilisera Kraken pour le BTC/ETH en spot (frais 0.26%, sortie libre). Forex/or restent sur Deriv.
+                    BTC/ETH spot (0.26%). Forex/or sur Deriv.
                   </div>
                 </div>
               )}
@@ -507,7 +439,7 @@ function SettingsPage() {
           <CollapsibleSection
             icon={<FlaskConical className="mt-1 h-5.5 w-5.5 text-cyan-400 shrink-0" />}
             title="Backtest automatique"
-            description="Rejoue le pipeline live toutes les 6h. Si le win rate mesuré dépasse le seuil de rentabilité, le bot serveur démarre en Démo ; sinon il s'arrête. En Live, seul l'arrêt automatique s'applique — jamais de démarrage automatique, un lancement en argent réel reste toujours une confirmation manuelle."
+            help="Rejoue le pipeline live toutes les 6h. Si le win rate dépasse le seuil de rentabilité, le bot démarre en Démo ; sinon il s'arrête. En Live : arrêt automatique seulement, jamais de démarrage auto."
           >
             <div
               className={cn(
@@ -518,7 +450,7 @@ function SettingsPage() {
               <div>
                 <h4 className="text-xs md:text-sm text-neutral-200 font-bold">Activer l'automatisme</h4>
                 <p className="text-[11px] md:text-xs text-muted-foreground mt-0.5">
-                  Démarre/arrête le bot Démo selon le verdict du backtest. En Live : arrête seulement, jamais de démarrage automatique.
+                  Démo : auto. Live : arrêt seulement.
                 </p>
               </div>
               <Switch checked={autoBacktestEnabled} disabled={autoBacktestSaving} onCheckedChange={toggleAutoBacktest} />
@@ -528,13 +460,171 @@ function SettingsPage() {
           </CollapsibleSection>
         </div>
 
-        {/* RIGHT COLUMN: Risk & AI */}
+        {/* RIGHT COLUMN: Binance + OANDA + Risk + Push */}
         <div className="space-y-6">
+          {/* Binance Connection */}
+          <CollapsibleSection
+            icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-yellow-400" />}
+            title="Connexion Binance"
+            help="Crypto spot. P2P Mobile Money (MTN, Orange Cameroun). Indisponible au Canada. Clé sur Binance → API Management. Permission : Spot Trading."
+            accentClassName="border-yellow-500/40 bg-yellow-500/[0.08]"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API Binance</span>
+                <input
+                  type={binanceShow ? "text" : "password"}
+                  value={binanceKey}
+                  onChange={(e) => setBinanceKey(e.target.value)}
+                  placeholder="ex: b1a2c3d4..."
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-yellow-500/50 outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Secret API Binance</span>
+                <div className="relative">
+                  <input
+                    type={binanceShow ? "text" : "password"}
+                    value={binanceSecret}
+                    onChange={(e) => setBinanceSecret(e.target.value)}
+                    placeholder="ex: s5d6f7g8..."
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-yellow-500/50 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setBinanceShow((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {binanceShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  onClick={saveBinance}
+                  disabled={binanceLoading || (!binanceKey && !binanceSecret)}
+                  className="w-full bg-gradient-to-r from-yellow-500/20 to-amber-500/20 hover:from-yellow-500/35 hover:to-amber-500/35 text-yellow-400 border border-yellow-500/30 font-bold h-10 text-xs md:text-sm rounded-xl shadow-sm transition-all"
+                >
+                  {binanceLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                  Enregistrer Binance
+                </Button>
+              </div>
+
+              {binanceKey && (
+                <div className="rounded-xl border border-yellow-500/25 bg-yellow-500/5 p-3.5 text-xs">
+                  <div className="font-bold text-yellow-400 flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
+                    </span>
+                    Binance configuré
+                  </div>
+                  <div className="text-muted-foreground mt-1.5 text-[11px] md:text-xs">
+                    BTC/ETH spot (0.1%). P2P MoMo Cameroun.
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+
+          {/* OANDA Connection */}
+          <CollapsibleSection
+            icon={<KeyRound className="mt-1 h-5.5 w-5.5 shrink-0 text-emerald-400" />}
+            title="Connexion OANDA"
+            help="Forex spot avec sortie libre. Régulé Canada (IIROC). $0 minimum. Compte sur oanda.com (Canada) puis Developer Settings. Practice (démo) ou Live (réel)."
+            accentClassName="border-emerald-500/40 bg-emerald-500/[0.08]"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API OANDA</span>
+                <input
+                  type={oandaShow ? "text" : "password"}
+                  value={oandaKey}
+                  onChange={(e) => setOandaKey(e.target.value)}
+                  placeholder="ex: o1a2b3c4..."
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-emerald-500/50 outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Account ID OANDA</span>
+                <div className="relative">
+                  <input
+                    type={oandaShow ? "text" : "password"}
+                    value={oandaAccountId}
+                    onChange={(e) => setOandaAccountId(e.target.value)}
+                    placeholder="ex: 001-001-123456-001"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-emerald-500/50 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setOandaShow((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {oandaShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Type de compte</span>
+                <div className="flex bg-neutral-950/80 p-1.5 rounded-xl border border-white/5 gap-1.5 max-w-[240px]">
+                  {([true, false] as const).map((isPractice) => (
+                    <button
+                      key={String(isPractice)}
+                      onClick={() => setOandaPractice(isPractice)}
+                      className={cn(
+                        "flex-1 py-1.5 text-[10px] md:text-xs uppercase tracking-wider font-bold rounded-lg transition-all text-center",
+                        oandaPractice === isPractice
+                          ? isPractice
+                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                            : "bg-red-500/15 text-red-400 border border-red-500/20"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      )}
+                    >
+                      {isPractice ? "Practice (Démo)" : "Live (Réel)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  onClick={saveOanda}
+                  disabled={oandaLoading || (!oandaKey && !oandaAccountId)}
+                  className="w-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/35 hover:to-teal-500/35 text-emerald-400 border border-emerald-500/30 font-bold h-10 text-xs md:text-sm rounded-xl shadow-sm transition-all"
+                >
+                  {oandaLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                  Enregistrer OANDA
+                </Button>
+              </div>
+
+              {oandaKey && (
+                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3.5 text-xs">
+                  <div className="font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                    </span>
+                    OANDA configuré ({oandaPractice ? "Practice" : "Live"})
+                  </div>
+                  <div className="text-muted-foreground mt-1.5 text-[11px] md:text-xs">
+                    Forex spot (EUR/USD, GBP/USD...). Or sur Deriv.
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+        </div>
+      </div>
+
+      {/* Risk & Push — full width, side by side, below everything */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Risk Management Card */}
           <CollapsibleSection
             icon={<ShieldAlert className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
             title="Gestion du risque"
-            description="Appliqué automatiquement à tous les signaux et ordres."
+            help="Mise par défaut, risque par trade (%) et drawdown max (%). Appliqué automatiquement à tous les signaux et ordres."
             defaultOpen
           >
             <div className="space-y-4">
@@ -595,7 +685,7 @@ function SettingsPage() {
 
               {risk > 2 && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 font-medium leading-relaxed">
-                  ⚠️ Risque par trade supérieur à 2% — non recommandé pour conserver votre capital sur le long terme.
+                  Risque par trade supérieur à 2% — non recommandé pour conserver votre capital sur le long terme.
                 </div>
               )}
             </div>
@@ -605,7 +695,7 @@ function SettingsPage() {
           <CollapsibleSection
             icon={<Bell className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}
             title="Notifications push"
-            description="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
+            help="Alertes de trade et de pause risque envoyées même téléphone verrouillé."
           >
             {isIosNonSafari() ? (
               <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3.5 text-xs text-red-400 leading-relaxed">
@@ -636,7 +726,6 @@ function SettingsPage() {
               </div>
             )}
           </CollapsibleSection>
-        </div>
       </div>
 
       {/* Global Unified Action Bar */}

@@ -223,7 +223,7 @@ export interface AutoTraderConfig {
   atrStopMultiple: number;        // stop distance = this many multiples of the 15m ATR%
   riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
   // --- Broker: which exchange executes the trades ---
-  broker: "deriv" | "kraken";     // deriv = forex/or binaire+multiplier, kraken = crypto spot
+  broker: "deriv" | "kraken" | "binance" | "oanda";     // deriv = forex/or binaire+multiplier, kraken/binance = crypto spot, oanda = forex spot
 }
 
 /**

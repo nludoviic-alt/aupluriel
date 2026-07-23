@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HelpBubble } from "./help-bubble";
 
 /**
  * One panel header + collapse toggle, mobile-only — dense pages (Paramètres,
@@ -10,28 +11,39 @@ import { cn } from "@/lib/utils";
  * regardless of `open`.
  */
 export function CollapsibleSection({
-  icon, title, description, defaultOpen = false, accentClassName, children,
+  icon, title, description, help, defaultOpen = false, accentClassName, children,
 }: {
-  icon: ReactNode; title: string; description?: string; defaultOpen?: boolean;
+  icon: ReactNode; title: string; description?: string; help?: string; defaultOpen?: boolean;
   accentClassName?: string; children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={cn("glass-panel rounded-2xl p-6 shadow-sm space-y-5 border border-border/40", accentClassName)}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 text-left md:cursor-default"
-      >
+    <div className={cn("rounded-2xl p-6 shadow-sm space-y-5 border", accentClassName ? accentClassName : "glass-panel border-border/40")}>
+      <div className="flex w-full items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           {icon}
           <div>
-            <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">{title}</h2>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="text-left md:cursor-default"
+              >
+                <h2 className="text-sm md:text-base font-bold uppercase tracking-wider text-neutral-200">{title}</h2>
+              </button>
+              {help && <HelpBubble text={help} />}
+            </div>
             {description && <p className="text-xs md:text-sm text-muted-foreground mt-1">{description}</p>}
           </div>
         </div>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 mt-1 text-muted-foreground transition-transform md:hidden", open && "rotate-180")} />
-      </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="md:hidden shrink-0 mt-1"
+        >
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
       <div className={cn(open ? "block" : "hidden", "md:block space-y-5")}>{children}</div>
     </div>
   );
