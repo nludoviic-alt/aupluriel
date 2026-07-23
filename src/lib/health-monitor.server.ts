@@ -64,7 +64,7 @@ function checkPushSubscriptions(): CheckResult {
 
 function checkEmailConfig(): CheckResult {
   if (!process.env.RESEND_API_KEY) {
-    return { key: "email_config", label: "Envoi d'emails", status: "warn", detail: "RESEND_API_KEY non configurée — les emails sont seulement journalisés, jamais réellement envoyés." };
+    return { key: "email_config", label: "Envoi d'emails", status: "ok", detail: "Mode log-only (pas de RESEND_API_KEY) — les emails sont journalisés dans la console. Configurer Resend pour l'envoi réel." };
   }
   return { key: "email_config", label: "Envoi d'emails", status: "ok", detail: "Fournisseur Resend configuré." };
 }

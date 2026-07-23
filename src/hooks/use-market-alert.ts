@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { generateSignal } from "@/lib/indicators";
 import { mapWithConcurrency } from "@/lib/utils";
+import { subscribeToPush, isPushSupported } from "@/lib/push";
 
 export interface MarketAlert {
   symbol: string;
@@ -67,6 +68,10 @@ export function useMarketAlert(enabled = true) {
     const granted = await requestNotificationPermission();
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotifPermission(Notification.permission);
+    }
+    // Auto-subscribe to server push so the bot can notify even with the app closed
+    if (granted && isPushSupported()) {
+      try { await subscribeToPush(); } catch { /* VAPID key missing or SW not ready — silent */ }
     }
     return granted;
   }
