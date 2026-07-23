@@ -573,6 +573,14 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
     return { direction: "HOLD", confidence: 0, triggers, quality: "weak", blockers };
   }
 
+  // Hard block: no trade in ranging markets (ADX < 20) — indicators generate
+  // noise in directionless conditions, and the 4/4 TF alignment bonus can
+  // push a weak ranging signal past the confidence threshold.
+  if (ranging) {
+    blockers.push(`ADX ${adxNow?.toFixed(0)} < 20 — marché sans tendance, trade bloqué`);
+    return { direction: "HOLD", confidence: 0, triggers, quality: "weak", blockers };
+  }
+
   // Require a meaningful net edge AND that the dominant side clearly outweighs the other
   const dominance = total > 0 ? Math.max(bull, bear) / total : 0;
   if (net >= 2 && dominance >= 0.6) direction = "BUY";

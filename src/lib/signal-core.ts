@@ -250,7 +250,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   enabled: false,
   mode: "demo",
   stakeUsd: 5,
-  durationMinutes: 10,
+  durationMinutes: 15,
   // 70 : analyse des 30 trades (juil. 2026) — paradoxe critique : plus la
   // confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
   // 85-89 → 33.3%, 90+ → 0%. Les indicateurs sont lagging : quand tout est
@@ -282,13 +282,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   ],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
-  cooldownMinutes: 30,
+  cooldownMinutes: 60,
   // Londres + New York + Asie : couvre 23h-22h UTC (Asie 23h-08h, Londres
   // 07h-16h, NY 13h-22h). BTC trade déjà 24/7 indépendamment. La session Asie
   // ajoute ~8h de fenêtre sur les paires forex — moins de volatilité mais plus
   // d'opportunités. Le newsFilter bloque les ouvertures de session les plus
   // volatiles.
-  tradingSessions: ["london", "newyork", "asia"],
+  tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   // premiumOnly exigeait qu'au moins un timeframe note le signal ≥80 de
   // confiance EN PLUS du seuil moyen (minConfidence 75) et de l'accord
@@ -323,7 +323,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 14h45), chacune sous maxSimultaneousTrades mais sans borne cumulée. La
   // limite de perte journalière ne compte que les trades CLÔTURÉS, donc
   // l'exposition flottante non plafonnée contournait le garde-fou.
-  maxOpenPositions: 6,
+  maxOpenPositions: 4,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
@@ -332,7 +332,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 0.75 au lieu de 0.70 : breakeven win rate = 1/(1+0.75) = 57.1% au lieu de
   // 60.6% avec 0.70. Le bucket <80 avait 62.5% de win rate — au-dessus de 57%.
   // Exiger un payout plus élevé réduit le nombre de trades mais améliore l'EV.
-  minPayoutRatio: 0.75,
+  minPayoutRatio: 0.80,
   // Off by default: an untested filter shouldn't silently change what the
   // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
   // to "strong-only" — Daily is one more filter layer, it will trade less.
@@ -690,8 +690,8 @@ export function aggregateTfSignals(
 
   // Confidence bonus based on alignment
   let avgConf = totalConf / results.length;
-  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 15); // all 4 TFs agree
-  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 8); // 3 TFs agree
+  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 8); // all 4 TFs agree
+  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 5); // 3 TFs agree
   else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10); // weak alignment
 
   // Pattern bonus (capped at +10 to avoid over-confidence)
