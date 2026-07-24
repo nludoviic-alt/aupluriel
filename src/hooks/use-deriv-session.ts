@@ -34,6 +34,16 @@ const _listeners = new Set<(s: DerivSession) => void>();
 let _initStarted = false;
 let _balanceUnsub: (() => void) | null = null;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// Backoff state — without this, a WS that dies right after connecting (seen
+// in prod: a fresh OTP session closing within seconds, over and over) retried
+// every fixed 4s forever, hammering /api/deriv-session (and Deriv's own OTP
+// endpoint behind it) indefinitely. A connection only counts as "healthy"
+// once it survives STABLE_AFTER_MS — a session that dies before that bumps
+// the backoff instead of resetting it.
+let _consecutiveFailures = 0;
+let _stabilityTimer: ReturnType<typeof setTimeout> | null = null;
+const STABLE_AFTER_MS = 20_000;
+const MAX_AUTO_RETRIES = 6;
 
 function dispatch(update: Partial<DerivSession> | ((s: DerivSession) => DerivSession)) {
   _state = typeof update === "function" ? update(_state) : { ..._state, ...update };
@@ -80,17 +90,34 @@ function initSession() {
         error: null,
       });
       startBalanceSubscription();
+      // Only counts as recovered once it survives STABLE_AFTER_MS — a
+      // connection that dies before then doesn't get to reset the backoff.
+      if (_stabilityTimer) clearTimeout(_stabilityTimer);
+      _stabilityTimer = setTimeout(() => { _consecutiveFailures = 0; }, STABLE_AFTER_MS);
       // Auto-reconnect when the WS session drops unexpectedly
       onDerivDisconnect(() => {
         if (_reconnectTimer) return; // already scheduled
+        if (_stabilityTimer) { clearTimeout(_stabilityTimer); _stabilityTimer = null; }
         _balanceUnsub?.();
         _balanceUnsub = null;
         _initStarted = false;
+        _consecutiveFailures++;
+        if (_consecutiveFailures > MAX_AUTO_RETRIES) {
+          // Stop hammering /api/deriv-session (and Deriv's own OTP endpoint
+          // behind it) — a session dying within seconds of connecting,
+          // repeatedly, isn't a network blip a fixed 4s retry will outlast.
+          dispatch({
+            connected: false, balance: null, connecting: false,
+            error: "Connexion Deriv instable — nouvelle tentative interrompue après plusieurs échecs. Réessaie manuellement.",
+          });
+          return;
+        }
+        const delay = Math.min(4000 * 2 ** (_consecutiveFailures - 1), 60_000);
         dispatch({ connected: false, balance: null, connecting: false, error: "Session expirée — reconnexion…" });
         _reconnectTimer = setTimeout(() => {
           _reconnectTimer = null;
           initSession();
-        }, 4000);
+        }, delay);
       });
     })
     .catch((e: Error) => {
@@ -113,7 +140,9 @@ export async function refreshDerivBalance(): Promise<void> {
 /** Force a full session re-init (use when OTP URL expired and WS is unauthenticated). */
 export function reinitDerivSession(): void {
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  if (_stabilityTimer) { clearTimeout(_stabilityTimer); _stabilityTimer = null; }
   _initStarted = false;
+  _consecutiveFailures = 0; // a manual retry always gets a fresh attempt, not a stuck backoff
   _balanceUnsub?.();
   _balanceUnsub = null;
   onDerivDisconnect(null); // clear stale callback before reinit
