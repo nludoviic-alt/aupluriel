@@ -891,44 +891,6 @@ function AutoTraderPage() {
 
             <AutoBacktestStatus className="mt-3" />
 
-            {/* ── Broker balances (always visible) ── */}
-            {cloud?.brokerBalances && (
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/40 pt-3">
-                {cloud.brokerBalances.deriv && (
-                  <div className="flex items-center justify-between rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">Deriv</span>
-                    <span className="text-xs font-extrabold font-mono-tabular text-foreground">
-                      {cloud.brokerBalances.deriv.balance.toFixed(2)} {cloud.brokerBalances.deriv.currency}
-                    </span>
-                  </div>
-                )}
-                {cloud.brokerBalances.kraken && (
-                  <div className="flex items-center justify-between rounded-lg bg-violet-500/5 border border-violet-500/15 px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Kraken</span>
-                    <span className="text-xs font-extrabold font-mono-tabular text-foreground">
-                      {cloud.brokerBalances.kraken.balance.toFixed(2)} {cloud.brokerBalances.kraken.currency}
-                    </span>
-                  </div>
-                )}
-                {cloud.brokerBalances.binance && (
-                  <div className="flex items-center justify-between rounded-lg bg-yellow-500/5 border border-yellow-500/15 px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400/80">Binance</span>
-                    <span className="text-xs font-extrabold font-mono-tabular text-foreground">
-                      {cloud.brokerBalances.binance.balance.toFixed(2)} {cloud.brokerBalances.binance.currency}
-                    </span>
-                  </div>
-                )}
-                {cloud.brokerBalances.oanda && (
-                  <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">OANDA</span>
-                    <span className="text-xs font-extrabold font-mono-tabular text-foreground">
-                      {cloud.brokerBalances.oanda.balance.toFixed(2)} {cloud.brokerBalances.oanda.currency}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
             {cloud?.enabled && (
               <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
                 <div className="flex items-center justify-between text-sm">
@@ -1080,7 +1042,45 @@ function AutoTraderPage() {
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
             
-            {/* KPI strip — inside the right column */}
+            {/* Broker balances strip */}
+            {cloud?.brokerBalances && (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
+                {cloud.brokerBalances.deriv && (
+                  <KpiCard
+                    label="Deriv"
+                    value={`${cloud.brokerBalances.deriv.balance.toFixed(2)}`}
+                    delta={cloud.brokerBalances.deriv.currency}
+                    tone="bear"
+                  />
+                )}
+                {cloud.brokerBalances.kraken && (
+                  <KpiCard
+                    label="Kraken"
+                    value={`${cloud.brokerBalances.kraken.balance.toFixed(2)}`}
+                    delta={cloud.brokerBalances.kraken.currency}
+                    tone="violet"
+                  />
+                )}
+                {cloud.brokerBalances.binance && (
+                  <KpiCard
+                    label="Binance"
+                    value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
+                    delta={cloud.brokerBalances.binance.currency}
+                    tone="amber"
+                  />
+                )}
+                {cloud.brokerBalances.oanda && (
+                  <KpiCard
+                    label="OANDA"
+                    value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
+                    delta={cloud.brokerBalances.oanda.currency}
+                    tone="bull"
+                  />
+                )}
+              </div>
+            )}
+
+            {/* KPI strip — Win rate, P&L, loss limit */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
               <KpiCard
                 label="Fonds disponibles"
