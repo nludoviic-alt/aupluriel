@@ -1044,16 +1044,29 @@ function AutoTraderPage() {
             
             {/* Row 1: Fonds disponibles + broker balances */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
-              <KpiCard
-                label="Fonds disponibles"
-                value={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-                  ? `$${derivSession.balance.toFixed(2)}`
-                  : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`}
-                tone={cumulativePnl >= 0 ? "bull" : "bear"}
-                delta={(config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
-                  ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
-                  : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
-              />
+              {(() => {
+                const bb = cloud?.brokerBalances;
+                const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
+                const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
+                const value = hasAny
+                  ? `$${total.toFixed(2)}`
+                  : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                    ? `$${derivSession.balance.toFixed(2)}`
+                    : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`;
+                const delta = hasAny
+                  ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "") + (bb?.kraken ? "KRAKEN " : "") + (bb?.binance ? "BINANCE " : "") + (bb?.oanda ? "OANDA" : "").trim()}`
+                  : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                    ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
+                    : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
+                return (
+                  <KpiCard
+                    label="Fonds disponibles"
+                    value={value}
+                    tone={cumulativePnl >= 0 ? "bull" : "bear"}
+                    delta={delta}
+                  />
+                );
+              })()}
               {(() => {
                 const b = cloud?.brokerBalances?.deriv;
                 return (
