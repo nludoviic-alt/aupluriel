@@ -224,6 +224,11 @@ export interface AutoTraderConfig {
   riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
   // --- Broker: which exchange executes the trades ---
   broker: "deriv" | "kraken" | "binance" | "oanda";     // deriv = forex/or binaire+multiplier, kraken/binance = crypto spot, oanda = forex spot
+  // --- Broker enable/disable toggles (independent of API key storage) ---
+  enableDeriv: boolean;                         // toggle Deriv without clearing token
+  enableKraken: boolean;                        // toggle Kraken without clearing API keys
+  enableBinance: boolean;                       // toggle Binance without clearing API keys
+  enableOanda: boolean;                         // toggle OANDA without clearing API keys
   // --- Regime detection (ADX-based) ---
   adxFilterMode: "off" | "penalize" | "block";  // block = hard reject when ADX < threshold, penalize = confidence penalty
   adxBlockThreshold: number;                    // ADX below this = ranging market (default 20)
@@ -291,6 +296,11 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   dynamicConfidenceMargin: 8,
   // --- Progressive stake reduction ---
   progressiveStakeReduction: true,
+  // --- Broker toggles ---
+  enableDeriv: true,
+  enableKraken: true,
+  enableBinance: true,
+  enableOanda: true,
   enabled: false,
   mode: "demo",
   stakeUsd: 5,

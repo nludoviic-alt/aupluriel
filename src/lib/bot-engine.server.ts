@@ -868,6 +868,11 @@ class ServerBotEngine {
       const symInstrument = getInstrumentForSymbol(symbol, config);
       if (!isSymbolTradeable(symbol, symInstrument)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
       if (this.activeSymbols.has(symbol)) { scanResults.push({ symbol, action: "open-trade" }); continue; }
+      // ── Skip symbols from disabled brokers ──
+      if (isKrakenSymbol(symbol) && !(this.config.enableKraken ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Kraken désactivé" }); continue; }
+      if (isBinanceSymbol(symbol) && !(this.config.enableBinance ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Binance désactivé" }); continue; }
+      if (isOandaSymbol(symbol) && !(this.config.enableOanda ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "OANDA désactivé" }); continue; }
+      if (!isKrakenSymbol(symbol) && !isBinanceSymbol(symbol) && !isOandaSymbol(symbol) && !(this.config.enableDeriv ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Deriv désactivé" }); continue; }
       if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
         scanResults.push({ symbol, action: "session-closed" });
         continue;
@@ -1284,45 +1289,45 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
 
   // Deriv connection (forex/or binaire + multiplier)
   let derivToken: string | null = null;
-  if (settings?.deriv_token) {
+  if (settings?.deriv_token && (config.enableDeriv ?? true)) {
     derivToken = settings.deriv_token;
   }
 
   // Kraken connection (crypto spot)
   let krakenConn: KrakenTradingConnection | null = null;
-  if (settings?.kraken_api_key && settings?.kraken_api_secret) {
+  if (settings?.kraken_api_key && settings?.kraken_api_secret && (config.enableKraken ?? true)) {
     krakenConn = new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret);
   }
 
   // Binance connection (crypto spot — for users in regions where Binance is available)
   let binanceConn: BinanceTradingConnection | null = null;
-  if (settings?.binance_api_key && settings?.binance_api_secret) {
+  if (settings?.binance_api_key && settings?.binance_api_secret && (config.enableBinance ?? true)) {
     binanceConn = new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret);
   }
 
   // OANDA connection (forex spot — for users in Canada)
   let oandaConn: OandaTradingConnection | null = null;
-  if (settings?.oanda_api_key && settings?.oanda_account_id) {
+  if (settings?.oanda_api_key && settings?.oanda_account_id && (config.enableOanda ?? true)) {
     oandaConn = new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice);
   }
 
-  // Determine which broker(s) are needed based on config symbols
-  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s) && !isBinanceSymbol(s) && !isOandaSymbol(s));
-  const needsKraken = config.symbols.some((s) => isKrakenSymbol(s));
-  const needsBinance = config.symbols.some((s) => isBinanceSymbol(s));
-  const needsOanda = config.symbols.some((s) => isOandaSymbol(s));
+  // Determine which broker(s) are needed based on config symbols AND toggles
+  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s) && !isBinanceSymbol(s) && !isOandaSymbol(s)) && (config.enableDeriv ?? true);
+  const needsKraken = config.symbols.some((s) => isKrakenSymbol(s)) && (config.enableKraken ?? true);
+  const needsBinance = config.symbols.some((s) => isBinanceSymbol(s)) && (config.enableBinance ?? true);
+  const needsOanda = config.symbols.some((s) => isOandaSymbol(s)) && (config.enableOanda ?? true);
 
   if (needsDeriv && !derivToken) {
-    throw new Error("Aucun token Deriv enregistré côté serveur — va dans Paramètres et clique « Tester & enregistrer ».");
+    throw new Error("Deriv est activé mais aucun token enregistré — va dans Paramètres ou désactive Deriv.");
   }
   if (needsKraken && !krakenConn) {
-    throw new Error("Aucune clé API Kraken enregistrée — va dans Paramètres pour configurer Kraken.");
+    throw new Error("Kraken est activé mais aucune clé API enregistrée — va dans Paramètres ou désactive Kraken.");
   }
   if (needsBinance && !binanceConn) {
-    throw new Error("Aucune clé API Binance enregistrée — va dans Paramètres pour configurer Binance.");
+    throw new Error("Binance est activé mais aucune clé API enregistrée — va dans Paramètres ou désactive Binance.");
   }
   if (needsOanda && !oandaConn) {
-    throw new Error("Aucune clé API OANDA enregistrée — va dans Paramètres pour configurer OANDA.");
+    throw new Error("OANDA est activé mais aucune clé enregistrée — va dans Paramètres ou désactive OANDA.");
   }
 
   getDb().prepare(`

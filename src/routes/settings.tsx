@@ -60,6 +60,11 @@ function SettingsPage() {
   const [oandaPractice, setOandaPractice] = useState(true);
   const [oandaShow, setOandaShow] = useState(false);
   const [oandaLoading, setOandaLoading] = useState(false);
+  // Broker enable/disable toggles (stored in bot config, not user_settings)
+  const [enableDeriv, setEnableDeriv] = useState(true);
+  const [enableKraken, setEnableKraken] = useState(true);
+  const [enableBinance, setEnableBinance] = useState(true);
+  const [enableOanda, setEnableOanda] = useState(true);
   const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
@@ -86,6 +91,16 @@ function SettingsPage() {
       if (s.oanda_api_key) setOandaKey(s.oanda_api_key as string);
       if (s.oanda_account_id) setOandaAccountId(s.oanda_account_id as string);
       if (s.oanda_is_practice !== undefined) setOandaPractice(!!s.oanda_is_practice);
+      // Load broker toggles from bot config
+      if (s.bot_config) {
+        try {
+          const cfg = typeof s.bot_config === "string" ? JSON.parse(s.bot_config) : s.bot_config;
+          if (cfg.enableDeriv !== undefined) setEnableDeriv(cfg.enableDeriv);
+          if (cfg.enableKraken !== undefined) setEnableKraken(cfg.enableKraken);
+          if (cfg.enableBinance !== undefined) setEnableBinance(cfg.enableBinance);
+          if (cfg.enableOanda !== undefined) setEnableOanda(cfg.enableOanda);
+        } catch { /* ignore */ }
+      }
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
     }).catch(() => {});
     // Reflects the browser's actual subscription, not a saved preference —
@@ -205,6 +220,24 @@ function SettingsPage() {
     }
   }
 
+  async function toggleBroker(broker: "enableDeriv" | "enableKraken" | "enableBinance" | "enableOanda", value: boolean) {
+    // Optimistic update
+    if (broker === "enableDeriv") setEnableDeriv(value);
+    if (broker === "enableKraken") setEnableKraken(value);
+    if (broker === "enableBinance") setEnableBinance(value);
+    if (broker === "enableOanda") setEnableOanda(value);
+    try {
+      await api.put("/api/settings", { [broker]: value });
+    } catch {
+      // Revert on failure
+      if (broker === "enableDeriv") setEnableDeriv(!value);
+      if (broker === "enableKraken") setEnableKraken(!value);
+      if (broker === "enableBinance") setEnableBinance(!value);
+      if (broker === "enableOanda") setEnableOanda(!value);
+      toast.error("Échec du changement de broker");
+    }
+  }
+
   async function saveLocal() {
     localStorage.setItem(KEYS.token, token);
     localStorage.setItem(KEYS.account, account);
@@ -280,6 +313,10 @@ function SettingsPage() {
             accentClassName="border-red-500/40 bg-red-500/[0.08]"
           >
             <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Broker actif</span>
+                <Switch checked={enableDeriv} onCheckedChange={(v) => toggleBroker("enableDeriv", v)} />
+              </div>
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Token API Deriv</span>
                 <div className="relative">
@@ -377,6 +414,10 @@ function SettingsPage() {
             accentClassName="border-violet-500/40 bg-violet-500/[0.08]"
           >
             <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Broker actif</span>
+                <Switch checked={enableKraken} onCheckedChange={(v) => toggleBroker("enableKraken", v)} />
+              </div>
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API Kraken</span>
                 <input
@@ -470,6 +511,10 @@ function SettingsPage() {
             accentClassName="border-yellow-500/40 bg-yellow-500/[0.08]"
           >
             <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Broker actif</span>
+                <Switch checked={enableBinance} onCheckedChange={(v) => toggleBroker("enableBinance", v)} />
+              </div>
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API Binance</span>
                 <input
@@ -536,6 +581,10 @@ function SettingsPage() {
             accentClassName="border-emerald-500/40 bg-emerald-500/[0.08]"
           >
             <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Broker actif</span>
+                <Switch checked={enableOanda} onCheckedChange={(v) => toggleBroker("enableOanda", v)} />
+              </div>
               <div className="space-y-2">
                 <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API OANDA</span>
                 <input

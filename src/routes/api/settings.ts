@@ -14,7 +14,11 @@ export const Route = createFileRoute("/api/settings")({
           .prepare("SELECT * FROM user_settings WHERE user_id = ?")
           .get(auth.userId) as Record<string, unknown> | undefined;
 
-        return json(settings ?? {});
+        // Also return bot config (for broker enable/disable toggles)
+        const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(auth.userId) as { config?: string } | undefined;
+        const result = { ...settings, bot_config: botState?.config ?? null };
+
+        return json(result);
       },
 
       PUT: async ({ request }) => {
@@ -39,6 +43,10 @@ export const Route = createFileRoute("/api/settings")({
           oanda_api_key?: string;
           oanda_account_id?: string;
           oanda_is_practice?: boolean;
+          enableDeriv?: boolean;
+          enableKraken?: boolean;
+          enableBinance?: boolean;
+          enableOanda?: boolean;
         };
 
         const db = getDb();
@@ -89,6 +97,31 @@ export const Route = createFileRoute("/api/settings")({
         const updated = db
           .prepare("SELECT * FROM user_settings WHERE user_id = ?")
           .get(auth.userId);
+
+        // ── Broker toggles: stored in bot_state.config (JSON) ──
+        const brokerToggles: Record<string, boolean | undefined> = {
+          enableDeriv: body.enableDeriv,
+          enableKraken: body.enableKraken,
+          enableBinance: body.enableBinance,
+          enableOanda: body.enableOanda,
+        };
+        const hasToggle = Object.values(brokerToggles).some((v) => v !== undefined);
+        if (hasToggle) {
+          const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(auth.userId) as { config?: string } | undefined;
+          let config: Record<string, unknown> = {};
+          try { config = botState?.config ? JSON.parse(botState.config) : {}; } catch { /* ignore */ }
+          if (brokerToggles.enableDeriv !== undefined) config.enableDeriv = brokerToggles.enableDeriv;
+          if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
+          if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
+          if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
+          db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ?").run(JSON.stringify(config), auth.userId);
+          // Hot-swap if bot is running
+          try {
+            const { updateConfigForUser } = await import("@/lib/bot-engine.server");
+            updateConfigForUser(auth.userId, config as any);
+          } catch { /* bot engine not available in browser */ }
+        }
+
         return json(updated);
       },
     },
