@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity, ArrowUpRight, Bot, BriefcaseBusiness,
   Radar, Wallet, Zap, TrendingUp, TrendingDown,
@@ -629,7 +629,7 @@ const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; do
 };
 
 function KpiCard({ label, value, delta, tone = "default", icon }: {
-  label: string; value: React.ReactNode; delta?: string; tone?: Tone; icon?: React.ReactNode;
+  label: string; value: ReactNode; delta?: string; tone?: Tone; icon?: ReactNode;
 }) {
   const t = TONE_STYLES[tone];
   return (
