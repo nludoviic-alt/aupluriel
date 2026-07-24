@@ -22,6 +22,7 @@ import {
   type ProfitRecord,
 } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
+import { useBrokerBalances } from "@/hooks/use-broker-balances";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { LiveTradeCard } from "@/components/live-trade-card";
@@ -138,10 +139,16 @@ export default function PortfolioPage() {
   const { ready, balance, currency, noToken } = useDerivAuth();
   const { positions, profits, loading, refresh, close } = usePortfolio();
   const { confirmState, confirm } = useConfirm();
+  const brokerBalances = useBrokerBalances();
 
   const todayPnl = pnlToday(profits);
   const openPnl = positions.reduce((acc, p) => acc + p.profit, 0);
   const totalPnl = todayPnl + openPnl;
+
+  // Deriv + OANDA combined — this page trades both, so "Balance" should
+  // reflect the total available across the two, not Deriv alone.
+  const hasDerivOanda = !!(brokerBalances?.deriv || brokerBalances?.oanda);
+  const derivOandaTotal = (brokerBalances?.deriv?.balance ?? 0) + (brokerBalances?.oanda?.balance ?? 0);
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -194,8 +201,8 @@ export default function PortfolioPage() {
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiBox
-          label={`Balance (${currency})`}
-          value={balance !== null ? balance.toFixed(2) : "—"}
+          label={hasDerivOanda ? "Balance (Deriv + OANDA)" : `Balance (${currency})`}
+          value={hasDerivOanda ? `$${derivOandaTotal.toFixed(2)}` : balance !== null ? balance.toFixed(2) : "—"}
           icon={<Wallet className="h-4 w-4" />}
           tone="cyan"
         />

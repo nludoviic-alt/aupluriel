@@ -16,29 +16,8 @@ import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useBrokerBalances } from "@/hooks/use-broker-balances";
 import { api } from "@/lib/api";
-
-type BrokerBalances = {
-  deriv: { balance: number; currency: string } | null;
-  kraken: { balance: number; currency: string } | null;
-  binance: { balance: number; currency: string } | null;
-  oanda: { balance: number; currency: string } | null;
-};
-
-function useBrokerBalances() {
-  const [balances, setBalances] = useState<BrokerBalances | null>(null);
-  useEffect(() => {
-    const refresh = () => {
-      api.get<{ brokerBalances?: BrokerBalances }>("/api/bot").then((d) => {
-        if (d.brokerBalances) setBalances(d.brokerBalances);
-      }).catch(() => {});
-    };
-    refresh();
-    const id = setInterval(refresh, 10_000);
-    return () => clearInterval(id);
-  }, []);
-  return balances;
-}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -127,6 +106,8 @@ function Dashboard() {
   const balanceDisplay = derivBalance
     ? derivBalance.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : null;
+  const hasDerivOanda = !!(brokerBalances?.deriv || brokerBalances?.oanda);
+  const derivOandaTotal = (brokerBalances?.deriv?.balance ?? 0) + (brokerBalances?.oanda?.balance ?? 0);
 
   const now = new Date();
   const hour = now.getHours();
@@ -253,8 +234,13 @@ function Dashboard() {
         })()}
       </div>
 
-      {/* ── TRADING KPI CARDS ── */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      {/* ── TRADING KPI CARDS ──
+          2 cols on mobile (matches the broker-balance grid above it) so
+          "Win Rate" and "P&L Aujourd'hui" sit side by side instead of being
+          squeezed into a cramped 3rd of the screen each; "Signaux actifs"
+          spans the full width below them rather than sitting alone in an
+          orphaned 3rd column. 3 even columns from lg: up where there's room. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <KpiCard
           label="Win Rate"
           value={winRate !== null ? `${winRate.toFixed(1)}%` : "—"}
@@ -270,6 +256,7 @@ function Dashboard() {
           tone={todayPnl !== null ? (todayPnl >= 0 ? "bull" : "bear") : "default"}
         />
         <KpiCard
+          className="col-span-2 lg:col-span-1"
           label="Signaux actifs"
           value={liveSignals.filter(s => s.direction !== "HOLD").length || "—"}
           delta="BTC · ETH · EUR/USD"
@@ -360,10 +347,10 @@ function Dashboard() {
                 <Wallet className="h-4 w-4 text-orange-400" />
               </div>
               <div className="text-xs text-white/50 uppercase tracking-wider mb-1">
-                {derivBalance ? `${derivBalance.currency} · Deriv` : "Simulation"}
+                {hasDerivOanda ? "Deriv + OANDA" : derivBalance ? `${derivBalance.currency} · Deriv` : "Simulation"}
               </div>
               <div className="font-mono-tabular text-3xl font-black text-white text-glow-orange leading-none">
-                {balanceDisplay ?? "—"}
+                {hasDerivOanda ? `$${derivOandaTotal.toFixed(2)}` : balanceDisplay ?? "—"}
               </div>
               {tradeCount !== null && (
                 <div className="mt-2 text-xs text-white/40">{tradeCount} trades historiques</div>
@@ -628,18 +615,20 @@ const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; do
   binance: { panel: "bg-amber-500/[0.06] border border-amber-500/20",    value: "text-foreground", icon: "text-amber-400", dot: "bg-amber-500" },
 };
 
-function KpiCard({ label, value, delta, tone = "default", icon }: {
-  label: string; value: ReactNode; delta?: string; tone?: Tone; icon?: ReactNode;
+function KpiCard({ label, value, delta, tone = "default", icon, className }: {
+  label: string; value: ReactNode; delta?: string; tone?: Tone; icon?: ReactNode; className?: string;
 }) {
   const t = TONE_STYLES[tone];
   return (
-    <div className={cn(t.panel, "rounded-2xl p-4 relative overflow-hidden group hover:scale-[1.01] transition-transform duration-200")}>
-      <div className="flex items-start justify-between mb-3">
-        <span className="text-xs font-bold uppercase tracking-wider text-white/50">{label}</span>
-        {icon && <span className={cn("opacity-50 group-hover:opacity-80 transition-opacity [&>svg]:h-4 [&>svg]:w-4", t.icon)}>{icon}</span>}
+    <div className={cn(t.panel, "flex h-full flex-col justify-between rounded-2xl p-4 relative overflow-hidden group hover:scale-[1.01] transition-transform duration-200", className)}>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-white/50 leading-tight">{label}</span>
+        {icon && <span className={cn("shrink-0 opacity-50 group-hover:opacity-80 transition-opacity [&>svg]:h-4 [&>svg]:w-4", t.icon)}>{icon}</span>}
       </div>
-      <div className={cn("font-mono-tabular text-2xl font-black leading-none tracking-tight", t.value)}>{value}</div>
-      {delta && <div className="mt-2 text-xs text-white/40">{delta}</div>}
+      <div>
+        <div className={cn("font-mono-tabular text-2xl font-black leading-none tracking-tight", t.value)}>{value}</div>
+        {delta && <div className="mt-2 text-xs text-white/40">{delta}</div>}
+      </div>
     </div>
   );
 }
