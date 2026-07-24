@@ -224,6 +224,27 @@ export interface AutoTraderConfig {
   riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
   // --- Broker: which exchange executes the trades ---
   broker: "deriv" | "kraken" | "binance" | "oanda";     // deriv = forex/or binaire+multiplier, kraken/binance = crypto spot, oanda = forex spot
+  // --- Regime detection (ADX-based) ---
+  adxFilterMode: "off" | "penalize" | "block";  // block = hard reject when ADX < threshold, penalize = confidence penalty
+  adxBlockThreshold: number;                    // ADX below this = ranging market (default 20)
+  adxStrongThreshold: number;                   // ADX above this = strong trend, confidence boost (default 25)
+  // --- Spread/slippage protection ---
+  maxSpreadPct: number;                         // skip trade if bid/ask spread > this % of price (0 = disabled)
+  // --- Time-of-day edge detection ---
+  hourlyEdgeFilter: boolean;                   // auto-disable UTC hours with negative P&L over recent trades
+  hourlyEdgeLookback: number;                   // how many trades per hour to track before activating the filter
+  // --- Confluence scoring ---
+  confluenceMode: "vote" | "weighted";          // vote = binary majority, weighted = quality-weighted score
+  // --- Dynamic duration ---
+  dynamicDuration: boolean;                    // adjust contract duration based on ATR (faster on volatile symbols)
+  // --- Partial profit taking (Multiplier only) ---
+  partialTakeProfitPct: number;                // close this % of position when profit reaches 50% of TP (0 = disabled)
+  moveSlToBreakeven: boolean;                  // after partial TP, move stop-loss to entry price
+  // --- Dynamic confidence threshold ---
+  dynamicMinConfidence: boolean;               // adjust minConfidence based on live payout ratio
+  dynamicConfidenceMargin: number;             // safety margin above breakeven win rate (default 8)
+  // --- Progressive stake reduction ---
+  progressiveStakeReduction: boolean;          // reduce stake gradually after each loss (not just after 3)
 }
 
 /**
@@ -249,6 +270,27 @@ export function computeAtrStopUsd(
 }
 
 export const DEFAULT_CONFIG: AutoTraderConfig = {
+  // --- Regime detection ---
+  adxFilterMode: "block",
+  adxBlockThreshold: 20,
+  adxStrongThreshold: 25,
+  // --- Spread/slippage ---
+  maxSpreadPct: 0.15,
+  // --- Time-of-day edge ---
+  hourlyEdgeFilter: true,
+  hourlyEdgeLookback: 5,
+  // --- Confluence scoring ---
+  confluenceMode: "weighted",
+  // --- Dynamic duration ---
+  dynamicDuration: true,
+  // --- Partial profit taking ---
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  // --- Dynamic confidence threshold ---
+  dynamicMinConfidence: true,
+  dynamicConfidenceMargin: 8,
+  // --- Progressive stake reduction ---
+  progressiveStakeReduction: true,
   enabled: false,
   mode: "demo",
   stakeUsd: 5,
@@ -526,6 +568,133 @@ export function isCorrelatedWithActive(
   });
 }
 
+// ─── Time-of-day edge detection ───────────────────────────────────────────────
+
+/**
+ * Tracks P&L by UTC hour from recent closed trades. After enough samples
+ * (hourlyEdgeLookback), hours with negative P&L are flagged as "blocked"
+ * so the bot skips them — the live analysis showed 21h-02h UTC generated
+ * the bulk of losses while London/NY hours were near break-even.
+ */
+export function getBlockedHours(logs: TradeLog[], lookback: number): Set<number> {
+  const hourlyPnl: Map<number, { pnl: number; count: number }> = new Map();
+  for (const l of logs) {
+    if (l.status !== "won" && l.status !== "lost") continue;
+    const hour = new Date(l.time).getUTCHours();
+    const entry = hourlyPnl.get(hour) ?? { pnl: 0, count: 0 };
+    entry.pnl += l.profit;
+    entry.count++;
+    hourlyPnl.set(hour, entry);
+  }
+  const blocked = new Set<number>();
+  for (const [hour, stats] of hourlyPnl) {
+    if (stats.count >= lookback && stats.pnl < 0) {
+      blocked.add(hour);
+    }
+  }
+  return blocked;
+}
+
+export function isHourBlocked(logs: TradeLog[], lookback: number): boolean {
+  const blocked = getBlockedHours(logs, lookback);
+  const currentHour = new Date().getUTCHours();
+  return blocked.has(currentHour);
+}
+
+// ─── Progressive stake reduction ──────────────────────────────────────────────
+
+/**
+ * Gradual stake reduction after each consecutive loss (per symbol).
+ * - 0 losses: full stake
+ * - 1 loss:  -25%
+ * - 2 losses: -50%
+ * - 3+ losses: triggers cooldown (handled by existing maxConsecutiveLosses)
+ * More granular than the existing all-or-nothing adaptive stake.
+ */
+export function computeProgressiveStake(baseStake: number, consecutiveLosses: number): number {
+  if (consecutiveLosses <= 0) return baseStake;
+  const reduction = Math.min(0.75, consecutiveLosses * 0.25);
+  return Math.max(1, Math.round(baseStake * (1 - reduction) * 100) / 100);
+}
+
+// ─── Dynamic minConfidence based on payout ────────────────────────────────────
+
+/**
+ * Calibrates the minimum confidence threshold against the breakeven win rate
+ * implied by the current payout ratio. For a payout of 0.75 (75%), the
+ * breakeven win rate is 1/(1+0.75) = 57.1%. We add a safety margin above
+ * that to ensure positive expectancy.
+ *
+ * Formula: minConfidence = breakevenWinRate + safetyMargin
+ * Clamped to [55, 85] to stay reasonable.
+ */
+export function computeDynamicMinConfidence(
+  payoutRatio: number,
+  safetyMargin: number,
+  baseMinConfidence: number,
+): number {
+  if (payoutRatio <= 0) return baseMinConfidence;
+  const breakeven = 1 / (1 + payoutRatio) * 100;
+  const dynamic = breakeven + safetyMargin;
+  return Math.round(Math.min(85, Math.max(55, dynamic)));
+}
+
+// ─── Confluence scoring ───────────────────────────────────────────────────────
+
+/**
+ * Quality-weighted confluence score for a set of TF signals.
+ * Instead of a binary majority vote (3/4 or 4/4 TFs), each TF's signal is
+ * weighted by its quality grade:
+ *   premium = 1.5, good = 1.0, weak = 0.3
+ * The weighted scores are summed per direction (BUY/SELL), and the dominant
+ * direction wins only if its weighted share exceeds 60%.
+ */
+export function computeConfluenceScore(
+  tfSignals: TfSignalMap,
+): {
+  direction: "CALL" | "PUT" | null;
+  weightedConfidence: number;
+  agreement: number;
+  blockers: string[];
+} {
+  const qualityWeight: Record<string, number> = { premium: 1.5, good: 1.0, weak: 0.3 };
+  let bullScore = 0;
+  let bearScore = 0;
+  let totalWeight = 0;
+  let bullCount = 0;
+  let bearCount = 0;
+  const blockers: string[] = [];
+
+  for (const tf of TIMEFRAMES) {
+    const sig = tfSignals[tf];
+    if (!sig || sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
+    const w = qualityWeight[sig.quality ?? "weak"] ?? 1.0;
+    totalWeight += w;
+    if (sig.direction === "BUY") { bullScore += sig.confidence * w; bullCount++; }
+    else if (sig.direction === "SELL") { bearScore += sig.confidence * w; bearCount++; }
+  }
+
+  if (totalWeight === 0) return { direction: null, weightedConfidence: 0, agreement: 0, blockers };
+
+  const bullShare = bullScore / (bullScore + bearScore || 1);
+  const bearShare = bearScore / (bullScore + bearScore || 1);
+
+  let direction: "CALL" | "PUT" | null = null;
+  if (bullShare >= 0.6 && bullScore > bearScore) direction = "CALL";
+  else if (bearShare >= 0.6 && bearScore > bullScore) direction = "PUT";
+
+  if (!direction) {
+    blockers.push("Confluence insuffisante — aucune direction dominante (>= 60% du score pondere)");
+  }
+
+  const weightedConfidence = direction
+    ? Math.round(Math.min(95, Math.max(bullScore, bearScore) / totalWeight))
+    : 0;
+  const agreement = direction === "CALL" ? bullCount : direction === "PUT" ? bearCount : 0;
+
+  return { direction, weightedConfidence, agreement, blockers };
+}
+
 // ─── Adaptive stake ───────────────────────────────────────────────────────────
 
 export function computeAdaptiveStake(baseStake: number, recentLogs: TradeLog[]): number {
@@ -596,6 +765,12 @@ export function aggregateTfSignals(
   minDurationMinutes = 0,
   dailySignal?: GeneratedSignal,
   vetoDaily: Veto4hMode = "off",
+  opts?: {
+    confluenceMode?: "vote" | "weighted";
+    adxFilterMode?: "off" | "penalize" | "block";
+    adxBlockThreshold?: number;
+    adxStrongThreshold?: number;
+  },
 ): SymbolAnalysis {
   const results: string[] = [];
   const qualities: string[] = [];
@@ -647,6 +822,104 @@ export function aggregateTfSignals(
     return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
   }
 
+  // ── ADX regime detection ────────────────────────────────────────────────────
+  // Extract ADX from the 15m signal triggers (already computed in generateSignal)
+  // If ADX < threshold and mode is "block", hard-reject the trade.
+  // If mode is "penalize", apply a confidence penalty.
+  const adxFilterMode = opts?.adxFilterMode ?? "off";
+  const adxBlockThreshold = opts?.adxBlockThreshold ?? 20;
+  const adxStrongThreshold = opts?.adxStrongThreshold ?? 25;
+  let adxPenalty = 0;
+  let adxBlocked = false;
+
+  // Parse ADX value from 15m signal triggers (e.g. "ADX 28 — tendance forte")
+  const sig15m = tfSignals["15m"];
+  if (sig15m && adxFilterMode !== "off") {
+    const adxTrigger = sig15m.triggers.find((t) => t.startsWith("ADX"));
+    const adxBlocker = sig15m.blockers?.find((b) => b.startsWith("ADX"));
+    const adxText = adxTrigger ?? adxBlocker;
+    if (adxText) {
+      const adxMatch = adxText.match(/ADX\s+(\d+)/);
+      if (adxMatch) {
+        const adxValue = Number(adxMatch[1]);
+        if (adxValue < adxBlockThreshold) {
+          if (adxFilterMode === "block") {
+            blockers.add(`ADX ${adxValue} < ${adxBlockThreshold} — marché en range, trade bloqué`);
+            adxBlocked = true;
+          } else if (adxFilterMode === "penalize") {
+            adxPenalty = 15;
+            blockers.add(`ADX ${adxValue} < ${adxBlockThreshold} — pénalité -15`);
+          }
+        }
+      }
+    }
+  }
+  if (adxBlocked) {
+    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
+  }
+
+  // ── Confluence scoring mode ─────────────────────────────────────────────────
+  const confluenceMode = opts?.confluenceMode ?? "vote";
+  if (confluenceMode === "weighted") {
+    const confluence = computeConfluenceScore(tfSignals);
+    if (!confluence.direction) {
+      confluence.blockers.forEach((b) => blockers.add(b));
+      return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
+    }
+    // Use weighted confidence as the base, then apply existing TAS bonus + pattern bonus
+    // Override the vote-based direction with the weighted one
+    const rawDirection = confluence.direction;
+    const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
+    const trendAlignmentScore = Object.values(tfDirections).filter((d) => d === signalBias).length;
+
+    // 4H veto still applies
+    const h4dir = tfDirections["4H"];
+    if (h4dir && h4dir !== signalBias && veto4h !== "off") {
+      const h4strong = tfQuality["4H"] !== undefined && tfQuality["4H"] !== "weak";
+      if (veto4h === "always" || h4strong) {
+        blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
+        return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+      }
+      blockers.add(`4H contre-tendance faible (${h4dir}) — toléré`);
+    }
+
+    // Daily veto still applies
+    if (dailySignal && dailySignal.direction !== "HOLD" && vetoDaily !== "off") {
+      const dDir = dailySignal.direction;
+      if (dDir !== signalBias) {
+        const dStrong = dailySignal.quality !== undefined && dailySignal.quality !== "weak";
+        if (vetoDaily === "always" || dStrong) {
+          blockers.add(`Daily contre-tendance (${dDir}) — trade annulé`);
+          return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+        }
+        blockers.add(`Daily contre-tendance faible (${dDir}) — toléré`);
+      }
+    }
+
+    // Build confidence from weighted score + TAS bonus + pattern bonus - ADX penalty
+    let avgConf = confluence.weightedConfidence;
+    if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 10);
+    else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 6);
+    else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10);
+    avgConf = Math.min(95, avgConf + Math.min(10, patternBonus));
+    avgConf = Math.max(0, avgConf - adxPenalty);
+
+    const premiumCount = qualities.filter((q) => q === "premium").length;
+    const components: SignalComponent[] = [];
+    for (const tf of TIMEFRAMES) {
+      const sig = tfSignals[tf];
+      if (sig?.direction === signalBias && sig.components) components.push(...sig.components);
+    }
+
+    return {
+      direction: rawDirection, confidence: Math.round(avgConf), agreement: confluence.agreement,
+      premiumCount, volatilityPct, volatilityRatio,
+      blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
+      components: components.length ? components : undefined,
+    };
+  }
+
+  // ── Standard vote mode (existing logic) ─────────────────────────────────────
   const buys = results.filter((r) => r === "BUY").length;
   const sells = results.filter((r) => r === "SELL").length;
   const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
@@ -699,6 +972,9 @@ export function aggregateTfSignals(
 
   // Pattern bonus (capped at +10 to avoid over-confidence)
   avgConf = Math.min(95, avgConf + Math.min(10, patternBonus));
+
+  // ADX penalty (vote mode)
+  avgConf = Math.max(0, avgConf - adxPenalty);
 
   const premiumCount = qualities.filter((q) => q === "premium").length;
   const agreement = rawDirection === "CALL" ? buys : sells;
@@ -758,6 +1034,10 @@ export async function analyzeSymbolCore(
     weights?: Partial<Record<SignalComponent["name"], number>>;
     veto4h?: Veto4hMode;
     vetoDaily?: Veto4hMode;
+    confluenceMode?: "vote" | "weighted";
+    adxFilterMode?: "off" | "penalize" | "block";
+    adxBlockThreshold?: number;
+    adxStrongThreshold?: number;
   } = {},
 ): Promise<{ analysis: SymbolAnalysis; candles15m: CandleBar[] | null }> {
   const { atr } = await import("./indicators");
@@ -814,6 +1094,12 @@ export async function analyzeSymbolCore(
   const analysis = aggregateTfSignals(
     tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only",
     minContractMinutes(symbolDeriv), dailySignal, opts.vetoDaily ?? "off",
+    {
+      confluenceMode: opts.confluenceMode,
+      adxFilterMode: opts.adxFilterMode,
+      adxBlockThreshold: opts.adxBlockThreshold,
+      adxStrongThreshold: opts.adxStrongThreshold,
+    },
   );
   return { analysis, candles15m };
 }

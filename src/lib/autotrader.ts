@@ -23,9 +23,12 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   isSymbolTradeable,
+  isHourBlocked,
   getInstrumentForSymbol,
   minContractMinutes,
   symbolRollingStats,
+  computeProgressiveStake,
+  computeDynamicMinConfidence,
   todayPnl,
   todayTradeCount,
   type AutoTraderConfig,
@@ -731,12 +734,22 @@ function applyStrategyOverlay(analysis: SymbolAnalysis, symbolDeriv: string, can
   };
 }
 
-async function analyzeSymbol(symbolDeriv: string, veto4h: Veto4hMode, vetoDaily: Veto4hMode = "off"): Promise<SymbolAnalysis> {
+async function analyzeSymbol(
+  symbolDeriv: string,
+  veto4h: Veto4hMode,
+  vetoDaily: Veto4hMode = "off",
+  opts?: {
+    confluenceMode?: "vote" | "weighted";
+    adxFilterMode?: "off" | "penalize" | "block";
+    adxBlockThreshold?: number;
+    adxStrongThreshold?: number;
+  },
+): Promise<SymbolAnalysis> {
   const learnedWeights = getLearnedWeights(symbolDeriv);
   const { analysis, candles15m } = await analyzeSymbolCore(
     symbolDeriv,
     (sym, granularitySeconds, count) => fetchCandles(sym, granularitySeconds, count),
-    { weights: learnedWeights, veto4h, vetoDaily },
+    { weights: learnedWeights, veto4h, vetoDaily, ...opts },
   );
   return applyStrategyOverlay(analysis, symbolDeriv, candles15m);
 }
@@ -1116,7 +1129,12 @@ export function startAutoTrader(
     // an all-markets scan) take minutes; this caps concurrency instead.
     const analyzed = await mapWithConcurrency(toAnalyze, 6, async (symbol) => ({
       symbol,
-      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only", config.vetoDaily ?? "off"),
+      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only", config.vetoDaily ?? "off", {
+        confluenceMode: config.confluenceMode ?? "vote",
+        adxFilterMode: config.adxFilterMode ?? "off",
+        adxBlockThreshold: config.adxBlockThreshold,
+        adxStrongThreshold: config.adxStrongThreshold,
+      }),
     }));
 
     // All-markets mode: best opportunities get first crack at the trade slots
@@ -1132,6 +1150,12 @@ export function startAutoTrader(
 
       if (newTradesThisTick >= config.maxSimultaneousTrades) {
         scanResults.push({ symbol, action: "daily-limit", note: `Limite de ${config.maxSimultaneousTrades} trades/cycle atteinte` });
+        continue;
+      }
+
+      // ── Time-of-day edge filter ──
+      if (config.hourlyEdgeFilter && isHourBlocked(logs, config.hourlyEdgeLookback)) {
+        scanResults.push({ symbol, action: "no-signal", note: "Creneau horaire bloque (P&L negatif)" });
         continue;
       }
 
@@ -1178,7 +1202,13 @@ export function startAutoTrader(
       }
 
       // Clamp to the symbol's minimum allowed duration (forex CALL/PUT starts at 15m)
-      const tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+      let tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+      // ── Dynamic duration based on ATR ──
+      if (config.dynamicDuration) {
+        const atrFactor = analysis.volatilityPct > 2 ? 0.7 : analysis.volatilityPct < 0.3 ? 1.5 : 1.0;
+        tradeDuration = Math.round(tradeDuration * atrFactor);
+        tradeDuration = Math.max(minContractMinutes(symbol), Math.min(60, tradeDuration));
+      }
 
       // Confidence alone doesn't guard against a thin payout — Deriv's actual
       // payout varies by instrument/duration/volatility, and a low one raises
@@ -1217,6 +1247,14 @@ export function startAutoTrader(
           kellyNote = `Kelly $${kellyStake.toFixed(2)}`;
         } else {
           kellyNote = "Kelly indisponible (backtest requis) — mise de secours";
+        }
+      }
+
+      // ── Progressive stake reduction after consecutive losses ──
+      if (config.progressiveStakeReduction) {
+        const consecLosses = countConsecutiveLosses(logs, symbol);
+        if (consecLosses > 0) {
+          stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
         }
       }
 

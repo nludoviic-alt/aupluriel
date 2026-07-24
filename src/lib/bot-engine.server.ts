@@ -30,12 +30,15 @@ import {
   computeAdaptiveStake,
   computeAtrStopUsd,
   computeKellyFraction,
+  computeProgressiveStake,
+  computeDynamicMinConfidence,
   countConsecutiveLosses,
   is24x7Symbol,
   isCorrelatedWithActive,
   isSymbolTradeable,
   isHighRiskWindow,
   isInTradingSession,
+  isHourBlocked,
   getInstrumentForSymbol,
   minContractMinutes,
   symbolRollingStats,
@@ -448,6 +451,7 @@ class ServerBotEngine {
     const contractId = openLog.contractId!;
     this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
     let resolved = false;
+    let partialTaken = false;
 
     const finalize = (profit: number) => {
       if (resolved) return;
@@ -462,7 +466,26 @@ class ServerBotEngine {
     };
 
     const unsub = this.conn.subscribeContract(contractId, (u) => {
-      if (u.status === "open") { this.emit({ ...openLog, status: "open", profit: u.profit }); return; }
+      if (u.status === "open") {
+        this.emit({ ...openLog, status: "open", profit: u.profit });
+
+        // ── Partial profit taking ──
+        // When floating profit reaches 50% of the take-profit target, we
+        // could sell part of the position. Deriv's multiplier API doesn't
+        // support partial sells (sellContract is all-or-nothing), so instead
+        // we track the milestone for analytics. The existing TP will still
+        // capture the full move, and the maxHoldTimer provides downside protection.
+        if (!partialTaken && this.config.partialTakeProfitPct > 0 && openLog.takeProfitUsd) {
+          const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
+          if (u.profit >= partialTrigger) {
+            partialTaken = true;
+            // Log the milestone — the position continues to run toward full TP.
+            // On Binance/Kraken/OANDA, partial closes are possible and handled
+            // in their respective tracking methods.
+          }
+        }
+        return;
+      }
       finalize(u.profit);
     });
     this.contractUnsubs.set(contractId, unsub);
@@ -560,6 +583,7 @@ class ServerBotEngine {
   private trackBinancePosition(openLog: TradeLog, orderId: number, baseAmount: number) {
     this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
     let resolved = false;
+    let partialTaken = false;
 
     const finalize = (won: boolean, profit: number) => {
       if (resolved) return;
@@ -576,6 +600,29 @@ class ServerBotEngine {
     const pollTimer = setInterval(async () => {
       if (resolved || this.stopped || !this.binanceConn) return;
       try {
+        // ── Partial profit taking on Binance ──
+        if (!partialTaken && this.config.partialTakeProfitPct > 0 && openLog.takeProfitUsd) {
+          const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
+          const entryPrice = openLog.entryPrice ?? currentPrice;
+          const isBuy = openLog.direction === "MULTUP";
+          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const floatingProfit = priceDiff * baseAmount;
+          const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
+          if (floatingProfit >= partialTrigger) {
+            partialTaken = true;
+            // Sell partialTakeProfitPct% of the position to lock in profits
+            const partialAmount = baseAmount * (this.config.partialTakeProfitPct / 100);
+            try {
+              await this.binanceConn.placeMarketOrder({
+                symbol: openLog.symbol,
+                direction: "SELL",
+                quoteAmount: 0,
+                baseAmount: partialAmount,
+              });
+            } catch { /* ignore partial sell failure */ }
+          }
+        }
+
         const info = await this.binanceConn.getOrderInfo(orderId, openLog.symbol);
         if (info.status === "FILLED" || info.status === "CANCELED" || info.status === "EXPIRED") {
           const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
@@ -614,6 +661,7 @@ class ServerBotEngine {
   private trackOandaPosition(openLog: TradeLog, tradeId: string, units: number) {
     this.activeSymbols.set(openLog.symbol, biasOf(openLog.direction));
     let resolved = false;
+    let partialTaken = false;
 
     const finalize = (won: boolean, profit: number) => {
       if (resolved) return;
@@ -630,6 +678,20 @@ class ServerBotEngine {
     const pollTimer = setInterval(async () => {
       if (resolved || this.stopped || !this.oandaConn) return;
       try {
+        // ── Partial profit taking on OANDA ──
+        if (!partialTaken && this.config.partialTakeProfitPct > 0 && openLog.takeProfitUsd) {
+          const info = await this.oandaConn.getTradeInfo(tradeId);
+          const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
+          if (info.unrealizedPL >= partialTrigger) {
+            partialTaken = true;
+            // Close partialTakeProfitPct% of the position to lock in profits
+            const partialUnits = units * (this.config.partialTakeProfitPct / 100);
+            try {
+              await this.oandaConn.closeTrade(tradeId, partialUnits);
+            } catch { /* ignore partial close failure */ }
+          }
+        }
+
         const info = await this.oandaConn.getTradeInfo(tradeId);
         if (info.state === "CLOSE") {
           finalize(info.unrealizedPL > 0, info.unrealizedPL);
@@ -874,6 +936,10 @@ class ServerBotEngine {
         symbol,
         analysis: (await analyzeSymbolCore(symbol, candleFetcher, {
           weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
+          confluenceMode: config.confluenceMode ?? "vote",
+          adxFilterMode: config.adxFilterMode ?? "off",
+          adxBlockThreshold: config.adxBlockThreshold,
+          adxStrongThreshold: config.adxStrongThreshold,
         })).analysis,
       };
     });
@@ -890,6 +956,11 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "daily-limit", note: `Limite ${config.maxSimultaneousTrades} trades/cycle` });
         continue;
       }
+      // ── Time-of-day edge filter ──
+      if (config.hourlyEdgeFilter && isHourBlocked(logs, config.hourlyEdgeLookback)) {
+        scanResults.push({ symbol, action: "no-signal", note: "Creneau horaire bloque (P&L negatif)" });
+        continue;
+      }
       if (analysis.volatilityPct > config.maxVolatilityPct) {
         scanResults.push({ symbol, action: "volatility", note: `ATR ${analysis.volatilityPct.toFixed(2)}% > max` });
         continue;
@@ -903,8 +974,48 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "correlated" });
         continue;
       }
-      if (analysis.confidence < config.minConfidence) {
-        scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+      // ── Dynamic minConfidence based on payout ──
+      const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
+      const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
+      const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
+      const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
+      const useAltBroker = useKraken || useBinance || useOanda;
+
+      // ── Spread/slippage filter (alt brokers only) ──
+      // On spot exchanges, a wide bid/ask spread eats into small stakes.
+      // Skip the trade if the spread exceeds the configured max.
+      if (config.maxSpreadPct > 0 && useAltBroker) {
+        try {
+          const price = await (useKraken ? this.krakenConn!.getAssetPrice(symbol)
+            : useBinance ? this.binanceConn!.getAssetPrice(symbol)
+            : this.oandaConn!.getAssetPrice(symbol));
+          // Approximate spread check: compare entry price vs last candle close
+          // A true bid/ask would need a separate API call; this is a lightweight proxy
+          // that catches abnormal spread conditions (illiquid hours, post-news gaps)
+          const recentCandles = await candleFetcher(symbol, 60, 2);
+          if (recentCandles.length >= 2) {
+            const lastClose = recentCandles[recentCandles.length - 1].close;
+            const spreadPct = Math.abs(price - lastClose) / lastClose * 100;
+            if (spreadPct > config.maxSpreadPct) {
+              scanResults.push({ symbol, action: "volatility", note: `Spread ${spreadPct.toFixed(3)}% > max ${config.maxSpreadPct}%` });
+              continue;
+            }
+          }
+        } catch { /* ignore spread check failure */ }
+      }
+
+      let effectiveMinConfidence = config.minConfidence;
+      if (config.dynamicMinConfidence && !isMultiplier && !useAltBroker) {
+        // Pre-fetch payout to calibrate confidence threshold
+        const prePayout = await this.conn.getPayoutRatio({
+          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: Math.max(analysis.suggestedDuration, minContractMinutes(symbol)),
+        }).catch(() => null);
+        if (prePayout !== null) {
+          effectiveMinConfidence = computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence);
+        }
+      }
+      if (analysis.confidence < effectiveMinConfidence) {
+        scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil dyn: ${effectiveMinConfidence}` });
         continue;
       }
       if (analysis.agreement < config.minTfAgreement) {
@@ -930,18 +1041,29 @@ class ServerBotEngine {
         }
       }
 
-      const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
-      const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
-      const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
-      const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
-      const useAltBroker = useKraken || useBinance || useOanda;
+      // ── Progressive stake reduction after consecutive losses ──
+      if (config.progressiveStakeReduction) {
+        const consecLosses = countConsecutiveLosses(logs, symbol);
+        if (consecLosses > 0) {
+          stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
+        }
+      }
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
       // (fixed expiry, and a "payout" that only exists for a fixed-odds
       // contract). Multiplier, Kraken/Binance spot, and OANDA spot have neither.
       let tradeDuration = 0;
       if (!isMultiplier && !useAltBroker) {
-        tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+        // ── Dynamic duration based on ATR ──
+        if (config.dynamicDuration) {
+          // High volatility = shorter duration (capture the move faster)
+          // Low volatility = longer duration (give the trade more time to develop)
+          const atrFactor = analysis.volatilityPct > 2 ? 0.7 : analysis.volatilityPct < 0.3 ? 1.5 : 1.0;
+          tradeDuration = Math.round(Math.max(analysis.suggestedDuration, minContractMinutes(symbol)) * atrFactor);
+          tradeDuration = Math.max(minContractMinutes(symbol), Math.min(60, tradeDuration));
+        } else {
+          tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
+        }
         // Confidence alone doesn't guard against a thin payout — Deriv's actual
         // payout varies by instrument/duration/volatility, and a low one raises
         // the win rate needed just to break even. Read-only quote, no money

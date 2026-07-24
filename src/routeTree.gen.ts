@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
+import { Route as SurveillanceRouteImport } from './routes/surveillance'
 import { Route as StrategiesRouteImport } from './routes/strategies'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SignalsRouteImport } from './routes/signals'
@@ -66,6 +67,11 @@ import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/grou
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
   path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SurveillanceRoute = SurveillanceRouteImport.update({
+  id: '/surveillance',
+  path: '/surveillance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StrategiesRoute = StrategiesRouteImport.update({
@@ -348,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/signals': typeof SignalsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
+  '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/signals': typeof SignalsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
+  '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
@@ -459,6 +467,7 @@ export interface FileRoutesById {
   '/signals': typeof SignalsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
+  '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
@@ -516,6 +525,7 @@ export interface FileRouteTypes {
     | '/signals'
     | '/stats'
     | '/strategies'
+    | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
     | '/api/auto-backtest'
@@ -571,6 +581,7 @@ export interface FileRouteTypes {
     | '/signals'
     | '/stats'
     | '/strategies'
+    | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
     | '/api/auto-backtest'
@@ -626,6 +637,7 @@ export interface FileRouteTypes {
     | '/signals'
     | '/stats'
     | '/strategies'
+    | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
     | '/api/auto-backtest'
@@ -682,6 +694,7 @@ export interface RootRouteChildren {
   SignalsRoute: typeof SignalsRoute
   StatsRoute: typeof StatsRoute
   StrategiesRoute: typeof StrategiesRoute
+  SurveillanceRoute: typeof SurveillanceRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiAutoBacktestRoute: typeof ApiAutoBacktestRoute
@@ -726,6 +739,13 @@ declare module '@tanstack/react-router' {
       path: '/verify-email'
       fullPath: '/verify-email'
       preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/surveillance': {
+      id: '/surveillance'
+      path: '/surveillance'
+      fullPath: '/surveillance'
+      preLoaderRoute: typeof SurveillanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/strategies': {
@@ -1125,6 +1145,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignalsRoute: SignalsRoute,
   StatsRoute: StatsRoute,
   StrategiesRoute: StrategiesRoute,
+  SurveillanceRoute: SurveillanceRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,
   ApiAutoBacktestRoute: ApiAutoBacktestRoute,

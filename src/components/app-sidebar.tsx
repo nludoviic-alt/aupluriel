@@ -10,8 +10,8 @@ import {
   BriefcaseBusiness,
   BarChart3,
   PieChart,
-  NotebookPen,
   ShieldCheck,
+  Activity,
   LogOut,
   ChevronRight,
   Cpu,
@@ -46,7 +46,7 @@ const analysisItems = [
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
-  { title: "Notes",             url: "/carnet-de-notes", icon: NotebookPen,     color: "text-rose-400",    glow: "shadow-rose-500/30" },
+  { title: "Surveillance",     url: "/surveillance",    icon: Activity,         color: "text-emerald-400", glow: "shadow-emerald-500/30" },
 ];
 
 const toolItems = [
@@ -186,7 +186,7 @@ function NavItem({
           )}
         >
           <span className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border",
             isActive
               ? "bg-amber-500/10 border-amber-500/25 text-amber-400"
               : cn("bg-white/[0.04] border-white/[0.05] text-muted-foreground", hover.iconBg)

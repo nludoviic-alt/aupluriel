@@ -16,8 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { KpiCard } from "@/components/kpi-card";
 import { CollapsibleBlock } from "@/components/collapsible-section";
-import { ChangelogPanel } from "@/components/changelog-panel";
-import { HealthPanel } from "@/components/health-panel";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -44,6 +42,10 @@ interface AdminUser {
   chat_enabled: number;
   admin_note: string | null;
   created_at: number;
+  has_deriv: number;
+  has_kraken: number;
+  has_binance: number;
+  has_oanda: number;
 }
 
 interface BotStatus {
@@ -646,12 +648,6 @@ function AdminPage() {
         />
       </div>
 
-      {/* ── FEATURE HEALTH MONITOR ── */}
-      <HealthPanel />
-
-      {/* ── BUG/CHANGELOG TRACKER ── */}
-      <ChangelogPanel />
-
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock
         className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
@@ -683,6 +679,7 @@ function AdminPage() {
                 <th className="px-4 py-3">Utilisateur</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Brokers</th>
                 <th className="px-4 py-3">Inscrit</th>
                 <th className="px-4 py-3 text-right">Profil</th>
               </tr>
@@ -690,13 +687,13 @@ function AdminPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground font-semibold">
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground font-semibold">
                     Aucun utilisateur trouvé.
                   </td>
                 </tr>
@@ -737,6 +734,14 @@ function AdminPage() {
                       <td className="px-4 py-3 text-muted-foreground font-medium">{u.email}</td>
                       <td className="px-4 py-3">
                         <StatusBadge status={u.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
+                          <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
+                          <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                          <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-semibold">
                         {new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}
@@ -799,6 +804,15 @@ function AdminPage() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Inscrit</span>
                       <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Brokers</span>
+                      <div className="flex items-center gap-1.5">
+                        <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
+                        <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
+                        <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                        <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
+                      </div>
                     </div>
                   </div>
                   <button
@@ -1336,7 +1350,7 @@ function AdminPage() {
             // outside interaction and would close this profile modal underneath it.
             if (confirmState) e.preventDefault();
           }}
-          className="glass-panel border-white/10 bg-background/90 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-3xl max-h-[88vh] overflow-y-auto gap-6 p-7"
+          className="!bg-[#060e0c] border-emerald-500/30 backdrop-blur-2xl sm:rounded-2xl shadow-[0_4px_24px_-6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] max-w-2xl max-h-[88vh] overflow-y-auto gap-5 p-6 ring-1 ring-emerald-500/[0.12]"
         >
           {profileUser && (() => {
             const isAdmin = profileUser.is_admin === 1;
@@ -1366,7 +1380,7 @@ function AdminPage() {
                           </button>
                         )}
                       </DialogTitle>
-                      <DialogDescription className="text-sm text-muted-foreground mt-1.5 normal-case tracking-normal flex items-center gap-2.5 flex-wrap">
+                      <DialogDescription className="text-sm text-neutral-300 mt-1.5 normal-case tracking-normal flex items-center gap-2.5 flex-wrap">
                         {profileUser.email} · Inscrit le {new Date(profileUser.created_at * 1000).toLocaleDateString("fr-FR")}
                         <StatusBadge status={profileUser.status} />
                       </DialogDescription>
@@ -1392,12 +1406,12 @@ function AdminPage() {
                 </DialogHeader>
 
                 {!isAdmin && (
-                  <div className="flex flex-wrap gap-2 border-t border-white/[0.06] pt-4">
+                  <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-5">
                     {profileUser.status !== "approved" && (
                       <button
                         onClick={() => act(profileUser.id, "approve")}
                         disabled={busyId === profileUser.id}
-                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bull)]/40 bg-[color:var(--bull)]/10 px-3.5 py-2 text-sm text-[color:var(--bull)] font-bold hover:bg-[color:var(--bull)]/20 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bull)]/30 bg-[color:var(--bull)]/[0.08] px-3.5 py-2 text-sm text-[color:var(--bull)] font-bold hover:bg-[color:var(--bull)]/15 transition-colors disabled:opacity-50"
                       >
                         <Check className="h-4 w-4" /> Approuver
                       </button>
@@ -1406,7 +1420,7 @@ function AdminPage() {
                       <button
                         onClick={() => act(profileUser.id, "reject")}
                         disabled={busyId === profileUser.id}
-                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bear)]/40 bg-[color:var(--bear)]/10 px-3.5 py-2 text-sm text-[color:var(--bear)] font-bold hover:bg-[color:var(--bear)]/20 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bear)]/30 bg-[color:var(--bear)]/[0.08] px-3.5 py-2 text-sm text-[color:var(--bear)] font-bold hover:bg-[color:var(--bear)]/15 transition-colors disabled:opacity-50"
                       >
                         <X className="h-4 w-4" /> Rejeter
                       </button>
@@ -1415,7 +1429,7 @@ function AdminPage() {
                       <button
                         onClick={() => act(profileUser.id, "revoke")}
                         disabled={busyId === profileUser.id}
-                        className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-sm text-amber-500 font-bold hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3.5 py-2 text-sm text-amber-400 font-bold hover:bg-amber-500/15 transition-colors disabled:opacity-50"
                       >
                         <ShieldOff className="h-4 w-4" /> Révoquer
                       </button>
@@ -1423,14 +1437,14 @@ function AdminPage() {
                     <button
                       onClick={() => act(profileUser.id, "reset-password")}
                       disabled={busyId === profileUser.id}
-                      className="flex items-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3.5 py-2 text-sm text-indigo-400 font-bold hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.08] px-3.5 py-2 text-sm text-indigo-300 font-bold hover:bg-indigo-500/15 transition-colors disabled:opacity-50"
                     >
                       <KeyRound className="h-4 w-4" /> Réinitialiser le mot de passe
                     </button>
                     <button
                       onClick={() => act(profileUser.id, "delete")}
                       disabled={busyId === profileUser.id}
-                      className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3.5 py-2 text-sm text-muted-foreground hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
                     >
                       <Trash2 className="h-4 w-4" /> Supprimer le compte
                     </button>
@@ -1438,8 +1452,8 @@ function AdminPage() {
                 )}
 
                 {!isAdmin && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 border-t border-white/[0.06] pt-4">
-                    <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 px-3.5 py-2.5 shadow-sm shadow-cyan-950/20">
+                  <div className="border-t border-white/[0.08] pt-5 space-y-3">
+                    <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader</span>
                       <BotStatusCell
                         status={botStatus[profileUser.id]}
@@ -1447,28 +1461,30 @@ function AdminPage() {
                         onToggle={(action) => toggleBot(profileUser.id, action)}
                       />
                     </div>
-                    <div className="flex items-center justify-between rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-violet-500/5 px-3.5 py-2.5 shadow-sm shadow-violet-950/20">
-                      <span className="text-xs font-bold uppercase tracking-wider text-violet-400">Backtest Auto</span>
-                      <BacktestStatusCell
-                        status={botStatus[profileUser.id]}
-                        busy={backtestBusyId === profileUser.id}
-                        onToggle={(checked) => toggleBacktest(profileUser.id, checked)}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-amber-500/5 px-3.5 py-2.5 shadow-sm shadow-amber-950/20">
-                      <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Messagerie</span>
-                      <ChatStatusCell
-                        user={profileUser}
-                        busy={busyId === profileUser.id}
-                        onToggle={(checked) => act(profileUser.id, "toggle-chat", checked)}
-                      />
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">Deriv</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_deriv ? "bg-red-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Kraken</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_kraken ? "bg-violet-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-yellow-500/30 bg-yellow-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400">Binance</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_binance ? "bg-yellow-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">OANDA</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_oanda ? "bg-emerald-500" : "bg-white/10")} />
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {r && (
-                  <div className="flex flex-wrap gap-2 border-t border-white/[0.06] pt-4 text-xs">
-                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">
+                  <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-5 text-xs">
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
                       Solde{" "}
                       <span className="text-orange-400 font-bold">
                         {r.balance !== null && r.balance !== undefined
@@ -1476,21 +1492,21 @@ function AdminPage() {
                           : "—"}
                       </span>
                     </span>
-                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
                       {r.trades} trade{r.trades > 1 ? "s" : ""} <span className="text-foreground font-semibold">{r.trades ? `${r.winRate}%` : "—"}</span>
                     </span>
-                    <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
                       P&amp;L{" "}
-                      <span className={cn("font-bold", r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground")}>
+                      <span className={cn("font-bold", r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-neutral-400")}>
                         {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
                       </span>
                     </span>
                   </div>
                 )}
 
-                <div className="border-t border-white/[0.06] pt-4 space-y-2.5">
+                <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="admin-note" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                    <label htmlFor="admin-note" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-300">
                       <StickyNote className="h-3.5 w-3.5" /> Note interne (admin uniquement)
                     </label>
                     {noteSaving ? (
@@ -1529,8 +1545,8 @@ function AdminPage() {
                   const shown = outcomeTrades.slice(0, MINI_JOURNAL_LIMIT);
                   const hiddenCount = outcomeTrades.length - shown.length;
                   return (
-                    <div className="border-t border-white/[0.06] pt-4 space-y-2.5">
-                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">Mini journal</div>
+                    <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
+                      <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Mini journal</div>
                       {journalLoading ? (
                         <div className="py-6 text-center">
                           <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
@@ -1759,6 +1775,21 @@ function BreakdownTable({ rows, title }: { rows: BreakdownRow[]; title: string }
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function BrokerDot({ label, active, color }: { label: string; active: boolean; color: "red" | "violet" | "yellow" | "emerald" }) {
+  const colorMap = {
+    red: "bg-red-500",
+    violet: "bg-violet-500",
+    yellow: "bg-yellow-500",
+    emerald: "bg-emerald-500",
+  };
+  return (
+    <div className="flex items-center gap-1" title={`${label}: ${active ? "connecte" : "non configure"}`}>
+      <span className={cn("h-2 w-2 rounded-full", active ? colorMap[color] : "bg-white/10")} />
+      <span className={cn("text-[10px] font-bold", active ? "text-foreground" : "text-muted-foreground/50")}>{label}</span>
     </div>
   );
 }
