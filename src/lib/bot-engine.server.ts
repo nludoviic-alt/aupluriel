@@ -240,6 +240,10 @@ export function loadBotConfig(userId: number): AutoTraderConfig | null {
       stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
       maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
       mode: saved.mode === "live" ? "live" : "demo",
+      enableDeriv: saved.enableDeriv ?? DEFAULT_CONFIG.enableDeriv,
+      enableKraken: saved.enableKraken ?? DEFAULT_CONFIG.enableKraken,
+      enableBinance: saved.enableBinance ?? DEFAULT_CONFIG.enableBinance,
+      enableOanda: saved.enableOanda ?? DEFAULT_CONFIG.enableOanda,
     };
   } catch {
     return { ...DEFAULT_CONFIG };

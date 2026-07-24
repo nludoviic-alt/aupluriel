@@ -9,6 +9,7 @@ import {
   getBotTrades,
   getBrokerBalances,
   getTodayStats,
+  loadBotConfig,
   startBotForUser,
   stopBotForUser,
 } from "@/lib/bot-engine.server";
@@ -93,7 +94,19 @@ export const Route = createFileRoute("/api/bot")({
             500,
           );
           const mode = requested.mode === "live" ? "live" : "demo";
-          const config: AutoTraderConfig = { ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode };
+          // Recoverer les toggles brokers depuis la config sauvegardée en DB
+          // (modifiés via la page Settings) — sinon DEFAULT_CONFIG les active tous.
+          const savedConfig = loadBotConfig(user.id);
+          const config: AutoTraderConfig = {
+            ...DEFAULT_CONFIG,
+            stakeUsd,
+            maxDailyLossUsd,
+            mode,
+            enableDeriv: savedConfig?.enableDeriv ?? DEFAULT_CONFIG.enableDeriv,
+            enableKraken: savedConfig?.enableKraken ?? DEFAULT_CONFIG.enableKraken,
+            enableBinance: savedConfig?.enableBinance ?? DEFAULT_CONFIG.enableBinance,
+            enableOanda: savedConfig?.enableOanda ?? DEFAULT_CONFIG.enableOanda,
+          };
           try {
             await startBotForUser(user.id, config);
           } catch (e) {
