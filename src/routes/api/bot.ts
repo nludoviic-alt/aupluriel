@@ -7,6 +7,7 @@ import {
   getAllTimeStats,
   getBotRuntime,
   getBotTrades,
+  getBrokerBalances,
   getTodayStats,
   startBotForUser,
   stopBotForUser,
@@ -49,6 +50,7 @@ export const Route = createFileRoute("/api/bot")({
         // All-time record — shown before a live-mode start so that decision is
         // informed by this user's actual track record, not a guess.
         const allTime = getAllTimeStats(user.id, mode);
+        const brokerBalances = await getBrokerBalances(user.id);
 
         return json({
           enabled: !!state?.enabled,
@@ -62,6 +64,7 @@ export const Route = createFileRoute("/api/bot")({
           todayCount: today.count,
           trades,
           allTimeStats: allTime,
+          brokerBalances,
         });
       },
 

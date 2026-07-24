@@ -291,6 +291,21 @@ class ServerBotEngine {
     this.config = newConfig;
   }
 
+  async getBalances(): Promise<{
+    deriv: { balance: number; currency: string } | null;
+    kraken: { balance: number; currency: string } | null;
+    binance: { balance: number; currency: string } | null;
+    oanda: { balance: number; currency: string } | null;
+  }> {
+    const [deriv, kraken, binance, oanda] = await Promise.all([
+      this.conn.getBalance().catch(() => null),
+      this.krakenConn?.getBalance().catch(() => null) ?? null,
+      this.binanceConn?.getBalance().catch(() => null) ?? null,
+      this.oandaConn?.getBalance().catch(() => null) ?? null,
+    ]);
+    return { deriv, kraken, binance, oanda };
+  }
+
   get pausedUntil(): number {
     const row = getDb().prepare("SELECT paused_until FROM bot_state WHERE user_id = ?").get(this.userId) as { paused_until: number | null } | undefined;
     return row?.paused_until ?? 0;
@@ -1277,6 +1292,49 @@ export function getBotRuntime(userId: number): { running: boolean; pausedUntil: 
   if (!engine) return { running: false, pausedUntil: null, lastScan: null, lastError: null };
   const paused = engine.pausedUntil;
   return { running: true, pausedUntil: paused > Date.now() ? paused : null, lastScan: engine.lastScan, lastError: engine.lastError };
+}
+
+export async function getBrokerBalances(userId: number): Promise<{
+  deriv: { balance: number; currency: string } | null;
+  kraken: { balance: number; currency: string } | null;
+  binance: { balance: number; currency: string } | null;
+  oanda: { balance: number; currency: string } | null;
+}> {
+  const engine = engines.get(userId);
+  if (engine) {
+    return engine.getBalances();
+  }
+
+  // Bot not running — fetch balances directly from stored credentials
+  const settings = getDb()
+    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")
+    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string; binance_api_key?: string; binance_api_secret?: string; oanda_api_key?: string; oanda_account_id?: string; oanda_is_practice?: number } | undefined;
+
+  if (!settings) return { deriv: null, kraken: null, binance: null, oanda: null };
+
+  const config = loadBotConfig(userId);
+  const enableDeriv = config?.enableDeriv ?? true;
+  const enableKraken = config?.enableKraken ?? true;
+  const enableBinance = config?.enableBinance ?? true;
+  const enableOanda = config?.enableOanda ?? true;
+  const mode = config?.mode === "live" ? "live" : "demo";
+
+  const [deriv, kraken, binance, oanda] = await Promise.all([
+    enableDeriv && settings.deriv_token
+      ? new DerivTradingConnection(settings.deriv_token, mode).getBalance().catch(() => null)
+      : null,
+    enableKraken && settings.kraken_api_key && settings.kraken_api_secret
+      ? new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret).getBalance().catch(() => null)
+      : null,
+    enableBinance && settings.binance_api_key && settings.binance_api_secret
+      ? new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret).getBalance().catch(() => null)
+      : null,
+    enableOanda && settings.oanda_api_key && settings.oanda_account_id
+      ? new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice).getBalance().catch(() => null)
+      : null,
+  ]);
+
+  return { deriv, kraken, binance, oanda };
 }
 
 export async function startBotForUser(userId: number, config: AutoTraderConfig): Promise<void> {

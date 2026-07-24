@@ -308,6 +308,12 @@ function AutoTraderPage() {
     trades: TradeLog[];
     allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
     savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+    brokerBalances?: {
+      deriv: { balance: number; currency: string } | null;
+      kraken: { balance: number; currency: string } | null;
+      binance: { balance: number; currency: string } | null;
+      oanda: { balance: number; currency: string } | null;
+    };
   }
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
@@ -895,6 +901,45 @@ function AutoTraderPage() {
                       : cloud.running ? "● Actif sur le serveur" : "Démarrage…"}
                   </span>
                 </div>
+
+                {/* ── Broker balances ── */}
+                {cloud.brokerBalances && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {cloud.brokerBalances.deriv && (
+                      <div className="flex items-center justify-between rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">Deriv</span>
+                        <span className="text-xs font-extrabold font-mono-tabular text-foreground">
+                          {cloud.brokerBalances.deriv.balance.toFixed(2)} {cloud.brokerBalances.deriv.currency}
+                        </span>
+                      </div>
+                    )}
+                    {cloud.brokerBalances.kraken && (
+                      <div className="flex items-center justify-between rounded-lg bg-violet-500/5 border border-violet-500/15 px-3 py-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400/80">Kraken</span>
+                        <span className="text-xs font-extrabold font-mono-tabular text-foreground">
+                          {cloud.brokerBalances.kraken.balance.toFixed(2)} {cloud.brokerBalances.kraken.currency}
+                        </span>
+                      </div>
+                    )}
+                    {cloud.brokerBalances.binance && (
+                      <div className="flex items-center justify-between rounded-lg bg-yellow-500/5 border border-yellow-500/15 px-3 py-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400/80">Binance</span>
+                        <span className="text-xs font-extrabold font-mono-tabular text-foreground">
+                          {cloud.brokerBalances.binance.balance.toFixed(2)} {cloud.brokerBalances.binance.currency}
+                        </span>
+                      </div>
+                    )}
+                    {cloud.brokerBalances.oanda && (
+                      <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">OANDA</span>
+                        <span className="text-xs font-extrabold font-mono-tabular text-foreground">
+                          {cloud.brokerBalances.oanda.balance.toFixed(2)} {cloud.brokerBalances.oanda.currency}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">P&L jour (serveur)</span>
                   <span className={cn("font-extrabold font-mono-tabular", cloud.todayPnl >= 0 ? "text-up" : "text-down")}>
