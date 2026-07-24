@@ -133,6 +133,16 @@ function loadRecentTrades(userId: number, limit = 50): TradeLog[] {
   return rows.map(logFromRow);
 }
 
+/** Every currently open/pending position for this user, regardless of age —
+ * unlike loadRecentTrades, not capped to a recent window, so reconcile()
+ * can't lose track of a position just because enough newer trades piled up. */
+function loadOpenOrPendingTrades(userId: number): TradeLog[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM bot_trades WHERE user_id = ? AND status IN ('open', 'pending')")
+    .all(userId) as BotTradeRow[];
+  return rows.map(logFromRow);
+}
+
 /**
  * Today's P&L and trade count computed over ALL of today's rows in SQL — the
  * in-memory log and the API's recent-trades list are capped windows, so summing
@@ -399,7 +409,13 @@ class ServerBotEngine {
 
   /** Re-attach contract tracking for trades left open by a previous process. */
   async reconcile() {
-    const stale = this.logs.filter((l) => (l.status === "open" || l.status === "pending") && l.contractId);
+    // Query the DB directly, not this.logs (capped at the 50 most recent
+    // trades by loadRecentTrades) — a position that ages out of that window
+    // once enough newer trades accumulate never gets revisited again here,
+    // leaving it "open" with no maxHoldMinutes safety net forever (audit
+    // finding: a week-old open Multiplier position, 70 trades later, that
+    // reconcile() had stopped seeing entirely).
+    const stale = loadOpenOrPendingTrades(this.userId).filter((l) => l.contractId);
     if (!stale.length) return;
     const records = await this.conn.getProfitTable(60);
     for (const log of stale) {
