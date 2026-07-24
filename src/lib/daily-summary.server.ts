@@ -9,6 +9,7 @@ const CHECK_INTERVAL_MS = 15 * 60_000; // every 15 min — fires once per day pe
 const SUMMARY_HOUR_UTC = 22; // 22:00 UTC = end of NY session → daily recap
 const MIN_TRADES_FOR_ALERT = 10; // don't alert on tiny samples
 const BREAKEVEN_WIN_RATE = 0.571; // 1/(1+0.75) — matches minPayoutRatio 0.75
+const BASELINE_TRADES_PER_DAY = 9; // observed prod average before the 2026-07-24 volume-cap raise
 
 const notifiedSummary = new Set<string>(); // `${userId}-${dateKey}`
 
@@ -91,9 +92,16 @@ async function tick(): Promise<void> {
         }
 
         const pnlStr = stats.pnl >= 0 ? `+$${stats.pnl.toFixed(2)}` : `-$${Math.abs(stats.pnl).toFixed(2)}`;
+        // Baseline from the pre-2026-07-24 caps (maxTradesPerDay 12,
+        // maxSimultaneousTrades 3, maxOpenPositions 5): observed ~9 trades/day
+        // in prod. Surfaces whether the raised caps are actually converting
+        // into more real volume, not just a config change nobody checks back on.
+        const volumeVsBaseline = stats.trades >= BASELINE_TRADES_PER_DAY
+          ? ` (+${stats.trades - BASELINE_TRADES_PER_DAY} vs ~${BASELINE_TRADES_PER_DAY}/j avant)`
+          : ` (${stats.trades - BASELINE_TRADES_PER_DAY} vs ~${BASELINE_TRADES_PER_DAY}/j avant)`;
         await sendPushToUser(u.id, {
           title: "Au Pluriel — Résumé du jour",
-          body: `${stats.trades} trade${stats.trades > 1 ? "s" : ""} · ${stats.wins}W / ${stats.losses}L · P&L ${pnlStr}`,
+          body: `${stats.trades} trade${stats.trades > 1 ? "s" : ""}${volumeVsBaseline} · ${stats.wins}W / ${stats.losses}L · P&L ${pnlStr}`,
           url: "/stats",
         });
       }
