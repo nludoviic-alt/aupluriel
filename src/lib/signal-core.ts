@@ -292,7 +292,9 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   partialTakeProfitPct: 50,
   moveSlToBreakeven: true,
   // --- Dynamic confidence threshold ---
-  dynamicMinConfidence: true,
+  // Off: le seuil dynamique montait au-dessus de 72 selon le payout, ce qui
+  // eliminait le bucket <80 qui est le SEUL rentable (62.5% win). Seuil fixe 72.
+  dynamicMinConfidence: false,
   dynamicConfidenceMargin: 8,
   // --- Progressive stake reduction ---
   progressiveStakeReduction: true,
@@ -337,12 +339,11 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 60,
-  // Londres + New York + Asie : couvre 23h-22h UTC (Asie 23h-08h, Londres
-  // 07h-16h, NY 13h-22h). BTC trade déjà 24/7 indépendamment. La session Asie
-  // ajoute ~8h de fenêtre sur les paires forex — moins de volatilité mais plus
-  // d'opportunités. Le newsFilter bloque les ouvertures de session les plus
-  // volatiles.
-  tradingSessions: ["london", "newyork"],
+  // Londres + New York + Asie : plus d'heures de trading pour trouver des
+  // signaux 4/4 TF. La session Asie (23h-08h UTC) ajoute ~9h de fenetre sur
+  // les paires forex — moins de volatilite mais plus d'opportunites.
+  // Le newsFilter bloque les ouvertures de session les plus volatiles.
+  tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   // premiumOnly exigeait qu'au moins un timeframe note le signal ≥80 de
   // confiance EN PLUS du seuil moyen (minConfidence 75) et de l'accord
@@ -387,10 +388,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 60.6% avec 0.70. Le bucket <80 avait 62.5% de win rate — au-dessus de 57%.
   // Exiger un payout plus élevé réduit le nombre de trades mais améliore l'EV.
   minPayoutRatio: 0.75,
-  // Off by default: an untested filter shouldn't silently change what the
-  // live bot trades. Backtest it (Auto-Trader → Backtest tab) before flipping
-  // to "strong-only" — Daily is one more filter layer, it will trade less.
-  vetoDaily: "strong-only",
+  // Off: filtre non teste qui contredisait son propre commentaire (disait
+  // "off by default" mais etait a "strong-only"). Une couche de filtre en moins
+  // qui devrait permettre plus de signaux sans degrader la qualite.
+  vetoDaily: "off",
   // Same 35% floor computeAdaptiveStake already uses to cut stake by 75% —
   // here it fully pauses the SYMBOL instead, catching a slow bleed (alternating
   // win/loss) that a pure consecutive-loss streak counter never trips.
