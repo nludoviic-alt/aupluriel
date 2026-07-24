@@ -323,7 +323,12 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
-  maxTradesPerDay: 12,
+  // 50 (était 12) : le vrai frein sur le volume de trades n'a jamais été ce
+  // plafond — sur 10 jours en prod, le volume réel est de 2-12 trades/jour,
+  // le plafond n'a été touché qu'une seule fois. Le relever ne change pas
+  // le risque un jour normal ; ça évite juste de jeter des signaux valides
+  // à la poubelle les jours où l'offre de signaux dépasse 12.
+  maxTradesPerDay: 50,
   // Forex + Or + BTC : l'or (XAU/USD) est réintégré avec la nouvelle config
   // binaire (CALL/PUT, confiance 70, 4/4 TF). Les pertes historiques (1W/3L)
   // étaient avec l'ancien mode multiplier + confiance 80+ — la nouvelle config
@@ -373,12 +378,15 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   trailingStopUsd: 0,
   blockCorrelated: true,
   symbolMode: "all-markets",
-  maxSimultaneousTrades: 3,
-  // 4 : observé en live — 6 positions empilées en 4 cycles de scan (12h23 →
-  // 14h45), chacune sous maxSimultaneousTrades mais sans borne cumulée. La
-  // limite de perte journalière ne compte que les trades CLÔTURÉS, donc
-  // l'exposition flottante non plafonnée contournait le garde-fou.
-  maxOpenPositions: 5,
+  // 6 (était 3) : pousse plus de volume — plusieurs signaux valides dans un
+  // même cycle de scan (60s) ne devraient pas s'auto-éliminer entre eux.
+  maxSimultaneousTrades: 6,
+  // 10 (était 5) : relevé en même temps que maxSimultaneousTrades pour ne
+  // pas juste déplacer le goulot d'étranglement d'un plafond à l'autre.
+  // maxDailyLossUsd (perte réalisée) reste le vrai garde-fou de risque — ce
+  // plafond-ci ne limite que le nombre de paris ouverts en parallèle, pas
+  // la perte max si tous perdent en même temps (ça reste stake × count).
+  maxOpenPositions: 10,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
