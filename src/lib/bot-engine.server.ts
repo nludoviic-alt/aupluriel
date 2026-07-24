@@ -1387,23 +1387,20 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
     oandaConn = new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice);
   }
 
-  // Determine which broker(s) are needed based on config symbols AND toggles
-  const needsDeriv = config.symbols.some((s) => !isKrakenSymbol(s) && !isBinanceSymbol(s) && !isOandaSymbol(s)) && (config.enableDeriv ?? true);
-  const needsKraken = config.symbols.some((s) => isKrakenSymbol(s)) && (config.enableKraken ?? true);
-  const needsBinance = config.symbols.some((s) => isBinanceSymbol(s)) && (config.enableBinance ?? true);
-  const needsOanda = config.symbols.some((s) => isOandaSymbol(s)) && (config.enableOanda ?? true);
+  // Deriv is the universal fallback — every symbol Kraken/Binance/OANDA can
+  // trade also has a Deriv route (crypto via Multiplier, forex via CALL/PUT
+  // or Multiplier), and the scan loop already falls back to it transparently
+  // whenever an alt-broker connection is null (isKrakenSymbol(s) && this.
+  // krakenConn !== null, etc.) — so Deriv is the only broker that's ever
+  // truly required to start. Kraken/Binance/OANDA stay enabled-by-default
+  // (DEFAULT_CONFIG) for every user regardless of whether THEY personally
+  // set up those keys, so hard-blocking startup on missing alt-broker
+  // credentials broke the bot for every user except the one account that
+  // happened to have Kraken/OANDA keys configured (audit finding).
+  const needsDeriv = config.enableDeriv ?? true;
 
   if (needsDeriv && !derivToken) {
     throw new Error("Deriv est activé mais aucun token enregistré — va dans Paramètres ou désactive Deriv.");
-  }
-  if (needsKraken && !krakenConn) {
-    throw new Error("Kraken est activé mais aucune clé API enregistrée — va dans Paramètres ou désactive Kraken.");
-  }
-  if (needsBinance && !binanceConn) {
-    throw new Error("Binance est activé mais aucune clé API enregistrée — va dans Paramètres ou désactive Binance.");
-  }
-  if (needsOanda && !oandaConn) {
-    throw new Error("OANDA est activé mais aucune clé enregistrée — va dans Paramètres ou désactive OANDA.");
   }
 
   getDb().prepare(`
