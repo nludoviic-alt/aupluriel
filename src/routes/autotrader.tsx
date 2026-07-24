@@ -1054,22 +1054,28 @@ function AutoTraderPage() {
                   ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
                   : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
               />
-              {cloud?.brokerBalances?.deriv && (
-                <KpiCard
-                  label="Deriv"
-                  value={`${cloud.brokerBalances.deriv.balance.toFixed(2)}`}
-                  delta={cloud.brokerBalances.deriv.currency}
-                  tone="deriv"
-                />
-              )}
-              {cloud?.brokerBalances?.kraken && (
-                <KpiCard
-                  label="Kraken"
-                  value={`${cloud.brokerBalances.kraken.balance.toFixed(2)}`}
-                  delta={cloud.brokerBalances.kraken.currency}
-                  tone="kraken"
-                />
-              )}
+              {(() => {
+                const b = cloud?.brokerBalances?.deriv;
+                return (
+                  <KpiCard
+                    label="Deriv"
+                    value={b ? b.balance.toFixed(2) : "0.00"}
+                    delta={b ? b.currency : "USD"}
+                    tone="deriv"
+                  />
+                );
+              })()}
+              {(() => {
+                const b = cloud?.brokerBalances?.kraken;
+                return (
+                  <KpiCard
+                    label="Kraken"
+                    value={b ? b.balance.toFixed(2) : "0.00"}
+                    delta={b ? b.currency : "USD"}
+                    tone="kraken"
+                  />
+                );
+              })()}
               {cloud?.brokerBalances?.binance && (
                 <KpiCard
                   label="Binance"
