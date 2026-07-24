@@ -1059,7 +1059,7 @@ function AutoTraderPage() {
                   label="Deriv"
                   value={`${cloud.brokerBalances.deriv.balance.toFixed(2)}`}
                   delta={cloud.brokerBalances.deriv.currency}
-                  tone="bear"
+                  tone="deriv"
                 />
               )}
               {cloud?.brokerBalances?.kraken && (
@@ -1067,7 +1067,7 @@ function AutoTraderPage() {
                   label="Kraken"
                   value={`${cloud.brokerBalances.kraken.balance.toFixed(2)}`}
                   delta={cloud.brokerBalances.kraken.currency}
-                  tone="violet"
+                  tone="kraken"
                 />
               )}
               {cloud?.brokerBalances?.binance && (
@@ -1075,7 +1075,7 @@ function AutoTraderPage() {
                   label="Binance"
                   value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
                   delta={cloud.brokerBalances.binance.currency}
-                  tone="amber"
+                  tone="binance"
                 />
               )}
               {cloud?.brokerBalances?.oanda && (
@@ -1083,7 +1083,7 @@ function AutoTraderPage() {
                   label="OANDA"
                   value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
                   delta={cloud.brokerBalances.oanda.currency}
-                  tone="bull"
+                  tone="oanda"
                 />
               )}
             </div>

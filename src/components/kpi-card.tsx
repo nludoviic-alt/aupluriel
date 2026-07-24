@@ -5,7 +5,7 @@ interface KpiProps {
   label: string;
   value: ReactNode;
   delta?: string;
-  tone?: "default" | "bull" | "bear" | "cyan" | "violet" | "amber";
+  tone?: "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "oanda" | "kraken" | "binance";
   icon?: ReactNode;
 }
 
@@ -51,6 +51,34 @@ const TONE = {
     panel: "glass-panel-amber",
     dot: "bg-[color:var(--brand-amber)]",
     bar: "bg-[color:var(--brand-amber)]/20",
+  },
+  deriv: {
+    value: "text-foreground",
+    glow: "",
+    panel: "bg-red-500/[0.06] border border-red-500/20",
+    dot: "bg-red-500",
+    bar: "bg-red-500/20",
+  },
+  oanda: {
+    value: "text-foreground",
+    glow: "",
+    panel: "bg-emerald-500/[0.06] border border-emerald-500/20",
+    dot: "bg-emerald-500",
+    bar: "bg-emerald-500/20",
+  },
+  kraken: {
+    value: "text-foreground",
+    glow: "",
+    panel: "bg-violet-500/[0.06] border border-violet-500/20",
+    dot: "bg-violet-500",
+    bar: "bg-violet-500/20",
+  },
+  binance: {
+    value: "text-foreground",
+    glow: "",
+    panel: "bg-amber-500/[0.06] border border-amber-500/20",
+    dot: "bg-amber-500",
+    bar: "bg-amber-500/20",
   },
 };
 
