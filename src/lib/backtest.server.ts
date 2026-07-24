@@ -9,7 +9,7 @@
 //       -> fixed 0.85 fallback, the same value backtestMultiTf() itself
 //          falls back to whenever a live quote isn't available.
 import { fetchCandlesServer, type ServerCandle } from "./deriv.server";
-import { generateSignal } from "./indicators";
+import { atr, generateSignal } from "./indicators";
 import { aggregateTfSignals, computeAtrStopUsd, GRANULARITY_SECONDS, TIMEFRAMES, type TfSignalMap, type Veto4hMode } from "./signal-core";
 import { getLearnedWeightsServer } from "./indicator-weights.server";
 
@@ -196,11 +196,28 @@ export async function backtestOandaSlTpServer(
   for (let i = start; i < end; i++) {
     const asOfEpoch = c15m[i - 1].epoch;
     const tfSignals: TfSignalMap = {};
+    let slice15m: ServerCandle[] = [];
     for (const tf of TIMEFRAMES) {
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
+      if (tf === "15m") slice15m = slice;
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily);
+    // Same ATR%-of-price calc analyzeSymbolCore uses for the live scan (the
+    // 15m timeframe is the entry timeframe). aggregateTfSignals only ECHOES
+    // back whatever volatilityPct it's given — it never derives it — so
+    // passing a literal 0 here (as the plain-outcome backtestMultiTfServer
+    // above does, harmlessly, since it never reads the field) silently
+    // pinned every ATR stop to its 0.01%-floor regardless of atrStopMultiple
+    // once reused for computeAtrStopUsd below (that was the bug: identical
+    // results across atrStopMultiple 1.5/2.0/3.0 in the first pass).
+    let volatilityPct = 0;
+    if (slice15m.length >= 15) {
+      const atrSeries = atr(slice15m.map((c) => c.high), slice15m.map((c) => c.low), slice15m.map((c) => c.close), 14);
+      const atrNow = atrSeries[atrSeries.length - 1];
+      const price = slice15m[slice15m.length - 1].close;
+      if (atrNow !== null && price > 0) volatilityPct = (atrNow / price) * 100;
+    }
+    const analysis = aggregateTfSignals(tfSignals, volatilityPct, 1, veto4h, 0, undefined, vetoDaily);
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;
