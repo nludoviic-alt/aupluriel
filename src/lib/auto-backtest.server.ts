@@ -56,6 +56,7 @@ async function recomputeVerdict(): Promise<void> {
         durationMinutes: DEFAULT_CONFIG.durationMinutes,
         testCandles: BACKTEST_CANDLES,
         veto4h: DEFAULT_CONFIG.veto4h,
+        vetoDaily: DEFAULT_CONFIG.vetoDaily,
       }).catch(() => null),
     );
     const usable = results.filter((r): r is NonNullable<typeof r> => r !== null);

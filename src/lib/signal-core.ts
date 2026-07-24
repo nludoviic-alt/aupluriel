@@ -410,7 +410,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   stopLossPctOfStake: 50,
   takeProfitPctOfStake: 100,
   maxHoldMinutes: 720,
-  atrStopMode: false,
+  // On: backtested against OANDA's actual SL/TP path (51 trades, 5-day
+  // window, backtestOandaSlTpServer). Fixed stopLossPctOfStake/
+  // takeProfitPctOfStake never realistically reaches its +100% target within
+  // maxHoldMinutes (0/51 target hits) — trades just ride to the time-based
+  // exit, PnL -2.55$. ATR-scaled stop/target actually triggers on real
+  // moves (25/51 stop-or-target hits) and turned the same sample +6.38$.
+  atrStopMode: true,
   atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
   broker: "deriv",

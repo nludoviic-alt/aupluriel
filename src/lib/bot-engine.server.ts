@@ -153,8 +153,11 @@ function getOpenFloatingPnl(userId: number): number {
 }
 
 export function getTodayStats(userId: number, mode?: "demo" | "live"): { pnl: number; count: number } {
+  // UTC midnight — must match nextUtcMidnight() below. Using local server
+  // midnight here let a resumed bot see stale pre-reset P&L still above the
+  // daily cap and immediately re-pause itself (server tz != UTC).
   const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  start.setUTCHours(0, 0, 0, 0);
   const row = getDb()
     .prepare(
       `SELECT
@@ -919,15 +922,20 @@ class ServerBotEngine {
       // A streak counter resets on any single win — a symbol alternating
       // W-L-W-L never trips it even though it's a coin flip against a payout
       // that needs >50% to break even. Catches that slow bleed directly.
+      // Pause is a full day (not the short cooldownMinutes used for a losing
+      // streak) — a structural win-rate problem doesn't resolve itself in an
+      // hour, and the old short pause let symbols like Gold/Silver come back
+      // and re-lose within the same session over and over (audit finding).
       if (config.minSymbolWinRate > 0) {
         const rolling = symbolRollingStats(logs, symbol, config.symbolWinRateLookback);
         if (rolling.trades >= 5 && rolling.winRate < config.minSymbolWinRate) {
-          this.symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
+          const until = this.nextUtcMidnight();
+          this.symbolCooldowns.set(symbol, until);
           this.emit({
             id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
             stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
             status: "cooldown",
-            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause ${config.cooldownMinutes} min`,
+            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause jusqu'à 00:00 UTC`,
           });
           scanResults.push({ symbol, action: "cooldown" });
           continue;
@@ -1205,15 +1213,21 @@ class ServerBotEngine {
           this.emit(openLog);
           this.trackBinancePosition(openLog, bought.orderId, baseAmount);
         } else if (useOanda) {
-          // OANDA spot forex: buy/sell units of base currency
-          // Units = stake / price (approximate, OANDA handles precision)
-          const units = Math.round((stakeForTrade / (entryPrice || 1)) * 1000) / 1000;
+          // OANDA spot forex, margin-traded like the Deriv Multiplier product —
+          // sized with the same leverage (effMultiplier) so stopLossPctOfStake/
+          // takeProfitPctOfStake map to realistic price distances. Unlevered
+          // stake/price sizing needed a ~50%/100% price move on EUR/USD to ever
+          // trigger — a move that never happens, so the stop/target were dead
+          // code and every position would ride to the maxHoldMinutes force-close
+          // instead (audit finding).
+          const leveredNotional = stakeForTrade * effMultiplier;
+          const units = Math.round((leveredNotional / (entryPrice || 1)) * 1000) / 1000;
           const slPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
-            : entryPrice * (1 + stopLossUsd / stakeForTrade);
+            ? entryPrice * (1 - stopLossUsd / leveredNotional)
+            : entryPrice * (1 + stopLossUsd / leveredNotional);
           const tpPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
-            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+            ? entryPrice * (1 + takeProfitUsd / leveredNotional)
+            : entryPrice * (1 - takeProfitUsd / leveredNotional);
 
           const bought = await this.oandaConn!.placeMarketOrder({
             symbol,
