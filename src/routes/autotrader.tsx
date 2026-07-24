@@ -1107,8 +1107,11 @@ function AutoTraderPage() {
               )}
             </div>
 
-            {/* Row 2: Trading KPIs */}
-            <div className="grid grid-cols-3 gap-3 animate-fade-in">
+            {/* Row 2: Trading KPIs — 2 cols on mobile (matches the broker-
+                balance grid above) so P&L and Win Rate sit side by side
+                instead of 3 cramped columns; Limite de perte spans full
+                width below rather than sitting alone. 3 even cols from sm: up. */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 animate-fade-in">
               <KpiCard
                 label="P&L Aujourd'hui"
                 value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
@@ -1122,6 +1125,7 @@ function AutoTraderPage() {
                 delta={`${wins} gagnés · ${losses} perdus`}
               />
               <KpiCard
+                className="col-span-2 sm:col-span-1"
                 label="Limite de perte"
                 value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
                 tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}

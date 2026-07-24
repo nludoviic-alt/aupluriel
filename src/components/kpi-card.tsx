@@ -7,6 +7,7 @@ interface KpiProps {
   delta?: string;
   tone?: "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "oanda" | "kraken" | "binance";
   icon?: ReactNode;
+  className?: string;
 }
 
 const TONE = {
@@ -82,19 +83,21 @@ const TONE = {
   },
 };
 
-export function KpiCard({ label, value, delta, tone = "default", icon }: KpiProps) {
+export function KpiCard({ label, value, delta, tone = "default", icon, className }: KpiProps) {
   const t = TONE[tone];
   return (
-    <div className={cn(t.panel, "rounded-2xl p-4 transition-all duration-200 hover:scale-[1.02] hover:brightness-110 group")}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className={cn("h-2 w-2 rounded-full", t.dot)} />
-          <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{label}</span>
+    <div className={cn(t.panel, "flex h-full flex-col justify-between rounded-2xl p-4 transition-all duration-200 hover:scale-[1.02] hover:brightness-110 group", className)}>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={cn("h-2 w-2 rounded-full shrink-0", t.dot)} />
+          <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold leading-tight">{label}</span>
         </div>
-        {icon && <span className={cn("opacity-50 group-hover:opacity-80 transition-opacity", t.value)}>{icon}</span>}
+        {icon && <span className={cn("shrink-0 opacity-50 group-hover:opacity-80 transition-opacity", t.value)}>{icon}</span>}
       </div>
-      <div className={cn("font-mono-tabular text-2xl font-bold leading-none", t.value, t.glow)}>{value}</div>
-      {delta && <div className="mt-2 text-xs text-muted-foreground/70">{delta}</div>}
+      <div>
+        <div className={cn("font-mono-tabular text-2xl font-bold leading-none", t.value, t.glow)}>{value}</div>
+        {delta && <div className="mt-2 text-xs text-muted-foreground/70">{delta}</div>}
+      </div>
     </div>
   );
 }
