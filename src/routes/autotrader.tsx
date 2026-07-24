@@ -1042,45 +1042,7 @@ function AutoTraderPage() {
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
             
-            {/* Broker balances strip */}
-            {cloud?.brokerBalances && (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
-                {cloud.brokerBalances.deriv && (
-                  <KpiCard
-                    label="Deriv"
-                    value={`${cloud.brokerBalances.deriv.balance.toFixed(2)}`}
-                    delta={cloud.brokerBalances.deriv.currency}
-                    tone="bear"
-                  />
-                )}
-                {cloud.brokerBalances.kraken && (
-                  <KpiCard
-                    label="Kraken"
-                    value={`${cloud.brokerBalances.kraken.balance.toFixed(2)}`}
-                    delta={cloud.brokerBalances.kraken.currency}
-                    tone="violet"
-                  />
-                )}
-                {cloud.brokerBalances.binance && (
-                  <KpiCard
-                    label="Binance"
-                    value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
-                    delta={cloud.brokerBalances.binance.currency}
-                    tone="amber"
-                  />
-                )}
-                {cloud.brokerBalances.oanda && (
-                  <KpiCard
-                    label="OANDA"
-                    value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
-                    delta={cloud.brokerBalances.oanda.currency}
-                    tone="bull"
-                  />
-                )}
-              </div>
-            )}
-
-            {/* KPI strip — Win rate, P&L, loss limit */}
+            {/* Row 1: Fonds disponibles + broker balances */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
               <KpiCard
                 label="Fonds disponibles"
@@ -1092,6 +1054,42 @@ function AutoTraderPage() {
                   ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
                   : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`}
               />
+              {cloud?.brokerBalances?.deriv && (
+                <KpiCard
+                  label="Deriv"
+                  value={`${cloud.brokerBalances.deriv.balance.toFixed(2)}`}
+                  delta={cloud.brokerBalances.deriv.currency}
+                  tone="bear"
+                />
+              )}
+              {cloud?.brokerBalances?.kraken && (
+                <KpiCard
+                  label="Kraken"
+                  value={`${cloud.brokerBalances.kraken.balance.toFixed(2)}`}
+                  delta={cloud.brokerBalances.kraken.currency}
+                  tone="violet"
+                />
+              )}
+              {cloud?.brokerBalances?.binance && (
+                <KpiCard
+                  label="Binance"
+                  value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
+                  delta={cloud.brokerBalances.binance.currency}
+                  tone="amber"
+                />
+              )}
+              {cloud?.brokerBalances?.oanda && (
+                <KpiCard
+                  label="OANDA"
+                  value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
+                  delta={cloud.brokerBalances.oanda.currency}
+                  tone="bull"
+                />
+              )}
+            </div>
+
+            {/* Row 2: Trading KPIs */}
+            <div className="grid grid-cols-3 gap-3 animate-fade-in">
               <KpiCard
                 label="P&L Aujourd'hui"
                 value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
@@ -1102,13 +1100,13 @@ function AutoTraderPage() {
                 label="Win Rate"
                 value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
                 tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
-                delta={`${wins} gagnés · ${losses} perdus · ${tradeCount} total`}
+                delta={`${wins} gagnés · ${losses} perdus`}
               />
               <KpiCard
                 label="Limite de perte"
                 value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
                 tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
-                delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} utilisés / $${config.maxDailyLossUsd} max`}
+                delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} / $${config.maxDailyLossUsd}`}
               />
             </div>
 
