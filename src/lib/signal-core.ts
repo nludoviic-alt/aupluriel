@@ -193,6 +193,13 @@ export interface AutoTraderConfig {
   kellyFraction: number;          // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
   sessionEdgeMinutes: number;     // skip N minutes at session open/close (avoids fake breakouts)
   trailingStopUsd: number;        // pause for the day if P&L drops this much below session peak (0 = disabled)
+  // Same idea as trailingStopUsd but proportional: the allowed giveback grows
+  // with the size of the day's peak gain instead of being a flat $ amount
+  // (e.g. 0.10 = never give back more than 10% of the peak). Only starts
+  // once the peak clears trailingStopMinPeakUsd, so an early $2 gain doesn't
+  // pause the bot for the rest of the day over a $0.20 wobble.
+  trailingStopPct: number;        // 0 = disabled
+  trailingStopMinPeakUsd: number; // peak daily gain required before trailingStopPct starts protecting it
   blockCorrelated: boolean;       // skip correlated pairs when one is already active
   symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
   maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
@@ -323,12 +330,16 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
-  // 50 (était 12) : le vrai frein sur le volume de trades n'a jamais été ce
-  // plafond — sur 10 jours en prod, le volume réel est de 2-12 trades/jour,
-  // le plafond n'a été touché qu'une seule fois. Le relever ne change pas
-  // le risque un jour normal ; ça évite juste de jeter des signaux valides
-  // à la poubelle les jours où l'offre de signaux dépasse 12.
-  maxTradesPerDay: 50,
+  // 200 (était 50, avant ça 12) : le vrai frein sur le volume de trades n'a
+  // jamais été ce plafond — sur 10 jours en prod, le volume réel est de
+  // 2-12 trades/jour, le plafond de 50 n'a jamais été atteint. Relevé encore
+  // pour ne jamais jeter un signal valide à la poubelle, y compris avec plus
+  // de marchés désormais scannés (Or + GBP/USD en Multiplicateur, accord 3/4
+  // TF → plus de signaux qualifiés qu'avant). maxDailyLossUsd ($15) reste le
+  // vrai garde-fou de risque — ce plafond-ci ne protège de rien en pratique,
+  // il évitait juste une boucle de scan qui tournerait pour rien une fois la
+  // limite atteinte.
+  maxTradesPerDay: 200,
   // Forex + Or + BTC : l'or (XAU/USD) est réintégré avec la nouvelle config
   // binaire (CALL/PUT, confiance 70, 4/4 TF). Les pertes historiques (1W/3L)
   // étaient avec l'ancien mode multiplier + confiance 80+ — la nouvelle config
@@ -364,11 +375,14 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // Le filtre volatilityRatio > 3 (3x la normale de CE marché) reste actif
   // et bloque les pics anormaux spécifiques à chaque symbole.
   maxVolatilityPct: 5,
-  // 20 : objectif journalier relevé à $20 pour capitaliser sur l'or,
-  // qui a un plus gros potentiel de gain grâce à sa volatilité élevée.
-  // Avec stake $5 et payout ~75%, un trade gagnant = +$3.75. 5-6 trades
-  // gagnants suffisent pour atteindre l'objectif.
-  maxDailyProfitUsd: 20,
+  // 200 (était 20) : l'ancien seuil de $20 se déclenchait après seulement
+  // quelques trades gagnants (ex. +$19,58, +$81,92 observés en prod) et
+  // mettait le bot en pause pour le reste de la journée jusqu'à minuit UTC —
+  // le facteur limitant réel du nombre de trades/jour, bien avant
+  // maxTradesPerDay (50, quasi jamais atteint). Relevé à $200 pour laisser
+  // le bot continuer à trader toute la journée dans l'immense majorité des
+  // cas. maxDailyLossUsd ($15) reste le vrai garde-fou de perte.
+  maxDailyProfitUsd: 200,
   // Fixe $5 : en mode binaire, la perte max = $5 (100% du stake) et le gain
   // = $5 × payout (~$3.75 à 75%). Simple, prévisible, pas de surprise.
   stakeMode: "fixed",
@@ -376,6 +390,11 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   kellyFraction: 0.5,
   sessionEdgeMinutes: 5,
   trailingStopUsd: 0,
+  // 10% : ne jamais redonner plus de 10% du pic de gain du jour. N'agit
+  // qu'une fois le pic > $10 (trailingStopMinPeakUsd) pour qu'un tout petit
+  // gain de départ ne mette pas le bot en pause pour le reste de la journée.
+  trailingStopPct: 0.1,
+  trailingStopMinPeakUsd: 10,
   blockCorrelated: true,
   symbolMode: "all-markets",
   // 6 (était 3) : pousse plus de volume — plusieurs signaux valides dans un
@@ -405,14 +424,20 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // win/loss) that a pure consecutive-loss streak counter never trips.
   minSymbolWinRate: 0.35,
   symbolWinRateLookback: 10,
-  // BINARY (CALL/PUT) pour forex/or + MULTIPLIER pour BTC : mode hybride.
-  // Forex + Or → binaire (gain/perte fixe, prévisible).
-  // BTC → multiplicateur (le seul mode supporté par Deriv pour les cryptos).
-  // L'override par symbole permet aux deux modes de coexister : le bot utilise
-  // getInstrumentForSymbol() pour déterminer le type à chaque trade.
+  // BINARY (CALL/PUT) pour le forex restant + MULTIPLIER pour BTC, Or et
+  // GBP/USD : mode hybride. L'override par symbole permet aux deux modes de
+  // coexister : le bot utilise getInstrumentForSymbol() pour déterminer le
+  // type à chaque trade.
   instrumentType: "binary",
   symbolInstrumentOverrides: {
     "cryBTCUSD": "multiplier",
+    // Backtest 2026-07-25 (backtestOandaSlTpServer, 400-1200 bougies, accord
+    // 3/4 TF) : stop fixe large (50% — jamais touché par le bruit normal) +
+    // petit objectif (10% du stake, ~1$ sur une mise de 10$) → or +11,88$/47
+    // trades, GBP/USD +12,33$/82 trades. Voir MULTIPLIER_SYMBOL_OVERRIDES
+    // ci-dessous : ces deux symboles utilisent CES réglages, pas ceux de BTC.
+    "frxXAUUSD": "multiplier",
+    "frxGBPUSD": "multiplier",
   },
   multiplierLevel: 20,
   stopLossPctOfStake: 50,
@@ -424,11 +449,44 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // maxHoldMinutes (0/51 target hits) — trades just ride to the time-based
   // exit, PnL -2.55$. ATR-scaled stop/target actually triggers on real
   // moves (25/51 stop-or-target hits) and turned the same sample +6.38$.
+  // Applies to BTC only — Or/GBP/USD below use their own fixed, tighter
+  // settings (measured separately; ATR mode isn't what was validated for them).
   atrStopMode: true,
   atrStopMultiple: 3.0,
   riskRewardRatio: 1.5,
   broker: "deriv",
 };
+
+/**
+ * Per-symbol risk overrides for Multiplier-mode trades — lets an instrument
+ * run its OWN measured stop/target/agreement settings instead of inheriting
+ * whatever the global AutoTraderConfig fields (tuned for BTC) happen to be.
+ * A symbol absent here falls back to the global fields, so adding Or/GBP-USD
+ * to symbolInstrumentOverrides above never changes BTC's already-validated
+ * ATR behavior.
+ */
+export interface MultiplierSymbolOverride {
+  minTfAgreement?: number;
+  atrStopMode?: boolean;
+  atrStopMultiple?: number;
+  riskRewardRatio?: number;
+  stopLossPctOfStake?: number;
+  takeProfitPctOfStake?: number;
+}
+
+// Backtest 2026-07-25, see symbolInstrumentOverrides comment above for the
+// measured numbers. 3/4 TF only makes sense here BECAUSE the wide fixed stop
+// (50%) never gets hit by normal noise — the same 3/4 threshold in binary
+// CALL/PUT mode was the #1 cause of historical losses (see minTfAgreement
+// comment on DEFAULT_CONFIG above) and must stay 4/4 there.
+export const MULTIPLIER_SYMBOL_OVERRIDES: Record<string, MultiplierSymbolOverride> = {
+  frxXAUUSD: { minTfAgreement: 3, atrStopMode: false, stopLossPctOfStake: 50, takeProfitPctOfStake: 10 },
+  frxGBPUSD: { minTfAgreement: 3, atrStopMode: false, stopLossPctOfStake: 50, takeProfitPctOfStake: 10 },
+};
+
+export function getMultiplierOverride(symbol: string): MultiplierSymbolOverride | undefined {
+  return MULTIPLIER_SYMBOL_OVERRIDES[symbol];
+}
 
 export const SCAN_INTERVAL_MS = 60_000;
 

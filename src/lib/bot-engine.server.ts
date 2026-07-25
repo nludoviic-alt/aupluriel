@@ -33,6 +33,7 @@ import {
   computeProgressiveStake,
   computeDynamicMinConfidence,
   countConsecutiveLosses,
+  getMultiplierOverride,
   is24x7Symbol,
   isCorrelatedWithActive,
   isSymbolTradeable,
@@ -850,6 +851,20 @@ class ServerBotEngine {
       this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextUtcMidnight());
       return finishScan();
     }
+    // Proportional trailing stop: the allowed giveback scales with the size
+    // of today's peak gain (e.g. 10% of +$100 = $10) instead of a flat $
+    // amount — "the more we've won, the more room we allow before locking
+    // in". Gated on trailingStopMinPeakUsd so an early $2 peak doesn't pause
+    // the bot for the rest of the day over a $0.20 wobble.
+    if (config.trailingStopPct > 0 && this.sessionPeakPnl >= config.trailingStopMinPeakUsd) {
+      const maxDrawdown = this.sessionPeakPnl * config.trailingStopPct;
+      if (pnl < this.sessionPeakPnl - maxDrawdown) {
+        this.riskPause([
+          `Trailing stop % — pic +$${this.sessionPeakPnl.toFixed(2)}, perte max autorisée ${(config.trailingStopPct * 100).toFixed(0)}% (-$${maxDrawdown.toFixed(2)}), maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
+        ], this.nextUtcMidnight());
+        return finishScan();
+      }
+    }
     // Realized-only pnl let the bot keep opening positions while already deep
     // underwater on OPEN ones — the loss only "existed" once a stop actually
     // hit. Floating LOSSES count toward the cap; floating gains don't (they
@@ -1024,6 +1039,10 @@ class ServerBotEngine {
       }
       // ── Dynamic minConfidence based on payout ──
       const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
+      // Per-symbol override (Or/GBP-USD run their own measured settings —
+      // see MULTIPLIER_SYMBOL_OVERRIDES) — undefined for BTC and every
+      // binary symbol, which keep reading the global config fields below.
+      const multiplierOverride = isMultiplier ? getMultiplierOverride(symbol) : undefined;
       const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
       const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
       const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
@@ -1066,8 +1085,9 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil dyn: ${effectiveMinConfidence}` });
         continue;
       }
-      if (analysis.agreement < config.minTfAgreement) {
-        scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+      const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
+      if (analysis.agreement < effectiveMinTfAgreement) {
+        scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil: ${effectiveMinTfAgreement}` });
         continue;
       }
       if (config.premiumOnly && analysis.premiumCount < 1) {
@@ -1155,11 +1175,16 @@ class ServerBotEngine {
       // opens at the capped one silently doubled the intended stop distance
       // for crypto (20 assumed vs 10 actually applied on the wire).
       const effMultiplier = effectiveMultiplier(symbol, config.multiplierLevel);
-      const { stopLossUsd, takeProfitUsd } = config.atrStopMode
-        ? computeAtrStopUsd(stakeForTrade, effMultiplier, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio)
+      const useAtrStop = multiplierOverride?.atrStopMode ?? config.atrStopMode;
+      const { stopLossUsd, takeProfitUsd } = useAtrStop
+        ? computeAtrStopUsd(
+            stakeForTrade, effMultiplier, analysis.volatilityPct,
+            multiplierOverride?.atrStopMultiple ?? config.atrStopMultiple,
+            multiplierOverride?.riskRewardRatio ?? config.riskRewardRatio,
+          )
         : {
-            stopLossUsd: Math.round(stakeForTrade * (config.stopLossPctOfStake / 100) * 100) / 100,
-            takeProfitUsd: Math.round(stakeForTrade * (config.takeProfitPctOfStake / 100) * 100) / 100,
+            stopLossUsd: Math.round(stakeForTrade * ((multiplierOverride?.stopLossPctOfStake ?? config.stopLossPctOfStake) / 100) * 100) / 100,
+            takeProfitUsd: Math.round(stakeForTrade * ((multiplierOverride?.takeProfitPctOfStake ?? config.takeProfitPctOfStake) / 100) * 100) / 100,
           };
 
       const brokerLabel = useKraken ? "Kraken" : useBinance ? "Binance" : useOanda ? "OANDA" : "serveur";
