@@ -277,6 +277,16 @@ class ServerBotEngine {
   private logs: TradeLog[];
   private activeSymbols = new Map<string, "CALL" | "PUT">();
   private symbolCooldowns = new Map<string, number>();
+  // Identifies WHICH losing streak a symbol's cooldown was served for (the id
+  // of its most recent closed trade at cooldown time). Without this, a
+  // symbol that never gets to trade again after its cooldown expires keeps
+  // re-reading the SAME stale historical streak forever — maxConsecutiveLosses
+  // re-triggers an identical cooldown every time the timer expires, logging a
+  // new row each cycle and permanently locking the symbol out (observed live:
+  // cryETHUSD stuck re-pausing hourly for 16h+ straight). Once a streak's
+  // cooldown has been served, the symbol gets one real attempt to trade
+  // again; only a genuinely NEW loss re-arms the cooldown.
+  private servedCooldownFor = new Map<string, string>();
   private contractUnsubs = new Map<number, () => void>();
   private fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
   private sessionPeakPnl = 0;
@@ -940,14 +950,28 @@ class ServerBotEngine {
 
       const consecutive = countConsecutiveLosses(logs, symbol);
       if (consecutive >= config.maxConsecutiveLosses) {
-        this.symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
-        this.emit({
-          id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
-          stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
-          status: "cooldown", note: `${consecutive} pertes consécutives — pause ${config.cooldownMinutes} min`,
-        });
-        scanResults.push({ symbol, action: "cooldown" });
-        continue;
+        // Identify THIS streak by its most recent closed trade. If the
+        // cooldown already served was for this exact streak (no new trade
+        // happened since — expected, since the symbol was blocked), the
+        // penalty is served: let it try again this cycle instead of reading
+        // the same stale history and re-blocking forever.
+        const streakTrade = logs.find((l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"));
+        const streakKey = streakTrade?.id;
+        const alreadyServed = streakKey !== undefined && this.servedCooldownFor.get(symbol) === streakKey;
+        if (!alreadyServed) {
+          this.symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
+          if (streakKey !== undefined) this.servedCooldownFor.set(symbol, streakKey);
+          this.emit({
+            id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
+            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+            status: "cooldown", note: `${consecutive} pertes consécutives — pause ${config.cooldownMinutes} min`,
+          });
+          scanResults.push({ symbol, action: "cooldown" });
+          continue;
+        }
+        // Cooldown already served for this streak — fall through and let it
+        // attempt a trade. A fresh loss will produce a new streakKey and
+        // re-arm the cooldown normally; a win clears the streak entirely.
       }
 
       // A streak counter resets on any single win — a symbol alternating
