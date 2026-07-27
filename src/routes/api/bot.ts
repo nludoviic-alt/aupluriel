@@ -106,6 +106,10 @@ export const Route = createFileRoute("/api/bot")({
             enableKraken: savedConfig?.enableKraken ?? DEFAULT_CONFIG.enableKraken,
             enableBinance: savedConfig?.enableBinance ?? DEFAULT_CONFIG.enableBinance,
             enableOanda: savedConfig?.enableOanda ?? DEFAULT_CONFIG.enableOanda,
+            // Admin-adjusted per-account fields (see /api/admin/user-config) —
+            // a self-service restart must not silently discard them either.
+            minConfidence: savedConfig?.minConfidence ?? DEFAULT_CONFIG.minConfidence,
+            excludedSymbols: savedConfig?.excludedSymbols ?? DEFAULT_CONFIG.excludedSymbols,
           };
           try {
             await startBotForUser(user.id, config);

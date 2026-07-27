@@ -247,6 +247,11 @@ export function loadBotConfig(userId: number): AutoTraderConfig | null {
   // toujours de DEFAULT_CONFIG. "live" n'est retenu que si l'utilisateur l'a
   // explicitement choisi au démarrage (voir /api/bot.ts) ; ce choix persiste
   // across restarts/redéploiements — pas de re-bascule silencieuse en demo.
+  // minConfidence/excludedSymbols restent une exception à ce verrouillage :
+  // ce sont les deux seuls champs de stratégie qu'un admin peut ajuster par
+  // compte (/api/admin/user-config) — sans les reprendre ici, tout ajustement
+  // était effacé silencieusement au redémarrage suivant (observé en prod le
+  // 2026-07-27 : minConfidence réglé à 68 revenu à 72 après un redéploiement).
   try {
     const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
     return {
@@ -258,6 +263,8 @@ export function loadBotConfig(userId: number): AutoTraderConfig | null {
       enableKraken: saved.enableKraken ?? DEFAULT_CONFIG.enableKraken,
       enableBinance: saved.enableBinance ?? DEFAULT_CONFIG.enableBinance,
       enableOanda: saved.enableOanda ?? DEFAULT_CONFIG.enableOanda,
+      minConfidence: typeof saved.minConfidence === "number" ? saved.minConfidence : DEFAULT_CONFIG.minConfidence,
+      excludedSymbols: Array.isArray(saved.excludedSymbols) ? saved.excludedSymbols : DEFAULT_CONFIG.excludedSymbols,
     };
   } catch {
     return { ...DEFAULT_CONFIG };
