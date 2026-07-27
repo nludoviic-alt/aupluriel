@@ -178,6 +178,11 @@ export interface AutoTraderConfig {
   maxDailyLossUsd: number;
   maxTradesPerDay: number;
   symbols: string[];
+  // Symbols to skip even in "all-markets" mode, where `symbols` above isn't
+  // consulted at all — a per-account override for a market that's proven
+  // to be a net loser on THIS account's own track record, without having
+  // to fork the whole strategy into "watchlist" mode to get there.
+  excludedSymbols: string[];
   initialCapital: number;          // starting capital for virtual P&L tracking
   // --- Risk protection ---
   maxConsecutiveLosses: number;   // pause the SYMBOL after N consecutive losses on it
@@ -352,6 +357,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
     "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
     "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "cryBTCUSD"
   ],
+  excludedSymbols: [],
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 60,

@@ -1,8 +1,9 @@
 // Admin-only: apply a targeted adjustment to one user's AutoTraderConfig —
 // the "ajuster leurs stratégies au besoin" surface for the per-user insights
-// panel. Deliberately a narrow whitelist of fields (symbols, minConfidence),
-// not a free-form config overwrite: this is meant for admin-reviewed
-// suggestions, not a backdoor to silently rewrite someone's whole strategy.
+// panel. Deliberately a narrow whitelist of fields (symbols, minConfidence,
+// excludedSymbols), not a free-form config overwrite: this is meant for
+// admin-reviewed suggestions, not a backdoor to silently rewrite someone's
+// whole strategy.
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
@@ -13,6 +14,7 @@ interface PatchBody {
   userId?: number;
   symbols?: string[];
   minConfidence?: number;
+  excludedSymbols?: string[];
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -26,8 +28,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined) {
-          return json({ error: "Aucun champ à appliquer (symbols ou minConfidence requis)." }, 400);
+        if (body.symbols === undefined && body.minConfidence === undefined && body.excludedSymbols === undefined) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence ou excludedSymbols requis)." }, 400);
         }
 
         const db = getDb();
@@ -48,6 +50,12 @@ export const Route = createFileRoute("/api/admin/user-config")({
             return json({ error: "minConfidence doit être un nombre entre 0 et 100." }, 400);
           }
           config.minConfidence = body.minConfidence;
+        }
+        if (body.excludedSymbols !== undefined) {
+          if (!Array.isArray(body.excludedSymbols) || body.excludedSymbols.some((s) => typeof s !== "string")) {
+            return json({ error: "excludedSymbols doit être un tableau de chaînes." }, 400);
+          }
+          config.excludedSymbols = body.excludedSymbols;
         }
 
         updateConfigForUser(body.userId, config);

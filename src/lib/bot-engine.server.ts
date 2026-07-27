@@ -922,9 +922,11 @@ class ServerBotEngine {
     // in all-markets mode: Deriv generates them by RNG, no indicator has a real
     // edge on them, and long-term winrate ~50% is a structural loss against the
     // payout (see DEFAULT_CONFIG.symbols comment).
-    const candidateSymbols = config.symbolMode === "all-markets"
+    const excluded = new Set(config.excludedSymbols ?? []);
+    const candidateSymbols = (config.symbolMode === "all-markets"
       ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config))).map((s) => s.deriv)
-      : config.symbols;
+      : config.symbols
+    ).filter((s) => !excluded.has(s));
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
