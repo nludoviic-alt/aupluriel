@@ -108,8 +108,15 @@ export const Route = createFileRoute("/api/settings")({
         const hasToggle = Object.values(brokerToggles).some((v) => v !== undefined);
         if (hasToggle) {
           const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(auth.userId) as { config?: string } | undefined;
-          let config: Record<string, unknown> = {};
-          try { config = botState?.config ? JSON.parse(botState.config) : {}; } catch { /* ignore */ }
+          // Un JSON illisible faisait repartir de {} — et le UPDATE plus bas
+          // écrasait alors TOUTE la stratégie (preset, symboles, TP/SL) par un
+          // objet vide, juste pour basculer un interrupteur de broker. On ne
+          // touche à la config que si on a réussi à la relire.
+          let config: Record<string, unknown> | null = null;
+          try { config = botState?.config ? (JSON.parse(botState.config) as Record<string, unknown>) : {}; } catch { config = null; }
+          if (config === null) {
+            return json({ error: "Configuration du bot illisible — bascule annulée pour ne pas l'écraser." }, 409);
+          }
           if (brokerToggles.enableDeriv !== undefined) config.enableDeriv = brokerToggles.enableDeriv;
           if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
           if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;

@@ -52,6 +52,12 @@ import {
 } from "./signal-core";
 
 const SCAN_MS = 60_000;
+// Durée de pause pour un déclencheur RÉVERSIBLE (perte flottante non réalisée,
+// trailing stop sur un pic). 45 min laisse le temps aux positions ouvertes de
+// se résoudre — la durée de détention moyenne mesurée sur Boom est de ~20 min —
+// puis le bot réévalue. Une perte RÉALISÉE, elle, reste bloquante jusqu'à
+// minuit UTC : l'argent est réellement parti, contrairement au flottant.
+const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 
 /** Correlation/active-symbol tracking cares about the underlying bullish/bearish
  * bias, not the contract mechanics — MULTUP is the same bias as CALL. */
@@ -242,67 +248,30 @@ function computeKellyStakeServer(
 export function loadBotConfig(userId: number): AutoTraderConfig | null {
   const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ?").get(userId) as { config: string } | undefined;
   if (!row) return null;
-  // Config verrouillée : seuls la mise (stakeUsd, maxDailyLossUsd) et le mode
-  // (demo/live) sont repris de la config sauvegardée — la stratégie vient
-  // toujours de DEFAULT_CONFIG. "live" n'est retenu que si l'utilisateur l'a
-  // explicitement choisi au démarrage (voir /api/bot.ts) ; ce choix persiste
-  // across restarts/redéploiements — pas de re-bascule silencieuse en demo.
-  // minConfidence/excludedSymbols restent une exception à ce verrouillage :
-  // ce sont les deux seuls champs de stratégie qu'un admin peut ajuster par
-  // compte (/api/admin/user-config) — sans les reprendre ici, tout ajustement
-  // était effacé silencieusement au redémarrage suivant (observé en prod le
-  // 2026-07-27 : minConfidence réglé à 68 revenu à 72 après un redéploiement).
+  // La config sauvegardée est reprise INTÉGRALEMENT, avec DEFAULT_CONFIG en
+  // simple filet pour les champs absents (config ancienne, ou partielle).
+  //
+  // Avant, ce chargement marchait par LISTE BLANCHE : chaque champ devait être
+  // recopié explicitement, et tout champ oublié retombait silencieusement sur
+  // DEFAULT_CONFIG au premier redémarrage. Ça a produit la même régression au
+  // moins trois fois (minConfidence/excludedSymbols effacés le 2026-07-27,
+  // puis les champs du preset Boom), et le 2026-07-29 en production le bot
+  // tradait Boom avec le trailing stop de Default (10% dès $10 de pic au lieu
+  // de 20% dès $30) — il s'est mis en pause après ~6 gains et une perte.
+  // Une fusion générique supprime cette classe de bug : plus rien à maintenir.
+  //
+  // Seuls les champs qui engagent de l'ARGENT restent validés explicitement —
+  // une valeur corrompue en base ne doit jamais pouvoir agrandir une mise ou
+  // faire basculer un compte en réel.
   try {
     const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
     return {
       ...DEFAULT_CONFIG,
+      ...saved,
       stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
       maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
+      // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
-      enableDeriv: saved.enableDeriv ?? DEFAULT_CONFIG.enableDeriv,
-      enableKraken: saved.enableKraken ?? DEFAULT_CONFIG.enableKraken,
-      enableBinance: saved.enableBinance ?? DEFAULT_CONFIG.enableBinance,
-      enableOanda: saved.enableOanda ?? DEFAULT_CONFIG.enableOanda,
-      minConfidence: typeof saved.minConfidence === "number" ? saved.minConfidence : DEFAULT_CONFIG.minConfidence,
-      excludedSymbols: Array.isArray(saved.excludedSymbols) ? saved.excludedSymbols : DEFAULT_CONFIG.excludedSymbols,
-      // ── Boom preset fields — needed server-side for the bot to honor them ──
-      symbolMode: saved.symbolMode ?? DEFAULT_CONFIG.symbolMode,
-      symbols: Array.isArray(saved.symbols) ? saved.symbols : DEFAULT_CONFIG.symbols,
-      minTfAgreement: typeof saved.minTfAgreement === "number" ? saved.minTfAgreement : DEFAULT_CONFIG.minTfAgreement,
-      durationMinutes: typeof saved.durationMinutes === "number" ? saved.durationMinutes : DEFAULT_CONFIG.durationMinutes,
-      maxVolatilityPct: typeof saved.maxVolatilityPct === "number" ? saved.maxVolatilityPct : DEFAULT_CONFIG.maxVolatilityPct,
-      maxConsecutiveLosses: typeof saved.maxConsecutiveLosses === "number" ? saved.maxConsecutiveLosses : DEFAULT_CONFIG.maxConsecutiveLosses,
-      cooldownMinutes: typeof saved.cooldownMinutes === "number" ? saved.cooldownMinutes : DEFAULT_CONFIG.cooldownMinutes,
-      maxSimultaneousTrades: typeof saved.maxSimultaneousTrades === "number" ? saved.maxSimultaneousTrades : DEFAULT_CONFIG.maxSimultaneousTrades,
-      maxOpenPositions: typeof saved.maxOpenPositions === "number" ? saved.maxOpenPositions : DEFAULT_CONFIG.maxOpenPositions,
-      maxTradesPerDay: typeof saved.maxTradesPerDay === "number" ? saved.maxTradesPerDay : DEFAULT_CONFIG.maxTradesPerDay,
-      maxDailyProfitUsd: typeof saved.maxDailyProfitUsd === "number" ? saved.maxDailyProfitUsd : DEFAULT_CONFIG.maxDailyProfitUsd,
-      newsFilter: saved.newsFilter ?? DEFAULT_CONFIG.newsFilter,
-      blockCorrelated: saved.blockCorrelated ?? DEFAULT_CONFIG.blockCorrelated,
-      veto4h: saved.veto4h ?? DEFAULT_CONFIG.veto4h,
-      vetoDaily: saved.vetoDaily ?? DEFAULT_CONFIG.vetoDaily,
-      premiumOnly: saved.premiumOnly ?? DEFAULT_CONFIG.premiumOnly,
-      dynamicDuration: saved.dynamicDuration ?? DEFAULT_CONFIG.dynamicDuration,
-      sessionEdgeMinutes: typeof saved.sessionEdgeMinutes === "number" ? saved.sessionEdgeMinutes : DEFAULT_CONFIG.sessionEdgeMinutes,
-      trailingStopPct: typeof saved.trailingStopPct === "number" ? saved.trailingStopPct : DEFAULT_CONFIG.trailingStopPct,
-      trailingStopMinPeakUsd: typeof saved.trailingStopMinPeakUsd === "number" ? saved.trailingStopMinPeakUsd : DEFAULT_CONFIG.trailingStopMinPeakUsd,
-      minPayoutRatio: typeof saved.minPayoutRatio === "number" ? saved.minPayoutRatio : DEFAULT_CONFIG.minPayoutRatio,
-      minSymbolWinRate: typeof saved.minSymbolWinRate === "number" ? saved.minSymbolWinRate : DEFAULT_CONFIG.minSymbolWinRate,
-      symbolWinRateLookback: typeof saved.symbolWinRateLookback === "number" ? saved.symbolWinRateLookback : DEFAULT_CONFIG.symbolWinRateLookback,
-      adaptiveStake: saved.adaptiveStake ?? DEFAULT_CONFIG.adaptiveStake,
-      progressiveStakeReduction: saved.progressiveStakeReduction ?? DEFAULT_CONFIG.progressiveStakeReduction,
-      stakeMode: saved.stakeMode ?? DEFAULT_CONFIG.stakeMode,
-      adxFilterMode: saved.adxFilterMode ?? DEFAULT_CONFIG.adxFilterMode,
-      instrumentType: saved.instrumentType ?? DEFAULT_CONFIG.instrumentType,
-      symbolInstrumentOverrides: saved.symbolInstrumentOverrides ?? DEFAULT_CONFIG.symbolInstrumentOverrides,
-      takeProfitPctOfStake: typeof saved.takeProfitPctOfStake === "number" ? saved.takeProfitPctOfStake : DEFAULT_CONFIG.takeProfitPctOfStake,
-      stopLossPctOfStake: typeof saved.stopLossPctOfStake === "number" ? saved.stopLossPctOfStake : DEFAULT_CONFIG.stopLossPctOfStake,
-      atrStopMode: saved.atrStopMode ?? DEFAULT_CONFIG.atrStopMode,
-      partialTakeProfitPct: typeof saved.partialTakeProfitPct === "number" ? saved.partialTakeProfitPct : DEFAULT_CONFIG.partialTakeProfitPct,
-      maxHoldMinutes: typeof saved.maxHoldMinutes === "number" ? saved.maxHoldMinutes : DEFAULT_CONFIG.maxHoldMinutes,
-      multiplierLevel: typeof saved.multiplierLevel === "number" ? saved.multiplierLevel : DEFAULT_CONFIG.multiplierLevel,
-      hourlyEdgeFilter: saved.hourlyEdgeFilter ?? DEFAULT_CONFIG.hourlyEdgeFilter,
-      hourlyEdgeLookback: typeof saved.hourlyEdgeLookback === "number" ? saved.hourlyEdgeLookback : DEFAULT_CONFIG.hourlyEdgeLookback,
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -412,6 +381,16 @@ class ServerBotEngine {
         url: "/autotrader",
       });
     })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
+  }
+
+  /** Pause courte pour un déclencheur RÉVERSIBLE (perte flottante, trailing
+   * stop) : la position peut encore se retourner, et couper la journée entière
+   * sur un creux temporaire coûtait très cher — 8 des 10 pauses observées en
+   * production entre le 14 et le 29 juillet 2026 étaient déclenchées par du
+   * flottant avec $0.00 de perte RÉALISÉE, soit ~133 heures d'arrêt pour des
+   * pertes qui n'avaient jamais eu lieu. */
+  private nextShortResume(): number {
+    return Math.min(Date.now() + REVERSIBLE_PAUSE_MS, this.nextUtcMidnight());
   }
 
   private riskPause(reasons: string[], untilTs: number) {
@@ -870,7 +849,9 @@ class ServerBotEngine {
     // ── Trailing stop / daily limits (pause-with-auto-resume) ──
     if (pnl > this.sessionPeakPnl) this.sessionPeakPnl = pnl;
     if (config.trailingStopUsd > 0 && this.sessionPeakPnl > 0 && pnl < this.sessionPeakPnl - config.trailingStopUsd) {
-      this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextUtcMidnight());
+      // Même raisonnement que le trailing stop proportionnel plus bas :
+      // protéger un pic n'est pas constater une perte définitive.
+      this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextShortResume());
       return finishScan();
     }
     // Proportional trailing stop: the allowed giveback scales with the size
@@ -881,9 +862,14 @@ class ServerBotEngine {
     if (config.trailingStopPct > 0 && this.sessionPeakPnl >= config.trailingStopMinPeakUsd) {
       const maxDrawdown = this.sessionPeakPnl * config.trailingStopPct;
       if (pnl < this.sessionPeakPnl - maxDrawdown) {
+        // Pause courte : le trailing stop protège un PIC, il ne constate pas
+        // une perte définitive — le P&L est souvent encore positif quand il
+        // se déclenche (+$7.54 lors du déclenchement observé le 2026-07-29).
+        // Couper la journée entière dans ce cas gelait le bot alors qu'il
+        // était en gain.
         this.riskPause([
           `Trailing stop % — pic +$${this.sessionPeakPnl.toFixed(2)}, perte max autorisée ${(config.trailingStopPct * 100).toFixed(0)}% (-$${maxDrawdown.toFixed(2)}), maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
-        ], this.nextUtcMidnight());
+        ], this.nextShortResume());
         return finishScan();
       }
     }
@@ -898,7 +884,15 @@ class ServerBotEngine {
         const detail = floatingLoss < 0
           ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
           : `$${Math.abs(pnl).toFixed(2)}`;
-        this.riskPause([`Perte journalière atteinte : ${detail} / $${config.maxDailyLossUsd}`], this.nextUtcMidnight());
+        // La durée dépend de ce qui a VRAIMENT déclenché : si le plafond n'est
+        // franchi que grâce au flottant, la perte peut encore se résorber —
+        // pause courte. Si la perte réalisée seule suffit, l'argent est parti :
+        // on coupe la journée.
+        const realizedAloneTriggers = pnl <= -Math.abs(config.maxDailyLossUsd);
+        this.riskPause(
+          [`Perte journalière atteinte : ${detail} / $${config.maxDailyLossUsd}`],
+          realizedAloneTriggers ? this.nextUtcMidnight() : this.nextShortResume(),
+        );
       }
       return finishScan();
     }
