@@ -80,12 +80,9 @@ export const Route = createFileRoute("/api/bot")({
         };
 
         if (body.action === "start") {
-          // Config verrouillée : la stratégie (symboles forex, premiumOnly,
-          // minConfidence…) est fixée par DEFAULT_CONFIG pour tout le monde —
-          // seules la mise, la limite de perte et le mode (demo/live) sont
-          // réglables par chaque utilisateur pour SON propre bot. "live" doit
-          // être explicitement demandé ; "simulation" reste navigateur-only
-          // (le bot serveur trade réellement sur Deriv, demo ou live).
+          // Config: on reprend la config sauvegardée en DB (via loadBotConfig
+          // qui fusionne avec DEFAULT_CONFIG) puis on override avec les champs
+          // que l'utilisateur peut ajuster au démarrage (mise, mode).
           const requested = body.config ?? {};
           const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
           const maxDailyLossUsd = clamp(
@@ -94,22 +91,12 @@ export const Route = createFileRoute("/api/bot")({
             500,
           );
           const mode = requested.mode === "live" ? "live" : "demo";
-          // Recoverer les toggles brokers depuis la config sauvegardée en DB
-          // (modifiés via la page Settings) — sinon DEFAULT_CONFIG les active tous.
-          const savedConfig = loadBotConfig(user.id);
+          const savedConfig = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
           const config: AutoTraderConfig = {
-            ...DEFAULT_CONFIG,
+            ...savedConfig,
             stakeUsd,
             maxDailyLossUsd,
             mode,
-            enableDeriv: savedConfig?.enableDeriv ?? DEFAULT_CONFIG.enableDeriv,
-            enableKraken: savedConfig?.enableKraken ?? DEFAULT_CONFIG.enableKraken,
-            enableBinance: savedConfig?.enableBinance ?? DEFAULT_CONFIG.enableBinance,
-            enableOanda: savedConfig?.enableOanda ?? DEFAULT_CONFIG.enableOanda,
-            // Admin-adjusted per-account fields (see /api/admin/user-config) —
-            // a self-service restart must not silently discard them either.
-            minConfidence: savedConfig?.minConfidence ?? DEFAULT_CONFIG.minConfidence,
-            excludedSymbols: savedConfig?.excludedSymbols ?? DEFAULT_CONFIG.excludedSymbols,
           };
           try {
             await startBotForUser(user.id, config);

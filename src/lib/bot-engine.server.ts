@@ -95,7 +95,7 @@ function parseComponents(json: string | null): SignalComponent[] | undefined {
   }
 }
 
-function logFromRow(r: BotTradeRow): TradeLog {
+export function logFromRow(r: BotTradeRow): TradeLog {
   return {
     id: r.id, time: r.time, symbol: r.symbol, direction: r.direction, stake: r.stake,
     payout: r.payout, status: r.status, profit: r.profit, confidence: r.confidence,
@@ -265,6 +265,36 @@ export function loadBotConfig(userId: number): AutoTraderConfig | null {
       enableOanda: saved.enableOanda ?? DEFAULT_CONFIG.enableOanda,
       minConfidence: typeof saved.minConfidence === "number" ? saved.minConfidence : DEFAULT_CONFIG.minConfidence,
       excludedSymbols: Array.isArray(saved.excludedSymbols) ? saved.excludedSymbols : DEFAULT_CONFIG.excludedSymbols,
+      // ── Boom preset fields — needed server-side for the bot to honor them ──
+      symbolMode: saved.symbolMode ?? DEFAULT_CONFIG.symbolMode,
+      symbols: Array.isArray(saved.symbols) ? saved.symbols : DEFAULT_CONFIG.symbols,
+      minTfAgreement: typeof saved.minTfAgreement === "number" ? saved.minTfAgreement : DEFAULT_CONFIG.minTfAgreement,
+      durationMinutes: typeof saved.durationMinutes === "number" ? saved.durationMinutes : DEFAULT_CONFIG.durationMinutes,
+      maxVolatilityPct: typeof saved.maxVolatilityPct === "number" ? saved.maxVolatilityPct : DEFAULT_CONFIG.maxVolatilityPct,
+      maxConsecutiveLosses: typeof saved.maxConsecutiveLosses === "number" ? saved.maxConsecutiveLosses : DEFAULT_CONFIG.maxConsecutiveLosses,
+      cooldownMinutes: typeof saved.cooldownMinutes === "number" ? saved.cooldownMinutes : DEFAULT_CONFIG.cooldownMinutes,
+      maxSimultaneousTrades: typeof saved.maxSimultaneousTrades === "number" ? saved.maxSimultaneousTrades : DEFAULT_CONFIG.maxSimultaneousTrades,
+      maxOpenPositions: typeof saved.maxOpenPositions === "number" ? saved.maxOpenPositions : DEFAULT_CONFIG.maxOpenPositions,
+      maxTradesPerDay: typeof saved.maxTradesPerDay === "number" ? saved.maxTradesPerDay : DEFAULT_CONFIG.maxTradesPerDay,
+      maxDailyProfitUsd: typeof saved.maxDailyProfitUsd === "number" ? saved.maxDailyProfitUsd : DEFAULT_CONFIG.maxDailyProfitUsd,
+      newsFilter: saved.newsFilter ?? DEFAULT_CONFIG.newsFilter,
+      blockCorrelated: saved.blockCorrelated ?? DEFAULT_CONFIG.blockCorrelated,
+      veto4h: saved.veto4h ?? DEFAULT_CONFIG.veto4h,
+      vetoDaily: saved.vetoDaily ?? DEFAULT_CONFIG.vetoDaily,
+      premiumOnly: saved.premiumOnly ?? DEFAULT_CONFIG.premiumOnly,
+      dynamicDuration: saved.dynamicDuration ?? DEFAULT_CONFIG.dynamicDuration,
+      sessionEdgeMinutes: typeof saved.sessionEdgeMinutes === "number" ? saved.sessionEdgeMinutes : DEFAULT_CONFIG.sessionEdgeMinutes,
+      trailingStopPct: typeof saved.trailingStopPct === "number" ? saved.trailingStopPct : DEFAULT_CONFIG.trailingStopPct,
+      trailingStopMinPeakUsd: typeof saved.trailingStopMinPeakUsd === "number" ? saved.trailingStopMinPeakUsd : DEFAULT_CONFIG.trailingStopMinPeakUsd,
+      minPayoutRatio: typeof saved.minPayoutRatio === "number" ? saved.minPayoutRatio : DEFAULT_CONFIG.minPayoutRatio,
+      minSymbolWinRate: typeof saved.minSymbolWinRate === "number" ? saved.minSymbolWinRate : DEFAULT_CONFIG.minSymbolWinRate,
+      symbolWinRateLookback: typeof saved.symbolWinRateLookback === "number" ? saved.symbolWinRateLookback : DEFAULT_CONFIG.symbolWinRateLookback,
+      adaptiveStake: saved.adaptiveStake ?? DEFAULT_CONFIG.adaptiveStake,
+      progressiveStakeReduction: saved.progressiveStakeReduction ?? DEFAULT_CONFIG.progressiveStakeReduction,
+      stakeMode: saved.stakeMode ?? DEFAULT_CONFIG.stakeMode,
+      adxFilterMode: saved.adxFilterMode ?? DEFAULT_CONFIG.adxFilterMode,
+      instrumentType: saved.instrumentType ?? DEFAULT_CONFIG.instrumentType,
+      symbolInstrumentOverrides: saved.symbolInstrumentOverrides ?? DEFAULT_CONFIG.symbolInstrumentOverrides,
     };
   } catch {
     return { ...DEFAULT_CONFIG };

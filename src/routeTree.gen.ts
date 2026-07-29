@@ -40,6 +40,7 @@ import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
+import { Route as ApiBotTradesRouteImport } from './routes/api/bot-trades'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
@@ -219,6 +220,11 @@ const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   path: '/api/deriv-session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBotTradesRoute = ApiBotTradesRouteImport.update({
+  id: '/api/bot-trades',
+  path: '/api/bot-trades',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBotRoute = ApiBotRouteImport.update({
   id: '/api/bot',
   path: '/api/bot',
@@ -359,6 +365,7 @@ export interface FileRoutesByFullPath {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
+  '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -415,6 +422,7 @@ export interface FileRoutesByTo {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
+  '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -472,6 +480,7 @@ export interface FileRoutesById {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
+  '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -530,6 +539,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
+    | '/api/bot-trades'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -586,6 +596,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
+    | '/api/bot-trades'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -642,6 +653,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/auto-backtest'
     | '/api/bot'
+    | '/api/bot-trades'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -699,6 +711,7 @@ export interface RootRouteChildren {
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiAutoBacktestRoute: typeof ApiAutoBacktestRoute
   ApiBotRoute: typeof ApiBotRoute
+  ApiBotTradesRoute: typeof ApiBotTradesRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
@@ -951,6 +964,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDerivSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/bot-trades': {
+      id: '/api/bot-trades'
+      path: '/api/bot-trades'
+      fullPath: '/api/bot-trades'
+      preLoaderRoute: typeof ApiBotTradesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/bot': {
       id: '/api/bot'
       path: '/api/bot'
@@ -1150,6 +1170,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAlertsRoute: ApiAlertsRoute,
   ApiAutoBacktestRoute: ApiAutoBacktestRoute,
   ApiBotRoute: ApiBotRoute,
+  ApiBotTradesRoute: ApiBotTradesRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,

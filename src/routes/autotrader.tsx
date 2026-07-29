@@ -10,7 +10,9 @@ import {
   Clock,
   FlaskConical,
   Globe,
+  Layers,
   Power,
+  Rocket,
   Save,
   Settings2,
   ShieldAlert,
@@ -196,6 +198,9 @@ import {
   saveBacktestStats,
   PRUDENT_CONFIG,
   PRESETS,
+  BOOM_PRESET,
+  isBoomPresetActive,
+  type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
@@ -681,6 +686,71 @@ function AutoTraderPage() {
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2">
+          {/* ── Quick Preset Switch: Default vs Boom ── */}
+          <div className="flex items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1">
+            <button
+              disabled={running}
+              onClick={async () => {
+                if (isBoomPresetActive(config)) {
+                  const ok = await confirm({
+                    title: "Passer en preset Default ?",
+                    description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
+                    confirmLabel: "Activer Default",
+                    danger: false,
+                  });
+                  if (!ok) return;
+                }
+                const next = { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode };
+                setConfig(next); saveConfig(next);
+                setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
+                toast.success("Preset Default activé", { description: "Tous les marchés · Stratégie standard" });
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",
+                !isBoomPresetActive(config) ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
+                running && "opacity-40 cursor-not-allowed"
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" /> Default
+              {!isBoomPresetActive(config) && (
+                <span className="flex items-center gap-1 ml-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+                  <span className="text-[8px] font-black tracking-widest text-cyan-400">LIVE</span>
+                </span>
+              )}
+            </button>
+            <button
+              disabled={running}
+              onClick={async () => {
+                if (!isBoomPresetActive(config)) {
+                  const ok = await confirm({
+                    title: "Passer en preset Boom 1000 ?",
+                    description: "Le bot trade UNIQUEMENT Boom 1000 (synthétique 24/7). Tous les autres marchés seront désactivés.",
+                    confirmLabel: "Activer Boom",
+                    danger: false,
+                  });
+                  if (!ok) return;
+                }
+                const next = { ...config, ...BOOM_PRESET };
+                setConfig(next); saveConfig(next);
+                setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
+                toast.success("Preset Boom 1000 activé", { description: "Boom 1000 uniquement · 24/7 · 5min" });
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",
+                isBoomPresetActive(config) ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
+                running && "opacity-40 cursor-not-allowed"
+              )}
+            >
+              <Rocket className="h-3.5 w-3.5" /> Boom
+              {isBoomPresetActive(config) && (
+                <span className="flex items-center gap-1 ml-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
+                  <span className="text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
+                </span>
+              )}
+            </button>
+          </div>
           <Button variant="outline" size="sm" disabled={running}
             onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
               setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);

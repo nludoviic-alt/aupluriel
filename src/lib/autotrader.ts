@@ -254,6 +254,96 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
   aggressive: AGGRESSIVE_PRESET,
 };
 
+// ── Quick-switch presets (Default vs Boom 1000) ──────────────────────────────
+export type QuickPreset = "default" | "boom";
+
+/**
+ * BOOM 1000 preset — haute fréquence, petits gains constants.
+ *
+ * Philosophie : beaucoup de trades courts, gain minimal par trade mais
+ * régularité maximale. On accepte des signaux moins confiants, on réduit
+ * la durée au minimum (5 min), on permet plusieurs positions simultanées,
+ * et on coupe les filtres qui bloquent du volume sur un synthétique RNG.
+ *
+ * Différences clés vs Default :
+ * - Symbole unique (1BOOM1000), pas de scan all-markets
+ * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
+ * - Confiance 55 : très permissif, on veut du volume
+ * - Accord TF 2/4 : minimum pour valider un signal
+ * - Volatilité max 20% : Boom 1000 fait des spikes, on accepte tout
+ * - maxConsecutiveLosses 4 : laisse le bot encaisser quelques pertes d'affilée
+ * - maxSimultaneousTrades 3 : ouvre jusqu'à 3 trades par cycle de scan
+ * - maxOpenPositions 5 : jusqu'à 5 positions en parallèle
+ * - maxTradesPerDay 300 : pas de limite pratique
+ * - maxDailyProfitUsd 500 : ne s'arrête pas sur petits gains cumulés
+ * - newsFilter off, blockCorrelated off, veto4h off, vetoDaily off
+ * - premiumOnly off : on prend tous les signaux
+ * - dynamicDuration on : adapte la durée selon la volatilité
+ * - cooldownMinutes 15 : reprise rapide après une série de pertes
+ * - trailingStopPct 0.20 : laisse respirer les petits gains
+ * - minPayoutRatio 0.70 : accepte des payouts plus modestes
+ * - minSymbolWinRate 0.30 : ne coupe pas un symbole trop vite
+ * - adxFilterMode off : pas de filtre de trend sur RNG
+ * - stakeMode fixed : mise constante, pas de Kelly
+ */
+export const BOOM_PRESET: Partial<AutoTraderConfig> = {
+  // ── Symbole unique ──
+  symbolMode: "watchlist",
+  symbols: ["1BOOM1000"],
+  excludedSymbols: [],
+  // ── Instrument ──
+  instrumentType: "binary",
+  symbolInstrumentOverrides: {},
+  // ── Signaux — très permissif pour du volume ──
+  minConfidence: 55,
+  minTfAgreement: 2,
+  premiumOnly: false,
+  // ── Durée — 5 min (min pour synthétiques) ──
+  durationMinutes: 5,
+  dynamicDuration: true,
+  // ── Volatilité — Boom 1000 fait des spikes brutals, on accepte ──
+  maxVolatilityPct: 20,
+  // ── Risk — encaisse quelques pertes d'affilée ──
+  maxConsecutiveLosses: 4,
+  cooldownMinutes: 15,
+  // ── Volume — multi-positions pour maximiser le nombre de trades ──
+  maxSimultaneousTrades: 3,
+  maxOpenPositions: 5,
+  maxTradesPerDay: 300,
+  // ── Pas de plafond de gain quotidien ──
+  maxDailyProfitUsd: 500,
+  // ── Pas de filtres inutiles sur synthétique 24/7 ──
+  newsFilter: false,
+  blockCorrelated: false,
+  veto4h: "off",
+  vetoDaily: "off",
+  // ── Sessions 24/7 ──
+  tradingSessions: ["asia", "london", "newyork"],
+  sessionEdgeMinutes: 0,
+  // ── Trailing stop permissif ──
+  trailingStopPct: 0.20,
+  trailingStopMinPeakUsd: 3,
+  // ── Payout minimum modéré ──
+  minPayoutRatio: 0.70,
+  // ── Ne coupe pas le symbole trop vite ──
+  minSymbolWinRate: 0.30,
+  symbolWinRateLookback: 15,
+  // ── Adaptatif ──
+  adaptiveStake: false,
+  stopOnRisk: true,
+  progressiveStakeReduction: false,
+  // ── Kelly off sur synthétique (pas d'edge mesurable fiable) ──
+  stakeMode: "fixed",
+  // ── ADX filter off sur Boom (RNG = pas de vrai trend) ──
+  adxFilterMode: "off",
+};
+
+export function isBoomPresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === 1
+    && config.symbols[0] === "1BOOM1000";
+}
+
 /** Custom user preset with performance tracking */
 export interface CustomPreset extends PresetConfig {
   id: string;
@@ -465,7 +555,7 @@ function saveTradeLog(logs: TradeLog[]) {
   try {
     // Keep a generous window: enough for a full day of events (trades + markers)
     // so day-scoped stats computed from the log stay accurate.
-    const trimmed = logs.slice(0, 200);
+    const trimmed = logs.slice(0, 500);
     logsCache = trimmed;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {}

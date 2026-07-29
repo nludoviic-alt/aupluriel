@@ -5,6 +5,7 @@ import { BarChart3, CheckCircle2, Download, Info, TrendingDown } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { loadTradeLog, type TradeLog } from "@/lib/autotrader";
+import { api } from "@/lib/api";
 import {
   bySession,
   bySymbol,
@@ -27,9 +28,30 @@ export const Route = createFileRoute("/journal")({
 
 function JournalPage() {
   const [logs, setLogs] = useState<TradeLog[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLogs(loadTradeLog());
+    // Load from localStorage immediately (fast, offline-capable)
+    const local = loadTradeLog();
+    setLogs(local);
+
+    // Then fetch the full persistent history from the server DB (bot_trades)
+    // — this never resets, unlike localStorage which is capped at 200 and
+    // can be cleared by the user or browser data purge.
+    api.get<TradeLog[]>("/api/bot-trades?limit=500")
+      .then((serverLogs) => {
+        if (serverLogs.length > 0) {
+          // Merge: server logs are the source of truth, but keep any local-only
+          // entries (e.g., preview trades not sent to server) that aren't in DB.
+          const serverIds = new Set(serverLogs.map((t) => t.id));
+          const localOnly = local.filter((t) => !serverIds.has(t.id));
+          setLogs([...serverLogs, ...localOnly]);
+        }
+      })
+      .catch(() => {
+        // Server unreachable — local logs are still displayed
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const s = summarize(logs);

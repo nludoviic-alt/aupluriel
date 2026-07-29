@@ -8,13 +8,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser } from "@/lib/bot-engine.server";
-import type { AutoTraderConfig } from "@/lib/signal-core";
+import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
+import { BOOM_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
   symbols?: string[];
   minConfidence?: number;
   excludedSymbols?: string[];
+  preset?: "default" | "boom";
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -28,8 +30,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined && body.excludedSymbols === undefined) {
-          return json({ error: "Aucun champ à appliquer (symbols, minConfidence ou excludedSymbols requis)." }, 400);
+        if (body.symbols === undefined && body.minConfidence === undefined && body.excludedSymbols === undefined && body.preset === undefined) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, excludedSymbols ou preset requis)." }, 400);
         }
 
         const db = getDb();
@@ -56,6 +58,12 @@ export const Route = createFileRoute("/api/admin/user-config")({
             return json({ error: "excludedSymbols doit être un tableau de chaînes." }, 400);
           }
           config.excludedSymbols = body.excludedSymbols;
+        }
+        if (body.preset === "boom") {
+          Object.assign(config, BOOM_PRESET);
+        } else if (body.preset === "default") {
+          const { stakeUsd, maxDailyLossUsd, mode } = config;
+          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode });
         }
 
         updateConfigForUser(body.userId, config);

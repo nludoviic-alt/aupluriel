@@ -168,7 +168,6 @@ function AdminPage() {
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
   const [botStatus, setBotStatus] = useState<Record<number, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
-  const [presetBusy, setPresetBusy] = useState<number | null>(null);
   const [backtestBusyId, setBacktestBusyId] = useState<number | null>(null);
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(true);
@@ -1452,12 +1451,7 @@ function AdminPage() {
                   </div>
                 )}
 
-                {!isAdmin && (() => {
-                  const isBoomActive = journalConfig?.symbolMode === "watchlist"
-                    && Array.isArray(journalConfig?.symbols)
-                    && journalConfig.symbols.length === 1
-                    && journalConfig.symbols[0] === "1BOOM1000";
-                  return (
+                {!isAdmin && (
                   <div className="border-t border-white/[0.08] pt-5 space-y-3">
                     <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader</span>
@@ -1466,74 +1460,6 @@ function AdminPage() {
                         busy={botBusyId === profileUser.id}
                         onToggle={(action) => toggleBot(profileUser.id, action)}
                       />
-                    </div>
-                    {/* ── Preset switch: Default vs Boom 1000 ── */}
-                    <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset Strategy</span>
-                      <div className="flex items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5">
-                        <button
-                          disabled={presetBusy === profileUser.id}
-                          onClick={async () => {
-                            if (!isBoomActive) return;
-                            const ok = await confirm({
-                              title: `Passer ${profileUser.username} en preset Default ?`,
-                              description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-                              confirmLabel: "Activer Default",
-                              danger: false,
-                            });
-                            if (!ok) return;
-                            setPresetBusy(profileUser.id);
-                            try {
-                              const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: "default" });
-                              setJournalConfig(res.config);
-                              toast.success("Preset Default appliqué");
-                              await loadBotStatus();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Erreur");
-                            } finally {
-                              setPresetBusy(null);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
-                            !isBoomActive ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
-                            presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
-                          )}
-                        >
-                          Default
-                        </button>
-                        <button
-                          disabled={presetBusy === profileUser.id}
-                          onClick={async () => {
-                            if (isBoomActive) return;
-                            const ok = await confirm({
-                              title: `Passer ${profileUser.username} en preset Boom 1000 ?`,
-                              description: "Le bot de cet utilisateur trade UNIQUEMENT Boom 1000 (synthétique 24/7). Tous les autres marchés seront désactivés.",
-                              confirmLabel: "Activer Boom",
-                              danger: false,
-                            });
-                            if (!ok) return;
-                            setPresetBusy(profileUser.id);
-                            try {
-                              const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: "boom" });
-                              setJournalConfig(res.config);
-                              toast.success("Preset Boom 1000 appliqué");
-                              await loadBotStatus();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Erreur");
-                            } finally {
-                              setPresetBusy(null);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
-                            isBoomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
-                            presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
-                          )}
-                        >
-                          🚀 Boom
-                        </button>
-                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="flex flex-col items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-3 py-2.5">
@@ -1554,8 +1480,7 @@ function AdminPage() {
                       </div>
                     </div>
                   </div>
-                  );
-                })()}
+                )}
 
                 {r && (
                   <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-5 text-xs">
