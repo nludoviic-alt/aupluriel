@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, CheckCircle2, Download, Info, TrendingDown } from "lucide-react";
+import { BarChart3, CheckCircle2, Download, Info, Microscope, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { loadTradeLog, type TradeLog } from "@/lib/autotrader";
@@ -12,12 +12,17 @@ import {
   byConfidence,
   byHour,
   byDay,
+  bySegment,
+  withinSegment,
+  stopSlippage,
+  errorsByDay,
   equityCurve,
   exportToCsv,
   insights,
   summarize,
   type Bucket,
   type DayBucket,
+  type SegmentStats,
 } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +67,11 @@ function JournalPage() {
   const hours = byHour(logs);
   const confidence = byConfidence(logs);
   const days = byDay(logs);
+  const segments = bySegment(logs);
+  const tfWithin = withinSegment(logs, "tfAgreement");
+  const confWithin = withinSegment(logs, "confidence");
+  const slippage = stopSlippage(logs);
+  const errDays = errorsByDay(logs);
 
   const hasData = s.trades > 0;
 
@@ -212,6 +222,105 @@ function JournalPage() {
               <AccordionContent><BreakdownTable buckets={hours} bare /></AccordionContent>
             </AccordionItem>
           </Accordion>
+
+          {/* ── Diagnostic segmenté ──
+              Les tableaux ci-dessus agrègent toutes les familles d'instruments
+              ensemble, ce qui produit des conclusions fausses dès que plusieurs
+              presets tournent : chaque preset impose SON accord de timeframes,
+              donc comparer les win rates par accord TF revient à comparer des
+              instruments entre eux, pas l'effet du paramètre. Cette section
+              segmente d'abord, compare en espérance, et affiche l'incertitude. */}
+          <div className="glass-panel rounded-xl p-5">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Microscope className="h-4 w-4 text-[color:var(--brand-cyan)]" />
+              Diagnostic segmenté
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Le taux de gain n'est pas comparable entre familles : un Multiplier à ratio 6:1 doit
+              gagner ~86% du temps pour être à l'équilibre, un binaire forex ~57%. Seule
+              l'espérance ($/trade) se compare.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {segments.map((seg) => <SegmentCard key={seg.key} seg={seg} />)}
+              {segments.length === 0 && (
+                <div className="text-sm text-muted-foreground">Aucun trade clôturé à analyser.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Coût de transaction réel — invisible dans un backtest sur bougies. */}
+          {(slippage.measuredLosses > 0 || slippage.measuredWins > 0) && (
+            <div className="glass-panel rounded-xl p-5">
+              <h2 className="text-base font-semibold">Coût de transaction réel</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Écart entre les stops/objectifs configurés et ce qui a réellement été encaissé.
+                C'est la seule mesure fiable du slippage — un backtest sur bougies ne peut pas le voir.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Stat
+                  label="Dépassement / perte"
+                  value={`${slippage.overshootAvg >= 0 ? "+" : ""}$${slippage.overshootAvg.toFixed(3)}`}
+                  sub={`stop $${slippage.configuredStopAvg.toFixed(2)} → réel $${slippage.actualLossAvg.toFixed(2)}`}
+                  tone={slippage.overshootAvg > 0.01 ? "bear" : "bull"}
+                />
+                <Stat
+                  label="Manque / gain"
+                  value={`${slippage.shortfallAvg >= 0 ? "-" : "+"}$${Math.abs(slippage.shortfallAvg).toFixed(3)}`}
+                  sub={`objectif $${slippage.configuredTpAvg.toFixed(2)} → réel $${slippage.actualWinAvg.toFixed(2)}`}
+                  tone={slippage.shortfallAvg > 0.01 ? "bear" : "bull"}
+                />
+                <Stat
+                  label="Coût estimé / trade"
+                  value={slippage.costPerTradeEstimate === null ? "—" : `$${slippage.costPerTradeEstimate.toFixed(4)}`}
+                  sub="à retrancher de l'espérance"
+                  tone={(slippage.costPerTradeEstimate ?? 0) > 0 ? "bear" : "default"}
+                />
+                <Stat
+                  label="Échantillon"
+                  value={`${slippage.measuredLosses + slippage.measuredWins}`}
+                  sub={`${slippage.measuredLosses} pertes / ${slippage.measuredWins} gains mesurés`}
+                />
+              </div>
+              {slippage.measuredLosses + slippage.measuredWins < 30 && (
+                <p className="mt-3 text-[11px] text-[color:var(--brand-amber)]">
+                  ⚠️ Moins de 30 trades mesurés — chiffre indicatif, pas encore concluant.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Accord TF / confiance calculés DANS chaque famille. */}
+          {(tfWithin.length > 0 || confWithin.length > 0) && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <WithinCard title="Accord des timeframes (par famille)" groups={tfWithin} />
+              <WithinCard title="Niveau de confiance (par famille)" groups={confWithin} />
+            </div>
+          )}
+
+          {/* Erreurs datées : distingue un incident ponctuel d'un problème courant. */}
+          {errDays.length > 0 && (
+            <div className="glass-panel rounded-xl p-5">
+              <h2 className="text-base font-semibold">Erreurs d'exécution par jour</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Un pic concentré sur quelques jours = incident ponctuel déjà passé. Réparti dans le
+                temps = problème courant à corriger.
+              </p>
+              <div className="mt-3 max-h-56 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {errDays.map((d) => (
+                      <tr key={d.date} className="border-t border-border/40">
+                        <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{d.date}</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-[color:var(--bear)]">{d.count}</td>
+                        <td className="py-2 text-xs text-muted-foreground truncate">{d.topNote}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -235,6 +344,102 @@ function Stat({
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn("mt-1 text-2xl font-bold tracking-tight", cls)}>{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+/** Une famille d'instrument. L'espérance est mise en avant plutôt que le taux
+ * de gain : c'est la seule valeur comparable d'une famille à l'autre, et
+ * l'intervalle de Wilson rend visible un échantillon non concluant. */
+function SegmentCard({ seg }: { seg: SegmentStats }) {
+  const positive = seg.expectancy >= 0;
+  return (
+    <div className={cn(
+      "rounded-xl border p-4",
+      seg.reliable ? "border-border/60" : "border-[color:var(--brand-amber)]/40 bg-[color:var(--brand-amber)]/[0.04]",
+    )}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-semibold">{seg.label}</span>
+        <span className={cn("font-mono text-lg font-bold", positive ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+          {positive ? "+" : ""}${seg.expectancy.toFixed(4)}
+          <span className="ml-1 text-[10px] font-normal text-muted-foreground">/trade</span>
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+        <Metric label="Trades" value={String(seg.trades)} />
+        <Metric label="Gagnants" value={`${seg.winRate.toFixed(1)}%`} />
+        <Metric label="Rentabilité" value={seg.breakEvenWinRate === null ? "—" : `${seg.breakEvenWinRate.toFixed(1)}%`} />
+        <Metric
+          label="Edge"
+          value={seg.edge === null ? "—" : `${seg.edge >= 0 ? "+" : ""}${seg.edge.toFixed(1)}pp`}
+          tone={seg.edge === null ? undefined : seg.edge >= 0 ? "bull" : "bear"}
+        />
+      </div>
+
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        Gain moyen ${seg.avgWin.toFixed(2)} · perte moyenne ${seg.avgLoss.toFixed(2)} · P&amp;L {seg.pnl >= 0 ? "+" : ""}${seg.pnl.toFixed(2)}
+        <br />
+        Intervalle de confiance 95% du taux de gain : {seg.winRateLow.toFixed(1)}% – {seg.winRateHigh.toFixed(1)}%
+      </div>
+
+      {!seg.reliable && (
+        <div className="mt-2 text-[11px] text-[color:var(--brand-amber)]">
+          ⚠️ {seg.trades} trades seulement — intervalle trop large pour conclure.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "bull" | "bear" }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn(
+        "font-semibold",
+        tone === "bull" && "text-[color:var(--bull)]",
+        tone === "bear" && "text-[color:var(--bear)]",
+      )}>{value}</div>
+    </div>
+  );
+}
+
+/** Découpage d'une dimension à l'intérieur de chaque famille. Si une famille
+ * n'affiche qu'une seule ligne, c'est que son preset fixe ce paramètre — et
+ * qu'aucune comparaison n'est possible sur cette dimension. */
+function WithinCard({ title, groups }: { title: string; groups: { segment: string; label: string; buckets: SegmentStats[] }[] }) {
+  return (
+    <div className="glass-panel rounded-xl p-5">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="mt-3 space-y-4">
+        {groups.map((g) => (
+          <div key={g.segment}>
+            <div className="text-xs font-medium text-muted-foreground">{g.label}</div>
+            <div className="mt-1.5 space-y-1">
+              {g.buckets.map((b) => (
+                <div key={b.key} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="w-20 shrink-0 font-medium">{b.label}</span>
+                  <span className="text-muted-foreground">{b.trades}t</span>
+                  <span className="flex-1 text-right">{b.winRate.toFixed(0)}%</span>
+                  <span className={cn(
+                    "w-24 text-right font-mono font-semibold",
+                    b.expectancy >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]",
+                  )}>
+                    {b.expectancy >= 0 ? "+" : ""}${b.expectancy.toFixed(3)}
+                  </span>
+                  {!b.reliable && <span className="text-[color:var(--brand-amber)]" title="échantillon trop faible">⚠</span>}
+                </div>
+              ))}
+              {g.buckets.length === 1 && (
+                <div className="text-[11px] text-muted-foreground italic">
+                  Une seule valeur — fixée par le preset, aucune comparaison possible ici.
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

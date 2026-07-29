@@ -258,3 +258,226 @@ export function insights(logs: TradeLog[]): { type: "good" | "warn" | "info"; te
 
   return out;
 }
+
+// ─── Diagnostic segmenté ──────────────────────────────────────────────────────
+// Les breakdowns ci-dessus agrègent TOUS les trades ensemble. C'est trompeur
+// dès que le bot tourne sur plusieurs familles d'instruments : le preset Boom
+// impose 2 TF d'accord sur des synthétiques à ratio 6:1 (~86% de gagnants
+// requis pour l'équilibre), le preset Default impose 4 TF sur du forex binaire
+// (~57% requis). Comparer leurs TAUX DE GAIN bruts revient à comparer des
+// instruments, pas l'effet du paramètre — un paradoxe de Simpson qui a déjà
+// produit deux conclusions opposées sur minTfAgreement à deux mois d'écart.
+//
+// D'où cette couche : on segmente d'abord par famille d'instrument, on compare
+// en ESPÉRANCE ($/trade, universellement comparable) plutôt qu'en taux de gain,
+// et on expose un intervalle de confiance pour qu'un bucket de 8 trades ne
+// puisse plus passer pour un résultat.
+
+export interface SegmentStats {
+  key: string;
+  label: string;
+  trades: number;
+  wins: number;
+  winRate: number;
+  /** Bornes de Wilson à 95% — un intervalle large = échantillon non concluant. */
+  winRateLow: number;
+  winRateHigh: number;
+  pnl: number;
+  /** $/trade — la seule métrique comparable entre instruments à ratio différent. */
+  expectancy: number;
+  avgWin: number;
+  avgLoss: number;
+  /** Déduit des gains/pertes RÉELLEMENT observés (slippage inclus), pas de la config. */
+  breakEvenWinRate: number | null;
+  edge: number | null;
+  /** false quand l'échantillon est trop petit pour conclure quoi que ce soit. */
+  reliable: boolean;
+}
+
+const MIN_SAMPLE = 20;
+
+/** Intervalle de Wilson : robuste sur petits échantillons, contrairement à
+ * l'intervalle normal qui donne des bornes absurdes (négatives, >100%). */
+function wilson(wins: number, n: number): { low: number; high: number } {
+  if (n === 0) return { low: 0, high: 0 };
+  const z = 1.96;
+  const p = wins / n;
+  const denom = 1 + (z * z) / n;
+  const centre = (p + (z * z) / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / denom;
+  return { low: Math.max(0, (centre - margin) * 100), high: Math.min(100, (centre + margin) * 100) };
+}
+
+function segmentStats(key: string, label: string, items: ClosedTrade[]): SegmentStats {
+  const trades = items.length;
+  const winItems = items.filter((x) => x.status === "won");
+  const lossItems = items.filter((x) => x.status === "lost");
+  const wins = winItems.length;
+  const pnl = items.reduce((s, x) => s + x.profit, 0);
+  const avgWin = winItems.length ? winItems.reduce((s, x) => s + x.profit, 0) / winItems.length : 0;
+  const avgLoss = lossItems.length ? Math.abs(lossItems.reduce((s, x) => s + x.profit, 0) / lossItems.length) : 0;
+  // Seuil de rentabilité tiré du couple gain/perte réellement constaté.
+  const breakEvenWinRate = avgWin > 0 && avgLoss > 0 ? (avgLoss / (avgWin + avgLoss)) * 100 : null;
+  const winRate = trades ? (wins / trades) * 100 : 0;
+  const { low, high } = wilson(wins, trades);
+  return {
+    key, label, trades, wins, winRate, winRateLow: low, winRateHigh: high,
+    pnl: Math.round(pnl * 100) / 100,
+    expectancy: trades ? Math.round((pnl / trades) * 10000) / 10000 : 0,
+    avgWin: Math.round(avgWin * 100) / 100,
+    avgLoss: Math.round(avgLoss * 100) / 100,
+    breakEvenWinRate,
+    edge: breakEvenWinRate === null ? null : winRate - breakEvenWinRate,
+    reliable: trades >= MIN_SAMPLE,
+  };
+}
+
+/** Famille d'instrument — c'est ELLE qui porte le confondant, pas le symbole
+ * seul : mécanique de contrat, ratio TP/SL et seuil de rentabilité changent
+ * complètement d'une famille à l'autre. */
+export function instrumentFamily(symbol: string): { key: string; label: string } {
+  if (symbol.startsWith("BOOM") || symbol.startsWith("CRASH")) return { key: "boomcrash", label: "Boom/Crash (Multiplier)" };
+  if (symbol.startsWith("cry")) return { key: "crypto", label: "Crypto (Multiplier)" };
+  if (symbol.startsWith("OTC_")) return { key: "indices", label: "Indices boursiers" };
+  if (symbol.startsWith("frx")) return { key: "forex", label: "Forex / Métaux" };
+  return { key: "synth", label: "Synthétiques volatilité" };
+}
+
+export function bySegment(logs: TradeLog[]): SegmentStats[] {
+  const t = closedTrades(logs);
+  const map = new Map<string, { label: string; items: ClosedTrade[] }>();
+  for (const x of t) {
+    const f = instrumentFamily(x.symbol);
+    if (!map.has(f.key)) map.set(f.key, { label: f.label, items: [] });
+    map.get(f.key)!.items.push(x);
+  }
+  return [...map.entries()]
+    .map(([key, v]) => segmentStats(key, v.label, v.items))
+    .sort((a, b) => b.trades - a.trades);
+}
+
+/** Découpe une dimension (confiance, accord TF) À L'INTÉRIEUR de chaque famille.
+ * C'est la correction du paradoxe : « 2 TF = 80% / 4 TF = 46% » disparaît dès
+ * qu'on cesse de comparer des Boom à du forex. */
+export function withinSegment(
+  logs: TradeLog[],
+  dimension: "confidence" | "tfAgreement",
+): { segment: string; label: string; buckets: SegmentStats[] }[] {
+  const t = closedTrades(logs);
+  const families = new Map<string, { label: string; items: ClosedTrade[] }>();
+  for (const x of t) {
+    const f = instrumentFamily(x.symbol);
+    if (!families.has(f.key)) families.set(f.key, { label: f.label, items: [] });
+    families.get(f.key)!.items.push(x);
+  }
+
+  const ranges = dimension === "confidence"
+    ? [
+        { key: "lt70", label: "< 70", pick: (x: ClosedTrade) => x.confidence < 70 },
+        { key: "70-80", label: "70–80", pick: (x: ClosedTrade) => x.confidence >= 70 && x.confidence < 80 },
+        { key: "80-90", label: "80–90", pick: (x: ClosedTrade) => x.confidence >= 80 && x.confidence < 90 },
+        { key: "gte90", label: "≥ 90", pick: (x: ClosedTrade) => x.confidence >= 90 },
+      ]
+    : [1, 2, 3, 4].map((n) => ({ key: `tf${n}`, label: `${n}/4 TF`, pick: (x: ClosedTrade) => x.tfAgreement === n }));
+
+  return [...families.entries()]
+    .sort((a, b) => b[1].items.length - a[1].items.length)
+    .map(([key, v]) => ({
+      segment: key,
+      label: v.label,
+      buckets: ranges
+        .map((r) => segmentStats(r.key, r.label, v.items.filter(r.pick)))
+        .filter((b) => b.trades > 0),
+    }))
+    .filter((s) => s.buckets.length > 0);
+}
+
+export interface SlippageReport {
+  /** Trades perdants dont le stop configuré est connu. */
+  measuredLosses: number;
+  configuredStopAvg: number;
+  actualLossAvg: number;
+  /** Dépassement moyen au-delà du stop — le coût de transaction réel. */
+  overshootAvg: number;
+  overshootMax: number;
+  /** Nombre de pertes qui dépassent le stop de plus d'un centime. */
+  exceedingCount: number;
+  measuredWins: number;
+  configuredTpAvg: number;
+  actualWinAvg: number;
+  /** Manque à gagner moyen par rapport au take-profit visé. */
+  shortfallAvg: number;
+  /** Coût total estimé par trade (dépassement sur pertes + manque sur gains),
+   * pondéré par la fréquence de chaque issue. */
+  costPerTradeEstimate: number | null;
+}
+
+/** Mesure l'écart entre les stops/objectifs CONFIGURÉS et ce qui a réellement
+ * été encaissé. C'est le seul moyen d'obtenir le coût de transaction effectif :
+ * l'API Deriv refuse les données d'offering sans compte authentifié, et un
+ * backtest sur bougies OHLC ne peut structurellement pas le voir. */
+export function stopSlippage(logs: TradeLog[]): SlippageReport {
+  const t = closedTrades(logs);
+  const losses = t.filter((x) => x.status === "lost" && typeof x.stopLossUsd === "number" && x.stopLossUsd > 0);
+  const wins = t.filter((x) => x.status === "won" && typeof x.takeProfitUsd === "number" && x.takeProfitUsd > 0);
+
+  const configuredStopAvg = losses.length ? losses.reduce((s, x) => s + x.stopLossUsd!, 0) / losses.length : 0;
+  const actualLossAvg = losses.length ? losses.reduce((s, x) => s + Math.abs(x.profit), 0) / losses.length : 0;
+  const overshoots = losses.map((x) => Math.abs(x.profit) - x.stopLossUsd!);
+  const overshootAvg = overshoots.length ? overshoots.reduce((s, v) => s + v, 0) / overshoots.length : 0;
+  const overshootMax = overshoots.length ? Math.max(...overshoots) : 0;
+
+  const configuredTpAvg = wins.length ? wins.reduce((s, x) => s + x.takeProfitUsd!, 0) / wins.length : 0;
+  const actualWinAvg = wins.length ? wins.reduce((s, x) => s + x.profit, 0) / wins.length : 0;
+  const shortfallAvg = wins.length ? configuredTpAvg - actualWinAvg : 0;
+
+  const total = losses.length + wins.length;
+  const costPerTradeEstimate = total
+    ? Math.round(((overshootAvg * losses.length + shortfallAvg * wins.length) / total) * 10000) / 10000
+    : null;
+
+  const r2 = (v: number) => Math.round(v * 10000) / 10000;
+  return {
+    measuredLosses: losses.length,
+    configuredStopAvg: r2(configuredStopAvg),
+    actualLossAvg: r2(actualLossAvg),
+    overshootAvg: r2(overshootAvg),
+    overshootMax: r2(overshootMax),
+    exceedingCount: overshoots.filter((v) => v > 0.01).length,
+    measuredWins: wins.length,
+    configuredTpAvg: r2(configuredTpAvg),
+    actualWinAvg: r2(actualWinAvg),
+    shortfallAvg: r2(shortfallAvg),
+    costPerTradeEstimate,
+  };
+}
+
+export interface ErrorDay {
+  date: string;
+  count: number;
+  topNote: string;
+}
+
+/** Erreurs groupées par jour. Un pic concentré sur quelques jours signale un
+ * bug ponctuel déjà derrière nous, pas un taux d'échec courant — distinction
+ * invisible dès qu'on agrège tout l'historique en un seul pourcentage. */
+export function errorsByDay(logs: TradeLog[]): ErrorDay[] {
+  const errs = logs.filter((l) => l.status === "error");
+  const map = new Map<string, string[]>();
+  for (const e of errs) {
+    const d = new Date(e.time).toISOString().slice(0, 10);
+    if (!map.has(d)) map.set(d, []);
+    map.get(d)!.push(e.note ?? "(sans détail)");
+  }
+  return [...map.entries()]
+    .map(([date, notes]) => {
+      const counts = new Map<string, number>();
+      for (const n of notes) {
+        const short = n.slice(0, 60);
+        counts.set(short, (counts.get(short) ?? 0) + 1);
+      }
+      const topNote = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+      return { date, count: notes.length, topNote };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
