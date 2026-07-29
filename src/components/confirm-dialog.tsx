@@ -2,6 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface ConfirmOptions {
   title: string;
@@ -19,43 +27,54 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog({ state }: ConfirmDialogProps) {
-  if (!state) return null;
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="glass-panel w-full max-w-sm rounded-xl p-5 space-y-4 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
-            state.danger
-              ? "bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
-              : "bg-amber-500/10 text-amber-400",
-          )}>
-            <AlertTriangle className="h-4 w-4" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">{state.title}</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{state.description}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={() => state.resolve(false)}>
-            Annuler
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => state.resolve(true)}
-            className={cn(
-              "font-semibold",
-              state.danger
-                ? "bg-[color:var(--bear)] text-white hover:bg-[color:var(--bear)]/80"
-                : "bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-[color:var(--background)]",
-            )}
-          >
-            {state.confirmLabel ?? "Confirmer"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog open={!!state} onOpenChange={(open) => { if (!open && state) state.resolve(false); }}>
+      <DialogContent
+        className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-sm">
+        {state && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2.5">
+                <div className={cn(
+                  "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
+                  state.danger
+                    ? "bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
+                    : "bg-amber-500/10 text-amber-400",
+                )}>
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                {state.title}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                {state.description}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => state.resolve(false)}
+                className="flex-1 border-white/5 hover:bg-white/[0.04] text-xs h-9"
+              >
+                Annuler
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => state.resolve(true)}
+                className={cn(
+                  "flex-1 font-bold text-xs h-9",
+                  state.danger
+                    ? "bg-[color:var(--bear)] text-white hover:bg-[color:var(--bear)]/80"
+                    : "bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white",
+                )}
+              >
+                {state.confirmLabel ?? "Confirmer"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

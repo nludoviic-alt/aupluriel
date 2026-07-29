@@ -289,6 +289,7 @@ function AutoTraderPage() {
   const [showSaveParams, setShowSaveParams] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
+  const [presetBusy, setPresetBusy] = useState(false);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
@@ -526,6 +527,56 @@ function AutoTraderPage() {
     saveConfig(next);
   }
 
+  /**
+   * Switches this account between the Default and Boom presets. Writes to BOTH
+   * engines on purpose: `saveConfig` covers the local browser engine, and the
+   * `preset` API call covers the server bot — /api/bot's "start" action
+   * deliberately ignores strategy fields (only stake/mode/daily-loss are
+   * honored there), so a purely local change would leave the cloud bot running
+   * the previous preset with no visible sign of it.
+   */
+  async function applyPreset(target: "boom" | "default") {
+    if (presetBusy) return;
+    const isBoom = isBoomPresetActive(config);
+    if (target === "boom" ? isBoom : !isBoom) return; // already active — no-op
+    const ok = await confirm(
+      target === "boom"
+        ? {
+            title: "Passer en preset Boom ?",
+            description: "Le bot trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
+            confirmLabel: "Activer Boom",
+          }
+        : {
+            title: "Passer en preset Default ?",
+            description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
+            confirmLabel: "Activer Default",
+          },
+    );
+    if (!ok) return;
+
+    setPresetBusy(true);
+    try {
+      const next: AutoTraderConfig = target === "boom"
+        ? { ...config, ...BOOM_PRESET }
+        : { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode };
+      setConfig(next);
+      saveConfig(next);
+      setDraftDuration(next.durationMinutes);
+      setDraftMaxTrades(next.maxTradesPerDay);
+      await api.post("/api/bot", { action: "preset", preset: target });
+      await refreshCloud();
+      toast.success(target === "boom" ? "Preset Boom activé" : "Preset Default activé", {
+        description: target === "boom"
+          ? "Boom 1000/500/600/900 · 24/7 · 5min"
+          : "Tous les marchés · Stratégie standard",
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors du changement de preset");
+    } finally {
+      setPresetBusy(false);
+    }
+  }
+
   const handleEvent = useCallback((log: TradeLog, meta?: { cooldownUntil?: number }) => {
     // Log state itself is owned by the engine store (use-autotrader-engine.ts)
     // so it keeps updating even while this page isn't mounted — this callback
@@ -545,11 +596,6 @@ function AutoTraderPage() {
     if (log.status === "lost") {
       playLossSound();
       toast.error(`${log.symbol} — Perdu -$${Math.abs(log.profit).toFixed(2)}`);
-      relayPush(
-        `Au Pluriel — Trade perdu (-$${Math.abs(log.profit).toFixed(2)})`,
-        `La position sur ${log.symbol} s'est clôturée (${config.mode.toUpperCase()}).`,
-        "/autotrader"
-      );
 
       setCumulativePnl(loadCumulativePnl());
       if (config.mode === "demo" || config.mode === "live") refreshDerivBalance();
@@ -557,11 +603,6 @@ function AutoTraderPage() {
     if (log.status === "open") {
       playOpenSound();
       toast.info(`Position ouverte — ${log.symbol} ${log.direction} · ID ${log.contractId}`);
-      relayPush(
-        "Au Pluriel — Position ouverte",
-        `${log.symbol} ${log.direction} · Contrat ID ${log.contractId} (${config.mode.toUpperCase()}).`,
-        "/autotrader"
-      );
     }
     if (log.status === "error") toast.error(`Erreur sur ${log.symbol}`);
     if (log.status === "pending") {
@@ -669,6 +710,49 @@ function AutoTraderPage() {
     ? "bg-up/12"
     : "bg-primary/10 hover:bg-primary/18";
 
+  // Rendered twice — inline in the desktop header, and as its own full-width
+  // row on mobile. It used to live only inside the header's `hidden md:flex`
+  // group, which made switching presets impossible on a phone.
+  const boomActive = isBoomPresetActive(config);
+  const presetSwitch = (
+    <div className="flex w-full items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1 md:w-auto">
+      <button
+        disabled={running || presetBusy}
+        onClick={() => applyPreset("default")}
+        className={cn(
+          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          !boomActive ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
+          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+        )}
+      >
+        <Layers className="h-3.5 w-3.5" /> Default
+        {!boomActive && (
+          <span className="flex items-center gap-1 ml-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+            <span className="text-[8px] font-black tracking-widest text-cyan-400">LIVE</span>
+          </span>
+        )}
+      </button>
+      <button
+        disabled={running || presetBusy}
+        onClick={() => applyPreset("boom")}
+        className={cn(
+          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          boomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
+          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+        )}
+      >
+        <Rocket className="h-3.5 w-3.5" /> Boom
+        {boomActive && (
+          <span className="flex items-center gap-1 ml-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
+            <span className="text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
+          </span>
+        )}
+      </button>
+    </div>
+  );
+
   return (
     <div className="p-3 md:p-4 space-y-6 max-w-[1600px] mx-auto">
 
@@ -687,70 +771,7 @@ function AutoTraderPage() {
         </div>
         <div className="hidden md:flex items-center gap-2">
           {/* ── Quick Preset Switch: Default vs Boom ── */}
-          <div className="flex items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1">
-            <button
-              disabled={running}
-              onClick={async () => {
-                if (isBoomPresetActive(config)) {
-                  const ok = await confirm({
-                    title: "Passer en preset Default ?",
-                    description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-                    confirmLabel: "Activer Default",
-                    danger: false,
-                  });
-                  if (!ok) return;
-                }
-                const next = { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode };
-                setConfig(next); saveConfig(next);
-                setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
-                toast.success("Preset Default activé", { description: "Tous les marchés · Stratégie standard" });
-              }}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",
-                !isBoomPresetActive(config) ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
-                running && "opacity-40 cursor-not-allowed"
-              )}
-            >
-              <Layers className="h-3.5 w-3.5" /> Default
-              {!isBoomPresetActive(config) && (
-                <span className="flex items-center gap-1 ml-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
-                  <span className="text-[8px] font-black tracking-widest text-cyan-400">LIVE</span>
-                </span>
-              )}
-            </button>
-            <button
-              disabled={running}
-              onClick={async () => {
-                if (!isBoomPresetActive(config)) {
-                  const ok = await confirm({
-                    title: "Passer en preset Boom ?",
-                    description: "Le bot trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
-                    confirmLabel: "Activer Boom",
-                    danger: false,
-                  });
-                  if (!ok) return;
-                }
-                const next = { ...config, ...BOOM_PRESET };
-                setConfig(next); saveConfig(next);
-                setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
-                toast.success("Preset Boom activé", { description: "Boom 1000/500/600/900 · 24/7 · 5min" });
-              }}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",
-                isBoomPresetActive(config) ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
-                running && "opacity-40 cursor-not-allowed"
-              )}
-            >
-              <Rocket className="h-3.5 w-3.5" /> Boom
-              {isBoomPresetActive(config) && (
-                <span className="flex items-center gap-1 ml-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
-                  <span className="text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
-                </span>
-              )}
-            </button>
-          </div>
+          {presetSwitch}
           <Button variant="outline" size="sm" disabled={running}
             onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
               setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
@@ -772,6 +793,9 @@ function AutoTraderPage() {
           </Button>
         </div>
       </div>
+
+      {/* ── Mobile preset switch — desktop keeps it in the header above ── */}
+      <div className="md:hidden">{presetSwitch}</div>
 
       {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (

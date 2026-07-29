@@ -56,8 +56,19 @@ interface BotStatus {
   running: boolean;
   hasToken: boolean;
   mode: "demo" | "live" | null;
+  preset: "boom" | "default";
   lastError: string | null;
   autoBacktestEnabled: boolean;
+}
+
+interface BoomSymbolStat {
+  symbol: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  netPnl: number;
+  lastTradeAt: number | null;
 }
 
 interface InviteCode {
@@ -196,6 +207,8 @@ function AdminPage() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [boomFilter, setBoomFilter] = useState(false);
+  const [boomBreakdown, setBoomBreakdown] = useState<BoomSymbolStat[]>([]);
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdBusy, setPwdBusy] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
@@ -221,11 +234,12 @@ function AdminPage() {
   const loadRecap = useCallback(async () => {
     setRecapLoading(true);
     try {
-      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal; calibration?: CalibrationBucket[] }>("/api/admin/stats");
+      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal; calibration?: CalibrationBucket[]; boomBreakdown?: BoomSymbolStat[] }>("/api/admin/stats");
       setRecap(data.recap);
       setComponentBreakdown(data.componentBreakdown);
       setBacktestVsReal(data.backtestVsReal ?? null);
       setCalibration(data.calibration ?? []);
+      setBoomBreakdown(data.boomBreakdown ?? []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du récap");
     } finally {
@@ -605,11 +619,18 @@ function AdminPage() {
     ? activeUsers.reduce((sum, r) => sum + r.winRate, 0) / activeUsers.length
     : 0;
 
+  const boomUserIds = new Set(Object.values(botStatus).filter((s) => s.preset === "boom").map((s) => s.userId));
   const filteredUsers = users.filter(
     (u) =>
-      u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      (!boomFilter || boomUserIds.has(u.id)) &&
+      (u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+  const boomUsersCount = boomUserIds.size;
+  const boomRecaps = recap.filter((r) => boomUserIds.has(r.userId));
+  const boomTotalPnl = boomRecaps.reduce((sum, r) => sum + r.netPnl, 0);
+  const boomTotalTrades = boomRecaps.reduce((sum, r) => sum + r.trades, 0);
+  const boomBreakdownTotal = boomBreakdown.reduce((acc, b) => ({ trades: acc.trades + b.trades, wins: acc.wins + b.wins, losses: acc.losses + b.losses, netPnl: acc.netPnl + b.netPnl }), { trades: 0, wins: 0, losses: 0, netPnl: 0 });
 
   return (
     <div className="mx-auto max-w-screen-2xl px-4 md:px-16 lg:px-24 py-6 space-y-6">
@@ -688,6 +709,40 @@ function AdminPage() {
         />
       </div>
 
+      {/* ── BOOM KPI ROW ── */}
+      {boomUsersCount > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <KpiCard
+            label="🚀 Users Boom"
+            value={boomUsersCount}
+            delta={`${boomRecaps.filter((r) => r.trades > 0).length} actif(s)`}
+            icon={<Dices className="h-5 w-5 text-orange-400" />}
+            tone="amber"
+          />
+          <KpiCard
+            label="🚀 Trades Boom"
+            value={boomTotalTrades}
+            delta={`${boomBreakdownTotal.trades} sur index Boom`}
+            icon={<TrendingUp className="h-5 w-5 text-orange-400" />}
+            tone="amber"
+          />
+          <KpiCard
+            label="🚀 P&L Boom"
+            value={`${boomTotalPnl >= 0 ? "+" : ""}${boomTotalPnl.toFixed(2)} $`}
+            delta={boomTotalPnl >= 0 ? "Profit" : "Perte"}
+            icon={boomTotalPnl >= 0 ? <TrendingUp className="h-5 w-5 text-[color:var(--bull)]" /> : <TrendingDown className="h-5 w-5 text-[color:var(--bear)]" />}
+            tone={boomTotalPnl >= 0 ? "bull" : "bear"}
+          />
+          <KpiCard
+            label="🚀 Win Rate Boom"
+            value={boomBreakdownTotal.trades > 0 ? `${((boomBreakdownTotal.wins / boomBreakdownTotal.trades) * 100).toFixed(1)}%` : "—"}
+            delta={`${boomBreakdownTotal.wins}W / ${boomBreakdownTotal.losses}L`}
+            icon={<Award className="h-5 w-5 text-orange-400" />}
+            tone="amber"
+          />
+        </div>
+      )}
+
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock
         className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
@@ -698,15 +753,28 @@ function AdminPage() {
               <h2 className="text-base font-bold text-foreground">Gestion des Utilisateurs</h2>
               <p className="text-xs text-muted-foreground mt-0.5">Approuvez, révoquez ou supprimez des comptes.</p>
             </div>
-            <div className="relative w-full sm:w-64 group">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher pseudo / email..."
-                className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
-              />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => setBoomFilter((v) => !v)}
+                className={cn(
+                  "shrink-0 rounded-xl border px-3 h-9 text-xs font-bold uppercase tracking-wider transition-all",
+                  boomFilter
+                    ? "border-orange-500/40 bg-orange-500/15 text-orange-400"
+                    : "border-white/5 bg-white/[0.03] text-muted-foreground hover:text-foreground"
+                )}
+              >
+                🚀 Boom
+              </button>
+              <div className="relative flex-1 sm:w-64 group">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-orange-400 transition-colors" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Rechercher pseudo / email..."
+                  className="w-full h-9 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/30 transition-all"
+                />
+              </div>
             </div>
           </div>
         }
@@ -762,6 +830,11 @@ function AdminPage() {
                               ) : (
                                 <span className="rounded-full bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 text-[9px] text-muted-foreground font-bold uppercase tracking-wider">
                                   trader
+                                </span>
+                              )}
+                              {botStatus[u.id]?.preset === "boom" && (
+                                <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 text-[9px] text-orange-400 font-bold uppercase tracking-wider">
+                                  🚀 Boom
                                 </span>
                               )}
                             </div>
@@ -831,6 +904,11 @@ function AdminPage() {
                       {isAdmin && (
                         <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[8px] text-cyan-400 font-bold uppercase tracking-wider">
                           admin
+                        </span>
+                      )}
+                      {botStatus[u.id]?.preset === "boom" && (
+                        <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 text-[8px] text-orange-400 font-bold uppercase tracking-wider">
+                          🚀
                         </span>
                       )}
                     </div>
@@ -1097,6 +1175,84 @@ function AdminPage() {
           </table>
         </div>
       </CollapsibleBlock>
+
+      {/* ── BOOM SYMBOL BREAKDOWN ── */}
+      {boomBreakdown.some((b) => b.trades > 0) && (
+        <CollapsibleBlock
+          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          header={
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
+                <Dices className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-foreground">🚀 Performance par Index Boom</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom (BOOM1000/500/600/900).</p>
+              </div>
+            </div>
+          }
+        >
+          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+            <table className="w-full text-sm">
+              <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Symbole</th>
+                  <th className="px-4 py-3 text-right">Trades</th>
+                  <th className="px-4 py-3 text-right">Wins</th>
+                  <th className="px-4 py-3 text-right">Losses</th>
+                  <th className="px-4 py-3 text-right">Win Rate</th>
+                  <th className="px-4 py-3 text-right">P&amp;L Net</th>
+                  <th className="px-4 py-3">Dernier Trade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {boomBreakdown.map((b) => (
+                  <tr key={b.symbol} className="border-t border-white/[0.06] hover:bg-white/[0.01] transition-all duration-300">
+                    <td className="px-4 py-3 font-mono text-xs text-orange-400 font-bold">{b.symbol}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground font-semibold">{b.trades}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-[color:var(--bull)]">{b.wins}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-[color:var(--bear)]">{b.losses}</td>
+                    <td className={cn(
+                      "px-4 py-3 text-right font-bold",
+                      b.trades === 0 ? "text-muted-foreground" : b.winRate >= 50 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"
+                    )}>
+                      {b.trades > 0 ? `${b.winRate}%` : "—"}
+                    </td>
+                    <td className={cn(
+                      "px-4 py-3 text-right font-black font-mono",
+                      b.netPnl > 0 ? "text-[color:var(--bull)]" : b.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+                    )}>
+                      {b.netPnl > 0 ? "+" : ""}{b.netPnl.toFixed(2)} $
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground font-semibold text-xs">
+                      {b.lastTradeAt ? new Date(b.lastTradeAt).toLocaleString("fr-FR") : "—"}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-orange-500/20 bg-orange-500/[0.03]">
+                  <td className="px-4 py-3 font-bold text-foreground text-xs uppercase tracking-wider">Total</td>
+                  <td className="px-4 py-3 text-right font-bold text-foreground">{boomBreakdownTotal.trades}</td>
+                  <td className="px-4 py-3 text-right font-bold text-[color:var(--bull)]">{boomBreakdownTotal.wins}</td>
+                  <td className="px-4 py-3 text-right font-bold text-[color:var(--bear)]">{boomBreakdownTotal.losses}</td>
+                  <td className={cn(
+                    "px-4 py-3 text-right font-bold",
+                    boomBreakdownTotal.trades > 0 && boomBreakdownTotal.wins / boomBreakdownTotal.trades >= 0.5 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]"
+                  )}>
+                    {boomBreakdownTotal.trades > 0 ? `${((boomBreakdownTotal.wins / boomBreakdownTotal.trades) * 100).toFixed(1)}%` : "—"}
+                  </td>
+                  <td className={cn(
+                    "px-4 py-3 text-right font-black font-mono",
+                    boomBreakdownTotal.netPnl > 0 ? "text-[color:var(--bull)]" : boomBreakdownTotal.netPnl < 0 ? "text-[color:var(--bear)]" : "text-muted-foreground"
+                  )}>
+                    {boomBreakdownTotal.netPnl > 0 ? "+" : ""}{boomBreakdownTotal.netPnl.toFixed(2)} $
+                  </td>
+                  <td className="px-4 py-3" />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleBlock>
+      )}
 
       {/* ── BACKTEST vs REAL GAUGE ── */}
       {backtestVsReal && (
@@ -1465,9 +1621,11 @@ function AdminPage() {
       >
         <DialogContent
           onPointerDownOutside={(e) => {
-            // The confirm dialog for approve/reject/revoke/delete/reset-password isn't
-            // a Radix-portaled child of this Dialog, so Radix sees clicking it as an
-            // outside interaction and would close this profile modal underneath it.
+            // Safety net: if a confirm dialog is open and the user clicks
+            // outside both dialogs, prevent this profile modal from closing
+            // underneath the confirm (Radix nested dialogs handle clicks
+            // inside the confirm correctly, but the overlay click still
+            // bubbles to this dialog's onPointerDownOutside).
             if (confirmState) e.preventDefault();
           }}
           className="!bg-[#060e0c] border-emerald-500/30 backdrop-blur-2xl sm:rounded-2xl shadow-[0_4px_24px_-6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] max-w-2xl max-h-[88vh] overflow-y-auto gap-5 p-6 ring-1 ring-emerald-500/[0.12]"
@@ -1587,9 +1745,9 @@ function AdminPage() {
                       />
                     </div>
                     {/* ── Preset switch: Default vs Boom ── */}
-                    <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                    <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset Strategy</span>
-                      <div className="flex items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5">
+                      <div className="flex w-full shrink-0 items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5 sm:w-auto">
                         <button
                           disabled={presetBusy === profileUser.id}
                           onClick={async () => {
@@ -1614,7 +1772,7 @@ function AdminPage() {
                             }
                           }}
                           className={cn(
-                            "flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
+                            "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
                             !isBoomActive ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
                             presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
                           )}
@@ -1645,7 +1803,7 @@ function AdminPage() {
                             }
                           }}
                           className={cn(
-                            "flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
+                            "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
                             isBoomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
                             presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
                           )}

@@ -398,52 +398,19 @@ class ServerBotEngine {
     this.notify(log, prevStatus);
   }
 
-  /** Email + push the user on the two events worth an interruption: a trade
-   * just closed (won/lost transition — not re-emits of an already-closed
-   * row, which reconcile() can produce) and a risk pause. Fire-and-forget:
-   * a mail/push provider hiccup must never break trade resolution. */
+  /** Push the user only on winning trades — fire-and-forget so a push
+   * provider hiccup never breaks trade resolution. */
   private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
-    const closed = (log.status === "won" || log.status === "lost") && prevStatus !== log.status;
-    const riskStop = log.status === "risk-stop" && prevStatus === null;
-    const opened = log.status === "open" && (prevStatus === null || prevStatus === "pending");
-    const error = log.status === "error" && prevStatus === null;
+    const won = log.status === "won" && prevStatus !== "won";
+    if (!won) return;
 
-    if (!closed && !riskStop && !opened && !error) return;
-
-    // Push, unlike email, is scoped to the trade's owner only — it targets
-    // that person's own locked phone, not a shared admin inbox.
     void (async () => {
       const { sendPushToUser } = await import("./push.server");
-      const sign = log.profit >= 0 ? "+" : "";
-      
-      let payload;
-      if (closed) {
-        payload = {
-          title: log.status === "won" ? `Gagné ${sign}$${log.profit.toFixed(2)}` : `Perdu ${sign}$${log.profit.toFixed(2)}`,
-          body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
-          url: "/autotrader",
-        };
-      } else if (opened) {
-        payload = {
-          title: `Position ouverte : ${log.symbol}`,
-          body: `${log.direction} · Mise : $${log.stake.toFixed(2)} · Confiance : ${log.confidence}% · Mode : ${this.config.mode === "live" ? "Réel" : "Démo"}`,
-          url: "/autotrader",
-        };
-      } else if (error) {
-        payload = {
-          title: `Erreur sur ${log.symbol}`,
-          body: log.note ?? "Échec de l'ouverture de position",
-          url: "/autotrader",
-        };
-      } else {
-        payload = {
-          title: "Bot en pause (protection de risque)",
-          body: log.note ?? "Limite de risque atteinte",
-          url: "/autotrader",
-        };
-      }
-      
-      await sendPushToUser(this.userId, payload);
+      await sendPushToUser(this.userId, {
+        title: `Gagné +$${log.profit.toFixed(2)}`,
+        body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+        url: "/autotrader",
+      });
     })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
   }
 

@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
+import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 export const Route = createFileRoute("/api/admin/bot")({
   server: {
@@ -29,9 +30,17 @@ export const Route = createFileRoute("/api/admin/bot")({
         const statuses = rows.map((r) => {
           const runtime = getBotRuntime(r.userId);
           let mode: "demo" | "live" | null = null;
+          let preset: "boom" | "default" = "default";
           if (r.config) {
             try {
-              mode = JSON.parse(r.config).mode === "live" ? "live" : "demo";
+              const cfg = JSON.parse(r.config);
+              mode = cfg.mode === "live" ? "live" : "demo";
+              if (cfg.symbolMode === "watchlist"
+                && Array.isArray(cfg.symbols)
+                && cfg.symbols.length === BOOM_SYMBOLS.length
+                && BOOM_SYMBOLS.every((s: string) => cfg.symbols.includes(s))) {
+                preset = "boom";
+              }
             } catch {
               // config malformé — mode inconnu, on n'affiche rien plutôt que de deviner.
             }
@@ -42,6 +51,7 @@ export const Route = createFileRoute("/api/admin/bot")({
             running: runtime.running,
             hasToken: !!r.hasToken,
             mode,
+            preset,
             lastError: runtime.lastError,
             autoBacktestEnabled: !!r.autoBacktestEnabled,
           };

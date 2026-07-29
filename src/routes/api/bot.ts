@@ -12,8 +12,18 @@ import {
   loadBotConfig,
   startBotForUser,
   stopBotForUser,
+  updateConfigForUser,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
+import { BOOM_PRESET, BOOM_SYMBOLS } from "@/lib/autotrader";
+
+/** True when this saved config is the Boom preset (same test as the admin console). */
+function isBoomConfig(cfg: Partial<AutoTraderConfig>): boolean {
+  return cfg.symbolMode === "watchlist"
+    && Array.isArray(cfg.symbols)
+    && cfg.symbols.length === BOOM_SYMBOLS.length
+    && BOOM_SYMBOLS.every((s) => cfg.symbols!.includes(s));
+}
 
 export const Route = createFileRoute("/api/bot")({
   server: {
@@ -45,6 +55,17 @@ export const Route = createFileRoute("/api/bot")({
           }
         })();
         const mode: "demo" | "live" = savedConfig?.mode ?? "demo";
+        // Which preset this account currently runs — lets the Auto-Trader page
+        // show the active preset instead of guessing from the browser's own
+        // localStorage draft (which the server never reads for strategy).
+        const preset: "boom" | "default" = (() => {
+          if (!state?.config) return "default";
+          try {
+            return isBoomConfig(JSON.parse(state.config)) ? "boom" : "default";
+          } catch {
+            return "default";
+          }
+        })();
         // SQL over ALL of today's rows — summing the 20-trade window instead
         // made early wins vanish from the display as new events pushed them out.
         const today = getTodayStats(user.id, mode);
@@ -57,6 +78,7 @@ export const Route = createFileRoute("/api/bot")({
           enabled: !!state?.enabled,
           running: runtime.running,
           mode,
+          preset,
           savedConfig,
           pausedUntil: runtime.pausedUntil,
           lastScan: runtime.lastScan,
@@ -75,8 +97,9 @@ export const Route = createFileRoute("/api/bot")({
         if (!user) return json({ error: "Non authentifié" }, 401);
 
         const body = (await request.json().catch(() => ({}))) as {
-          action?: "start" | "stop";
+          action?: "start" | "stop" | "preset";
           config?: Partial<AutoTraderConfig>;
+          preset?: "default" | "boom";
         };
 
         if (body.action === "start") {
@@ -111,7 +134,34 @@ export const Route = createFileRoute("/api/bot")({
           return json({ ok: true, running: false });
         }
 
-        return json({ error: "action start|stop requise" }, 400);
+        // Switch THIS user's own bot between the Default and Boom presets.
+        // Strategy fields sent with "start" are deliberately ignored (only
+        // stake/mode are honored there), so a preset change has to be
+        // persisted here to actually reach the server engine. The stake, the
+        // daily loss cap and demo/live are always preserved — a preset switch
+        // must never silently move money settings.
+        if (body.action === "preset") {
+          if (body.preset !== "boom" && body.preset !== "default") {
+            return json({ error: "preset doit être 'boom' ou 'default'." }, 400);
+          }
+          const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
+          const { stakeUsd, maxDailyLossUsd, mode } = current;
+          const next: AutoTraderConfig = body.preset === "boom"
+            ? { ...current, ...BOOM_PRESET, stakeUsd, maxDailyLossUsd, mode }
+            : { ...current, ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode };
+
+          // updateConfigForUser only UPDATEs — a user who never started the
+          // bot has no bot_state row yet, so the switch would silently no-op.
+          getDb().prepare(`
+            INSERT INTO bot_state (user_id, enabled, config, updated_at) VALUES (?, 0, ?, unixepoch())
+            ON CONFLICT(user_id) DO NOTHING
+          `).run(user.id, JSON.stringify(next));
+          updateConfigForUser(user.id, next);
+
+          return json({ ok: true, preset: body.preset, config: next });
+        }
+
+        return json({ error: "action start|stop|preset requise" }, 400);
       },
     },
   },

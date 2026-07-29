@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
 import { getUserInsights } from "@/lib/journal-insights.server";
+import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 // Prediction from the offline replay harness (52 days, 2717 trades, exact live
 // pipeline, neutral weights, no lookahead — commit 3629f36). Live trades are
@@ -261,7 +262,36 @@ export const Route = createFileRoute("/api/admin/stats")({
           })
           .filter((b) => b.trades > 0);
 
-        return json({ recap, componentBreakdown, backtestVsReal, calibration });
+        // Boom per-symbol breakdown: trades, win rate, P&L for each Boom index
+        const boomRows = db
+          .prepare(
+            `SELECT symbol,
+                    COUNT(*) FILTER (WHERE status IN ('won','lost')) AS trades,
+                    COUNT(*) FILTER (WHERE status = 'won') AS wins,
+                    COUNT(*) FILTER (WHERE status = 'lost') AS losses,
+                    COALESCE(SUM(profit) FILTER (WHERE status IN ('won','lost')), 0) AS net_pnl,
+                    MAX(time) AS last_trade_at
+             FROM bot_trades
+             WHERE symbol IN (${BOOM_SYMBOLS.map(() => "?").join(",")})
+             GROUP BY symbol`,
+          )
+          .all(...BOOM_SYMBOLS) as { symbol: string; trades: number; wins: number; losses: number; net_pnl: number; last_trade_at: number | null }[];
+        const boomBySymbol = new Map(boomRows.map((r) => [r.symbol, r]));
+        const boomBreakdown = BOOM_SYMBOLS.map((sym) => {
+          const r = boomBySymbol.get(sym);
+          const trades = r?.trades ?? 0;
+          return {
+            symbol: sym,
+            trades,
+            wins: r?.wins ?? 0,
+            losses: r?.losses ?? 0,
+            winRate: trades ? Math.round((r!.wins / trades) * 1000) / 10 : 0,
+            netPnl: Math.round((r?.net_pnl ?? 0) * 100) / 100,
+            lastTradeAt: r?.last_trade_at ?? null,
+          };
+        });
+
+        return json({ recap, componentBreakdown, backtestVsReal, calibration, boomBreakdown });
       },
     },
   },
