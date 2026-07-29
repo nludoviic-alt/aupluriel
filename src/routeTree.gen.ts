@@ -49,6 +49,7 @@ import { Route as ApiChatTypingRouteImport } from './routes/api/chat/typing'
 import { Route as ApiChatReactionsRouteImport } from './routes/api/chat/reactions'
 import { Route as ApiChatMessagesRouteImport } from './routes/api/chat/messages'
 import { Route as ApiChatGroupsRouteImport } from './routes/api/chat/groups'
+import { Route as ApiBacktestBoomSweepRouteImport } from './routes/api/backtest/boom-sweep'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api/auth/verify-email'
 import { Route as ApiAuthResetPasswordRouteImport } from './routes/api/auth/reset-password'
 import { Route as ApiAuthResendVerificationRouteImport } from './routes/api/auth/resend-verification'
@@ -56,6 +57,7 @@ import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
 import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api/auth/forgot-password'
+import { Route as ApiAuthChangePasswordRouteImport } from './routes/api/auth/change-password'
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
@@ -265,6 +267,11 @@ const ApiChatGroupsRoute = ApiChatGroupsRouteImport.update({
   path: '/api/chat/groups',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBacktestBoomSweepRoute = ApiBacktestBoomSweepRouteImport.update({
+  id: '/api/backtest/boom-sweep',
+  path: '/api/backtest/boom-sweep',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthVerifyEmailRoute = ApiAuthVerifyEmailRouteImport.update({
   id: '/api/auth/verify-email',
   path: '/api/auth/verify-email',
@@ -299,6 +306,11 @@ const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
 const ApiAuthForgotPasswordRoute = ApiAuthForgotPasswordRouteImport.update({
   id: '/api/auth/forgot-password',
   path: '/api/auth/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthChangePasswordRoute = ApiAuthChangePasswordRouteImport.update({
+  id: '/api/auth/change-password',
+  path: '/api/auth/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
@@ -385,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/me': typeof ApiAuthMeRoute
@@ -392,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/backtest/boom-sweep': typeof ApiBacktestBoomSweepRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/reactions': typeof ApiChatReactionsRoute
@@ -442,6 +456,7 @@ export interface FileRoutesByTo {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/me': typeof ApiAuthMeRoute
@@ -449,6 +464,7 @@ export interface FileRoutesByTo {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/backtest/boom-sweep': typeof ApiBacktestBoomSweepRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/reactions': typeof ApiChatReactionsRoute
@@ -500,6 +516,7 @@ export interface FileRoutesById {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/me': typeof ApiAuthMeRoute
@@ -507,6 +524,7 @@ export interface FileRoutesById {
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
+  '/api/backtest/boom-sweep': typeof ApiBacktestBoomSweepRoute
   '/api/chat/groups': typeof ApiChatGroupsRouteWithChildren
   '/api/chat/messages': typeof ApiChatMessagesRoute
   '/api/chat/reactions': typeof ApiChatReactionsRoute
@@ -559,6 +577,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/me'
@@ -566,6 +585,7 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/backtest/boom-sweep'
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/reactions'
@@ -616,6 +636,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/me'
@@ -623,6 +644,7 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/backtest/boom-sweep'
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/reactions'
@@ -673,6 +695,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/me'
@@ -680,6 +703,7 @@ export interface FileRouteTypes {
     | '/api/auth/resend-verification'
     | '/api/auth/reset-password'
     | '/api/auth/verify-email'
+    | '/api/backtest/boom-sweep'
     | '/api/chat/groups'
     | '/api/chat/messages'
     | '/api/chat/reactions'
@@ -731,6 +755,7 @@ export interface RootRouteChildren {
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
+  ApiAuthChangePasswordRoute: typeof ApiAuthChangePasswordRoute
   ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthMeRoute: typeof ApiAuthMeRoute
@@ -738,6 +763,7 @@ export interface RootRouteChildren {
   ApiAuthResendVerificationRoute: typeof ApiAuthResendVerificationRoute
   ApiAuthResetPasswordRoute: typeof ApiAuthResetPasswordRoute
   ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
+  ApiBacktestBoomSweepRoute: typeof ApiBacktestBoomSweepRoute
   ApiChatGroupsRoute: typeof ApiChatGroupsRouteWithChildren
   ApiChatMessagesRoute: typeof ApiChatMessagesRoute
   ApiChatReactionsRoute: typeof ApiChatReactionsRoute
@@ -1027,6 +1053,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatGroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/backtest/boom-sweep': {
+      id: '/api/backtest/boom-sweep'
+      path: '/api/backtest/boom-sweep'
+      fullPath: '/api/backtest/boom-sweep'
+      preLoaderRoute: typeof ApiBacktestBoomSweepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/verify-email': {
       id: '/api/auth/verify-email'
       path: '/api/auth/verify-email'
@@ -1074,6 +1107,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/forgot-password'
       fullPath: '/api/auth/forgot-password'
       preLoaderRoute: typeof ApiAuthForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/change-password': {
+      id: '/api/auth/change-password'
+      path: '/api/auth/change-password'
+      fullPath: '/api/auth/change-password'
+      preLoaderRoute: typeof ApiAuthChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/users': {
@@ -1190,6 +1230,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
+  ApiAuthChangePasswordRoute: ApiAuthChangePasswordRoute,
   ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthMeRoute: ApiAuthMeRoute,
@@ -1197,6 +1238,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthResendVerificationRoute: ApiAuthResendVerificationRoute,
   ApiAuthResetPasswordRoute: ApiAuthResetPasswordRoute,
   ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
+  ApiBacktestBoomSweepRoute: ApiBacktestBoomSweepRoute,
   ApiChatGroupsRoute: ApiChatGroupsRouteWithChildren,
   ApiChatMessagesRoute: ApiChatMessagesRoute,
   ApiChatReactionsRoute: ApiChatReactionsRoute,

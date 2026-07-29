@@ -66,7 +66,10 @@ export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex"
   { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
   { label: "Jump 100", deriv: "JD100", market: "synthetic" },
   { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },
-  { label: "Boom 1000", deriv: "1BOOM1000", market: "synthetic" },
+  { label: "Boom 1000", deriv: "BOOM1000", market: "synthetic" },
+  { label: "Boom 900", deriv: "BOOM900", market: "synthetic" },
+  { label: "Boom 600", deriv: "BOOM600", market: "synthetic" },
+  { label: "Boom 500", deriv: "BOOM500", market: "synthetic" },
   { label: "Bull Market", deriv: "RDBULL", market: "synthetic" },
   { label: "Bear Market", deriv: "RDBEAR", market: "synthetic" },
   // ── Indices boursiers (heures de bourse) ──

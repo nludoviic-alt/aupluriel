@@ -5,6 +5,7 @@ import {
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
   BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
   Mail, Ban, Copy, Send, Lightbulb, AlertTriangle, Pencil, StickyNote,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -26,6 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
+import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
@@ -194,6 +196,9 @@ function AdminPage() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -266,6 +271,31 @@ function AdminPage() {
     const id = setInterval(() => { loadBotStatus(); loadRecap(); }, 20_000);
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
+
+  async function changeOwnPassword() {
+    if (pwdForm.next.length < 6) {
+      toast.error("Le nouveau mot de passe doit faire au moins 6 caractères.");
+      return;
+    }
+    if (pwdForm.next !== pwdForm.confirm) {
+      toast.error("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    setPwdBusy(true);
+    try {
+      await api.post("/api/auth/change-password", {
+        currentPassword: pwdForm.current,
+        newPassword: pwdForm.next,
+      });
+      toast.success("Mot de passe mis à jour ✓");
+      setPwdOpen(false);
+      setPwdForm({ current: "", next: "", confirm: "" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setPwdBusy(false);
+    }
+  }
 
   async function openProfile(u: AdminUser) {
     setProfileUser(u);
@@ -596,6 +626,15 @@ function AdminPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPwdOpen(true)}
+            className="flex-1 sm:flex-none h-8.5 text-xs sm:h-8 px-3 border-white/5 hover:bg-white/[0.04]"
+          >
+            <Lock className="h-3.5 w-3.5 mr-1.5" />
+            Mon mot de passe
+          </Button>
           <Button
             size="sm"
             onClick={() => setCreateOpen(true)}
@@ -1333,6 +1372,86 @@ function AdminPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── CHANGE OWN PASSWORD DIALOG ── */}
+      <Dialog open={pwdOpen} onOpenChange={(open) => { setPwdOpen(open); if (!open) setPwdForm({ current: "", next: "", confirm: "" }); }}>
+        <DialogContent className="glass-panel border-white/10 bg-[#0A0A0A]/95 backdrop-blur-2xl sm:rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold uppercase tracking-widest text-foreground flex items-center gap-2">
+              <Lock className="h-4.5 w-4.5 text-orange-500" />
+              Changer mon mot de passe
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground/80 leading-relaxed mt-1">
+              Confirme ton mot de passe actuel pour en définir un nouveau.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4 py-2"
+            onSubmit={(e) => { e.preventDefault(); changeOwnPassword(); }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-current" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                Mot de passe actuel
+              </Label>
+              <Input
+                id="pwd-current"
+                type="password"
+                value={pwdForm.current}
+                onChange={(e) => setPwdForm((f) => ({ ...f, current: e.target.value }))}
+                autoComplete="current-password"
+                className="bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm font-mono text-white"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-next" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                Nouveau mot de passe
+              </Label>
+              <Input
+                id="pwd-next"
+                type="password"
+                value={pwdForm.next}
+                onChange={(e) => setPwdForm((f) => ({ ...f, next: e.target.value }))}
+                placeholder="Min. 6 caractères"
+                autoComplete="new-password"
+                className="bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm font-mono text-white placeholder:text-gray-700"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pwd-confirm" className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                Confirmer le nouveau mot de passe
+              </Label>
+              <Input
+                id="pwd-confirm"
+                type="password"
+                value={pwdForm.confirm}
+                onChange={(e) => setPwdForm((f) => ({ ...f, confirm: e.target.value }))}
+                autoComplete="new-password"
+                className="bg-white/[0.03] border-white/5 rounded-xl h-10 px-3 text-sm font-mono text-white"
+              />
+            </div>
+            <DialogFooter className="mt-4 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPwdOpen(false)}
+                disabled={pwdBusy}
+                className="flex-1 border-white/5 hover:bg-white/[0.04] text-xs h-9"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={pwdBusy || !pwdForm.current || !pwdForm.next || !pwdForm.confirm}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white font-bold text-xs h-9"
+              >
+                {pwdBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Mettre à jour"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* ── USER PROFILE DIALOG ── */}
       <Dialog
         open={!!profileUser}
@@ -1455,8 +1574,8 @@ function AdminPage() {
                 {!isAdmin && (() => {
                   const isBoomActive = journalConfig?.symbolMode === "watchlist"
                     && Array.isArray(journalConfig?.symbols)
-                    && journalConfig.symbols.length === 1
-                    && journalConfig.symbols[0] === "1BOOM1000";
+                    && journalConfig.symbols.length === BOOM_SYMBOLS.length
+                    && BOOM_SYMBOLS.every((s) => journalConfig.symbols.includes(s));
                   return (
                   <div className="border-t border-white/[0.08] pt-5 space-y-3">
                     <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
@@ -1467,7 +1586,7 @@ function AdminPage() {
                         onToggle={(action) => toggleBot(profileUser.id, action)}
                       />
                     </div>
-                    {/* ── Preset switch: Default vs Boom 1000 ── */}
+                    {/* ── Preset switch: Default vs Boom ── */}
                     <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset Strategy</span>
                       <div className="flex items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5">
@@ -1507,8 +1626,8 @@ function AdminPage() {
                           onClick={async () => {
                             if (isBoomActive) return;
                             const ok = await confirm({
-                              title: `Passer ${profileUser.username} en preset Boom 1000 ?`,
-                              description: "Le bot de cet utilisateur trade UNIQUEMENT Boom 1000 (synthétique 24/7). Tous les autres marchés seront désactivés.",
+                              title: `Passer ${profileUser.username} en preset Boom ?`,
+                              description: "Le bot de cet utilisateur trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
                               confirmLabel: "Activer Boom",
                               danger: false,
                             });
@@ -1517,7 +1636,7 @@ function AdminPage() {
                             try {
                               const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: "boom" });
                               setJournalConfig(res.config);
-                              toast.success("Preset Boom 1000 appliqué");
+                              toast.success("Preset Boom appliqué");
                               await loadBotStatus();
                             } catch (err) {
                               toast.error(err instanceof Error ? err.message : "Erreur");

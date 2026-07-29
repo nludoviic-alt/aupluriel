@@ -257,42 +257,61 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000) ──────────────────────────────
 export type QuickPreset = "default" | "boom";
 
+/** The 4 Boom indices Deriv actually offers as Multiplier (confirmed live —
+ * Boom 100/150/200/300/50 don't exist on Deriv Options/Multipliers at all). */
+export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+
 /**
- * BOOM 1000 preset — haute fréquence, petits gains constants.
+ * BOOM preset — scalping haute fréquence sur les 4 index Boom.
  *
- * Philosophie : beaucoup de trades courts, gain minimal par trade mais
- * régularité maximale. On accepte des signaux moins confiants, on réduit
- * la durée au minimum (5 min), on permet plusieurs positions simultanées,
- * et on coupe les filtres qui bloquent du volume sur un synthétique RNG.
+ * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
+ * gain (même quelques centimes) plutôt que d'attendre un objectif ambitieux.
+ * Trades/positions illimités (pas de plafond artificiel — seule limite
+ * réelle : 1 position par symbole, donc 4 max avec 4 symboles), mais la
+ * protection anti-série-de-pertes reste active (maxConsecutiveLosses).
  *
  * Différences clés vs Default :
- * - Symbole unique (1BOOM1000), pas de scan all-markets
+ * - 4 symboles (BOOM1000/500/600/900), pas de scan all-markets
+ * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
  * - Accord TF 2/4 : minimum pour valider un signal
- * - Volatilité max 20% : Boom 1000 fait des spikes, on accepte tout
- * - maxConsecutiveLosses 4 : laisse le bot encaisser quelques pertes d'affilée
- * - maxSimultaneousTrades 3 : ouvre jusqu'à 3 trades par cycle de scan
- * - maxOpenPositions 5 : jusqu'à 5 positions en parallèle
- * - maxTradesPerDay 300 : pas de limite pratique
- * - maxDailyProfitUsd 500 : ne s'arrête pas sur petits gains cumulés
+ * - Volatilité max 20% : les Boom font des spikes, on accepte tout
+ * - maxConsecutiveLosses 4, trailingStopPct 0.20 : garde-fous de perte conservés (demandé)
+ * - trailingStopMinPeakUsd 15, maxDailyLossUsd 50, hourlyEdgeFilter off :
+ *   recalibrage haute fréquence — ces trois réglages hérités de DEFAULT_CONFIG
+ *   (conçu pour 2-12 trades/jour) mettaient le bot en pause jusqu'à minuit UTC
+ *   au bout de quelques trades. Détail dans les commentaires ci-dessous.
+ * - maxSimultaneousTrades / maxOpenPositions / maxTradesPerDay / maxDailyProfitUsd :
+ *   plafonds retirés (trades illimités, demandé) — bornés en pratique par
+ *   1 position/symbole × 4 symboles
+ * - multiplierLevel 100 (au lieu du défaut générique 20) : mesuré par sweep
+ *   réel — à 20x la distance de prix du TP/SL dépassait le mouvement typique
+ *   de Boom en 60 min (93% des trades expiraient sans jamais toucher ni l'un
+ *   ni l'autre) ; à 100x (défaut DTrader pour les Boom) ça tombe à 2.5%
+ * - takeProfitPctOfStake 5, stopLossPctOfStake 30 : validé en walk-forward
+ *   (positif sur une période de vérification jamais vue par l'optimisation,
+ *   WR 88%), contrairement à TP10/SL15 qui changeait de signe selon la
+ *   fenêtre. Ratio 6:1 assumé — détail dans les commentaires ci-dessous.
+ * - atrStopMode off, partialTakeProfitPct 0 : sortie nette, pas de partiel
+ * - maxHoldMinutes 60 : ne laisse pas une position traîner si le petit
+ *   objectif n'est jamais atteint
  * - newsFilter off, blockCorrelated off, veto4h off, vetoDaily off
  * - premiumOnly off : on prend tous les signaux
  * - dynamicDuration on : adapte la durée selon la volatilité
  * - cooldownMinutes 15 : reprise rapide après une série de pertes
- * - trailingStopPct 0.20 : laisse respirer les petits gains
  * - minPayoutRatio 0.70 : accepte des payouts plus modestes
  * - minSymbolWinRate 0.30 : ne coupe pas un symbole trop vite
  * - adxFilterMode off : pas de filtre de trend sur RNG
  * - stakeMode fixed : mise constante, pas de Kelly
  */
 export const BOOM_PRESET: Partial<AutoTraderConfig> = {
-  // ── Symbole unique ──
+  // ── 4 symboles Boom ──
   symbolMode: "watchlist",
-  symbols: ["1BOOM1000"],
+  symbols: BOOM_SYMBOLS,
   excludedSymbols: [],
-  // ── Instrument ──
-  instrumentType: "binary",
+  // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
+  instrumentType: "multiplier",
   symbolInstrumentOverrides: {},
   // ── Signaux — très permissif pour du volume ──
   minConfidence: 55,
@@ -301,17 +320,75 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── Durée — 5 min (min pour synthétiques) ──
   durationMinutes: 5,
   dynamicDuration: true,
-  // ── Volatilité — Boom 1000 fait des spikes brutals, on accepte ──
+  // ── Volatilité — les Boom font des spikes brutals, on accepte ──
   maxVolatilityPct: 20,
-  // ── Risk — encaisse quelques pertes d'affilée ──
+  // ── Risk — garde-fous recalibrés pour la haute fréquence ET pour la taille
+  // de perte du couple TP/SL choisi plus bas. Ces seuils DÉPENDENT du
+  // stopLossPctOfStake : les changer sans recalibrer ici est le bug d'origine
+  // de ce preset (trailingStopMinPeakUsd valait 3 alors qu'une seule perte
+  // valait 0.75 — le bot se mettait en pause jusqu'à minuit UTC après ~6
+  // gains suivis d'UNE perte normale).
+  // Règle appliquée : le giveback toléré doit couvrir les maxConsecutiveLosses
+  // pertes d'affilée, sinon une série normale tue la journée.
+  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 30% = $1.50
+  //   4 pertes    = $6.00  →  peak × 0.20 > $6.00  →  peak > $30
   maxConsecutiveLosses: 4,
   cooldownMinutes: 15,
-  // ── Volume — multi-positions pour maximiser le nombre de trades ──
-  maxSimultaneousTrades: 3,
-  maxOpenPositions: 5,
-  maxTradesPerDay: 300,
-  // ── Pas de plafond de gain quotidien ──
-  maxDailyProfitUsd: 500,
+  trailingStopPct: 0.20,
+  trailingStopMinPeakUsd: 30,
+  // maxDailyLossUsd 50 (au lieu des 15 hérités de DEFAULT_CONFIG) : à $1.50
+  // de perte par trade, $15 = 10 trades perdants seulement, atteint en moins
+  // d'une heure en haute fréquence — puis pause jusqu'à minuit UTC. À $50 le
+  // bot encaisse 33 trades perdants. C'est le garde-fou de RISQUE RÉEL qui
+  // borne la journée (le trailing stop ci-dessus, lui, ne s'arme quasiment
+  // jamais avec un TP de $0.25 : il faudrait ~1000 trades pour un pic de $30).
+  // À revoir avant tout passage en mode live.
+  maxDailyLossUsd: 50,
+  // hourlyEdgeFilter off : il bloque une heure UTC dès que 5 trades y ont un
+  // P&L cumulé négatif (voir getBlockedHours dans signal-core.ts). Conçu pour
+  // le preset Default (2-12 trades/jour, une heure atteint rarement 5 trades),
+  // il devient un frein permanent en haute fréquence — sur un synthétique RNG
+  // la moitié des heures finissent négatives par pur hasard, et une heure
+  // bloquée ne peut plus se rétablir puisqu'elle ne trade plus.
+  hourlyEdgeFilter: false,
+  // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
+  // symbole déjà en position), donc 4 positions simultanées avec 4 symboles.
+  // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
+  maxSimultaneousTrades: 4,
+  maxOpenPositions: 20,
+  maxTradesPerDay: 100_000,
+  maxDailyProfitUsd: 0,
+  // ── Take-profit/stop-loss + levier — mesurés par sweep réel (skill
+  // tune-boom-preset), pas devinés. Deux trouvailles du sweep :
+  // 1) À multiplierLevel 20 (défaut générique), 93% des trades BOOM1000
+  //    n'atteignaient ni le TP ni le SL en 60 min — la distance de prix
+  //    requise (~0.5%) dépassait le mouvement réel de Boom sur cette
+  //    fenêtre. À 100x (le défaut de DTrader lui-même pour les Boom), ce
+  //    taux tombe à 2.5% : le trade se résout vraiment sur TP/SL au lieu
+  //    d'expirer sur la dérive aléatoire du timeout.
+  // 2) TP 5% / SL 30% retenu après un test WALK-FORWARD, pas un simple sweep :
+  //    on optimise sur la 1re moitié de l'historique puis on vérifie sur la 2e
+  //    moitié, jamais vue par l'optimisation. C'est le seul protocole qui
+  //    distingue un vrai réglage d'un surapprentissage — un sweep simple avait
+  //    d'abord désigné TP10/SL15 sur 37.5h, réglage qui se dégradait dès qu'on
+  //    élargissait la fenêtre (rang 2 → 6 → 14 sur 72 à 38h/75h/150h).
+  //    Sur ~150h et 1450 trades, net après spread (0.01% annoncé par Deriv) :
+  //      TP5/SL30  : +$5.70 puis +$21.79  → positif des DEUX côtés,
+  //                  WR stable 86.9% → 88.0%, finit 3e/72 hors échantillon.
+  //      TP10/SL15 : -$19.69 puis +$16.38 → change de signe selon la fenêtre.
+  //    Contrepartie assumée : ratio 6:1 (gain $0.25 / perte $1.50) — beaucoup
+  //    de petits gains, pertes rares mais 6x plus grosses. Les garde-fous
+  //    plus haut sont calibrés SUR cette taille de perte.
+  //    Marge réelle : l'EV brute mesurée (+$0.081/trade) ne dépasse le coût de
+  //    transaction annoncé que d'un facteur ~1.6. Le vrai coût des Multipliers
+  //    Deriv n'a PAS pu être vérifié (l'API refuse les offerings sans compte
+  //    authentifié) — à mesurer sur les trades demo réels via le journal.
+  multiplierLevel: 100,
+  takeProfitPctOfStake: 5,
+  stopLossPctOfStake: 30,
+  atrStopMode: false,
+  partialTakeProfitPct: 0,
+  maxHoldMinutes: 60,
   // ── Pas de filtres inutiles sur synthétique 24/7 ──
   newsFilter: false,
   blockCorrelated: false,
@@ -320,9 +397,6 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── Sessions 24/7 ──
   tradingSessions: ["asia", "london", "newyork"],
   sessionEdgeMinutes: 0,
-  // ── Trailing stop permissif ──
-  trailingStopPct: 0.20,
-  trailingStopMinPeakUsd: 3,
   // ── Payout minimum modéré ──
   minPayoutRatio: 0.70,
   // ── Ne coupe pas le symbole trop vite ──
@@ -340,8 +414,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
 
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
-    && config.symbols.length === 1
-    && config.symbols[0] === "1BOOM1000";
+    && config.symbols.length === BOOM_SYMBOLS.length
+    && BOOM_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
 /** Custom user preset with performance tracking */

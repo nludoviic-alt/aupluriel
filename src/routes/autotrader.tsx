@@ -724,8 +724,8 @@ function AutoTraderPage() {
               onClick={async () => {
                 if (!isBoomPresetActive(config)) {
                   const ok = await confirm({
-                    title: "Passer en preset Boom 1000 ?",
-                    description: "Le bot trade UNIQUEMENT Boom 1000 (synthétique 24/7). Tous les autres marchés seront désactivés.",
+                    title: "Passer en preset Boom ?",
+                    description: "Le bot trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
                     confirmLabel: "Activer Boom",
                     danger: false,
                   });
@@ -734,7 +734,7 @@ function AutoTraderPage() {
                 const next = { ...config, ...BOOM_PRESET };
                 setConfig(next); saveConfig(next);
                 setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
-                toast.success("Preset Boom 1000 activé", { description: "Boom 1000 uniquement · 24/7 · 5min" });
+                toast.success("Preset Boom activé", { description: "Boom 1000/500/600/900 · 24/7 · 5min" });
               }}
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",

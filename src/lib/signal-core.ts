@@ -53,8 +53,13 @@ export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig)
   if (config.symbolInstrumentOverrides && config.symbolInstrumentOverrides[symbol]) {
     return config.symbolInstrumentOverrides[symbol];
   }
-  // Auto-detect: crypto can only be multiplier, forex/commodity can be either
-  if (symbol.startsWith("cry") && config.instrumentType === "binary") {
+  // Auto-detect: crypto and Boom/Crash can only be multiplier (no Rise/Fall
+  // on Deriv for either — confirmed live for Boom 1000, whose Rise/Fall tab
+  // doesn't even exist, only Multipliers), forex/commodity can be either.
+  if (
+    (symbol.startsWith("cry") || symbol.startsWith("BOOM") || symbol.startsWith("CRASH"))
+    && config.instrumentType === "binary"
+  ) {
     return "multiplier";
   }
   return config.instrumentType;
@@ -72,9 +77,14 @@ export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig)
  * and attempt real orders on OTC_* that Deriv always rejects with "Trading
  * is not offered for this duration" (a wasted cycle, not a loss, but a
  * symbol that can never actually fill in Multiplier mode).
+ * Boom/Crash (symbols starting with BOOM or CRASH) is the same case as
+ * crypto — Multiplier-only — so it needs the same explicit branch instead
+ * of falling through to isCallPutAvailable(), which would say "not
+ * tradeable" for either mode.
  */
 export function isSymbolTradeable(symbol: string, instrumentType: "binary" | "multiplier"): boolean {
   if (symbol.startsWith("cry")) return instrumentType === "multiplier";
+  if (symbol.startsWith("BOOM") || symbol.startsWith("CRASH")) return instrumentType === "multiplier";
   if (symbol.startsWith("OTC_") && instrumentType === "multiplier") return false;
   return isCallPutAvailable(symbol);
 }

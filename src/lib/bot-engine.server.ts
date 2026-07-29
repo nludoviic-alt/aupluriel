@@ -295,6 +295,14 @@ export function loadBotConfig(userId: number): AutoTraderConfig | null {
       adxFilterMode: saved.adxFilterMode ?? DEFAULT_CONFIG.adxFilterMode,
       instrumentType: saved.instrumentType ?? DEFAULT_CONFIG.instrumentType,
       symbolInstrumentOverrides: saved.symbolInstrumentOverrides ?? DEFAULT_CONFIG.symbolInstrumentOverrides,
+      takeProfitPctOfStake: typeof saved.takeProfitPctOfStake === "number" ? saved.takeProfitPctOfStake : DEFAULT_CONFIG.takeProfitPctOfStake,
+      stopLossPctOfStake: typeof saved.stopLossPctOfStake === "number" ? saved.stopLossPctOfStake : DEFAULT_CONFIG.stopLossPctOfStake,
+      atrStopMode: saved.atrStopMode ?? DEFAULT_CONFIG.atrStopMode,
+      partialTakeProfitPct: typeof saved.partialTakeProfitPct === "number" ? saved.partialTakeProfitPct : DEFAULT_CONFIG.partialTakeProfitPct,
+      maxHoldMinutes: typeof saved.maxHoldMinutes === "number" ? saved.maxHoldMinutes : DEFAULT_CONFIG.maxHoldMinutes,
+      multiplierLevel: typeof saved.multiplierLevel === "number" ? saved.multiplierLevel : DEFAULT_CONFIG.multiplierLevel,
+      hourlyEdgeFilter: saved.hourlyEdgeFilter ?? DEFAULT_CONFIG.hourlyEdgeFilter,
+      hourlyEdgeLookback: typeof saved.hourlyEdgeLookback === "number" ? saved.hourlyEdgeLookback : DEFAULT_CONFIG.hourlyEdgeLookback,
     };
   } catch {
     return { ...DEFAULT_CONFIG };

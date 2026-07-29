@@ -19,7 +19,8 @@ import {
   backtestRsiMacd,
   type BacktestResult,
 } from "@/lib/indicators";
-import { backtestMultiTf, type MultiTfBacktestResult } from "@/lib/autotrader";
+import { backtestMultiTf, BOOM_SYMBOLS, type MultiTfBacktestResult } from "@/lib/autotrader";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/backtest")({
@@ -29,10 +30,37 @@ export const Route = createFileRoute("/backtest")({
 
 const STRATS = [
   { id: "real-engine", label: "🤖 Moteur réel (multi-timeframe)" },
+  { id: "boom-sweep", label: "🎯 Boom Multiplier Sweep" },
   { id: "rsi-macd", label: "RSI + MACD (long-only)" },
   { id: "ema-cross", label: "EMA 50/200 Cross" },
   { id: "bb-mean-rev", label: "Bollinger Mean Reversion" },
 ];
+
+interface BoomSweepCombo {
+  takeProfitPctOfStake: number;
+  stopLossPctOfStake: number;
+  minConfidence: number;
+  minTfAgreement: number;
+}
+interface BoomSweepComboReport {
+  combo: BoomSweepCombo;
+  trades: number;
+  totalPnlUsd: number;
+  winRate: number;
+  breakEvenWinRate: number;
+  stopHits: number;
+  targetHits: number;
+  timeExits: number;
+  perSymbol: (BoomSweepCombo & {
+    symbol: string; trades: number; wins: number; winRate: number; breakEvenWinRate: number;
+    totalPnlUsd: number; avgHoldMinutes: number; stopHits: number; targetHits: number; timeExits: number;
+  })[];
+}
+interface BoomSweepReport {
+  args: { symbols: string[]; candles: number; stake: number; leverage: number; hold: number; quick: boolean };
+  signalCountsBySymbol: Record<string, number>;
+  ranked: BoomSweepComboReport[];
+}
 const TF = ["15m", "1H", "4H", "1D"] as const;
 const COUNTS: Record<string, number> = { "15m": 500, "1H": 700, "4H": 700, "1D": 700 };
 
@@ -47,6 +75,10 @@ function BacktestPage() {
   const [derivConnected, setDerivConnected] = useState<boolean | null>(null);
   const [minConfidence, setMinConfidence] = useState(80);
   const [minTfAgreement, setMinTfAgreement] = useState(4);
+  const [boomSweepResult, setBoomSweepResult] = useState<BoomSweepReport | null>(null);
+  const [boomSymbols, setBoomSymbols] = useState<string[]>(BOOM_SYMBOLS);
+  const [boomLeverage, setBoomLeverage] = useState(100);
+  const [boomQuick, setBoomQuick] = useState(true);
 
   // Load configured thresholds from the autotrader settings
   useEffect(() => {
@@ -88,8 +120,28 @@ function BacktestPage() {
         });
         setMultiTfResult(r);
         setResult(null);
+        setBoomSweepResult(null);
         setShowTrades(false);
         toast.success(`Backtest moteur réel terminé · ${r.trades} trades qualifiés`);
+        return;
+      }
+      if (strategy === "boom-sweep") {
+        if (boomSymbols.length === 0) {
+          toast.error("Sélectionne au moins un index Boom.");
+          return;
+        }
+        const params = new URLSearchParams({
+          symbols: boomSymbols.join(","),
+          leverage: String(boomLeverage),
+          quick: boomQuick ? "1" : "0",
+        });
+        const r = await api.get<BoomSweepReport>(`/api/backtest/boom-sweep?${params}`);
+        setBoomSweepResult(r);
+        setMultiTfResult(null);
+        setResult(null);
+        setShowTrades(false);
+        const best = r.ranked[0];
+        toast.success(best ? `Sweep terminé · meilleur combo +$${best.totalPnlUsd}` : "Sweep terminé · aucun trade qualifié");
         return;
       }
       const candles = await fetchCandles(symbol.deriv, GRANULARITY[tf], COUNTS[tf]);
@@ -108,6 +160,8 @@ function BacktestPage() {
           description: "Le WebSocket n'est pas connecté. Attendez quelques secondes et réessayez.",
         });
         setDerivConnected(false);
+      } else if (strategy === "boom-sweep") {
+        toast.error(`Erreur du sweep: ${msg}`);
       } else {
         toast.error(`Erreur Deriv: ${msg}`);
       }
@@ -163,31 +217,54 @@ function BacktestPage() {
               ))}
             </select>
           </Field>
-          <Field label="Paire">
-            <select
-              value={symbol.deriv}
-              onChange={(e) => {
-                const s = SYMBOLS.find((x) => x.deriv === e.target.value)!;
-                setSymbol(s);
-              }}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            >
-              {SYMBOLS.map((s) => (
-                <option key={s.deriv} value={s.deriv}>{s.label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Timeframe">
-            <select
-              value={tf}
-              onChange={(e) => setTf(e.target.value as (typeof TF)[number])}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            >
-              {TF.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </Field>
+          {strategy === "boom-sweep" ? (
+            <>
+              <Field label="Levier (multiplier)">
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={boomLeverage}
+                  onChange={(e) => setBoomLeverage(Number(e.target.value))}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                />
+              </Field>
+              <Field label="Grille">
+                <label className="flex h-[38px] items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
+                  <input type="checkbox" checked={boomQuick} onChange={(e) => setBoomQuick(e.target.checked)} />
+                  Rapide (4 combos au lieu de 72)
+                </label>
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Paire">
+                <select
+                  value={symbol.deriv}
+                  onChange={(e) => {
+                    const s = SYMBOLS.find((x) => x.deriv === e.target.value)!;
+                    setSymbol(s);
+                  }}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                >
+                  {SYMBOLS.map((s) => (
+                    <option key={s.deriv} value={s.deriv}>{s.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Timeframe">
+                <select
+                  value={tf}
+                  onChange={(e) => setTf(e.target.value as (typeof TF)[number])}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                >
+                  {TF.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          )}
           <div className="flex items-end">
             <Button
               onClick={run}
@@ -200,8 +277,26 @@ function BacktestPage() {
           </div>
         </div>
 
+        {strategy === "boom-sweep" && (
+          <div className="mt-3 flex flex-wrap gap-3">
+            {BOOM_SYMBOLS.map((s) => (
+              <label key={s} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={boomSymbols.includes(s)}
+                  onChange={(e) => {
+                    setBoomSymbols((prev) => e.target.checked ? [...prev, s] : prev.filter((x) => x !== s));
+                  }}
+                />
+                {s}
+              </label>
+            ))}
+          </div>
+        )}
+
         <div className="mt-3 text-xs text-muted-foreground">
           {strategy === "real-engine" && `Rejoue le pipeline EXACT du bot live (4 timeframes, confiance ≥${minConfidence}, accord ≥${minTfAgreement}/4, veto 4H, poids appris actuels) sur ~3 jours de données. Le timeframe sélectionné est ignoré — le moteur utilise toujours ses 4 TFs.`}
+          {strategy === "boom-sweep" && "Teste plusieurs combinaisons de take-profit/stop-loss/confiance sur données réelles Deriv (pas une estimation) pour trouver le meilleur réglage du preset Boom (BOOM_PRESET). Le levier compte plus que le ratio TP/SL — un levier trop faible fait expirer les trades sans jamais toucher le TP ni le SL."}
           {strategy === "rsi-macd" && "Achète quand RSI < 40 + MACD cross haussier. Vend quand RSI > 70 ou MACD cross baissier."}
           {strategy === "ema-cross" && "Achète au golden cross EMA 50/200. Vend au death cross."}
           {strategy === "bb-mean-rev" && "Achète quand le prix touche la bande inférieure de Bollinger. Vend quand il revient à la moyenne."}
@@ -255,6 +350,105 @@ function BacktestPage() {
           </div>
         </div>
       )}
+
+      {boomSweepResult && (() => {
+        const best = boomSweepResult.ranked[0];
+        return (
+          <div className="space-y-4">
+            {best && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <KpiCard
+                  label="Meilleur combo"
+                  value={`TP${best.combo.takeProfitPctOfStake}/SL${best.combo.stopLossPctOfStake}`}
+                  tone="cyan"
+                  delta={`Confiance ≥${best.combo.minConfidence} · TF ≥${best.combo.minTfAgreement}/4`}
+                />
+                <KpiCard
+                  label="Win Rate"
+                  value={`${best.winRate.toFixed(1)}%`}
+                  tone={best.winRate > best.breakEvenWinRate ? "bull" : "bear"}
+                  delta={`Seuil de rentabilité ${best.breakEvenWinRate.toFixed(1)}%`}
+                />
+                <KpiCard
+                  label="P&L total"
+                  value={`${best.totalPnlUsd >= 0 ? "+" : ""}$${best.totalPnlUsd}`}
+                  tone={best.totalPnlUsd >= 0 ? "bull" : "bear"}
+                  delta={`${best.trades} trades · levier ${boomSweepResult.args.leverage}x`}
+                />
+                <KpiCard
+                  label="Sorties TP/SL/Timeout"
+                  value={`${best.targetHits}/${best.stopHits}/${best.timeExits}`}
+                  tone={best.timeExits > best.targetHits + best.stopHits ? "bear" : "default"}
+                  delta={best.timeExits > best.targetHits + best.stopHits ? "Levier trop faible ?" : "Barrières bien atteintes"}
+                />
+              </div>
+            )}
+
+            <div className="glass-panel rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40">
+                <h2 className="text-sm font-semibold">Top combos (triés par P&L total sur les symboles combinés)</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 text-left">TP%</th>
+                      <th className="px-4 py-2 text-left">SL%</th>
+                      <th className="px-4 py-2 text-left">Conf.</th>
+                      <th className="px-4 py-2 text-left">TF</th>
+                      <th className="px-4 py-2 text-right">Trades</th>
+                      <th className="px-4 py-2 text-right">Win Rate</th>
+                      <th className="px-4 py-2 text-right">Rentabilité</th>
+                      <th className="px-4 py-2 text-right">P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boomSweepResult.ranked.slice(0, 10).map((r, i) => (
+                      <tr key={i} className="border-t border-border/40">
+                        <td className="px-4 py-2">{r.combo.takeProfitPctOfStake}</td>
+                        <td className="px-4 py-2">{r.combo.stopLossPctOfStake}</td>
+                        <td className="px-4 py-2">{r.combo.minConfidence}</td>
+                        <td className="px-4 py-2">{r.combo.minTfAgreement}/4</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{r.trades}</td>
+                        <td className={cn("px-4 py-2 text-right font-semibold", r.winRate >= r.breakEvenWinRate ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                          {r.winRate.toFixed(1)}%
+                        </td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{r.breakEvenWinRate.toFixed(1)}%</td>
+                        <td className={cn("px-4 py-2 text-right font-mono font-semibold", r.totalPnlUsd >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                          {r.totalPnlUsd >= 0 ? "+" : ""}${r.totalPnlUsd}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {best && (
+              <div className="glass-panel rounded-xl p-4">
+                <h2 className="text-base font-semibold">Détail par symbole (meilleur combo)</h2>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {best.perSymbol.map((s) => (
+                    <div key={s.symbol} className="rounded-lg border border-border/60 p-3">
+                      <div className="text-xs font-semibold text-muted-foreground">{s.symbol}</div>
+                      <div className={cn("mt-1 text-lg font-bold", s.winRate >= s.breakEvenWinRate ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                        {s.winRate.toFixed(1)}%
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{s.trades} trades · avg {s.avgHoldMinutes}min</div>
+                      <div className={cn("mt-1 text-sm font-mono", s.totalPnlUsd >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                        {s.totalPnlUsd >= 0 ? "+" : ""}${s.totalPnlUsd}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  ⚠️ {boomSweepResult.args.candles} bougies de 15min testées (~{Math.round(boomSweepResult.args.candles * 15 / 60)}h d'historique) — indicatif, pas une garantie. Appliquer ce combo à BOOM_PRESET (src/lib/autotrader.ts) est une action manuelle, pas automatique depuis cette page.
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {result && (
         <>
