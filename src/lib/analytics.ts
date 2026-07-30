@@ -481,3 +481,42 @@ export function errorsByDay(logs: TradeLog[]): ErrorDay[] {
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 }
+
+export interface SegmentSlippage extends SlippageReport {
+  key: string;
+  label: string;
+  /** false quand trop peu de trades mesurés pour que le chiffre veuille dire
+   * quelque chose — même seuil que les autres blocs du diagnostic. */
+  reliable: boolean;
+}
+
+/**
+ * Slippage calculé PAR FAMILLE d'instrument.
+ *
+ * Le total agrégé n'a aucun sens : il moyenne des stops de $1.50 (Boom, mise
+ * $5 × levier 100) avec des stops de $100 (forex/crypto sur grosses mises).
+ * Observé en production le 2026-07-30 — le bloc global annonçait un coût de
+ * $6.97/trade, entièrement porté par quelques anciens gros trades, alors que
+ * l'exécution sur Boom était en réalité FAVORABLE (pertes sous le stop
+ * configuré, gains au-dessus de l'objectif). Exactement le paradoxe de
+ * Simpson que le reste de ce diagnostic corrige — d'où cette version
+ * segmentée, la seule interprétable.
+ */
+export function slippageBySegment(logs: TradeLog[]): SegmentSlippage[] {
+  const t = closedTrades(logs);
+  const groups = new Map<string, { label: string; items: ClosedTrade[] }>();
+  for (const x of t) {
+    const f = instrumentFamily(x.symbol);
+    if (!groups.has(f.key)) groups.set(f.key, { label: f.label, items: [] });
+    groups.get(f.key)!.items.push(x);
+  }
+  return [...groups.entries()]
+    .map(([key, v]) => {
+      const r = stopSlippage(v.items);
+      const n = r.measuredLosses + r.measuredWins;
+      return { ...r, key, label: v.label, reliable: n >= MIN_SAMPLE };
+    })
+    // Une famille sans stop/objectif enregistré (binaire pur) n'a rien à mesurer.
+    .filter((s) => s.measuredLosses + s.measuredWins > 0)
+    .sort((a, b) => b.measuredLosses + b.measuredWins - (a.measuredLosses + a.measuredWins));
+}

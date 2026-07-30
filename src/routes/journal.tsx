@@ -14,7 +14,7 @@ import {
   byDay,
   bySegment,
   withinSegment,
-  stopSlippage,
+  slippageBySegment,
   errorsByDay,
   equityCurve,
   exportToCsv,
@@ -70,7 +70,7 @@ function JournalPage() {
   const segments = bySegment(logs);
   const tfWithin = withinSegment(logs, "tfAgreement");
   const confWithin = withinSegment(logs, "confidence");
-  const slippage = stopSlippage(logs);
+  const slippage = slippageBySegment(logs);
   const errDays = errorsByDay(logs);
 
   const hasData = s.trades > 0;
@@ -249,44 +249,79 @@ function JournalPage() {
             </div>
           </div>
 
-          {/* Coût de transaction réel — invisible dans un backtest sur bougies. */}
-          {(slippage.measuredLosses > 0 || slippage.measuredWins > 0) && (
+          {/* Coût de transaction réel, PAR FAMILLE — invisible dans un backtest
+              sur bougies. Un total agrégé n'aurait pas de sens : il moyennerait
+              un stop de $1.50 (Boom) avec un stop de $100 (forex sur grosse
+              mise), et le chiffre serait porté par les gros trades. */}
+          {slippage.length > 0 && (
             <div className="glass-panel rounded-xl p-5">
               <h2 className="text-base font-semibold">Coût de transaction réel</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Écart entre les stops/objectifs configurés et ce qui a réellement été encaissé.
-                C'est la seule mesure fiable du slippage — un backtest sur bougies ne peut pas le voir.
+                Écart entre les stops/objectifs configurés et ce qui a réellement été encaissé —
+                la seule mesure fiable du slippage, qu'un backtest sur bougies ne peut pas voir.
+                Séparé par famille : les tailles de stop n'y sont pas comparables.
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <Stat
-                  label="Dépassement / perte"
-                  value={`${slippage.overshootAvg >= 0 ? "+" : ""}$${slippage.overshootAvg.toFixed(3)}`}
-                  sub={`stop $${slippage.configuredStopAvg.toFixed(2)} → réel $${slippage.actualLossAvg.toFixed(2)}`}
-                  tone={slippage.overshootAvg > 0.01 ? "bear" : "bull"}
-                />
-                <Stat
-                  label="Manque / gain"
-                  value={`${slippage.shortfallAvg >= 0 ? "-" : "+"}$${Math.abs(slippage.shortfallAvg).toFixed(3)}`}
-                  sub={`objectif $${slippage.configuredTpAvg.toFixed(2)} → réel $${slippage.actualWinAvg.toFixed(2)}`}
-                  tone={slippage.shortfallAvg > 0.01 ? "bear" : "bull"}
-                />
-                <Stat
-                  label="Coût estimé / trade"
-                  value={slippage.costPerTradeEstimate === null ? "—" : `$${slippage.costPerTradeEstimate.toFixed(4)}`}
-                  sub="à retrancher de l'espérance"
-                  tone={(slippage.costPerTradeEstimate ?? 0) > 0 ? "bear" : "default"}
-                />
-                <Stat
-                  label="Échantillon"
-                  value={`${slippage.measuredLosses + slippage.measuredWins}`}
-                  sub={`${slippage.measuredLosses} pertes / ${slippage.measuredWins} gains mesurés`}
-                />
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Famille</th>
+                      <th className="px-3 py-2 text-right">Dépassement / perte</th>
+                      <th className="px-3 py-2 text-right">Manque / gain</th>
+                      <th className="px-3 py-2 text-right">Coût / trade</th>
+                      <th className="px-3 py-2 text-right">Mesurés</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slippage.map((s) => (
+                      <tr key={s.key} className="border-t border-border/40">
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">
+                          {s.label}
+                          {!s.reliable && <span className="ml-1.5 text-[color:var(--brand-amber)]" title="échantillon trop faible">⚠</span>}
+                        </td>
+                        {/* Convention unique aux trois colonnes : positif = ça te
+                            coûte (rouge), négatif = l'exécution te favorise (vert).
+                            Sans perte (ou sans gain) enregistrée il n'y a rien à
+                            mesurer — "—" plutôt qu'un "$0.00 → $0.00" qui
+                            ressemblerait à une mesure neutre. */}
+                        <td className={cn("px-3 py-2 text-right font-mono", s.measuredLosses === 0 ? "text-muted-foreground" : signTone(s.overshootAvg))}>
+                          {s.measuredLosses === 0 ? "—" : (
+                            <>
+                              {signed(s.overshootAvg, 3)}
+                              <span className="block text-[10px] font-sans text-muted-foreground">
+                                stop ${s.configuredStopAvg.toFixed(2)} → ${s.actualLossAvg.toFixed(2)}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td className={cn("px-3 py-2 text-right font-mono", s.measuredWins === 0 ? "text-muted-foreground" : signTone(s.shortfallAvg))}>
+                          {s.measuredWins === 0 ? "—" : (
+                            <>
+                              {signed(s.shortfallAvg, 3)}
+                              <span className="block text-[10px] font-sans text-muted-foreground">
+                                cible ${s.configuredTpAvg.toFixed(2)} → ${s.actualWinAvg.toFixed(2)}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td className={cn("px-3 py-2 text-right font-mono font-semibold", s.costPerTradeEstimate === null ? "text-muted-foreground" : signTone(s.costPerTradeEstimate))}>
+                          {s.costPerTradeEstimate === null ? "—" : signed(s.costPerTradeEstimate, 4)}
+                        </td>
+                        <td className="px-3 py-2 text-right text-muted-foreground whitespace-nowrap">
+                          {s.measuredLosses + s.measuredWins}
+                          <span className="block text-[10px]">{s.measuredLosses}L / {s.measuredWins}G</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              {slippage.measuredLosses + slippage.measuredWins < 30 && (
-                <p className="mt-3 text-[11px] text-[color:var(--brand-amber)]">
-                  ⚠️ Moins de 30 trades mesurés — chiffre indicatif, pas encore concluant.
-                </p>
-              )}
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Lecture : <span className="text-[color:var(--bear)]">positif = ça te coûte</span> ·{" "}
+                <span className="text-[color:var(--bull)]">négatif = l'exécution te favorise</span> (pertes
+                encaissées sous le stop configuré, ou gains au-dessus de l'objectif).
+                ⚠ = moins de 20 trades mesurés, chiffre non concluant.
+              </p>
             </div>
           )}
 
@@ -346,6 +381,19 @@ function Stat({
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
+}
+
+/** Montant signé, convention « coût » : positif = défavorable, négatif =
+ * favorable. Le signe est toujours explicite pour qu'aucune colonne ne se lise
+ * à l'envers d'une autre. */
+function signed(v: number, digits: number): string {
+  return `${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(digits)}`;
+}
+
+function signTone(v: number): string {
+  // Sous le centime, l'écart n'est pas significatif — on reste neutre.
+  if (Math.abs(v) < 0.01) return "text-muted-foreground";
+  return v > 0 ? "text-[color:var(--bear)]" : "text-[color:var(--bull)]";
 }
 
 /** Une famille d'instrument. L'espérance est mise en avant plutôt que le taux
