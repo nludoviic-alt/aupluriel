@@ -1184,6 +1184,16 @@ class ServerBotEngine {
       scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
       newTradesThisTick++;
 
+      // Reserve the symbol NOW, before any network round-trip. trackContract/
+      // trackXXXPosition only mark a symbol active once the buy call resolves,
+      // which left a window where two overlapping evaluations of the same
+      // symbol (two engine instances for the same user — see the registry
+      // note above ServerBotEngine) both saw it "free" and both bought.
+      // Confirmed live: duplicate real contracts opened <500ms apart, same
+      // symbol/direction/stake, distinct contract IDs. Released in the catch
+      // below if the buy itself fails — success paths re-set it harmlessly.
+      this.activeSymbols.set(symbol, analysis.direction);
+
       let entryPrice = 0;
       try {
         if (useKraken) {
@@ -1333,6 +1343,7 @@ class ServerBotEngine {
           this.trackContract(openLog);
         }
       } catch (e) {
+        this.activeSymbols.delete(symbol); // release the reservation — no position was actually opened
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
         this.symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
@@ -1344,7 +1355,19 @@ class ServerBotEngine {
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
-const engines = new Map<number, ServerBotEngine>();
+// Backed by globalThis (via a global Symbol key, not a plain module variable)
+// so it survives this module being re-evaluated — Vite HMR in dev, or any
+// other reload of this file's dependency graph. Without this, a reload resets
+// `engines` to a fresh empty Map while the PREVIOUS engine's setInterval keeps
+// running, orphaned and invisible to isBotRunning/startBotForUser. Those then
+// happily start a second engine for the same user, and both zombie + new
+// engine end up trading the same signals on the same real Deriv account —
+// this is how the duplicate-contract bug (see the activeSymbols reservation
+// above) actually occurred in practice, not just the intra-tick race.
+const ENGINES_KEY = Symbol.for("lio23.bot_engines_registry");
+const engines: Map<number, ServerBotEngine> =
+  (globalThis as Record<symbol, unknown>)[ENGINES_KEY] as Map<number, ServerBotEngine>
+  ?? ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] = new Map<number, ServerBotEngine>());
 
 export function isBotRunning(userId: number): boolean {
   return engines.has(userId);

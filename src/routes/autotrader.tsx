@@ -1142,16 +1142,27 @@ function AutoTraderPage() {
                 const bb = cloud?.brokerBalances;
                 const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
                 const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
+                // Mode simulation (pas de broker réel connecté) : ce chiffre est
+                // un solde purement local (capital de départ + gains/pertes déjà
+                // clôturés). cumulativePnl ne bouge qu'à la clôture d'un trade
+                // (voir addToCumulativePnl) — sans ceci, ouvrir une position
+                // n'avait AUCUN effet visible ici tant qu'elle n'était pas
+                // résolue, contrairement à un vrai broker qui débite la mise
+                // immédiatement à l'achat. On soustrait donc les mises encore
+                // engagées sur des trades ouverts pour refléter ça.
+                const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
                 const value = hasAny
                   ? `$${total.toFixed(2)}`
                   : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
                     ? `$${derivSession.balance.toFixed(2)}`
-                    : `$${(config.initialCapital + cumulativePnl).toFixed(2)}`;
+                    : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
                 const delta = hasAny
                   ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "") + (bb?.kraken ? "KRAKEN " : "") + (bb?.binance ? "BINANCE " : "") + (bb?.oanda ? "OANDA" : "").trim()}`
                   : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
                     ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
-                    : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
+                    : stakeAtRisk > 0
+                      ? `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)} · $${stakeAtRisk.toFixed(2)} engagé${stakeAtRisk > 1 ? "s" : ""}`
+                      : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
                 return (
                   <KpiCard
                     label="Fonds disponibles"
