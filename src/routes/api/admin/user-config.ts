@@ -59,13 +59,19 @@ export const Route = createFileRoute("/api/admin/user-config")({
           }
           config.excludedSymbols = body.excludedSymbols;
         }
+        // excludedSymbols is independent per-symbol curation (e.g. BOOM600
+        // excluded after real-data analysis), not a preset property — always
+        // preserved across a preset switch below (bug found in prod
+        // 2026-08-01: BOOM_PRESET/CRASH_PRESET used to define excludedSymbols
+        // as [], silently wiping this on Object.assign).
+        const { excludedSymbols } = config;
         if (body.preset === "boom") {
-          Object.assign(config, BOOM_PRESET);
+          Object.assign(config, BOOM_PRESET, { excludedSymbols });
         } else if (body.preset === "crash") {
-          Object.assign(config, CRASH_PRESET);
+          Object.assign(config, CRASH_PRESET, { excludedSymbols });
         } else if (body.preset === "default") {
           const { stakeUsd, maxDailyLossUsd, mode } = config;
-          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode });
+          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols });
         }
 
         updateConfigForUser(body.userId, config);

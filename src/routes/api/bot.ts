@@ -161,15 +161,19 @@ export const Route = createFileRoute("/api/bot")({
         // (only stake/mode are honored there), so a preset change has to be
         // persisted here to actually reach the server engine. The stake, the
         // daily loss cap and demo/live are always preserved — a preset switch
-        // must never silently move money settings.
+        // must never silently move money settings. Same guarantee for
+        // excludedSymbols: it's independent per-symbol curation (e.g. BOOM600
+        // excluded after real-data analysis), not a preset property — a bare
+        // preset re-application used to silently wipe it back to [] (bug
+        // found in prod 2026-08-01).
         if (body.action === "preset") {
           if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
             return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
           }
           const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
-          const { stakeUsd, maxDailyLossUsd, mode } = current;
+          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols } = current;
           const presetFields = body.preset === "boom" ? BOOM_PRESET : body.preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode };
+          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols };
 
           // updateConfigForUser only UPDATEs — a user who never started the
           // bot has no bot_state row yet, so the switch would silently no-op.

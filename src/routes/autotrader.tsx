@@ -569,9 +569,14 @@ function AutoTraderPage() {
     setPresetBusy(true);
     try {
       const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+      // excludedSymbols survit toujours au changement de preset, jamais
+      // écrasé par les valeurs par défaut du preset — c'est une curation
+      // indépendante (ex. BOOM600 exclu après analyse réelle), pas une
+      // propriété du preset. Bug constaté en prod le 2026-08-01 : un simple
+      // aller-retour entre presets effaçait l'exclusion silencieusement.
       const next: AutoTraderConfig = target === "default"
-        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode }
-        : { ...config, ...presetFields };
+        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode, excludedSymbols: config.excludedSymbols }
+        : { ...config, ...presetFields, excludedSymbols: config.excludedSymbols };
       setConfig(next);
       saveConfig(next);
       setDraftDuration(next.durationMinutes);

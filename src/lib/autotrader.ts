@@ -314,7 +314,13 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── 4 symboles Boom ──
   symbolMode: "watchlist",
   symbols: BOOM_SYMBOLS,
-  excludedSymbols: [],
+  // Pas de excludedSymbols ici : c'est une curation indépendante (ex. BOOM600
+  // exclu après analyse réelle), pas une propriété du preset. Un preset qui
+  // la fixe à [] l'efface silencieusement à chaque (ré)application — bug
+  // constaté en prod le 2026-08-01, BOOM600 réapparu après un simple
+  // aller-retour entre presets. Les 3 points d'application (applyPreset côté
+  // client, /api/bot action=preset, /api/admin/user-config) préservent
+  // maintenant explicitement excludedSymbols au lieu de le laisser ici.
   // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
   instrumentType: "multiplier",
   symbolInstrumentOverrides: {},
@@ -461,7 +467,7 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
-  excludedSymbols: [],
+  // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 30,
   minConfidence: 60,
