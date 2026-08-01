@@ -9,14 +9,14 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
   symbols?: string[];
   minConfidence?: number;
   excludedSymbols?: string[];
-  preset?: "default" | "boom";
+  preset?: "default" | "boom" | "crash";
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -61,6 +61,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         }
         if (body.preset === "boom") {
           Object.assign(config, BOOM_PRESET);
+        } else if (body.preset === "crash") {
+          Object.assign(config, CRASH_PRESET);
         } else if (body.preset === "default") {
           const { stakeUsd, maxDailyLossUsd, mode } = config;
           Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode });

@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_SYMBOLS } from "@/lib/autotrader";
+import { BOOM_SYMBOLS, CRASH_SYMBOLS } from "@/lib/autotrader";
 
 export const Route = createFileRoute("/api/admin/bot")({
   server: {
@@ -30,17 +30,17 @@ export const Route = createFileRoute("/api/admin/bot")({
         const statuses = rows.map((r) => {
           const runtime = getBotRuntime(r.userId);
           let mode: "demo" | "live" | null = null;
-          let preset: "boom" | "default" = "default";
+          let preset: "boom" | "crash" | "default" = "default";
           if (r.config) {
             try {
               const cfg = JSON.parse(r.config);
               mode = cfg.mode === "live" ? "live" : "demo";
-              if (cfg.symbolMode === "watchlist"
+              const watchlistMatches = (symbols: string[]) => cfg.symbolMode === "watchlist"
                 && Array.isArray(cfg.symbols)
-                && cfg.symbols.length === BOOM_SYMBOLS.length
-                && BOOM_SYMBOLS.every((s: string) => cfg.symbols.includes(s))) {
-                preset = "boom";
-              }
+                && cfg.symbols.length === symbols.length
+                && symbols.every((s: string) => cfg.symbols.includes(s));
+              if (watchlistMatches(BOOM_SYMBOLS)) preset = "boom";
+              else if (watchlistMatches(CRASH_SYMBOLS)) preset = "crash";
             } catch {
               // config malformé — mode inconnu, on n'affiche rien plutôt que de deviner.
             }

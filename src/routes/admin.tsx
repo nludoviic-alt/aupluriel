@@ -56,7 +56,7 @@ interface BotStatus {
   running: boolean;
   hasToken: boolean;
   mode: "demo" | "live" | null;
-  preset: "boom" | "default";
+  preset: "boom" | "crash" | "default";
   lastError: string | null;
   autoBacktestEnabled: boolean;
 }

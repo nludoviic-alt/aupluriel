@@ -15,7 +15,7 @@ import {
   updateConfigForUser,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM_SYMBOLS } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM_SYMBOLS, CRASH_PRESET, CRASH_SYMBOLS } from "@/lib/autotrader";
 
 /** True when this saved config is the Boom preset (same test as the admin console). */
 function isBoomConfig(cfg: Partial<AutoTraderConfig>): boolean {
@@ -23,6 +23,14 @@ function isBoomConfig(cfg: Partial<AutoTraderConfig>): boolean {
     && Array.isArray(cfg.symbols)
     && cfg.symbols.length === BOOM_SYMBOLS.length
     && BOOM_SYMBOLS.every((s) => cfg.symbols!.includes(s));
+}
+
+/** Same test as isBoomConfig, mirrored for Crash. */
+function isCrashConfig(cfg: Partial<AutoTraderConfig>): boolean {
+  return cfg.symbolMode === "watchlist"
+    && Array.isArray(cfg.symbols)
+    && cfg.symbols.length === CRASH_SYMBOLS.length
+    && CRASH_SYMBOLS.every((s) => cfg.symbols!.includes(s));
 }
 
 export const Route = createFileRoute("/api/bot")({
@@ -58,10 +66,13 @@ export const Route = createFileRoute("/api/bot")({
         // Which preset this account currently runs — lets the Auto-Trader page
         // show the active preset instead of guessing from the browser's own
         // localStorage draft (which the server never reads for strategy).
-        const preset: "boom" | "default" = (() => {
+        const preset: "boom" | "crash" | "default" = (() => {
           if (!state?.config) return "default";
           try {
-            return isBoomConfig(JSON.parse(state.config)) ? "boom" : "default";
+            const cfg = JSON.parse(state.config);
+            if (isBoomConfig(cfg)) return "boom";
+            if (isCrashConfig(cfg)) return "crash";
+            return "default";
           } catch {
             return "default";
           }
@@ -99,7 +110,7 @@ export const Route = createFileRoute("/api/bot")({
         const body = (await request.json().catch(() => ({}))) as {
           action?: "start" | "stop" | "preset";
           config?: Partial<AutoTraderConfig>;
-          preset?: "default" | "boom";
+          preset?: "default" | "boom" | "crash";
         };
 
         if (body.action === "start") {
@@ -145,21 +156,20 @@ export const Route = createFileRoute("/api/bot")({
           return json({ ok: true, running: false });
         }
 
-        // Switch THIS user's own bot between the Default and Boom presets.
-        // Strategy fields sent with "start" are deliberately ignored (only
-        // stake/mode are honored there), so a preset change has to be
+        // Switch THIS user's own bot between the Multi-marchés, Boom and Crash
+        // presets. Strategy fields sent with "start" are deliberately ignored
+        // (only stake/mode are honored there), so a preset change has to be
         // persisted here to actually reach the server engine. The stake, the
         // daily loss cap and demo/live are always preserved — a preset switch
         // must never silently move money settings.
         if (body.action === "preset") {
-          if (body.preset !== "boom" && body.preset !== "default") {
-            return json({ error: "preset doit être 'boom' ou 'default'." }, 400);
+          if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
+            return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
           }
           const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
           const { stakeUsd, maxDailyLossUsd, mode } = current;
-          const next: AutoTraderConfig = body.preset === "boom"
-            ? { ...current, ...BOOM_PRESET, stakeUsd, maxDailyLossUsd, mode }
-            : { ...current, ...DEFAULT_CONFIG, stakeUsd, maxDailyLossUsd, mode };
+          const presetFields = body.preset === "boom" ? BOOM_PRESET : body.preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode };
 
           // updateConfigForUser only UPDATEs — a user who never started the
           // bot has no bot_state row yet, so the switch would silently no-op.

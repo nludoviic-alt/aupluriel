@@ -254,12 +254,17 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
   aggressive: AGGRESSIVE_PRESET,
 };
 
-// ── Quick-switch presets (Default vs Boom 1000) ──────────────────────────────
-export type QuickPreset = "default" | "boom";
+// ── Quick-switch presets (Default vs Boom 1000 vs Crash) ─────────────────────
+export type QuickPreset = "default" | "boom" | "crash";
 
 /** The 4 Boom indices Deriv actually offers as Multiplier (confirmed live —
  * Boom 100/150/200/300/50 don't exist on Deriv Options/Multipliers at all). */
 export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+
+/** Mirror of BOOM_SYMBOLS for Crash — same 4 numeric variants, NOT yet
+ * confirmed live the way BOOM_SYMBOLS was. Treat as a starting guess until a
+ * real proposal/contracts_for call against Deriv confirms these four order. */
+export const CRASH_SYMBOLS = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
 
 /**
  * BOOM preset — scalping haute fréquence sur les 4 index Boom.
@@ -416,6 +421,35 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === BOOM_SYMBOLS.length
     && BOOM_SYMBOLS.every((s) => config.symbols.includes(s));
+}
+
+/**
+ * CRASH preset — squelette calqué sur BOOM_PRESET, PAS calibré.
+ *
+ * Crash est le miroir de Boom (spikes vers le bas plutôt que vers le haut),
+ * mais rien ne garantit qu'il partage le même edge ni les mêmes bons
+ * réglages. multiplierLevel=100 et le ratio TP5%/SL30% de BOOM_PRESET
+ * viennent d'un sweep walk-forward mené SPÉCIFIQUEMENT sur des données Boom
+ * (voir les commentaires détaillés sur BOOM_PRESET plus haut) — copiés ici
+ * tel quel comme point de départ, pas comme résultat validé.
+ *
+ * Avant de faire confiance à ce preset, même en démo :
+ * 1. Confirmer que CRASH_SYMBOLS correspond à des Multiplier réellement
+ *    commandables chez Deriv (BOOM_SYMBOLS a eu sa propre surprise ici).
+ * 2. Refaire tourner le même protocole walk-forward (skill tune-boom-preset)
+ *    sur l'historique Crash réel avant de toucher au multiplierLevel/TP/SL.
+ */
+export const CRASH_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist",
+  symbols: CRASH_SYMBOLS,
+  excludedSymbols: [],
+};
+
+export function isCrashPresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === CRASH_SYMBOLS.length
+    && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
 /** Custom user preset with performance tracking */

@@ -200,6 +200,8 @@ import {
   PRESETS,
   BOOM_PRESET,
   isBoomPresetActive,
+  CRASH_PRESET,
+  isCrashPresetActive,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -531,17 +533,17 @@ function AutoTraderPage() {
   }
 
   /**
-   * Switches this account between the Default and Boom presets. Writes to BOTH
-   * engines on purpose: `saveConfig` covers the local browser engine, and the
-   * `preset` API call covers the server bot — /api/bot's "start" action
-   * deliberately ignores strategy fields (only stake/mode/daily-loss are
-   * honored there), so a purely local change would leave the cloud bot running
-   * the previous preset with no visible sign of it.
+   * Switches this account between the Multi-marchés, Boom and Crash presets.
+   * Writes to BOTH engines on purpose: `saveConfig` covers the local browser
+   * engine, and the `preset` API call covers the server bot — /api/bot's
+   * "start" action deliberately ignores strategy fields (only
+   * stake/mode/daily-loss are honored there), so a purely local change would
+   * leave the cloud bot running the previous preset with no visible sign of it.
    */
-  async function applyPreset(target: "boom" | "default") {
+  async function applyPreset(target: "boom" | "crash" | "default") {
     if (presetBusy) return;
-    const isBoom = isBoomPresetActive(config);
-    if (target === "boom" ? isBoom : !isBoom) return; // already active — no-op
+    const active = isBoomPresetActive(config) ? "boom" : isCrashPresetActive(config) ? "crash" : "default";
+    if (target === active) return; // already active — no-op
     const ok = await confirm(
       target === "boom"
         ? {
@@ -549,29 +551,40 @@ function AutoTraderPage() {
             description: "Le bot trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
             confirmLabel: "Activer Boom",
           }
-        : {
-            title: "Passer en preset Default ?",
-            description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-            confirmLabel: "Activer Default",
-          },
+        : target === "crash"
+          ? {
+              title: "Passer en preset Crash ?",
+              description: "⚠️ Preset non calibré — réglages TP/SL/multiplicateur copiés de Boom sans validation walk-forward sur Crash. Le bot trade UNIQUEMENT les index Crash 1000/500/600/900. À utiliser en démo uniquement pour l'instant.",
+              confirmLabel: "Activer Crash",
+              danger: true,
+            }
+          : {
+              title: "Passer en preset Multi-marchés ?",
+              description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
+              confirmLabel: "Activer Multi-marchés",
+            },
     );
     if (!ok) return;
 
     setPresetBusy(true);
     try {
-      const next: AutoTraderConfig = target === "boom"
-        ? { ...config, ...BOOM_PRESET }
-        : { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode };
+      const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+      const next: AutoTraderConfig = target === "default"
+        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode }
+        : { ...config, ...presetFields };
       setConfig(next);
       saveConfig(next);
       setDraftDuration(next.durationMinutes);
       setDraftMaxTrades(next.maxTradesPerDay);
       await api.post("/api/bot", { action: "preset", preset: target });
       await refreshCloud();
-      toast.success(target === "boom" ? "Preset Boom activé" : "Preset Default activé", {
+      const labels = { boom: "Boom", crash: "Crash", default: "Multi-marchés" } as const;
+      toast.success(`Preset ${labels[target]} activé`, {
         description: target === "boom"
           ? "Boom 1000/500/600/900 · 24/7 · 5min"
-          : "Tous les marchés · Stratégie standard",
+          : target === "crash"
+            ? "Crash 1000/500/600/900 · 24/7 · non calibré"
+            : "Tous les marchés · Stratégie standard",
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur lors du changement de preset");
@@ -717,6 +730,8 @@ function AutoTraderPage() {
   // row on mobile. It used to live only inside the header's `hidden md:flex`
   // group, which made switching presets impossible on a phone.
   const boomActive = isBoomPresetActive(config);
+  const crashActive = isCrashPresetActive(config);
+  const defaultActive = !boomActive && !crashActive;
   const presetSwitch = (
     <div className="flex w-full items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1 md:w-auto">
       <button
@@ -724,15 +739,15 @@ function AutoTraderPage() {
         onClick={() => applyPreset("default")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
-          !boomActive ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
+          defaultActive ? "bg-[#800020]/20 text-[#e0446e]" : "text-muted-foreground hover:text-foreground",
           (running || presetBusy) && "opacity-40 cursor-not-allowed",
         )}
       >
-        <Layers className="h-3.5 w-3.5" /> Default
-        {!boomActive && (
+        <Layers className="h-3.5 w-3.5" /> Multi-marchés
+        {defaultActive && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
-            <span className="text-[8px] font-black tracking-widest text-cyan-400">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-[#e0446e] animate-pulse shadow-[0_0_6px_rgba(128,0,32,0.8)]" />
+            <span className="text-[8px] font-black tracking-widest text-[#e0446e]">LIVE</span>
           </span>
         )}
       </button>
@@ -750,6 +765,23 @@ function AutoTraderPage() {
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
             <span className="text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
+          </span>
+        )}
+      </button>
+      <button
+        disabled={running || presetBusy}
+        onClick={() => applyPreset("crash")}
+        className={cn(
+          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          crashActive ? "bg-yellow-500/15 text-yellow-400" : "text-muted-foreground hover:text-foreground",
+          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+        )}
+      >
+        <TrendingDown className="h-3.5 w-3.5" /> Crash
+        {crashActive && (
+          <span className="flex items-center gap-1 ml-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(234,179,8,0.8)]" />
+            <span className="text-[8px] font-black tracking-widest text-yellow-400">LIVE</span>
           </span>
         )}
       </button>
