@@ -156,7 +156,7 @@ export const Route = createFileRoute("/api/bot")({
           return json({ ok: true, running: false });
         }
 
-        // Switch THIS user's own bot between the Multi-marchés, Boom and Crash
+        // Switch THIS user's own bot between the Multi, Boom and Crash
         // presets. Strategy fields sent with "start" are deliberately ignored
         // (only stake/mode are honored there), so a preset change has to be
         // persisted here to actually reach the server engine. The stake, the

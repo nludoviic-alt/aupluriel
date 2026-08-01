@@ -533,7 +533,7 @@ function AutoTraderPage() {
   }
 
   /**
-   * Switches this account between the Multi-marchés, Boom and Crash presets.
+   * Switches this account between the Multi, Boom and Crash presets.
    * Writes to BOTH engines on purpose: `saveConfig` covers the local browser
    * engine, and the `preset` API call covers the server bot — /api/bot's
    * "start" action deliberately ignores strategy fields (only
@@ -559,9 +559,9 @@ function AutoTraderPage() {
               danger: true,
             }
           : {
-              title: "Passer en preset Multi-marchés ?",
+              title: "Passer en preset Multi ?",
               description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-              confirmLabel: "Activer Multi-marchés",
+              confirmLabel: "Activer Multi",
             },
     );
     if (!ok) return;
@@ -578,7 +578,7 @@ function AutoTraderPage() {
       setDraftMaxTrades(next.maxTradesPerDay);
       await api.post("/api/bot", { action: "preset", preset: target });
       await refreshCloud();
-      const labels = { boom: "Boom", crash: "Crash", default: "Multi-marchés" } as const;
+      const labels = { boom: "Boom", crash: "Crash", default: "Multi" } as const;
       toast.success(`Preset ${labels[target]} activé`, {
         description: target === "boom"
           ? "Boom 1000/500/600/900 · 24/7 · 5min"
@@ -743,7 +743,7 @@ function AutoTraderPage() {
           (running || presetBusy) && "opacity-40 cursor-not-allowed",
         )}
       >
-        <Layers className="h-3.5 w-3.5" /> Multi-marchés
+        <Layers className="h-3.5 w-3.5" /> Multi
         {defaultActive && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#e0446e] animate-pulse shadow-[0_0_6px_rgba(128,0,32,0.8)]" />
