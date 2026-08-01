@@ -108,13 +108,21 @@ export const Route = createFileRoute("/api/bot")({
           // que l'utilisateur peut ajuster au démarrage (mise, mode).
           const requested = body.config ?? {};
           const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
+          const savedConfig = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
+          // Plancher : une mise relevée sans relever maxDailyLossUsd en même
+          // temps piège le bot après ~1 perte (constaté en prod : mise $18 vs
+          // plafond $15, pause jusqu'à minuit après une seule perte normale —
+          // même classe d'incohérence que le trailing stop du preset Boom,
+          // voir le commentaire sur BOOM_PRESET.trailingStopMinPeakUsd). Le
+          // plafond doit couvrir au moins maxConsecutiveLosses pertes à mise
+          // pleine, sinon une série normale — pas une dérive — tue la journée.
+          const lossFloor = stakeUsd * (savedConfig.maxConsecutiveLosses || DEFAULT_CONFIG.maxConsecutiveLosses);
           const maxDailyLossUsd = clamp(
-            Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
+            Math.max(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, lossFloor),
             1,
             500,
           );
           const mode = requested.mode === "live" ? "live" : "demo";
-          const savedConfig = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -126,7 +134,10 @@ export const Route = createFileRoute("/api/bot")({
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }
-          return json({ ok: true, running: true, mode });
+          return json({
+            ok: true, running: true, mode, maxDailyLossUsd,
+            adjustedLossCap: maxDailyLossUsd !== clamp(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, 1, 500),
+          });
         }
 
         if (body.action === "stop") {

@@ -7,12 +7,21 @@
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer } from "./deriv.server";
-import { analyzeSymbolCore } from "./signal-core";
+import { analyzeSymbolCore, DEFAULT_CONFIG } from "./signal-core";
 import { mapWithConcurrency } from "./utils";
 
 const CHECK_INTERVAL_MS = 15 * 60_000;
-const MIN_CONFIDENCE = 75;
-const MIN_AGREEMENT = 3;
+// Alignés sur DEFAULT_CONFIG plutôt que sur des seuils propres à ce fichier :
+// ce scanner tournait avec agreement 3/4 pendant que le moteur du bot exige
+// 4/4 depuis l'analyse de juillet 2026 (3/4 = 86% des pertes historiques,
+// voir le commentaire sur minTfAgreement dans signal-core.ts). Résultat
+// constaté : l'utilisateur recevait "Marché favorable" sur exactement les
+// setups que le bot lui-même refuse de trader — deux vérités qui divergent,
+// la même classe de bug que le config-drift corrigé en c35544f. En pointant
+// vers DEFAULT_CONFIG, un futur recalibrage du seuil du bot met aussi à jour
+// la notification sans modification à faire ici.
+const MIN_CONFIDENCE = Math.max(75, DEFAULT_CONFIG.minConfidence);
+const MIN_AGREEMENT = DEFAULT_CONFIG.minTfAgreement;
 const REALERT_COOLDOWN_MS = 30 * 60_000;
 
 const lastAlertedAt = new Map<string, number>(); // deriv symbol -> timestamp

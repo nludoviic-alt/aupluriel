@@ -404,10 +404,13 @@ function AutoTraderPage() {
           stopAutoTraderEngine();
           toast.info("Moteur local arrêté — le serveur prend le relais");
         }
-        await api.post("/api/bot", { action: "start", config });
+        const started = await api.post<{ maxDailyLossUsd: number; adjustedLossCap: boolean }>("/api/bot", { action: "start", config });
         toast.success(config.mode === "live"
           ? "Bot serveur démarré en LIVE — argent réel"
           : "Bot serveur démarré — il tourne même téléphone verrouillé");
+        if (started.adjustedLossCap) {
+          toast.info(`Limite de perte journalière relevée à $${started.maxDailyLossUsd} — la mise dépassait l'ancien plafond, une perte normale n'aurait laissé aucun trade de la journée.`);
+        }
       }
       await refreshCloud();
     } catch (err) {
