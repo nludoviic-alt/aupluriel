@@ -808,6 +808,44 @@ function AutoTraderPage() {
       {/* ── Mobile preset switch — desktop keeps it in the header above ── */}
       <div className="md:hidden">{presetSwitch}</div>
 
+      {/* ── P&L par système — visible peu importe l'onglet consulté. Les 3
+          presets tournent indépendamment (2026-08-01) ; le solde total
+          ("Fonds disponibles" plus bas) ne dit pas lequel a généré quoi,
+          donc ce comparatif est la seule vue qui répond directement à
+          "qu'est-ce qui gagne en ce moment". Cliquer saute sur cet onglet. ── */}
+      <div className="grid grid-cols-3 gap-2">
+        {(["default", "boom", "crash"] as const).map((p) => {
+          const st = cloud?.presets?.[p];
+          const pnlVal = st?.todayPnl ?? 0;
+          // Static class strings only — Tailwind's JIT scanner can't see
+          // dynamically-built names like `border-${accent}-500/40`, so those
+          // would silently produce no CSS at all in the production build.
+          const styles = {
+            default: { active: "border-[#800020]/40 bg-[#800020]/10", dot: "bg-[#e0446e]" },
+            boom: { active: "border-orange-500/40 bg-orange-500/10", dot: "bg-orange-400" },
+            crash: { active: "border-yellow-500/40 bg-yellow-500/10", dot: "bg-yellow-400" },
+          } as const;
+          return (
+            <button
+              key={p}
+              onClick={() => selectPresetView(p)}
+              className={cn(
+                "flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 transition-all",
+                selectedPreset === p ? styles[p].active : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]",
+              )}
+            >
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                {presetLabels[p]}
+                {st?.enabled && <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", styles[p].dot)} />}
+              </span>
+              <span className={cn("text-sm font-extrabold font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
+                {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (
         <div className="rounded-xl border border-down/40 bg-down/8 p-5 flex gap-4">
@@ -1194,7 +1232,11 @@ function AutoTraderPage() {
                   />
                 );
               })()}
-              {(() => {
+              {/* Kraken/Binance/OANDA n'entrent JAMAIS en jeu pour Boom ou
+                  Crash — ce sont des produits Deriv exclusifs, aucun autre
+                  courtier ne les propose. Ne montrer ces cartes que sur
+                  Multi, où elles peuvent réellement router du forex/crypto. */}
+              {selectedPreset === "default" && (() => {
                 const b = cloud?.brokerBalances?.kraken;
                 return (
                   <KpiCard
@@ -1205,7 +1247,7 @@ function AutoTraderPage() {
                   />
                 );
               })()}
-              {cloud?.brokerBalances?.binance && (
+              {selectedPreset === "default" && cloud?.brokerBalances?.binance && (
                 <KpiCard
                   label="Binance"
                   value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
@@ -1213,7 +1255,7 @@ function AutoTraderPage() {
                   tone="binance"
                 />
               )}
-              {cloud?.brokerBalances?.oanda && (
+              {selectedPreset === "default" && cloud?.brokerBalances?.oanda && (
                 <KpiCard
                   label="OANDA"
                   value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
