@@ -59,19 +59,22 @@ export const Route = createFileRoute("/api/admin/user-config")({
           }
           config.excludedSymbols = body.excludedSymbols;
         }
-        // excludedSymbols is independent per-symbol curation (e.g. BOOM600
-        // excluded after real-data analysis), not a preset property — always
-        // preserved across a preset switch below (bug found in prod
+        // excludedSymbols and minConfidence are independent per-account
+        // curation (the only two fields this endpoint otherwise lets an
+        // admin tune directly, see PatchBody above) — not preset properties.
+        // Always preserved across a preset switch below (bug found in prod
         // 2026-08-01: BOOM_PRESET/CRASH_PRESET used to define excludedSymbols
-        // as [], silently wiping this on Object.assign).
-        const { excludedSymbols } = config;
+        // as [], silently wiping curated exclusions AND any minConfidence
+        // override — e.g. BOOM600 retraded, minConfidence dropped 80→55 —
+        // on a plain Object.assign).
+        const { excludedSymbols, minConfidence } = config;
         if (body.preset === "boom") {
-          Object.assign(config, BOOM_PRESET, { excludedSymbols });
+          Object.assign(config, BOOM_PRESET, { excludedSymbols, minConfidence });
         } else if (body.preset === "crash") {
-          Object.assign(config, CRASH_PRESET, { excludedSymbols });
+          Object.assign(config, CRASH_PRESET, { excludedSymbols, minConfidence });
         } else if (body.preset === "default") {
           const { stakeUsd, maxDailyLossUsd, mode } = config;
-          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols });
+          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence });
         }
 
         updateConfigForUser(body.userId, config);

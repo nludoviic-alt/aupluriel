@@ -575,8 +575,8 @@ function AutoTraderPage() {
       // propriété du preset. Bug constaté en prod le 2026-08-01 : un simple
       // aller-retour entre presets effaçait l'exclusion silencieusement.
       const next: AutoTraderConfig = target === "default"
-        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode, excludedSymbols: config.excludedSymbols }
-        : { ...config, ...presetFields, excludedSymbols: config.excludedSymbols };
+        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode, excludedSymbols: config.excludedSymbols, minConfidence: config.minConfidence }
+        : { ...config, ...presetFields, excludedSymbols: config.excludedSymbols, minConfidence: config.minConfidence };
       setConfig(next);
       saveConfig(next);
       setDraftDuration(next.durationMinutes);

@@ -162,18 +162,20 @@ export const Route = createFileRoute("/api/bot")({
         // persisted here to actually reach the server engine. The stake, the
         // daily loss cap and demo/live are always preserved — a preset switch
         // must never silently move money settings. Same guarantee for
-        // excludedSymbols: it's independent per-symbol curation (e.g. BOOM600
-        // excluded after real-data analysis), not a preset property — a bare
-        // preset re-application used to silently wipe it back to [] (bug
-        // found in prod 2026-08-01).
+        // excludedSymbols and minConfidence: both independent per-account
+        // curation (e.g. BOOM600 excluded, confidence floor raised — the two
+        // fields /api/admin/user-config lets an admin tune per account), not
+        // preset properties — a bare preset re-application used to silently
+        // wipe them back to the preset's own defaults (bug found in prod
+        // 2026-08-01: BOOM600 retraded, minConfidence dropped 80→55).
         if (body.action === "preset") {
           if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
             return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
           }
           const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
-          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols } = current;
+          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence } = current;
           const presetFields = body.preset === "boom" ? BOOM_PRESET : body.preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols };
+          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence };
 
           // updateConfigForUser only UPDATEs — a user who never started the
           // bot has no bot_state row yet, so the switch would silently no-op.
