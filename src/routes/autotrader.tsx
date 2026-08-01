@@ -738,16 +738,16 @@ function AutoTraderPage() {
         disabled={running || presetBusy}
         onClick={() => applyPreset("default")}
         className={cn(
-          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
           defaultActive ? "bg-[#800020]/20 text-[#e0446e]" : "text-muted-foreground hover:text-foreground",
           (running || presetBusy) && "opacity-40 cursor-not-allowed",
         )}
       >
-        <Layers className="h-3.5 w-3.5" /> Multi
+        <Layers className="h-3.5 w-3.5 shrink-0" /> Multi
         {defaultActive && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#e0446e] animate-pulse shadow-[0_0_6px_rgba(128,0,32,0.8)]" />
-            <span className="text-[8px] font-black tracking-widest text-[#e0446e]">LIVE</span>
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-[#e0446e]">LIVE</span>
           </span>
         )}
       </button>
@@ -755,16 +755,16 @@ function AutoTraderPage() {
         disabled={running || presetBusy}
         onClick={() => applyPreset("boom")}
         className={cn(
-          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
           boomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
           (running || presetBusy) && "opacity-40 cursor-not-allowed",
         )}
       >
-        <Rocket className="h-3.5 w-3.5" /> Boom
+        <Rocket className="h-3.5 w-3.5 shrink-0" /> Boom
         {boomActive && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
-            <span className="text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
           </span>
         )}
       </button>
@@ -772,16 +772,16 @@ function AutoTraderPage() {
         disabled={running || presetBusy}
         onClick={() => applyPreset("crash")}
         className={cn(
-          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all md:flex-none md:py-1.5",
+          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
           crashActive ? "bg-yellow-500/15 text-yellow-400" : "text-muted-foreground hover:text-foreground",
           (running || presetBusy) && "opacity-40 cursor-not-allowed",
         )}
       >
-        <TrendingDown className="h-3.5 w-3.5" /> Crash
+        <TrendingDown className="h-3.5 w-3.5 shrink-0" /> Crash
         {crashActive && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(234,179,8,0.8)]" />
-            <span className="text-[8px] font-black tracking-widest text-yellow-400">LIVE</span>
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-yellow-400">LIVE</span>
           </span>
         )}
       </button>
