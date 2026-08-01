@@ -49,12 +49,12 @@ export function ConfirmDialog({ state }: ConfirmDialogProps) {
                 {state.description}
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex gap-2 mt-2">
+            <DialogFooter className="flex flex-row gap-3 mt-4">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => state.resolve(false)}
-                className="flex-1 border-white/5 hover:bg-white/[0.04] text-xs h-9"
+                className="flex-1 border-white/5 hover:bg-white/[0.04] text-sm h-11"
               >
                 Annuler
               </Button>
@@ -62,7 +62,7 @@ export function ConfirmDialog({ state }: ConfirmDialogProps) {
                 size="sm"
                 onClick={() => state.resolve(true)}
                 className={cn(
-                  "flex-1 font-bold text-xs h-9",
+                  "flex-1 font-bold text-sm h-11",
                   state.danger
                     ? "bg-[color:var(--bear)] text-white hover:bg-[color:var(--bear)]/80"
                     : "bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white",
