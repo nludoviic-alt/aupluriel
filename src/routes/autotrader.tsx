@@ -1185,8 +1185,12 @@ function AutoTraderPage() {
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
             
-            {/* Row 1: Fonds disponibles + broker balances */}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 animate-fade-in">
+            {/* Row 1: Fonds disponibles + broker balances. Boom/Crash only
+                ever show 2 cards (Fonds disponibles + Deriv — Kraken/
+                Binance/OANDA are Multi-only, see below), so the grid drops
+                to 2 fixed columns there instead of stretching to 4 and
+                leaving an empty gap on desktop. */}
+            <div className={cn("grid gap-3 animate-fade-in", selectedPreset === "default" ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
               {(() => {
                 const bb = cloud?.brokerBalances;
                 const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
