@@ -424,26 +424,49 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
 }
 
 /**
- * CRASH preset — squelette calqué sur BOOM_PRESET, PAS calibré.
+ * CRASH preset — premier passage mesuré sur données réelles (skill
+ * tune-boom-preset, sweep.ts --symbols=CRASH1000,CRASH500,CRASH600,CRASH900),
+ * pas un simple clone de BOOM_PRESET.
  *
- * Crash est le miroir de Boom (spikes vers le bas plutôt que vers le haut),
- * mais rien ne garantit qu'il partage le même edge ni les mêmes bons
- * réglages. multiplierLevel=100 et le ratio TP5%/SL30% de BOOM_PRESET
- * viennent d'un sweep walk-forward mené SPÉCIFIQUEMENT sur des données Boom
- * (voir les commentaires détaillés sur BOOM_PRESET plus haut) — copiés ici
- * tel quel comme point de départ, pas comme résultat validé.
+ * Fait confirmé au passage : les 4 symboles CRASH1000/500/600/900 renvoient
+ * bien des bougies historiques réelles chez Deriv (candidat plausible avant
+ * de le tester — BOOM_SYMBOLS avait eu la mauvaise surprise que plusieurs
+ * variantes marketées n'existaient pas comme Multiplier malgré leur
+ * présence sur le site).
  *
- * Avant de faire confiance à ce preset, même en démo :
- * 1. Confirmer que CRASH_SYMBOLS correspond à des Multiplier réellement
- *    commandables chez Deriv (BOOM_SYMBOLS a eu sa propre surprise ici).
- * 2. Refaire tourner le même protocole walk-forward (skill tune-boom-preset)
- *    sur l'historique Crash réel avant de toucher au multiplierLevel/TP/SL.
+ * Sweep du 2026-08-01, 500 bougies (~125h), levier 100x (le palier confirmé
+ * réel — même que Boom) :
+ *   TP5% / SL30% / confiance 60 / TF 2/4 → 1112 trades, 88.4% WR, edge +2.7pp
+ *   au-dessus du seuil de rentabilité (85.7%), +$100.65 total, seulement
+ *   72/1112 trades expirés sans toucher ni stop ni objectif (6.5%).
+ * Même ratio TP:SL que Boom (5:30) — cohérent avec Crash étant le miroir
+ * structurel de Boom, mais confiance 60 (pas 55) mesurée séparément.
+ *
+ * Piste NON retenue ici : le sweep improve encore à 150x/200x (edge jusqu'à
+ * +5.8pp) — mais rien ne confirme que ces paliers de levier sont réellement
+ * sélectionnables chez Deriv pour Crash (Boom lui-même n'offre que certains
+ * paliers précis). Ne pas les activer sans vérification live.
+ *
+ * Par symbole (combo gagnant) : CRASH600 domine largement (94.8% WR, edge
+ * +9.1pp, $53 sur 310 trades) — CRASH1000/900 proches du seuil de
+ * rentabilité (edge -0.8pp / -1.1pp), à surveiller une fois de vraies
+ * données live disponibles, même logique qui a fait exclure BOOM600.
+ *
+ * Limite assumée : une seule fenêtre de 125h, pas un vrai walk-forward
+ * optimiser/vérifier comme celui qui a validé BOOM_PRESET (deux fenêtres
+ * distinctes, la seconde jamais vue par l'optimisation). Traiter comme un
+ * signal réel fort, pas encore comme un résultat aussi solide que Boom.
  */
 export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   excludedSymbols: [],
+  takeProfitPctOfStake: 5,
+  stopLossPctOfStake: 30,
+  minConfidence: 60,
+  minTfAgreement: 2,
+  multiplierLevel: 100,
 };
 
 export function isCrashPresetActive(config: AutoTraderConfig): boolean {

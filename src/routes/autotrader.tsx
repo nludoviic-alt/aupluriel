@@ -554,7 +554,7 @@ function AutoTraderPage() {
         : target === "crash"
           ? {
               title: "Passer en preset Crash ?",
-              description: "⚠️ Preset non calibré — réglages TP/SL/multiplicateur copiés de Boom sans validation walk-forward sur Crash. Le bot trade UNIQUEMENT les index Crash 1000/500/600/900. À utiliser en démo uniquement pour l'instant.",
+              description: "⚠️ Réglages mesurés sur un seul sweep de données historiques réelles (1112 trades simulés, edge +2.7pp), pas encore validés en walk-forward comme Boom. Le bot trade UNIQUEMENT les index Crash 1000/500/600/900. À utiliser en démo uniquement pour l'instant.",
               confirmLabel: "Activer Crash",
               danger: true,
             }
@@ -583,7 +583,7 @@ function AutoTraderPage() {
         description: target === "boom"
           ? "Boom 1000/500/600/900 · 24/7 · 5min"
           : target === "crash"
-            ? "Crash 1000/500/600/900 · 24/7 · non calibré"
+            ? "Crash 1000/500/600/900 · 24/7 · TP5/SL30 mesuré"
             : "Tous les marchés · Stratégie standard",
       });
     } catch (err) {
