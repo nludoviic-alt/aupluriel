@@ -1419,6 +1419,10 @@ export function startAutoTrader(
         scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
         continue;
       }
+      if (config.maxConfidence < 100 && analysis.confidence > config.maxConfidence) {
+        scanResults.push({ symbol, action: "too-confident", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+        continue;
+      }
       if (analysis.agreement < config.minTfAgreement) {
         scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
         continue;

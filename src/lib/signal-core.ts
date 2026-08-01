@@ -184,6 +184,13 @@ export interface AutoTraderConfig {
   stakeUsd: number;
   durationMinutes: number;
   minConfidence: number;
+  // Plafond optionnel (100 = désactivé). Ajouté après analyse du journal réel
+  // (aupluriel.com, 2026-08-01) : la tranche ≥90% de confiance est
+  // systématiquement négative (-$71.89, -$91.49, -$22.84 sur trois
+  // sous-tranches 90-91/92-93/94-95, jamais positive) — les indicateurs sont
+  // lagging, un signal "trop parfait" arrive après coup. minConfidence seul
+  // ne peut pas exclure ce haut de plage puisque c'est un plancher.
+  maxConfidence: number;
   minTfAgreement: number;
   maxDailyLossUsd: number;
   maxTradesPerDay: number;
@@ -336,6 +343,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // le SEUL rentable. On baisse à 70 pour capturer ces signaux, compensé par
   // minTfAgreement=4 (les 4 TFs doivent quand même être d'accord).
   minConfidence: 72,
+  // 100 = désactivé par défaut. Champ ajustable par compte (voir
+  // /api/admin/user-config), pas une propriété de preset — voir le
+  // commentaire sur le champ dans l'interface AutoTraderConfig plus haut.
+  maxConfidence: 100,
   // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
   // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
   // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
@@ -538,7 +549,7 @@ export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;
 
 export interface ScanSymbolResult {
   symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout";
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "too-confident" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout";
   direction?: "CALL" | "PUT" | null;
   confidence?: number;
   agreement?: number;

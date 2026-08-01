@@ -1117,6 +1117,12 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil dyn: ${effectiveMinConfidence}` });
         continue;
       }
+      // Plafond de confiance — voir le commentaire sur maxConfidence dans
+      // signal-core.ts. 100 = désactivé (comportement par défaut inchangé).
+      if (config.maxConfidence < 100 && analysis.confidence > config.maxConfidence) {
+        scanResults.push({ symbol, action: "too-confident", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Plafond: ${config.maxConfidence}` });
+        continue;
+      }
       const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
       if (analysis.agreement < effectiveMinTfAgreement) {
         scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil: ${effectiveMinTfAgreement}` });

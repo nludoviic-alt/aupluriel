@@ -1,9 +1,9 @@
 // Admin-only: apply a targeted adjustment to one user's AutoTraderConfig —
 // the "ajuster leurs stratégies au besoin" surface for the per-user insights
 // panel. Deliberately a narrow whitelist of fields (symbols, minConfidence,
-// excludedSymbols), not a free-form config overwrite: this is meant for
-// admin-reviewed suggestions, not a backdoor to silently rewrite someone's
-// whole strategy.
+// maxConfidence, excludedSymbols), not a free-form config overwrite: this is
+// meant for admin-reviewed suggestions, not a backdoor to silently rewrite
+// someone's whole strategy.
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
@@ -15,6 +15,7 @@ interface PatchBody {
   userId?: number;
   symbols?: string[];
   minConfidence?: number;
+  maxConfidence?: number;
   excludedSymbols?: string[];
   preset?: "default" | "boom" | "crash";
 }
@@ -30,8 +31,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined && body.excludedSymbols === undefined && body.preset === undefined) {
-          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, excludedSymbols ou preset requis)." }, 400);
+        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.preset === undefined) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols ou preset requis)." }, 400);
         }
 
         const db = getDb();
@@ -53,28 +54,34 @@ export const Route = createFileRoute("/api/admin/user-config")({
           }
           config.minConfidence = body.minConfidence;
         }
+        if (body.maxConfidence !== undefined) {
+          if (typeof body.maxConfidence !== "number" || body.maxConfidence < 0 || body.maxConfidence > 100) {
+            return json({ error: "maxConfidence doit être un nombre entre 0 et 100." }, 400);
+          }
+          config.maxConfidence = body.maxConfidence;
+        }
         if (body.excludedSymbols !== undefined) {
           if (!Array.isArray(body.excludedSymbols) || body.excludedSymbols.some((s) => typeof s !== "string")) {
             return json({ error: "excludedSymbols doit être un tableau de chaînes." }, 400);
           }
           config.excludedSymbols = body.excludedSymbols;
         }
-        // excludedSymbols and minConfidence are independent per-account
-        // curation (the only two fields this endpoint otherwise lets an
-        // admin tune directly, see PatchBody above) — not preset properties.
-        // Always preserved across a preset switch below (bug found in prod
-        // 2026-08-01: BOOM_PRESET/CRASH_PRESET used to define excludedSymbols
-        // as [], silently wiping curated exclusions AND any minConfidence
-        // override — e.g. BOOM600 retraded, minConfidence dropped 80→55 —
-        // on a plain Object.assign).
-        const { excludedSymbols, minConfidence } = config;
+        // excludedSymbols, minConfidence and maxConfidence are independent
+        // per-account curation (the only fields this endpoint otherwise lets
+        // an admin tune directly, see PatchBody above) — not preset
+        // properties. Always preserved across a preset switch below (bug
+        // found in prod 2026-08-01: BOOM_PRESET/CRASH_PRESET used to define
+        // excludedSymbols as [], silently wiping curated exclusions AND any
+        // minConfidence override — e.g. BOOM600 retraded, minConfidence
+        // dropped 80→55 — on a plain Object.assign).
+        const { excludedSymbols, minConfidence, maxConfidence } = config;
         if (body.preset === "boom") {
-          Object.assign(config, BOOM_PRESET, { excludedSymbols, minConfidence });
+          Object.assign(config, BOOM_PRESET, { excludedSymbols, minConfidence, maxConfidence });
         } else if (body.preset === "crash") {
-          Object.assign(config, CRASH_PRESET, { excludedSymbols, minConfidence });
+          Object.assign(config, CRASH_PRESET, { excludedSymbols, minConfidence, maxConfidence });
         } else if (body.preset === "default") {
           const { stakeUsd, maxDailyLossUsd, mode } = config;
-          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence });
+          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence });
         }
 
         updateConfigForUser(body.userId, config);

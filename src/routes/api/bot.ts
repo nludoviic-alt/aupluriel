@@ -173,9 +173,9 @@ export const Route = createFileRoute("/api/bot")({
             return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
           }
           const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
-          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence } = current;
+          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence } = current;
           const presetFields = body.preset === "boom" ? BOOM_PRESET : body.preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence };
+          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence };
 
           // updateConfigForUser only UPDATEs — a user who never started the
           // bot has no bot_state row yet, so the switch would silently no-op.
