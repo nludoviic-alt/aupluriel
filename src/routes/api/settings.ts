@@ -14,8 +14,10 @@ export const Route = createFileRoute("/api/settings")({
           .prepare("SELECT * FROM user_settings WHERE user_id = ?")
           .get(auth.userId) as Record<string, unknown> | undefined;
 
-        // Also return bot config (for broker enable/disable toggles)
-        const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(auth.userId) as { config?: string } | undefined;
+        // Also return bot config (for broker enable/disable toggles) — broker
+        // toggles are kept in sync across all three presets (see PUT below),
+        // so any one row reflects the same values; "default" preferred if it exists.
+        const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ? ORDER BY (preset = 'default') DESC LIMIT 1").get(auth.userId) as { config?: string } | undefined;
         const result = { ...settings, bot_config: botState?.config ?? null };
 
         return json(result);
@@ -107,26 +109,27 @@ export const Route = createFileRoute("/api/settings")({
         };
         const hasToggle = Object.values(brokerToggles).some((v) => v !== undefined);
         if (hasToggle) {
-          const botState = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(auth.userId) as { config?: string } | undefined;
-          // Un JSON illisible faisait repartir de {} — et le UPDATE plus bas
-          // écrasait alors TOUTE la stratégie (preset, symboles, TP/SL) par un
-          // objet vide, juste pour basculer un interrupteur de broker. On ne
-          // touche à la config que si on a réussi à la relire.
-          let config: Record<string, unknown> | null = null;
-          try { config = botState?.config ? (JSON.parse(botState.config) as Record<string, unknown>) : {}; } catch { config = null; }
-          if (config === null) {
-            return json({ error: "Configuration du bot illisible — bascule annulée pour ne pas l'écraser." }, 409);
+          // Broker on/off is account-level, not per-preset — a toggle here
+          // applies to EVERY preset row this user has (up to three since
+          // 2026-08-01), so Default/Boom/Crash never disagree about which
+          // brokers are enabled.
+          const rows = db.prepare("SELECT preset, config FROM bot_state WHERE user_id = ?").all(auth.userId) as { preset: string; config: string }[];
+          const { updateConfigForUser } = await import("@/lib/bot-engine.server");
+          for (const botState of rows) {
+            // Un JSON illisible faisait repartir de {} — et le UPDATE plus bas
+            // écrasait alors TOUTE la stratégie (preset, symboles, TP/SL) par
+            // un objet vide, juste pour basculer un interrupteur de broker.
+            // On ne touche à la config que si on a réussi à la relire.
+            let config: Record<string, unknown> | null = null;
+            try { config = botState.config ? (JSON.parse(botState.config) as Record<string, unknown>) : {}; } catch { config = null; }
+            if (config === null) continue; // skip this one row rather than fail the whole toggle
+            if (brokerToggles.enableDeriv !== undefined) config.enableDeriv = brokerToggles.enableDeriv;
+            if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
+            if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
+            if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
+            // Hot-swaps if that preset's bot is running.
+            updateConfigForUser(auth.userId, botState.preset as "default" | "boom" | "crash", config as any);
           }
-          if (brokerToggles.enableDeriv !== undefined) config.enableDeriv = brokerToggles.enableDeriv;
-          if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
-          if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
-          if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
-          db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ?").run(JSON.stringify(config), auth.userId);
-          // Hot-swap if bot is running
-          try {
-            const { updateConfigForUser } = await import("@/lib/bot-engine.server");
-            updateConfigForUser(auth.userId, config as any);
-          } catch { /* bot engine not available in browser */ }
         }
 
         return json(updated);

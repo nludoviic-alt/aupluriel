@@ -1,23 +1,35 @@
-// Admin-only: apply a targeted adjustment to one user's AutoTraderConfig —
-// the "ajuster leurs stratégies au besoin" surface for the per-user insights
-// panel. Deliberately a narrow whitelist of fields (symbols, minConfidence,
-// maxConfidence, excludedSymbols), not a free-form config overwrite: this is
-// meant for admin-reviewed suggestions, not a backdoor to silently rewrite
-// someone's whole strategy.
+// Admin-only: apply a targeted adjustment to one user's AutoTraderConfig for
+// ONE preset — the "ajuster leurs stratégies au besoin" surface for the
+// per-user insights panel. Deliberately a narrow whitelist of fields
+// (symbols, minConfidence, maxConfidence, excludedSymbols), not a free-form
+// config overwrite: this is meant for admin-reviewed suggestions, not a
+// backdoor to silently rewrite someone's whole strategy.
+//
+// `preset` selects WHICH of the user's up to three bot_state rows
+// (default/boom/crash, 2026-08-01) this patch applies to — required, not an
+// action by itself. `resetToCanonical: true` resets that row's strategy
+// fields back to BOOM_PRESET/CRASH_PRESET/DEFAULT_CONFIG (admin-side
+// equivalent of POST /api/bot { action: "reset" }, which only works for the
+// logged-in user's own account — an admin acts on someone else's).
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
-import { updateConfigForUser } from "@/lib/bot-engine.server";
+import { updateConfigForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
 import { BOOM_PRESET, CRASH_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
+  preset?: Preset;
   symbols?: string[];
   minConfidence?: number;
   maxConfidence?: number;
   excludedSymbols?: string[];
-  preset?: "default" | "boom" | "crash";
+  resetToCanonical?: boolean;
+}
+
+function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
+  return preset === "boom" ? BOOM_PRESET : preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -31,17 +43,33 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.preset === undefined) {
-          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols ou preset requis)." }, 400);
+        if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash") {
+          return json({ error: "preset doit être 'default', 'boom' ou 'crash'." }, 400);
+        }
+        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && !body.resetToCanonical) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols ou resetToCanonical requis)." }, 400);
         }
 
         const db = getDb();
-        const row = db.prepare("SELECT config FROM bot_state WHERE user_id = ?").get(body.userId) as
+        // A preset never started for this user has no row yet — create one
+        // (disabled) from its canonical defaults so the patch below has
+        // something to apply to, same as the user's own POST /api/bot reset.
+        db.prepare(`
+          INSERT INTO bot_state (user_id, preset, enabled, config, updated_at)
+          VALUES (?, ?, 0, ?, unixepoch())
+          ON CONFLICT(user_id, preset) DO NOTHING
+        `).run(body.userId, body.preset, JSON.stringify({ ...DEFAULT_CONFIG, ...presetFieldsFor(body.preset) }));
+
+        const row = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(body.userId, body.preset) as
           | { config: string }
           | undefined;
-        if (!row) return json({ error: "Aucune configuration trouvée pour cet utilisateur." }, 404);
+        if (!row) return json({ error: "Aucune configuration trouvée pour cet utilisateur/preset." }, 404);
 
         const config = JSON.parse(row.config) as AutoTraderConfig;
+        if (body.resetToCanonical) {
+          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence } = config;
+          Object.assign(config, presetFieldsFor(body.preset), { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence });
+        }
         if (body.symbols !== undefined) {
           if (!Array.isArray(body.symbols) || body.symbols.some((s) => typeof s !== "string")) {
             return json({ error: "symbols doit être un tableau de chaînes." }, 400);
@@ -66,27 +94,10 @@ export const Route = createFileRoute("/api/admin/user-config")({
           }
           config.excludedSymbols = body.excludedSymbols;
         }
-        // excludedSymbols, minConfidence and maxConfidence are independent
-        // per-account curation (the only fields this endpoint otherwise lets
-        // an admin tune directly, see PatchBody above) — not preset
-        // properties. Always preserved across a preset switch below (bug
-        // found in prod 2026-08-01: BOOM_PRESET/CRASH_PRESET used to define
-        // excludedSymbols as [], silently wiping curated exclusions AND any
-        // minConfidence override — e.g. BOOM600 retraded, minConfidence
-        // dropped 80→55 — on a plain Object.assign).
-        const { excludedSymbols, minConfidence, maxConfidence } = config;
-        if (body.preset === "boom") {
-          Object.assign(config, BOOM_PRESET, { excludedSymbols, minConfidence, maxConfidence });
-        } else if (body.preset === "crash") {
-          Object.assign(config, CRASH_PRESET, { excludedSymbols, minConfidence, maxConfidence });
-        } else if (body.preset === "default") {
-          const { stakeUsd, maxDailyLossUsd, mode } = config;
-          Object.assign(config, DEFAULT_CONFIG, { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence });
-        }
 
-        updateConfigForUser(body.userId, config);
+        updateConfigForUser(body.userId, body.preset, config);
 
-        return json({ success: true, config });
+        return json({ success: true, preset: body.preset, config });
       },
     },
   },

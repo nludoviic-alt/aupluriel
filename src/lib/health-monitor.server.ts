@@ -4,7 +4,7 @@
 // a stalled backtest scheduler, an empty push subscription table) surfaces
 // immediately instead of waiting for the next manual audit.
 import { getDb } from "./db.server";
-import { getBotRuntime, isBotRunning, restoreBots, loadBotConfig, startBotForUser } from "./bot-engine.server";
+import { getBotRuntime, isBotRunning, restoreBots, loadBotConfig, startBotForUser, type Preset } from "./bot-engine.server";
 import { DEFAULT_CONFIG, getInstrumentForSymbol } from "./signal-core";
 
 type Status = "ok" | "warn" | "error";
@@ -18,19 +18,19 @@ interface CheckResult {
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 function checkBotsRunning(): CheckResult {
-  const rows = getDb().prepare("SELECT user_id FROM bot_state WHERE enabled = 1").all() as { user_id: number }[];
-  const down = rows.filter((r) => !isBotRunning(r.user_id)).map((r) => r.user_id);
+  const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
+  const down = rows.filter((r) => !isBotRunning(r.user_id, r.preset)).map((r) => `${r.user_id}:${r.preset}`);
   if (!down.length) {
     return { key: "bots_running", label: "Bots serveur", status: "ok", detail: `${rows.length} bot(s) actif(s), tous en cours d'exécution.` };
   }
-  return { key: "bots_running", label: "Bots serveur", status: "error", detail: `Activé(s) en base mais arrêté(s) en pratique : user(s) ${down.join(", ")}.` };
+  return { key: "bots_running", label: "Bots serveur", status: "error", detail: `Activé(s) en base mais arrêté(s) en pratique : ${down.join(", ")}.` };
 }
 
 function checkBotErrors(): CheckResult {
-  const rows = getDb().prepare("SELECT user_id FROM bot_state WHERE enabled = 1").all() as { user_id: number }[];
+  const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
   const errored = rows
-    .map((r) => ({ userId: r.user_id, err: getBotRuntime(r.user_id).lastError }))
-    .filter((r): r is { userId: number; err: string } => !!r.err);
+    .map((r) => ({ userId: r.user_id, preset: r.preset, err: getBotRuntime(r.user_id, r.preset).lastError }))
+    .filter((r): r is { userId: number; preset: Preset; err: string } => !!r.err);
   if (!errored.length) {
     return { key: "bot_errors", label: "Erreurs bot actives", status: "ok", detail: "Aucune erreur active." };
   }
@@ -38,7 +38,7 @@ function checkBotErrors(): CheckResult {
     key: "bot_errors",
     label: "Erreurs bot actives",
     status: "warn",
-    detail: errored.map((e) => `user ${e.userId} : ${e.err}`).join(" · "),
+    detail: errored.map((e) => `user ${e.userId} (${e.preset}) : ${e.err}`).join(" · "),
   };
 }
 

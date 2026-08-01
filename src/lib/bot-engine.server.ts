@@ -59,6 +59,31 @@ const SCAN_MS = 60_000;
 // minuit UTC : l'argent est réellement parti, contrairement au flottant.
 const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 
+// A user can run all three presets simultaneously (2026-08-01) — each is a
+// fully independent engine with its own bot_state row (composite user_id +
+// preset key), own config, own risk caps. Nothing shared between them except
+// the underlying Deriv account they all trade on.
+export type Preset = "default" | "boom" | "crash";
+function engineKey(userId: number, preset: Preset): string {
+  return `${userId}:${preset}`;
+}
+
+// Same symbol lists as BOOM_SYMBOLS/CRASH_SYMBOLS in autotrader.ts, duplicated
+// here rather than imported: autotrader.ts pulls in browser-only modules
+// (WebSocket-based ./deriv client) that have no business loading server-side.
+const BOOM_SYMS: readonly string[] = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+const CRASH_SYMS: readonly string[] = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
+
+/** SQL fragment + bound params to scope a bot_trades query to one preset's
+ * symbols. Default = everything that isn't Boom or Crash (open-ended set —
+ * forex/gold/crypto/indices), so this is a NOT IN rather than an IN list. */
+function presetSymbolFilter(preset: Preset): { sql: string; params: string[] } {
+  if (preset === "boom") return { sql: `symbol IN (${BOOM_SYMS.map(() => "?").join(",")})`, params: [...BOOM_SYMS] };
+  if (preset === "crash") return { sql: `symbol IN (${CRASH_SYMS.map(() => "?").join(",")})`, params: [...CRASH_SYMS] };
+  const excluded = [...BOOM_SYMS, ...CRASH_SYMS];
+  return { sql: `symbol NOT IN (${excluded.map(() => "?").join(",")})`, params: excluded };
+}
+
 /** Correlation/active-symbol tracking cares about the underlying bullish/bearish
  * bias, not the contract mechanics — MULTUP is the same bias as CALL. */
 function biasOf(direction: TradeLog["direction"]): "CALL" | "PUT" {
@@ -133,20 +158,24 @@ function upsertTrade(userId: number, log: TradeLog, mode: "demo" | "live") {
   });
 }
 
-function loadRecentTrades(userId: number, limit = 50): TradeLog[] {
+function loadRecentTrades(userId: number, preset: Preset, limit = 50): TradeLog[] {
+  const f = presetSymbolFilter(preset);
   const rows = getDb()
-    .prepare("SELECT * FROM bot_trades WHERE user_id = ? ORDER BY time DESC LIMIT ?")
-    .all(userId, limit) as BotTradeRow[];
+    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND ${f.sql} ORDER BY time DESC LIMIT ?`)
+    .all(userId, ...f.params, limit) as BotTradeRow[];
   return rows.map(logFromRow);
 }
 
-/** Every currently open/pending position for this user, regardless of age —
- * unlike loadRecentTrades, not capped to a recent window, so reconcile()
- * can't lose track of a position just because enough newer trades piled up. */
-function loadOpenOrPendingTrades(userId: number): TradeLog[] {
+/** Every currently open/pending position for this user AND this preset,
+ * regardless of age — unlike loadRecentTrades, not capped to a recent
+ * window, so reconcile() can't lose track of a position just because enough
+ * newer trades piled up. Scoped to the preset's own symbols so three
+ * simultaneous engines never fight over re-tracking each other's positions. */
+function loadOpenOrPendingTrades(userId: number, preset: Preset): TradeLog[] {
+  const f = presetSymbolFilter(preset);
   const rows = getDb()
-    .prepare("SELECT * FROM bot_trades WHERE user_id = ? AND status IN ('open', 'pending')")
-    .all(userId) as BotTradeRow[];
+    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status IN ('open', 'pending')`)
+    .all(userId, ...f.params) as BotTradeRow[];
   return rows.map(logFromRow);
 }
 
@@ -162,27 +191,29 @@ function loadOpenOrPendingTrades(userId: number): TradeLog[] {
  * Used so the daily-loss cap sees losses as they build, not only once the
  * stop-loss actually realizes them.
  */
-function getOpenFloatingPnl(userId: number): number {
+function getOpenFloatingPnl(userId: number, preset: Preset): number {
+  const f = presetSymbolFilter(preset);
   const row = getDb()
-    .prepare("SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND status = 'open'")
-    .get(userId) as { floating: number };
+    .prepare(`SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status = 'open'`)
+    .get(userId, ...f.params) as { floating: number };
   return row.floating;
 }
 
-export function getTodayStats(userId: number, mode?: "demo" | "live"): { pnl: number; count: number } {
+export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "live"): { pnl: number; count: number } {
   // UTC midnight — must match nextUtcMidnight() below. Using local server
   // midnight here let a resumed bot see stale pre-reset P&L still above the
   // daily cap and immediately re-pause itself (server tz != UTC).
   const start = new Date();
   start.setUTCHours(0, 0, 0, 0);
+  const f = presetSymbolFilter(preset);
   const row = getDb()
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl,
          COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count
-       FROM bot_trades WHERE user_id = @userId AND time >= @start AND (@mode IS NULL OR mode = @mode OR mode IS NULL)`,
+       FROM bot_trades WHERE user_id = ? AND ${f.sql} AND time >= ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get({ userId, start: start.getTime(), mode: mode ?? null }) as { pnl: number; count: number };
+    .get(userId, ...f.params, start.getTime(), mode ?? null, mode ?? null) as { pnl: number; count: number };
   return row;
 }
 
@@ -194,16 +225,17 @@ export function getTodayStats(userId: number, mode?: "demo" | "live"): { pnl: nu
  * showing someone else's win rate to justify THEIR real-money risk would be
  * misleading — this stays scoped to the user's own trades.
  */
-export function getAllTimeStats(userId: number, mode?: "demo" | "live"): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
+export function getAllTimeStats(userId: number, preset: Preset, mode?: "demo" | "live"): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
+  const f = presetSymbolFilter(preset);
   const row = getDb()
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
          COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl
-       FROM bot_trades WHERE user_id = @userId AND (@mode IS NULL OR mode = @mode OR mode IS NULL)`,
+       FROM bot_trades WHERE user_id = ? AND ${f.sql} AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get({ userId, mode: mode ?? null }) as { wins: number; losses: number; pnl: number };
+    .get(userId, ...f.params, mode ?? null, mode ?? null) as { wins: number; losses: number; pnl: number };
   const trades = row.wins + row.losses;
   return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
 }
@@ -245,8 +277,8 @@ function computeKellyStakeServer(
   return Math.max(1, balance * pct);
 }
 
-export function loadBotConfig(userId: number): AutoTraderConfig | null {
-  const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ?").get(userId) as { config: string } | undefined;
+export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig | null {
+  const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
   if (!row) return null;
   // La config sauvegardée est reprise INTÉGRALEMENT, avec DEFAULT_CONFIG en
   // simple filet pour les champs absents (config ancienne, ou partielle).
@@ -310,6 +342,7 @@ class ServerBotEngine {
 
   constructor(
     public readonly userId: number,
+    public readonly preset: Preset,
     private config: AutoTraderConfig,
     derivToken: string,
     krakenConn: KrakenTradingConnection | null = null,
@@ -320,7 +353,7 @@ class ServerBotEngine {
     this.krakenConn = krakenConn;
     this.binanceConn = binanceConn;
     this.oandaConn = oandaConn;
-    this.logs = loadRecentTrades(userId);
+    this.logs = loadRecentTrades(userId, preset);
     this.lastActiveSessions = currentActiveSessions();
   }
 
@@ -349,12 +382,12 @@ class ServerBotEngine {
   }
 
   get pausedUntil(): number {
-    const row = getDb().prepare("SELECT paused_until FROM bot_state WHERE user_id = ?").get(this.userId) as { paused_until: number | null } | undefined;
+    const row = getDb().prepare("SELECT paused_until FROM bot_state WHERE user_id = ? AND preset = ?").get(this.userId, this.preset) as { paused_until: number | null } | undefined;
     return row?.paused_until ?? 0;
   }
 
   private setPausedUntil(ts: number | null) {
-    getDb().prepare("UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ?").run(ts, this.userId);
+    getDb().prepare("UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(ts, this.userId, this.preset);
   }
 
   private emit(log: TradeLog) {
@@ -417,7 +450,7 @@ class ServerBotEngine {
     // leaving it "open" with no maxHoldMinutes safety net forever (audit
     // finding: a week-old open Multiplier position, 70 trades later, that
     // reconcile() had stopped seeing entirely).
-    const stale = loadOpenOrPendingTrades(this.userId).filter((l) => l.contractId);
+    const stale = loadOpenOrPendingTrades(this.userId, this.preset).filter((l) => l.contractId);
     if (!stale.length) return;
     const records = await this.conn.getProfitTable(60);
     for (const log of stale) {
@@ -798,7 +831,7 @@ class ServerBotEngine {
     const logs = this.logs;
     // SQL over all of today's rows — the in-memory log is a capped window, so
     // computing daily P&L/count from it drops early wins as events accumulate.
-    const { pnl, count } = getTodayStats(this.userId);
+    const { pnl, count } = getTodayStats(this.userId, this.preset);
 
     // Check for session open/close changes
     const currentSessions = currentActiveSessions();
@@ -877,7 +910,7 @@ class ServerBotEngine {
     // underwater on OPEN ones — the loss only "existed" once a stop actually
     // hit. Floating LOSSES count toward the cap; floating gains don't (they
     // can evaporate, and must not mask realized losses).
-    const floatingLoss = Math.min(0, getOpenFloatingPnl(this.userId));
+    const floatingLoss = Math.min(0, getOpenFloatingPnl(this.userId, this.preset));
     const riskPnl = pnl + floatingLoss;
     if (riskPnl <= -Math.abs(config.maxDailyLossUsd)) {
       if (config.stopOnRisk) {
@@ -1370,13 +1403,27 @@ class ServerBotEngine {
 // engine end up trading the same signals on the same real Deriv account —
 // this is how the duplicate-contract bug (see the activeSymbols reservation
 // above) actually occurred in practice, not just the intra-tick race.
+// Keyed by "${userId}:${preset}" (engineKey) rather than userId alone — one
+// user can now have up to three engines registered at once (2026-08-01).
 const ENGINES_KEY = Symbol.for("lio23.bot_engines_registry");
-const engines: Map<number, ServerBotEngine> =
-  (globalThis as Record<symbol, unknown>)[ENGINES_KEY] as Map<number, ServerBotEngine>
-  ?? ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] = new Map<number, ServerBotEngine>());
+const engines: Map<string, ServerBotEngine> =
+  (globalThis as Record<symbol, unknown>)[ENGINES_KEY] as Map<string, ServerBotEngine>
+  ?? ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] = new Map<string, ServerBotEngine>());
 
-export function isBotRunning(userId: number): boolean {
-  return engines.has(userId);
+export function isBotRunning(userId: number, preset: Preset): boolean {
+  return engines.has(engineKey(userId, preset));
+}
+
+/** Every preset currently registered as running for this user — used where a
+ * caller genuinely needs "is ANY engine up" rather than one specific preset
+ * (e.g. picking a live connection to reuse for a balance check). */
+function runningPresetsFor(userId: number): Preset[] {
+  const prefix = `${userId}:`;
+  const out: Preset[] = [];
+  for (const key of engines.keys()) {
+    if (key.startsWith(prefix)) out.push(key.slice(prefix.length) as Preset);
+  }
+  return out;
 }
 
 /**
@@ -1384,11 +1431,11 @@ export function isBotRunning(userId: number): boolean {
  * running, hot-swaps it into the live engine so it applies on the next scan
  * tick instead of waiting for a manual stop/restart.
  */
-export function updateConfigForUser(userId: number, config: AutoTraderConfig): void {
+export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig): void {
   getDb()
-    .prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ?")
-    .run(JSON.stringify(config), userId);
-  engines.get(userId)?.updateConfig(config);
+    .prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?")
+    .run(JSON.stringify(config), userId, preset);
+  engines.get(engineKey(userId, preset))?.updateConfig(config);
 }
 
 /**
@@ -1400,27 +1447,33 @@ export function updateConfigForUser(userId: number, config: AutoTraderConfig): v
  * live 2026-07-15: a bot got stopped by an unfavorable verdict with 3 open
  * positions (one +$30+ floating), frozen mid-flight with no tracking.
  */
-export function hasOpenPositions(userId: number): boolean {
+export function hasOpenPositions(userId: number, preset: Preset): boolean {
+  const f = presetSymbolFilter(preset);
   const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND status = 'open'")
-    .get(userId) as { n: number };
+    .prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status = 'open'`)
+    .get(userId, ...f.params) as { n: number };
   return row.n > 0;
 }
 
-export function getBotRuntime(userId: number): { running: boolean; pausedUntil: number | null; lastScan: ScanResult | null; lastError: string | null } {
-  const engine = engines.get(userId);
+export function getBotRuntime(userId: number, preset: Preset): { running: boolean; pausedUntil: number | null; lastScan: ScanResult | null; lastError: string | null } {
+  const engine = engines.get(engineKey(userId, preset));
   if (!engine) return { running: false, pausedUntil: null, lastScan: null, lastError: null };
   const paused = engine.pausedUntil;
   return { running: true, pausedUntil: paused > Date.now() ? paused : null, lastScan: engine.lastScan, lastError: engine.lastError };
 }
 
+// Account/broker balances are the same regardless of which preset's engine
+// answers — reuses whichever engine happens to be running (any of the three)
+// for a live connection, falling back to stored credentials + the "default"
+// preset's broker toggles if none are up.
 export async function getBrokerBalances(userId: number): Promise<{
   deriv: { balance: number; currency: string } | null;
   kraken: { balance: number; currency: string } | null;
   binance: { balance: number; currency: string } | null;
   oanda: { balance: number; currency: string } | null;
 }> {
-  const engine = engines.get(userId);
+  const anyRunning = runningPresetsFor(userId)[0];
+  const engine = anyRunning ? engines.get(engineKey(userId, anyRunning)) : undefined;
   if (engine) {
     return engine.getBalances();
   }
@@ -1432,7 +1485,7 @@ export async function getBrokerBalances(userId: number): Promise<{
 
   if (!settings) return { deriv: null, kraken: null, binance: null, oanda: null };
 
-  const config = loadBotConfig(userId);
+  const config = loadBotConfig(userId, "default");
   const enableDeriv = config?.enableDeriv ?? true;
   const enableKraken = config?.enableKraken ?? true;
   const enableBinance = config?.enableBinance ?? true;
@@ -1457,8 +1510,8 @@ export async function getBrokerBalances(userId: number): Promise<{
   return { deriv, kraken, binance, oanda };
 }
 
-export async function startBotForUser(userId: number, config: AutoTraderConfig): Promise<void> {
-  if (engines.has(userId)) return;
+export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
+  if (engines.has(engineKey(userId, preset))) return;
   if (config.mode === "simulation") throw new Error("Le bot serveur trade sur Deriv/Kraken (demo/live) — le mode simulation reste dans le navigateur.");
 
   const settings = getDb()
@@ -1506,15 +1559,15 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   }
 
   getDb().prepare(`
-    INSERT INTO bot_state (user_id, enabled, config, updated_at) VALUES (?, 1, ?, unixepoch())
-    ON CONFLICT(user_id) DO UPDATE SET enabled = 1, config = excluded.config, updated_at = unixepoch()
-  `).run(userId, JSON.stringify(config));
+    INSERT INTO bot_state (user_id, preset, enabled, config, updated_at) VALUES (?, ?, 1, ?, unixepoch())
+    ON CONFLICT(user_id, preset) DO UPDATE SET enabled = 1, config = excluded.config, updated_at = unixepoch()
+  `).run(userId, preset, JSON.stringify(config));
 
-  const engine = new ServerBotEngine(userId, config, derivToken ?? "", krakenConn, binanceConn, oandaConn);
-  engines.set(userId, engine);
+  const engine = new ServerBotEngine(userId, preset, config, derivToken ?? "", krakenConn, binanceConn, oandaConn);
+  engines.set(engineKey(userId, preset), engine);
   await engine.reconcile().catch(() => {});
   engine.start();
-  console.log(`[bot] Moteur serveur démarré pour user ${userId} (mode ${config.mode})`);
+  console.log(`[bot] Moteur serveur démarré pour user ${userId} preset ${preset} (mode ${config.mode})`);
   void (async () => {
     try {
       const { sendPushToUser } = await import("./push.server");
@@ -1529,13 +1582,13 @@ export async function startBotForUser(userId: number, config: AutoTraderConfig):
   })();
 }
 
-export function stopBotForUser(userId: number, reason = "Arrêt manuel"): void {
-  getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ?").run(userId);
-  const engine = engines.get(userId);
+export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt manuel"): void {
+  getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(userId, preset);
+  const engine = engines.get(engineKey(userId, preset));
   if (engine) {
     engine.stop();
-    engines.delete(userId);
-    console.log(`[bot] Moteur serveur arrêté pour user ${userId} (${reason})`);
+    engines.delete(engineKey(userId, preset));
+    console.log(`[bot] Moteur serveur arrêté pour user ${userId} preset ${preset} (${reason})`);
 
     void (async () => {
       try {
@@ -1589,21 +1642,22 @@ export function shutdownAllEngines(): void {
   closeOandaSocket();
 }
 
-/** Called once at server boot: resume every bot that was enabled before the restart. */
+/** Called once at server boot: resume every (user, preset) bot that was
+ * enabled before the restart — up to three per user now. */
 export async function restoreBots(): Promise<void> {
-  const rows = getDb().prepare("SELECT user_id FROM bot_state WHERE enabled = 1").all() as { user_id: number }[];
-  for (const { user_id } of rows) {
+  const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
+  for (const { user_id, preset } of rows) {
     try {
-      const config = loadBotConfig(user_id);
+      const config = loadBotConfig(user_id, preset);
       if (!config) continue;
-      await startBotForUser(user_id, config);
+      await startBotForUser(user_id, preset, config);
     } catch (e) {
-      console.error(`[bot] Restauration échouée pour user ${user_id}:`, (e as Error).message);
+      console.error(`[bot] Restauration échouée pour user ${user_id} preset ${preset}:`, (e as Error).message);
     }
   }
   if (rows.length) console.log(`[bot] ${rows.length} bot(s) restauré(s) après redémarrage`);
 }
 
-export function getBotTrades(userId: number, limit = 20): TradeLog[] {
-  return loadRecentTrades(userId, limit);
+export function getBotTrades(userId: number, preset: Preset, limit = 20): TradeLog[] {
+  return loadRecentTrades(userId, preset, limit);
 }

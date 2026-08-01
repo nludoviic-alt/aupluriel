@@ -89,9 +89,12 @@ export const Route = createFileRoute("/api/admin/stats")({
             )
             .all(userId);
 
+          // A user can have up to three bot_state rows now (default/boom/crash,
+          // 2026-08-01) — ?preset= picks which one, defaulting to "default".
+          const preset = url.searchParams.get("preset") ?? "default";
           const configRow = db
-            .prepare("SELECT config FROM bot_state WHERE user_id = ?")
-            .get(userId) as { config: string } | undefined;
+            .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
+            .get(userId, preset) as { config: string } | undefined;
 
           return json({
             trades,

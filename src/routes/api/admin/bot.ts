@@ -1,23 +1,25 @@
 // Admin control endpoint for the SERVER auto-trader (bot-engine.server.ts) —
-// lets an admin activate/deactivate a user's bot and see who's actually live.
+// lets an admin activate/deactivate a user's bot(s) and see who's actually
+// live. A user can have up to three independent bot_state rows now
+// (default/boom/crash, 2026-08-01) — this returns one status entry per row
+// that actually exists, not one per user.
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
-import { getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser } from "@/lib/bot-engine.server";
+import { getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_SYMBOLS, CRASH_SYMBOLS } from "@/lib/autotrader";
 
 export const Route = createFileRoute("/api/admin/bot")({
   server: {
     handlers: {
-      // Per-user activation + live status, for every non-admin account.
+      // Per-(user, preset) activation + live status, for every non-admin account.
       GET: async ({ request }) => {
         const admin = await requireAdmin(request);
         if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
 
         const rows = getDb()
           .prepare(
-            `SELECT u.id AS userId, bs.enabled AS enabled, bs.config AS config,
+            `SELECT u.id AS userId, bs.preset AS preset, bs.enabled AS enabled, bs.config AS config,
                     CASE WHEN us.deriv_token IS NOT NULL AND us.deriv_token != '' THEN 1 ELSE 0 END AS hasToken,
                     COALESCE(us.auto_backtest_enabled, 0) AS autoBacktestEnabled
              FROM users u
@@ -25,48 +27,41 @@ export const Route = createFileRoute("/api/admin/bot")({
              LEFT JOIN user_settings us ON us.user_id = u.id
              WHERE u.is_admin = 0`,
           )
-          .all() as { userId: number; enabled: number | null; config: string | null; hasToken: number; autoBacktestEnabled: number }[];
+          .all() as { userId: number; preset: Preset | null; enabled: number | null; config: string | null; hasToken: number; autoBacktestEnabled: number }[];
 
-        const statuses = rows.map((r) => {
-          const runtime = getBotRuntime(r.userId);
-          let mode: "demo" | "live" | null = null;
-          let preset: "boom" | "crash" | "default" = "default";
-          if (r.config) {
-            try {
-              const cfg = JSON.parse(r.config);
-              mode = cfg.mode === "live" ? "live" : "demo";
-              const watchlistMatches = (symbols: string[]) => cfg.symbolMode === "watchlist"
-                && Array.isArray(cfg.symbols)
-                && cfg.symbols.length === symbols.length
-                && symbols.every((s: string) => cfg.symbols.includes(s));
-              if (watchlistMatches(BOOM_SYMBOLS)) preset = "boom";
-              else if (watchlistMatches(CRASH_SYMBOLS)) preset = "crash";
-            } catch {
-              // config malformé — mode inconnu, on n'affiche rien plutôt que de deviner.
+        const statuses = rows
+          .filter((r) => r.preset !== null) // LEFT JOIN: users who never started any bot have no bot_state row
+          .map((r) => {
+            const runtime = getBotRuntime(r.userId, r.preset!);
+            let mode: "demo" | "live" | null = null;
+            if (r.config) {
+              try {
+                mode = (JSON.parse(r.config).mode === "live") ? "live" : "demo";
+              } catch { /* config malformé — mode inconnu, on n'affiche rien plutôt que de deviner. */ }
             }
-          }
-          return {
-            userId: r.userId,
-            enabled: !!r.enabled,
-            running: runtime.running,
-            hasToken: !!r.hasToken,
-            mode,
-            preset,
-            lastError: runtime.lastError,
-            autoBacktestEnabled: !!r.autoBacktestEnabled,
-          };
-        });
+            return {
+              userId: r.userId,
+              preset: r.preset,
+              enabled: !!r.enabled,
+              running: runtime.running,
+              hasToken: !!r.hasToken,
+              mode,
+              lastError: runtime.lastError,
+              autoBacktestEnabled: !!r.autoBacktestEnabled,
+            };
+          });
 
         return json({ statuses });
       },
 
-      // Force-start / force-stop a user's bot / toggle auto backtest (admin only).
+      // Force-start / force-stop a user's bot for one preset / toggle auto backtest (admin only).
       POST: async ({ request }) => {
         const admin = await requireAdmin(request);
         if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
 
         const body = (await request.json().catch(() => ({}))) as {
           userId?: number;
+          preset?: Preset;
           action?: "start" | "stop" | "toggle-backtest";
           autoBacktestEnabled?: boolean;
         };
@@ -75,22 +70,30 @@ export const Route = createFileRoute("/api/admin/bot")({
 
         const db = getDb();
 
+        if (action === "start" || action === "stop") {
+          if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
+            return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
+          }
+        }
+        const preset = body.preset as Preset;
+
         if (action === "start") {
-          // Reprend la config du dernier run de CET utilisateur (mise, mode…) —
-          // à défaut, DEFAULT_CONFIG (mode "demo") pour ne jamais activer du live
-          // sans que l'utilisateur l'ait lui-même déjà choisi une fois.
-          const config = loadBotConfig(userId) ?? DEFAULT_CONFIG;
+          // Reprend la config du dernier run de CE preset (mise, mode…) — à
+          // défaut, la config canonique du preset (mode "demo") pour ne
+          // jamais activer du live sans que l'utilisateur l'ait lui-même
+          // déjà choisi une fois.
+          const config = loadBotConfig(userId, preset) ?? DEFAULT_CONFIG;
           try {
-            await startBotForUser(userId, config);
+            await startBotForUser(userId, preset, config);
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }
-          return json({ ok: true, running: true, mode: config.mode });
+          return json({ ok: true, running: true, preset, mode: config.mode });
         }
 
         if (action === "stop") {
-          stopBotForUser(userId, "Arrêté par l'administrateur depuis la console");
-          return json({ ok: true, running: false });
+          stopBotForUser(userId, preset, "Arrêté par l'administrateur depuis la console");
+          return json({ ok: true, running: false, preset });
         }
 
         if (action === "toggle-backtest") {

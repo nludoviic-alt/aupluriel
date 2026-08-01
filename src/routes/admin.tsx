@@ -27,7 +27,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
-import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
@@ -169,6 +168,8 @@ interface UserBotConfig {
   [key: string]: unknown;
 }
 
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash" } as const;
+
 function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -179,7 +180,7 @@ function AdminPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", isAdmin: false });
-  const [botStatus, setBotStatus] = useState<Record<number, BotStatus>>({});
+  const [botStatus, setBotStatus] = useState<Record<string, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
   const [presetBusy, setPresetBusy] = useState<number | null>(null);
   const [backtestBusyId, setBacktestBusyId] = useState<number | null>(null);
@@ -194,6 +195,9 @@ function AdminPage() {
   const [calibration, setCalibration] = useState<CalibrationBucket[]>([]);
   const [recapLoading, setRecapLoading] = useState(true);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
+  // Which of the profiled user's up to three bot_state rows (default/boom/
+  // crash, 2026-08-01) the panel below is showing/editing.
+  const [profilePreset, setProfilePreset] = useState<"default" | "boom" | "crash">("default");
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
@@ -250,8 +254,10 @@ function AdminPage() {
   const loadBotStatus = useCallback(async () => {
     try {
       const data = await api.get<{ statuses: BotStatus[] }>("/api/admin/bot");
-      const map: Record<number, BotStatus> = {};
-      for (const s of data.statuses) map[s.userId] = s;
+      // Keyed by "userId:preset" — a user can have up to three independent
+      // bot_state rows now (default/boom/crash, 2026-08-01), not just one.
+      const map: Record<string, BotStatus> = {};
+      for (const s of data.statuses) map[`${s.userId}:${s.preset}`] = s;
       setBotStatus(map);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du statut auto-trader");
@@ -311,19 +317,14 @@ function AdminPage() {
     }
   }
 
-  async function openProfile(u: AdminUser) {
-    setProfileUser(u);
-    setEditingUsername(false);
-    setNoteDraft(u.admin_note ?? "");
-    setNoteSavedAt(null);
+  async function loadProfileConfig(userId: number, preset: "default" | "boom" | "crash") {
     setJournalLoading(true);
-    setInsightsMode("demo");
     try {
       const data = await api.get<{
         trades: JournalTrade[];
         config: UserBotConfig | null;
         insights: { demo: UserInsights; live: UserInsights };
-      }>(`/api/admin/stats?userId=${u.id}`);
+      }>(`/api/admin/stats?userId=${userId}&preset=${preset}`);
       setJournalTrades(data.trades);
       setJournalConfig(data.config);
       setJournalInsights(data.insights);
@@ -334,11 +335,21 @@ function AdminPage() {
     }
   }
 
+  async function openProfile(u: AdminUser) {
+    setProfileUser(u);
+    setEditingUsername(false);
+    setNoteDraft(u.admin_note ?? "");
+    setNoteSavedAt(null);
+    setInsightsMode("demo");
+    setProfilePreset("default");
+    await loadProfileConfig(u.id, "default");
+  }
+
   async function applyRecommendation(rec: Recommendation) {
     if (!profileUser || !journalConfig) return;
     setApplyingRec(rec.message);
     try {
-      const patch: { userId: number; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id };
+      const patch: { userId: number; preset: "default" | "boom" | "crash"; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id, preset: profilePreset };
       if (rec.type === "disable-symbol" && rec.symbol) {
         patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
       } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
@@ -476,10 +487,10 @@ function AdminPage() {
     }
   }
 
-  async function toggleBot(userId: number, action: "start" | "stop") {
+  async function toggleBot(userId: number, preset: "default" | "boom" | "crash", action: "start" | "stop") {
     setBotBusyId(userId);
     try {
-      await api.post("/api/admin/bot", { userId, action });
+      await api.post("/api/admin/bot", { userId, preset, action });
       toast.success(action === "start" ? "Auto-trader activé ✓" : "Auto-trader désactivé");
       await loadBotStatus();
     } catch (err) {
@@ -832,7 +843,7 @@ function AdminPage() {
                                   trader
                                 </span>
                               )}
-                              {botStatus[u.id]?.preset === "boom" && (
+                              {boomUserIds.has(u.id) && (
                                 <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 text-[9px] text-orange-400 font-bold uppercase tracking-wider">
                                   🚀 Boom
                                 </span>
@@ -906,7 +917,7 @@ function AdminPage() {
                           admin
                         </span>
                       )}
-                      {botStatus[u.id]?.preset === "boom" && (
+                      {boomUserIds.has(u.id) && (
                         <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 text-[8px] text-orange-400 font-bold uppercase tracking-wider">
                           🚀
                         </span>
@@ -1730,87 +1741,63 @@ function AdminPage() {
                 )}
 
                 {!isAdmin && (() => {
-                  const isBoomActive = journalConfig?.symbolMode === "watchlist"
-                    && Array.isArray(journalConfig?.symbols)
-                    && journalConfig.symbols.length === BOOM_SYMBOLS.length
-                    && BOOM_SYMBOLS.every((s) => journalConfig.symbols.includes(s));
                   return (
                   <div className="border-t border-white/[0.08] pt-5 space-y-3">
                     <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader</span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader — {presetLabels[profilePreset]}</span>
                       <BotStatusCell
-                        status={botStatus[profileUser.id]}
+                        status={botStatus[`${profileUser.id}:${profilePreset}`]}
                         busy={botBusyId === profileUser.id}
-                        onToggle={(action) => toggleBot(profileUser.id, action)}
+                        onToggle={(action) => toggleBot(profileUser.id, profilePreset, action)}
                       />
                     </div>
-                    {/* ── Preset switch: Default vs Boom ── */}
+                    {/* ── Preset tabs: which of the three independent engines this
+                        panel is viewing/editing — switching tabs never starts,
+                        stops, or resets anything by itself (2026-08-01: all three
+                        can run at once, so this is a view selector, not a switch). ── */}
                     <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset Strategy</span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset consulté</span>
                       <div className="flex w-full shrink-0 items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5 sm:w-auto">
-                        <button
-                          disabled={presetBusy === profileUser.id}
-                          onClick={async () => {
-                            if (!isBoomActive) return;
-                            const ok = await confirm({
-                              title: `Passer ${profileUser.username} en preset Default ?`,
-                              description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-                              confirmLabel: "Activer Default",
-                              danger: false,
-                            });
-                            if (!ok) return;
-                            setPresetBusy(profileUser.id);
-                            try {
-                              const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: "default" });
-                              setJournalConfig(res.config);
-                              toast.success("Preset Default appliqué");
-                              await loadBotStatus();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Erreur");
-                            } finally {
-                              setPresetBusy(null);
-                            }
-                          }}
-                          className={cn(
-                            "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
-                            !isBoomActive ? "bg-cyan-500/15 text-cyan-400" : "text-muted-foreground hover:text-foreground",
-                            presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
-                          )}
-                        >
-                          Default
-                        </button>
-                        <button
-                          disabled={presetBusy === profileUser.id}
-                          onClick={async () => {
-                            if (isBoomActive) return;
-                            const ok = await confirm({
-                              title: `Passer ${profileUser.username} en preset Boom ?`,
-                              description: "Le bot de cet utilisateur trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
-                              confirmLabel: "Activer Boom",
-                              danger: false,
-                            });
-                            if (!ok) return;
-                            setPresetBusy(profileUser.id);
-                            try {
-                              const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: "boom" });
-                              setJournalConfig(res.config);
-                              toast.success("Preset Boom appliqué");
-                              await loadBotStatus();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Erreur");
-                            } finally {
-                              setPresetBusy(null);
-                            }
-                          }}
-                          className={cn(
-                            "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
-                            isBoomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
-                            presetBusy === profileUser.id && "opacity-40 cursor-not-allowed"
-                          )}
-                        >
-                          🚀 Boom
-                        </button>
+                        {(["default", "boom", "crash"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => { setProfilePreset(p); loadProfileConfig(profileUser.id, p); }}
+                            className={cn(
+                              "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
+                              profilePreset === p
+                                ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : "bg-cyan-500/15 text-cyan-400"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : "Multi"}
+                          </button>
+                        ))}
                       </div>
+                      <button
+                        disabled={presetBusy === profileUser.id}
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: `Réinitialiser ${presetLabels[profilePreset]} pour ${profileUser.username} ?`,
+                            description: "Remet TP/SL, confiance et symboles aux valeurs par défaut du preset. Mise, plafond de perte, mode démo/live, exclusions de symboles et seuils de confiance ajustés restent inchangés.",
+                            confirmLabel: "Réinitialiser",
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          setPresetBusy(profileUser.id);
+                          try {
+                            const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: profilePreset, resetToCanonical: true });
+                            setJournalConfig(res.config);
+                            toast.success(`${presetLabels[profilePreset]} réinitialisé ✓`);
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Erreur");
+                          } finally {
+                            setPresetBusy(null);
+                          }
+                        }}
+                        className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                      >
+                        Réinitialiser
+                      </button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="flex flex-col items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-3 py-2.5">

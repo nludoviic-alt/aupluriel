@@ -1,5 +1,12 @@
 // Control endpoint for the SERVER auto-trader (bot-engine.server.ts) — the
 // engine that keeps trading with the app closed / phone locked.
+//
+// A user can run up to three independent engines at once (2026-08-01):
+// Default ("Multi"), Boom, Crash — each with its own bot_state row, own
+// config, own risk caps (no shared/aggregate daily-loss cap by design; each
+// preset's cap is independent, so worst-case exposure is the SUM of the
+// three, not one shared number — a deliberate simplicity-over-safety choice
+// made with the user, not an oversight).
 import { createFileRoute } from "@tanstack/react-router";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { getDb } from "@/lib/db.server";
@@ -13,113 +20,98 @@ import {
   startBotForUser,
   stopBotForUser,
   updateConfigForUser,
+  type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM_SYMBOLS, CRASH_PRESET, CRASH_SYMBOLS } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET } from "@/lib/autotrader";
 
-/** True when this saved config is the Boom preset (same test as the admin console). */
-function isBoomConfig(cfg: Partial<AutoTraderConfig>): boolean {
-  return cfg.symbolMode === "watchlist"
-    && Array.isArray(cfg.symbols)
-    && cfg.symbols.length === BOOM_SYMBOLS.length
-    && BOOM_SYMBOLS.every((s) => cfg.symbols!.includes(s));
+const PRESETS: Preset[] = ["default", "boom", "crash"];
+
+function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
+  return preset === "boom" ? BOOM_PRESET : preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
 }
 
-/** Same test as isBoomConfig, mirrored for Crash. */
-function isCrashConfig(cfg: Partial<AutoTraderConfig>): boolean {
-  return cfg.symbolMode === "watchlist"
-    && Array.isArray(cfg.symbols)
-    && cfg.symbols.length === CRASH_SYMBOLS.length
-    && CRASH_SYMBOLS.every((s) => cfg.symbols!.includes(s));
+function loadStatusForPreset(userId: number, preset: Preset) {
+  const state = getDb()
+    .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?")
+    .get(userId, preset) as { enabled: number; config: string } | undefined;
+  const runtime = getBotRuntime(userId, preset);
+  const trades = getBotTrades(userId, preset, 20);
+  const savedConfig = (() => {
+    if (!state?.config) return null;
+    try {
+      const saved = JSON.parse(state.config) as Partial<AutoTraderConfig>;
+      return {
+        stakeUsd: Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd,
+        maxDailyLossUsd: Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
+        mode: saved.mode === "live" ? "live" as const : "demo" as const,
+      };
+    } catch {
+      return null;
+    }
+  })();
+  const mode: "demo" | "live" = savedConfig?.mode ?? "demo";
+  // SQL over ALL of today's rows — summing the 20-trade window instead
+  // made early wins vanish from the display as new events pushed them out.
+  const today = getTodayStats(userId, preset, mode);
+  // All-time record — shown before a live-mode start so that decision is
+  // informed by this preset's actual track record, not a guess.
+  const allTime = getAllTimeStats(userId, preset, mode);
+
+  return {
+    enabled: !!state?.enabled,
+    running: runtime.running,
+    mode,
+    savedConfig,
+    pausedUntil: runtime.pausedUntil,
+    lastScan: runtime.lastScan,
+    lastError: runtime.lastError,
+    todayPnl: today.pnl,
+    todayCount: today.count,
+    trades,
+    allTimeStats: allTime,
+  };
 }
 
 export const Route = createFileRoute("/api/bot")({
   server: {
     handlers: {
-      // Status + recent server trades.
+      // Status + recent trades for all three presets, plus shared broker balances.
       GET: async ({ request }) => {
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
 
-        const state = getDb()
-          .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ?")
-          .get(user.id) as { enabled: number; config: string } | undefined;
-        const runtime = getBotRuntime(user.id);
-        const trades = getBotTrades(user.id, 20);
-        // Scope stats to the account currently configured (demo vs live) —
-        // otherwise demo test trades and real-money trades summed into the
-        // same total, making the numbers look wrong/inconsistent to the user.
-        const savedConfig = (() => {
-          if (!state?.config) return null;
-          try {
-            const saved = JSON.parse(state.config) as Partial<AutoTraderConfig>;
-            return {
-              stakeUsd: Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd,
-              maxDailyLossUsd: Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
-              mode: saved.mode === "live" ? "live" as const : "demo" as const,
-            };
-          } catch {
-            return null;
-          }
-        })();
-        const mode: "demo" | "live" = savedConfig?.mode ?? "demo";
-        // Which preset this account currently runs — lets the Auto-Trader page
-        // show the active preset instead of guessing from the browser's own
-        // localStorage draft (which the server never reads for strategy).
-        const preset: "boom" | "crash" | "default" = (() => {
-          if (!state?.config) return "default";
-          try {
-            const cfg = JSON.parse(state.config);
-            if (isBoomConfig(cfg)) return "boom";
-            if (isCrashConfig(cfg)) return "crash";
-            return "default";
-          } catch {
-            return "default";
-          }
-        })();
-        // SQL over ALL of today's rows — summing the 20-trade window instead
-        // made early wins vanish from the display as new events pushed them out.
-        const today = getTodayStats(user.id, mode);
-        // All-time record — shown before a live-mode start so that decision is
-        // informed by this user's actual track record, not a guess.
-        const allTime = getAllTimeStats(user.id, mode);
+        const presets = Object.fromEntries(PRESETS.map((p) => [p, loadStatusForPreset(user.id, p)]));
         const brokerBalances = await getBrokerBalances(user.id);
 
-        return json({
-          enabled: !!state?.enabled,
-          running: runtime.running,
-          mode,
-          preset,
-          savedConfig,
-          pausedUntil: runtime.pausedUntil,
-          lastScan: runtime.lastScan,
-          lastError: runtime.lastError,
-          todayPnl: today.pnl,
-          todayCount: today.count,
-          trades,
-          allTimeStats: allTime,
-          brokerBalances,
-        });
+        return json({ presets, brokerBalances });
       },
 
-      // start / stop.
+      // start / stop / reset, always scoped to one preset.
       POST: async ({ request }) => {
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
 
         const body = (await request.json().catch(() => ({}))) as {
-          action?: "start" | "stop" | "preset";
+          action?: "start" | "stop" | "reset";
+          preset?: Preset;
           config?: Partial<AutoTraderConfig>;
-          preset?: "default" | "boom" | "crash";
         };
 
+        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
+          return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
+        }
+        const preset = body.preset;
+
         if (body.action === "start") {
-          // Config: on reprend la config sauvegardée en DB (via loadBotConfig
-          // qui fusionne avec DEFAULT_CONFIG) puis on override avec les champs
-          // que l'utilisateur peut ajuster au démarrage (mise, mode).
+          // Config: on reprend la config sauvegardée en DB pour CE preset (via
+          // loadBotConfig qui fusionne avec DEFAULT_CONFIG) puis on override
+          // avec les champs que l'utilisateur peut ajuster au démarrage (mise,
+          // mode). Un preset jamais démarré repart des valeurs canoniques du
+          // preset (BOOM_PRESET/CRASH_PRESET/DEFAULT_CONFIG).
           const requested = body.config ?? {};
           const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
-          const savedConfig = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
+          const savedConfig = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG, ...presetFieldsFor(preset) };
           // Plancher : une mise relevée sans relever maxDailyLossUsd en même
           // temps piège le bot après ~1 perte (constaté en prod : mise $18 vs
           // plafond $15, pause jusqu'à minuit après une seule perte normale —
@@ -141,54 +133,47 @@ export const Route = createFileRoute("/api/bot")({
             mode,
           };
           try {
-            await startBotForUser(user.id, config);
+            await startBotForUser(user.id, preset, config);
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }
           return json({
-            ok: true, running: true, mode, maxDailyLossUsd,
+            ok: true, running: true, preset, mode, maxDailyLossUsd,
             adjustedLossCap: maxDailyLossUsd !== clamp(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, 1, 500),
           });
         }
 
         if (body.action === "stop") {
-          stopBotForUser(user.id, "Arrêté manuellement par l'utilisateur");
-          return json({ ok: true, running: false });
+          stopBotForUser(user.id, preset, "Arrêté manuellement par l'utilisateur");
+          return json({ ok: true, running: false, preset });
         }
 
-        // Switch THIS user's own bot between the Multi, Boom and Crash
-        // presets. Strategy fields sent with "start" are deliberately ignored
-        // (only stake/mode are honored there), so a preset change has to be
-        // persisted here to actually reach the server engine. The stake, the
-        // daily loss cap and demo/live are always preserved — a preset switch
-        // must never silently move money settings. Same guarantee for
-        // excludedSymbols and minConfidence: both independent per-account
-        // curation (e.g. BOOM600 excluded, confidence floor raised — the two
-        // fields /api/admin/user-config lets an admin tune per account), not
-        // preset properties — a bare preset re-application used to silently
-        // wipe them back to the preset's own defaults (bug found in prod
-        // 2026-08-01: BOOM600 retraded, minConfidence dropped 80→55).
-        if (body.action === "preset") {
-          if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
-            return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
-          }
-          const current = loadBotConfig(user.id) ?? { ...DEFAULT_CONFIG };
+        // Reset this ONE preset's config back to its canonical values —
+        // replaces the old cross-preset "switch" action now that all three
+        // run independently. Money fields (stake/cap/mode) and per-account
+        // curation (excludedSymbols/minConfidence/maxConfidence — see
+        // /api/admin/user-config) are deliberately preserved, same guarantee
+        // as before: a preset reset must never silently move money settings
+        // or wipe out an admin-tuned override (bug found in prod 2026-08-01:
+        // BOOM600 retraded, minConfidence dropped 80→55 after exactly this
+        // kind of reset with no preservation).
+        if (body.action === "reset") {
+          const current = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG };
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence } = current;
-          const presetFields = body.preset === "boom" ? BOOM_PRESET : body.preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-          const next: AutoTraderConfig = { ...current, ...presetFields, stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence };
+          const next: AutoTraderConfig = { ...current, ...presetFieldsFor(preset), stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence };
 
-          // updateConfigForUser only UPDATEs — a user who never started the
-          // bot has no bot_state row yet, so the switch would silently no-op.
+          // updateConfigForUser only UPDATEs — a preset never started has no
+          // bot_state row yet, so the reset would silently no-op.
           getDb().prepare(`
-            INSERT INTO bot_state (user_id, enabled, config, updated_at) VALUES (?, 0, ?, unixepoch())
-            ON CONFLICT(user_id) DO NOTHING
-          `).run(user.id, JSON.stringify(next));
-          updateConfigForUser(user.id, next);
+            INSERT INTO bot_state (user_id, preset, enabled, config, updated_at) VALUES (?, ?, 0, ?, unixepoch())
+            ON CONFLICT(user_id, preset) DO NOTHING
+          `).run(user.id, preset, JSON.stringify(next));
+          updateConfigForUser(user.id, preset, next);
 
-          return json({ ok: true, preset: body.preset, config: next });
+          return json({ ok: true, preset, config: next });
         }
 
-        return json({ error: "action start|stop|preset requise" }, 400);
+        return json({ error: "action start|stop|reset requise" }, 400);
       },
     },
   },

@@ -115,12 +115,18 @@ function migrate(db: Database.Database) {
 
     -- Server-side auto-trader: one row per user; the engine restores enabled
     -- bots at server boot so trading continues with the app/phone closed.
+    -- One row per (user, preset): a user can run Default/Boom/Crash as three
+    -- independent engines simultaneously (added 2026-08-01 — see the
+    -- table-recreation migration below for existing databases, which had a
+    -- single row per user_id).
     CREATE TABLE IF NOT EXISTS bot_state (
-      user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset       TEXT    NOT NULL DEFAULT 'default', -- 'default' | 'boom' | 'crash'
       enabled      INTEGER NOT NULL DEFAULT 0,
       config       TEXT    NOT NULL DEFAULT '{}',
       paused_until INTEGER,          -- epoch ms; risk pauses survive restarts
-      updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (user_id, preset)
     );
 
     -- Trades placed by the SERVER engine (the browser engine logs to localStorage).
@@ -261,6 +267,58 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (message_id, user_id)
     );
   `);
+
+  // --- Migrate bot_state from single-row-per-user to composite (user_id,
+  // preset) key (2026-08-01) — lets Default/Boom/Crash run as three
+  // independent engines per user instead of one preset at a time. Table
+  // recreation (not an additive ALTER) because the primary key itself
+  // changes; SQLite can't alter a PK in place. Idempotent: only runs once,
+  // detected by the absence of a `preset` column.
+  const botStateCols = new Set(
+    (db.prepare("PRAGMA table_info(bot_state)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!botStateCols.has("preset")) {
+    // Same symbol lists as BOOM_SYMBOLS/CRASH_SYMBOLS in autotrader.ts,
+    // inlined to keep this one-time migration self-contained (not dependent
+    // on those constants ever changing shape).
+    const BOOM_SYMS = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+    const CRASH_SYMS = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
+    const detectPreset = (configJson: string): "boom" | "crash" | "default" => {
+      try {
+        const cfg = JSON.parse(configJson) as { symbolMode?: string; symbols?: string[] };
+        const matches = (syms: string[]) => cfg.symbolMode === "watchlist"
+          && Array.isArray(cfg.symbols) && cfg.symbols.length === syms.length
+          && syms.every((s) => cfg.symbols!.includes(s));
+        if (matches(BOOM_SYMS)) return "boom";
+        if (matches(CRASH_SYMS)) return "crash";
+      } catch { /* malformed config — falls through to default */ }
+      return "default";
+    };
+    const oldRows = db.prepare("SELECT user_id, enabled, config, paused_until, updated_at FROM bot_state").all() as
+      { user_id: number; enabled: number; config: string; paused_until: number | null; updated_at: number }[];
+    db.exec("ALTER TABLE bot_state RENAME TO bot_state_old_20260801");
+    db.exec(`
+      CREATE TABLE bot_state (
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        preset       TEXT    NOT NULL DEFAULT 'default',
+        enabled      INTEGER NOT NULL DEFAULT 0,
+        config       TEXT    NOT NULL DEFAULT '{}',
+        paused_until INTEGER,
+        updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (user_id, preset)
+      )
+    `);
+    const insertMigrated = db.prepare(
+      "INSERT INTO bot_state (user_id, preset, enabled, config, paused_until, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    );
+    const migrateAll = db.transaction((rows: typeof oldRows) => {
+      for (const row of rows) {
+        insertMigrated.run(row.user_id, detectPreset(row.config), row.enabled, row.config, row.paused_until, row.updated_at);
+      }
+    });
+    migrateAll(oldRows);
+    db.exec("DROP TABLE bot_state_old_20260801");
+  }
 
   // --- Additive column migrations on `users` (idempotent) ---
   const userCols = new Set(

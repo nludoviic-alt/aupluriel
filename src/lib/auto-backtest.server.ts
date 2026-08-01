@@ -106,11 +106,16 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
     .prepare("SELECT user_id FROM user_settings WHERE auto_backtest_enabled = 1 AND deriv_token IS NOT NULL")
     .all() as { user_id: number }[];
 
+  // This whole subsystem replays and gates DEFAULT_CONFIG specifically (the
+  // "Multi" preset) — Boom/Crash have their own walk-forward-validated
+  // parameters and aren't evaluated by this backtest at all.
+  const PRESET = "default" as const;
+
   for (const { user_id } of rows) {
     try {
-      const existing = loadBotConfig(user_id);
+      const existing = loadBotConfig(user_id, PRESET);
       const isLive = existing?.mode === "live";
-      const running = isBotRunning(user_id);
+      const running = isBotRunning(user_id, PRESET);
 
       if (verdict.favorable && !running) {
         // Live is never auto-started — a live start moves real money and
@@ -119,7 +124,7 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         // below) waits for them to restart it themselves.
         if (isLive) continue;
         const config = { ...DEFAULT_CONFIG, stakeUsd: existing?.stakeUsd ?? DEFAULT_CONFIG.stakeUsd, mode: "demo" as const };
-        await startBotForUser(user_id, config);
+        await startBotForUser(user_id, PRESET, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {
         // stop() tears down every open position's live tracking (P&L updates,
@@ -127,7 +132,7 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         // wait for them to close naturally instead of orphaning them. Next
         // sweep (15min) re-checks; the bot won't open anything new in the
         // meantime since the verdict is already unfavorable.
-        if (hasOpenPositions(user_id)) {
+        if (hasOpenPositions(user_id, PRESET)) {
           console.log(`[auto-backtest] user ${user_id} : verdict défavorable mais positions encore ouvertes — arrêt reporté`);
           continue;
         }
@@ -135,7 +140,7 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         // demo isn't there in live either, and real money shouldn't keep
         // trading on it. Only the stop side applies here — restart is always
         // manual (see the isLive skip above).
-        stopBotForUser(user_id, isLive
+        stopBotForUser(user_id, PRESET, isLive
           ? "Verdict de backtest automatique défavorable (live)"
           : "Verdict de backtest automatique défavorable");
         console.log(`[auto-backtest] bot arrêté pour user ${user_id} (verdict défavorable${isLive ? ", live" : ""})`);

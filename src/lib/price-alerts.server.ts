@@ -82,7 +82,11 @@ async function checkDrawdownAlerts(): Promise<void> {
   for (const alert of alerts) {
     if (withinCooldown(alert.last_fired_at, now)) continue;
 
-    const { pnl } = getTodayStats(alert.user_id);
+    // Drawdown alerts aren't scoped to one preset — a user thinks in terms of
+    // "how much am I down today", combined across whichever of the (now up
+    // to three) engines are running.
+    const pnl = (["default", "boom", "crash"] as const)
+      .reduce((sum, preset) => sum + getTodayStats(alert.user_id, preset).pnl, 0);
     const drawdown = pnl < 0 ? Math.abs(pnl) : 0;
     if (drawdown <= alert.value) continue;
 

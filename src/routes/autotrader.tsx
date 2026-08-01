@@ -199,9 +199,7 @@ import {
   PRUDENT_CONFIG,
   PRESETS,
   BOOM_PRESET,
-  isBoomPresetActive,
   CRASH_PRESET,
-  isCrashPresetActive,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -245,6 +243,7 @@ export const Route = createFileRoute("/autotrader")({
 });
 
 const CONFIG_KEY = "lio23.autotrader_config";
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash" } as const;
 
 function loadConfig(): AutoTraderConfig {
   try {
@@ -291,7 +290,6 @@ function AutoTraderPage() {
   const [showSaveParams, setShowSaveParams] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
-  const [presetBusy, setPresetBusy] = useState(false);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
@@ -304,7 +302,12 @@ function AutoTraderPage() {
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
 
   // ── Server-side bot (runs with the app closed / phone locked) ──
-  interface CloudStatus {
+  // Up to three fully independent engines per account now (2026-08-01):
+  // Default/"Multi", Boom, Crash. `selectedPreset` is purely a VIEW selector
+  // — which one's dashboard/config/journal is on screen — not a switch that
+  // stops the others. Each can be started/stopped on its own.
+  type PresetKey = "default" | "boom" | "crash";
+  interface PresetStatus {
     enabled: boolean;
     running: boolean;
     mode: "demo" | "live";
@@ -316,6 +319,9 @@ function AutoTraderPage() {
     trades: TradeLog[];
     allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
     savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+  }
+  interface CloudStatus {
+    presets: Record<PresetKey, PresetStatus>;
     brokerBalances?: {
       deriv: { balance: number; currency: string } | null;
       kraken: { balance: number; currency: string } | null;
@@ -323,9 +329,18 @@ function AutoTraderPage() {
       oanda: { balance: number; currency: string } | null;
     };
   }
+  const [selectedPreset, setSelectedPreset] = useState<PresetKey>("default");
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
-  const syncedFromServerRef = useRef(false);
+  // One flag per preset — the stake/cap draft sync (below) must catch up
+  // once per preset the first time it's viewed, not just once globally.
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false });
+
+  const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
+  // True the moment ANY of the three presets is enabled — used for guards
+  // that care about "is something trading on this account" regardless of
+  // which one is currently selected for viewing.
+  const anyPresetEnabled = !!cloud?.presets && Object.values(cloud.presets).some((p) => p.enabled);
 
   const refreshCloud = useCallback(async () => {
     try {
@@ -335,19 +350,20 @@ function AutoTraderPage() {
       // fall behind whatever was last changed server-side (support fix, or
       // another device) — the START action always sends THIS draft, so a
       // stale one quietly overwrites the server's value the next time
-      // anyone hits start. Sync once per page load, before the user can
-      // touch anything, so opening this page is always enough to catch up —
-      // never overwrites a value the user is actively editing this session.
-      if (!syncedFromServerRef.current && data.savedConfig) {
-        syncedFromServerRef.current = true;
+      // anyone hits start. Sync once per preset, before the user can touch
+      // anything, so opening this page (or switching preset tabs) is always
+      // enough to catch up — never overwrites a value being actively edited.
+      const savedConfig = data.presets?.[selectedPreset]?.savedConfig;
+      if (!syncedFromServerRef.current[selectedPreset] && savedConfig) {
+        syncedFromServerRef.current[selectedPreset] = true;
         setConfig((prev) => {
-          const next = { ...prev, stakeUsd: data.savedConfig!.stakeUsd, maxDailyLossUsd: data.savedConfig!.maxDailyLossUsd };
+          const next = { ...prev, stakeUsd: savedConfig.stakeUsd, maxDailyLossUsd: savedConfig.maxDailyLossUsd };
           saveConfig(next);
           return next;
         });
       }
     } catch { /* signed out or server unreachable — leave as-is */ }
-  }, []);
+  }, [selectedPreset]);
 
   useEffect(() => {
     refreshCloud();
@@ -359,9 +375,9 @@ function AutoTraderPage() {
     if (cloudBusy) return;
     setCloudBusy(true);
     try {
-      if (cloud?.enabled) {
-        await api.post("/api/bot", { action: "stop" });
-        toast.info("Bot serveur arrêté");
+      if (cloudSelected?.enabled) {
+        await api.post("/api/bot", { action: "stop", preset: selectedPreset });
+        toast.info(`Bot serveur (${presetLabels[selectedPreset]}) arrêté`);
       } else {
         if (config.mode === "simulation") {
           toast.error("Le bot serveur trade sur Deriv — passe en mode Démo ou Live d'abord");
@@ -370,10 +386,10 @@ function AutoTraderPage() {
         // Real money — confirm with an up-to-the-second track record, not
         // whatever `cloud` last polled up to 20s ago.
         if (config.mode === "live") {
-          let stats = cloud?.allTimeStats;
+          let stats = cloudSelected?.allTimeStats;
           try {
             const fresh = await api.get<CloudStatus>("/api/bot");
-            stats = fresh.allTimeStats;
+            stats = fresh.presets?.[selectedPreset]?.allTimeStats;
           } catch { /* fall back to last-known stats below */ }
 
           const trades = stats?.trades ?? 0;
@@ -395,21 +411,22 @@ function AutoTraderPage() {
         } else {
           // Demo — lighter confirmation so a stray tap can't start the bot.
           const ok = await confirm({
-            title: "Démarrer le bot serveur (Démo) ?",
-            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.`,
+            title: `Démarrer le bot serveur — ${presetLabels[selectedPreset]} (Démo) ?`,
+            description: `Le bot va scanner les marchés ${presetLabels[selectedPreset]} et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.`,
             confirmLabel: "Démarrer",
           });
           if (!ok) return;
         }
-        // Never run both engines at once — same account, duplicate trades.
+        // Never run the retired local engine at the same time as any server
+        // preset — same account, duplicate trades.
         if (running) {
           stopAutoTraderEngine();
           toast.info("Moteur local arrêté — le serveur prend le relais");
         }
-        const started = await api.post<{ maxDailyLossUsd: number; adjustedLossCap: boolean }>("/api/bot", { action: "start", config });
+        const started = await api.post<{ maxDailyLossUsd: number; adjustedLossCap: boolean }>("/api/bot", { action: "start", preset: selectedPreset, config });
         toast.success(config.mode === "live"
-          ? "Bot serveur démarré en LIVE — argent réel"
-          : "Bot serveur démarré — il tourne même téléphone verrouillé");
+          ? `Bot serveur (${presetLabels[selectedPreset]}) démarré en LIVE — argent réel`
+          : `Bot serveur (${presetLabels[selectedPreset]}) démarré — il tourne même téléphone verrouillé`);
         if (started.adjustedLossCap) {
           toast.info(`Limite de perte journalière relevée à $${started.maxDailyLossUsd} — la mise dépassait l'ancien plafond, une perte normale n'aurait laissé aucun trade de la journée.`);
         }
@@ -500,13 +517,13 @@ function AutoTraderPage() {
   // ☁️ server bot is the active engine, the KPI strip below would show a
   // stuck/zero P&L even as real gains land server-side. Prefer the
   // SQL-computed, never-trimmed cloud numbers whenever the server bot is on.
-  const cloudActive = !!cloud?.enabled;
+  const cloudActive = !!cloudSelected?.enabled;
   const isToday = (ms: number) => new Date(ms).toDateString() === new Date().toDateString();
   const cloudClosedToday = cloudActive
-    ? (cloud?.trades ?? []).filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
+    ? (cloudSelected?.trades ?? []).filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
     : [];
-  const pnl = cloudActive ? (cloud?.todayPnl ?? 0) : localPnl;
-  const tradeCount = cloudActive ? (cloud?.todayCount ?? 0) : localTradeCount;
+  const pnl = cloudActive ? (cloudSelected?.todayPnl ?? 0) : localPnl;
+  const tradeCount = cloudActive ? (cloudSelected?.todayCount ?? 0) : localTradeCount;
   const wins = cloudActive ? cloudClosedToday.filter((t) => t.status === "won").length : localWins;
   const losses = cloudActive ? cloudClosedToday.filter((t) => t.status === "lost").length : localLosses;
   const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
@@ -533,69 +550,26 @@ function AutoTraderPage() {
   }
 
   /**
-   * Switches this account between the Multi, Boom and Crash presets.
-   * Writes to BOTH engines on purpose: `saveConfig` covers the local browser
-   * engine, and the `preset` API call covers the server bot — /api/bot's
-   * "start" action deliberately ignores strategy fields (only
-   * stake/mode/daily-loss are honored there), so a purely local change would
-   * leave the cloud bot running the previous preset with no visible sign of it.
+   * Switches which preset's dashboard/config/journal is on screen. This is a
+   * VIEW selector now, not a strategy switch (2026-08-01) — Default/Boom/
+   * Crash run as three fully independent server engines, each start/stopped
+   * on its own via the ☁️ Bot serveur toggle. Selecting a preset here never
+   * starts, stops, or reconfigures anything server-side; it only swaps the
+   * local `config` draft to that preset's canonical shape (for display and
+   * as a starting point if the user edits it) so the CONFIG tab shows
+   * sensible values instead of whatever the previous selection left behind.
    */
-  async function applyPreset(target: "boom" | "crash" | "default") {
-    if (presetBusy) return;
-    const active = isBoomPresetActive(config) ? "boom" : isCrashPresetActive(config) ? "crash" : "default";
-    if (target === active) return; // already active — no-op
-    const ok = await confirm(
-      target === "boom"
-        ? {
-            title: "Passer en preset Boom ?",
-            description: "Le bot trade UNIQUEMENT les index Boom 1000/500/600/900 (synthétiques 24/7), trades illimités, ferme au moindre gain. Tous les autres marchés seront désactivés.",
-            confirmLabel: "Activer Boom",
-          }
-        : target === "crash"
-          ? {
-              title: "Passer en preset Crash ?",
-              description: "⚠️ Réglages mesurés sur un seul sweep de données historiques réelles (1112 trades simulés, edge +2.7pp), pas encore validés en walk-forward comme Boom. Le bot trade UNIQUEMENT les index Crash 1000/500/600/900. À utiliser en démo uniquement pour l'instant.",
-              confirmLabel: "Activer Crash",
-              danger: true,
-            }
-          : {
-              title: "Passer en preset Multi ?",
-              description: "Le bot reprendra tous les marchés avec la stratégie standard (forex, or, crypto).",
-              confirmLabel: "Activer Multi",
-            },
-    );
-    if (!ok) return;
-
-    setPresetBusy(true);
-    try {
-      const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-      // excludedSymbols survit toujours au changement de preset, jamais
-      // écrasé par les valeurs par défaut du preset — c'est une curation
-      // indépendante (ex. BOOM600 exclu après analyse réelle), pas une
-      // propriété du preset. Bug constaté en prod le 2026-08-01 : un simple
-      // aller-retour entre presets effaçait l'exclusion silencieusement.
-      const next: AutoTraderConfig = target === "default"
-        ? { ...DEFAULT_CONFIG, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode, excludedSymbols: config.excludedSymbols, minConfidence: config.minConfidence, maxConfidence: config.maxConfidence }
-        : { ...config, ...presetFields, excludedSymbols: config.excludedSymbols, minConfidence: config.minConfidence, maxConfidence: config.maxConfidence };
-      setConfig(next);
-      saveConfig(next);
-      setDraftDuration(next.durationMinutes);
-      setDraftMaxTrades(next.maxTradesPerDay);
-      await api.post("/api/bot", { action: "preset", preset: target });
-      await refreshCloud();
-      const labels = { boom: "Boom", crash: "Crash", default: "Multi" } as const;
-      toast.success(`Preset ${labels[target]} activé`, {
-        description: target === "boom"
-          ? "Boom 1000/500/600/900 · 24/7 · 5min"
-          : target === "crash"
-            ? "Crash 1000/500/600/900 · 24/7 · TP5/SL30 mesuré"
-            : "Tous les marchés · Stratégie standard",
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors du changement de preset");
-    } finally {
-      setPresetBusy(false);
-    }
+  function selectPresetView(target: "boom" | "crash" | "default") {
+    if (target === selectedPreset) return;
+    setSelectedPreset(target);
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+    const next: AutoTraderConfig = {
+      ...DEFAULT_CONFIG, ...presetFields,
+      stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
+    };
+    setConfig(next);
+    setDraftDuration(next.durationMinutes);
+    setDraftMaxTrades(next.maxTradesPerDay);
   }
 
   const handleEvent = useCallback((log: TradeLog, meta?: { cooldownUntil?: number }) => {
@@ -645,7 +619,7 @@ function AutoTraderPage() {
   }, []);
 
   async function toggleEngine() {
-    if (cloud?.enabled) {
+    if (anyPresetEnabled) {
       toast.error("Le bot serveur est actif — désactive-le pour utiliser le moteur local (sinon trades en double)");
       return;
     }
@@ -716,7 +690,7 @@ function AutoTraderPage() {
   // Power button: green when EITHER engine is running (local or server bot),
   // gold on hover when both are stopped. Previously only reflected the local
   // engine, so activating "Bot serveur" alone left the button looking idle.
-  const anyRunning = running || !!cloud?.enabled;
+  const anyRunning = running || anyPresetEnabled;
   const modeGlow = anyRunning
     ? "shadow-[0_0_56px_rgba(34,197,94,0.45)]"
     : "shadow-[0_0_32px_rgba(255,215,0,0.18)] hover:shadow-[0_0_60px_rgba(255,215,0,0.35)]";
@@ -734,22 +708,23 @@ function AutoTraderPage() {
   // Rendered twice — inline in the desktop header, and as its own full-width
   // row on mobile. It used to live only inside the header's `hidden md:flex`
   // group, which made switching presets impossible on a phone.
-  const boomActive = isBoomPresetActive(config);
-  const crashActive = isCrashPresetActive(config);
-  const defaultActive = !boomActive && !crashActive;
+  //
+  // Tab highlight = which preset's dashboard/config/journal is currently
+  // shown (selectedPreset, pure view state). The small pulsing dot = whether
+  // THAT preset's server engine is actually enabled right now — independent
+  // of which tab is selected, since all three can run at once (2026-08-01).
+  // A preset can show its dot lit while you're viewing a different tab.
   const presetSwitch = (
     <div className="flex w-full items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1 md:w-auto">
       <button
-        disabled={running || presetBusy}
-        onClick={() => applyPreset("default")}
+        onClick={() => selectPresetView("default")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          defaultActive ? "bg-[#800020]/20 text-[#e0446e]" : "text-muted-foreground hover:text-foreground",
-          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+          selectedPreset === "default" ? "bg-[#800020]/20 text-[#e0446e]" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <Layers className="h-3.5 w-3.5 shrink-0" /> Multi
-        {defaultActive && (
+        {cloud?.presets?.default?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[#e0446e] animate-pulse shadow-[0_0_6px_rgba(128,0,32,0.8)]" />
             <span className="hidden sm:inline text-[8px] font-black tracking-widest text-[#e0446e]">LIVE</span>
@@ -757,16 +732,14 @@ function AutoTraderPage() {
         )}
       </button>
       <button
-        disabled={running || presetBusy}
-        onClick={() => applyPreset("boom")}
+        onClick={() => selectPresetView("boom")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          boomActive ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
-          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+          selectedPreset === "boom" ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <Rocket className="h-3.5 w-3.5 shrink-0" /> Boom
-        {boomActive && (
+        {cloud?.presets?.boom?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
             <span className="hidden sm:inline text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
@@ -774,16 +747,14 @@ function AutoTraderPage() {
         )}
       </button>
       <button
-        disabled={running || presetBusy}
-        onClick={() => applyPreset("crash")}
+        onClick={() => selectPresetView("crash")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          crashActive ? "bg-yellow-500/15 text-yellow-400" : "text-muted-foreground hover:text-foreground",
-          (running || presetBusy) && "opacity-40 cursor-not-allowed",
+          selectedPreset === "crash" ? "bg-yellow-500/15 text-yellow-400" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <TrendingDown className="h-3.5 w-3.5 shrink-0" /> Crash
-        {crashActive && (
+        {cloud?.presets?.crash?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(234,179,8,0.8)]" />
             <span className="hidden sm:inline text-[8px] font-black tracking-widest text-yellow-400">LIVE</span>
@@ -960,10 +931,10 @@ function AutoTraderPage() {
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Statut</span>
                   <span className={cn("text-sm font-bold", anyRunning ? "text-up" : "text-muted-foreground")}>
-                    {running && cloud?.enabled && cloud?.running
-                      ? "● Actif (local + serveur)"
-                      : cloud?.enabled && cloud?.running
-                      ? "● Actif sur le serveur"
+                    {running && cloudSelected?.enabled && cloudSelected?.running
+                      ? `● Actif (local + serveur ${presetLabels[selectedPreset]})`
+                      : cloudSelected?.enabled && cloudSelected?.running
+                      ? `● Actif sur le serveur (${presetLabels[selectedPreset]})`
                       : running
                       ? "● Actif"
                       : "○ Arrêté"}
@@ -1001,23 +972,23 @@ function AutoTraderPage() {
           {/* ── Server bot: keeps trading with the app closed / phone locked ── */}
           <div className={cn(
             "glass-panel rounded-xl px-4 py-4 border transition-all duration-300",
-            cloud?.enabled ? "border-[color:var(--brand-cyan)]/40" : "border-border/60",
+            cloudSelected?.enabled ? "border-[color:var(--brand-cyan)]/40" : "border-border/60",
           )}>
              <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-base leading-none">☁️</span>
-                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Bot serveur</span>
-                  {cloud?.enabled && (
-                    <span className={cn("h-2 w-2 rounded-full", cloud.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
+                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Bot serveur — {presetLabels[selectedPreset]}</span>
+                  {cloudSelected?.enabled && (
+                    <span className={cn("h-2 w-2 rounded-full", cloudSelected.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
-                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée.
+                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée. Indépendant des deux autres presets.
                 </p>
               </div>
               <Switch
-                checked={!!cloud?.enabled}
+                checked={!!cloudSelected?.enabled}
                 disabled={cloudBusy}
                 onCheckedChange={toggleCloud}
               />
@@ -1025,27 +996,27 @@ function AutoTraderPage() {
 
             <AutoBacktestStatus className="mt-3" />
 
-            {cloud?.enabled && (
+            {cloudSelected?.enabled && (
               <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">Statut</span>
-                  <span className={cn("font-extrabold", cloud.pausedUntil ? "text-amber-400" : "text-up")}>
-                    {cloud.pausedUntil
-                      ? `⏸ Pause — reprise ${new Date(cloud.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
-                      : cloud.running ? "● Actif sur le serveur" : "Démarrage…"}
+                  <span className={cn("font-extrabold", cloudSelected.pausedUntil ? "text-amber-400" : "text-up")}>
+                    {cloudSelected.pausedUntil
+                      ? `⏸ Pause — reprise ${new Date(cloudSelected.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                      : cloudSelected.running ? "● Actif sur le serveur" : "Démarrage…"}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">P&L jour (serveur)</span>
-                  <span className={cn("font-extrabold font-mono-tabular", cloud.todayPnl >= 0 ? "text-up" : "text-down")}>
-                    {cloud.todayPnl >= 0 ? "+" : ""}${cloud.todayPnl.toFixed(2)} · {cloud.todayCount} trade{cloud.todayCount > 1 ? "s" : ""}
+                  <span className={cn("font-extrabold font-mono-tabular", cloudSelected.todayPnl >= 0 ? "text-up" : "text-down")}>
+                    {cloudSelected.todayPnl >= 0 ? "+" : ""}${cloudSelected.todayPnl.toFixed(2)} · {cloudSelected.todayCount} trade{cloudSelected.todayCount > 1 ? "s" : ""}
                   </span>
                 </div>
-                {cloud.lastError && (
-                  <p className="text-xs font-semibold text-down">⚠ {cloud.lastError}</p>
+                {cloudSelected.lastError && (
+                  <p className="text-xs font-semibold text-down">⚠ {cloudSelected.lastError}</p>
                 )}
-                {cloud.trades.filter((t) => t.stake > 0).slice(0, 5).map((t) => (
+                {cloudSelected.trades.filter((t) => t.stake > 0).slice(0, 5).map((t) => (
                   <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs font-semibold text-neutral-200">
                     <span className="truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
                     <span className={cn("font-bold shrink-0 ml-2",
@@ -1365,7 +1336,7 @@ function AutoTraderPage() {
 
                 {/* Gold live ticker — right below the sessions */}
                 <div className="block mt-5">
-                  <GoldTicker cloudTrades={cloud?.trades ?? []} />
+                  <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
                 </div>
               </div>
             </div>
@@ -1418,7 +1389,7 @@ function AutoTraderPage() {
 
               {/* Gold live ticker — below standby sessions */}
               <div className="block mt-5">
-                <GoldTicker cloudTrades={cloud?.trades ?? []} />
+                <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
               </div>
             </div>
           )}
@@ -2271,8 +2242,8 @@ function AutoTraderPage() {
 
       {/* ── Live server scanner — below the trade journal for better visibility ── */}
       <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
-        {cloud?.enabled && cloud.lastScan && (
-          <CloudScanPanel lastScan={cloud.lastScan} />
+        {cloudSelected?.enabled && cloudSelected.lastScan && (
+          <CloudScanPanel lastScan={cloudSelected.lastScan} />
         )}
       </div>
 
