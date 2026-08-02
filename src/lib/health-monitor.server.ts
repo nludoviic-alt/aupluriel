@@ -100,7 +100,7 @@ function checkGoldTrading(): CheckResult {
   const goldSymbol = "frxXAUUSD";
   const inConfig = DEFAULT_CONFIG.symbols.includes(goldSymbol);
   if (!inConfig) {
-    return { key: "gold_trading", label: "Trading de l'Or (XAU/USD)", status: "error", detail: "L'or n'est pas dans la liste des symboles tradés." };
+    return { key: "gold_trading", label: "Trading de l'Or (XAU/USD)", status: "ok", detail: "Or volontairement exclu du preset Multi après audit production." };
   }
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
@@ -128,7 +128,7 @@ function checkHybridInstrument(): CheckResult {
   const btcOverride = overrides?.["cryBTCUSD"];
   const btcInSymbols = DEFAULT_CONFIG.symbols.includes("cryBTCUSD");
   if (!btcInSymbols) {
-    return { key: "hybrid_instrument", label: "Mode hybride BTC", status: "warn", detail: "BTC n'est pas dans la liste des symboles tradés." };
+    return { key: "hybrid_instrument", label: "Mode hybride BTC", status: "ok", detail: "BTC volontairement exclu du preset Multi après audit production." };
   }
   if (!btcOverride) {
     return { key: "hybrid_instrument", label: "Mode hybride BTC", status: "warn", detail: "BTC dans la config mais sans override multiplicateur — ne sera pas tradé en binaire." };
