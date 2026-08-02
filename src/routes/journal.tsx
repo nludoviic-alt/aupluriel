@@ -4,7 +4,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { BarChart3, CheckCircle2, Download, Info, Microscope, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { loadTradeLog, type TradeLog } from "@/lib/autotrader";
+import { type TradeLog } from "@/lib/autotrader";
 import { api } from "@/lib/api";
 import {
   bySession,
@@ -34,44 +34,59 @@ export const Route = createFileRoute("/journal")({
 function JournalPage() {
   const [logs, setLogs] = useState<TradeLog[]>([]);
   const [loading, setLoading] = useState(true);
+  // Symbols currently in the watchlist of at least one of the three presets
+  // (default/boom/crash), minus whatever each preset excludes. Retired
+  // symbols (e.g. BOOM600, excluded after real losses) stay in bot_trades
+  // forever — without this filter, their historical drag permanently
+  // pollutes every KPI on this page, making a config that's actually fixed
+  // look like it's still bleeding. null while the config hasn't loaded yet.
+  const [activeSymbols, setActiveSymbols] = useState<Set<string> | null>(null);
+  // Off by default: only currently-active symbols count toward the numbers
+  // above the fold. The full history (including retired symbols) stays one
+  // click away, never deleted — just not the default read.
+  const [showRetired, setShowRetired] = useState(false);
 
   useEffect(() => {
-    // Load from localStorage immediately (fast, offline-capable)
-    const local = loadTradeLog();
-    setLogs(local);
-
-    // Then fetch the full persistent history from the server DB (bot_trades)
-    // — this never resets, unlike localStorage which is capped at 200 and
-    // can be cleared by the user or browser data purge.
     api.get<TradeLog[]>("/api/bot-trades?limit=500")
-      .then((serverLogs) => {
-        if (serverLogs.length > 0) {
-          // Merge: server logs are the source of truth, but keep any local-only
-          // entries (e.g., preview trades not sent to server) that aren't in DB.
-          const serverIds = new Set(serverLogs.map((t) => t.id));
-          const localOnly = local.filter((t) => !serverIds.has(t.id));
-          setLogs([...serverLogs, ...localOnly]);
-        }
-      })
-      .catch(() => {
-        // Server unreachable — local logs are still displayed
-      })
+      .then(setLogs)
+      .catch(() => setLogs([]))
       .finally(() => setLoading(false));
+    api.get<{ presets: Record<string, { savedConfig: { symbols?: string[]; excludedSymbols?: string[] } | null }> }>("/api/bot")
+      .then((data) => {
+        const active = new Set<string>();
+        for (const preset of Object.values(data.presets ?? {})) {
+          const cfg = preset.savedConfig;
+          if (!cfg?.symbols) continue;
+          const excluded = new Set(cfg.excludedSymbols ?? []);
+          for (const sym of cfg.symbols) if (!excluded.has(sym)) active.add(sym);
+        }
+        setActiveSymbols(active);
+      })
+      .catch(() => setActiveSymbols(new Set())); // fetch failed — fall back to showing everything rather than hiding all data
   }, []);
 
-  const s = summarize(logs);
-  const equity = equityCurve(logs);
-  const ideas = insights(logs);
-  const symbols = bySymbol(logs);
-  const sessions = bySession(logs);
-  const hours = byHour(logs);
-  const confidence = byConfidence(logs);
-  const days = byDay(logs);
-  const segments = bySegment(logs);
-  const tfWithin = withinSegment(logs, "tfAgreement");
-  const confWithin = withinSegment(logs, "confidence");
-  const slippage = slippageBySegment(logs);
-  const errDays = errorsByDay(logs);
+  const retiredCount = activeSymbols ? logs.filter((l) => !activeSymbols.has(l.symbol)).length : 0;
+  // Once the active-symbol set is known, filtering IS the real view by
+  // default; an empty activeSymbols set (fetch failed, or genuinely no
+  // preset configured yet) falls back to showing everything instead of
+  // hiding all data behind a filter that couldn't be computed.
+  const visibleLogs = showRetired || !activeSymbols || activeSymbols.size === 0
+    ? logs
+    : logs.filter((l) => activeSymbols.has(l.symbol));
+
+  const s = summarize(visibleLogs);
+  const equity = equityCurve(visibleLogs);
+  const ideas = insights(visibleLogs);
+  const symbols = bySymbol(visibleLogs);
+  const sessions = bySession(visibleLogs);
+  const hours = byHour(visibleLogs);
+  const confidence = byConfidence(visibleLogs);
+  const days = byDay(visibleLogs);
+  const segments = bySegment(visibleLogs);
+  const tfWithin = withinSegment(visibleLogs, "tfAgreement");
+  const confWithin = withinSegment(visibleLogs, "confidence");
+  const slippage = slippageBySegment(visibleLogs);
+  const errDays = errorsByDay(visibleLogs);
 
   const hasData = s.trades > 0;
 
@@ -93,6 +108,23 @@ function JournalPage() {
           </Button>
         )}
       </div>
+
+      {/* Retired-symbol filter — off by default, KPIs below reflect only
+          symbols currently in a watchlist. BOOM600 and similar exclusions
+          stay in bot_trades forever; without this, their historical drag
+          makes an already-fixed config look like it's still losing. */}
+      {activeSymbols && activeSymbols.size > 0 && retiredCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            {showRetired
+              ? `Historique complet affiché — ${retiredCount} trade${retiredCount > 1 ? "s" : ""} sur des paires retirées de la watchlist inclus.`
+              : `${retiredCount} trade${retiredCount > 1 ? "s" : ""} sur des paires déjà retirées de la watchlist (ex. BOOM600) masqué${retiredCount > 1 ? "s" : ""} — les chiffres ci-dessous reflètent uniquement ce qui tourne réellement aujourd'hui.`}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setShowRetired((v) => !v)} className="shrink-0 text-xs">
+            {showRetired ? "Masquer l'historique retiré" : "Afficher aussi l'historique retiré"}
+          </Button>
+        </div>
+      )}
 
       {!hasData && (
         <div className="glass-panel rounded-xl p-8 text-center">
