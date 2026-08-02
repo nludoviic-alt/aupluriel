@@ -915,12 +915,11 @@ function MessengerPage() {
         setMessages(data.messages);
         setTimeout(() => scrollToBottom(true), 60);
         
-        // Mark messages as read (only messages not sent by current user)
-        const unreadMessages = data.messages.filter(msg => msg.senderId !== user?.id && !msg.readAt);
-        unreadMessages.forEach(msg => {
-          api.put("/api/chat/messages", { groupId: activeGroupId, messageId: msg.id })
-            .catch(() => {}); // Silently fail
-        });
+        // Mark all unread messages as read in one batch request instead of N separate PUTs.
+        const unreadIds = data.messages.filter(msg => msg.senderId !== user?.id && !msg.readAt).map(msg => msg.id);
+        if (unreadIds.length > 0) {
+          api.put("/api/chat/messages", { groupId: activeGroupId, messageIds: unreadIds }).catch(() => {});
+        }
       })
       .catch(() => toast.error("Impossible de charger les messages"))
       .finally(() => setLoadingMessages(false));
@@ -951,14 +950,13 @@ function MessengerPage() {
             return areMessageListsEqual(prev, data.messages) ? prev : data.messages;
           });
 
-          // Mark newly received messages as read
-          const unread = data.messages.filter(
-            (msg) => msg.senderId !== user?.id && !msg.readAt
-          );
-          unread.forEach((msg) => {
-            api.put("/api/chat/messages", { groupId: activeGroupId, messageId: msg.id })
-              .catch(() => {});
-          });
+          // Mark newly received messages as read (batch)
+          const unreadIds = data.messages
+            .filter((msg) => msg.senderId !== user?.id && !msg.readAt)
+            .map((msg) => msg.id);
+          if (unreadIds.length > 0) {
+            api.put("/api/chat/messages", { groupId: activeGroupId, messageIds: unreadIds }).catch(() => {});
+          }
         })
         .catch((err) => console.error("Polling messages error:", err));
     }, 3000);

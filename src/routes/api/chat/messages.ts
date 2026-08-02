@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest } from "@/lib/auth.server";
-import { getReactions } from "@/lib/chat-reactions.server";
+import { getReactionsForMessages } from "@/lib/chat-reactions.server";
 import { markMessagesDelivered } from "@/lib/chat-delivery.server";
 import { randomUUID } from "crypto";
 
@@ -110,7 +110,10 @@ export const Route = createFileRoute("/api/chat/messages")({
           `)
           .all(groupId) as MessageRow[];
 
-        const messages = rows.map((r) => ({ ...serializeMessage(r), reactions: getReactions(db, r.id, user.id) }));
+        const messages = rows.map((r) => ({ ...serializeMessage(r), reactions: [] as import("@/lib/chat-reactions.server").ReactionSummary[] }));
+        // Batch-fetch all reactions in one query instead of N+1 per-message.
+        const reactionMap = getReactionsForMessages(db, rows.map((r) => r.id), user.id);
+        for (const m of messages) m.reactions = reactionMap.get(m.id) ?? [];
 
         return json({ messages });
       },
@@ -331,19 +334,32 @@ export const Route = createFileRoute("/api/chat/messages")({
         const body = (await request.json().catch(() => ({}))) as {
           groupId?: string;
           messageId?: string;
+          messageIds?: string[];
         };
 
-        if (!body.groupId || !body.messageId) {
-          return json({ error: "groupId et messageId requis." }, 400);
+        if (!body.groupId) {
+          return json({ error: "groupId requis." }, 400);
         }
 
         const db = getDb();
 
-        // Same "identical not-found for nonexistent vs inaccessible" rule as
-        // loadGroupWithAccess() above — a non-admin must not be able to tell
-        // a real message in a group they're not in apart from a bogus id.
         const group = loadGroupWithAccess(db, body.groupId, user);
         if (!group) return json({ error: "Message non trouvé." }, 404);
+
+        // Batch mode: mark all given messages as read in one UPDATE.
+        if (body.messageIds && Array.isArray(body.messageIds) && body.messageIds.length > 0) {
+          const now = Math.floor(Date.now() / 1000);
+          const placeholders = body.messageIds.map(() => "?").join(",");
+          db.prepare(
+            `UPDATE chat_messages SET read_at = ?, delivered_at = COALESCE(delivered_at, ?)
+             WHERE id IN (${placeholders}) AND group_id = ? AND sender_id != ? AND read_at IS NULL`,
+          ).run(now, now, ...body.messageIds, body.groupId, user.id);
+          return json({ success: true, marked: body.messageIds.length });
+        }
+
+        if (!body.messageId) {
+          return json({ error: "messageId ou messageIds requis." }, 400);
+        }
 
         const message = db
           .prepare("SELECT sender_id FROM chat_messages WHERE id = ? AND group_id = ?")
@@ -351,7 +367,6 @@ export const Route = createFileRoute("/api/chat/messages")({
 
         if (!message) return json({ error: "Message non trouvé." }, 404);
 
-        // Only the recipient can mark messages as read
         if (message.sender_id === user.id) {
           return json({ error: "Vous ne pouvez pas marquer vos propres messages comme lus." }, 400);
         }

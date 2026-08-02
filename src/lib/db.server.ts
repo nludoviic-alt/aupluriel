@@ -11,6 +11,9 @@ export function getDb(): Database.Database {
   _db = new Database(DB_PATH);
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
+  _db.pragma("synchronous = NORMAL");
+  _db.pragma("cache_size = -65536");
+  _db.pragma("temp_store = MEMORY");
   migrate(_db);
   return _db;
 }
@@ -168,6 +171,14 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_bot_trades_user_time ON bot_trades(user_id, time DESC);
 
+    -- Composite index covering the per-preset stats queries that filter on
+    -- (user_id, preset, time) — getTodayStats and the admin recap. Without it,
+    -- SQLite scans all of a user's trades to find today's preset subset.
+    CREATE INDEX IF NOT EXISTS idx_bot_trades_user_preset_time ON bot_trades(user_id, preset, time DESC);
+
+    -- For getRecentPerformance which orders by closed_at DESC.
+    CREATE INDEX IF NOT EXISTS idx_bot_trades_user_preset_closed ON bot_trades(user_id, preset, closed_at DESC);
+
     -- Apprentissage partagé : stats win/loss par (symbole, composant de signal),
     -- agrégées sur les trades réels de TOUS les utilisateurs. Le symbole
     -- '_global' sert de prior inter-symboles pour lisser les petits échantillons.
@@ -283,6 +294,9 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       PRIMARY KEY (message_id, user_id)
     );
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_group_created ON chat_messages(group_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_reactions_message ON chat_message_reactions(message_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_group_members_user ON chat_group_members(user_id);
   `);
 
   // --- Migrate bot_state from single-row-per-user to composite (user_id,
