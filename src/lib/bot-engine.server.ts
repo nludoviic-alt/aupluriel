@@ -59,32 +59,15 @@ const SCAN_MS = 60_000;
 // minuit UTC : l'argent est réellement parti, contrairement au flottant.
 const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 
-// A user can run all three presets simultaneously (2026-08-01) — each is a
-// fully independent engine with its own bot_state row (composite user_id +
-// preset key), own config, own risk caps. Nothing shared between them except
-// the underlying Deriv account they all trade on.
-export type Preset = "default" | "boom" | "crash";
+// A user can run all four presets simultaneously — each is a fully
+// independent engine with its own bot_state row (composite user_id + preset
+// key), own config, own risk caps. Nothing shared between them except the
+// underlying Deriv account they all trade on. "scalping" (2026-08-02) is
+// deliberately allowed to trade a symbol another preset also trades (BOOM500)
+// — see the `preset` column on bot_trades for how that stays unambiguous.
+export type Preset = "default" | "boom" | "crash" | "scalping";
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
-}
-
-// Same symbol lists as BOOM_SYMBOLS/CRASH_SYMBOLS in autotrader.ts, duplicated
-// here rather than imported: autotrader.ts pulls in browser-only modules
-// (WebSocket-based ./deriv client) that have no business loading server-side.
-const BOOM_SYMS: readonly string[] = ["BOOM1000", "BOOM500", "BOOM900"];
-const CRASH_SYMS: readonly string[] = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
-
-/** SQL fragment + bound params to scope a bot_trades query to one preset's
- * symbols. Default = everything that isn't Boom or Crash (open-ended set —
- * forex/gold/crypto/indices), so this is a NOT IN rather than an IN list.
- * Exported so admin-side cross-user views (api/admin/stats.ts) can scope
- * their comparisons by preset using the exact same symbol classification
- * the live engines use, instead of a second hand-maintained copy. */
-export function presetSymbolFilter(preset: Preset): { sql: string; params: string[] } {
-  if (preset === "boom") return { sql: `symbol IN (${BOOM_SYMS.map(() => "?").join(",")})`, params: [...BOOM_SYMS] };
-  if (preset === "crash") return { sql: `symbol IN (${CRASH_SYMS.map(() => "?").join(",")})`, params: [...CRASH_SYMS] };
-  const excluded = [...BOOM_SYMS, ...CRASH_SYMS];
-  return { sql: `symbol NOT IN (${excluded.map(() => "?").join(",")})`, params: excluded };
 }
 
 /** Correlation/active-symbol tracking cares about the underlying bullish/bearish
@@ -142,10 +125,10 @@ export function logFromRow(r: BotTradeRow): TradeLog {
   };
 }
 
-function upsertTrade(userId: number, log: TradeLog, mode: "demo" | "live") {
+function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -157,28 +140,27 @@ function upsertTrade(userId: number, log: TradeLog, mode: "demo" | "live") {
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
-    mode,
+    mode, preset,
   });
 }
 
 function loadRecentTrades(userId: number, preset: Preset, limit = 50): TradeLog[] {
-  const f = presetSymbolFilter(preset);
   const rows = getDb()
-    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND ${f.sql} ORDER BY time DESC LIMIT ?`)
-    .all(userId, ...f.params, limit) as BotTradeRow[];
+    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND preset = ? ORDER BY time DESC LIMIT ?`)
+    .all(userId, preset, limit) as BotTradeRow[];
   return rows.map(logFromRow);
 }
 
 /** Every currently open/pending position for this user AND this preset,
  * regardless of age — unlike loadRecentTrades, not capped to a recent
  * window, so reconcile() can't lose track of a position just because enough
- * newer trades piled up. Scoped to the preset's own symbols so three
- * simultaneous engines never fight over re-tracking each other's positions. */
+ * newer trades piled up. Scoped by the explicit `preset` column (not symbol
+ * inference) so simultaneous engines that share a symbol — Scalping and Boom
+ * both trade BOOM500 — never fight over re-tracking each other's positions. */
 function loadOpenOrPendingTrades(userId: number, preset: Preset): TradeLog[] {
-  const f = presetSymbolFilter(preset);
   const rows = getDb()
-    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status IN ('open', 'pending')`)
-    .all(userId, ...f.params) as BotTradeRow[];
+    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND preset = ? AND status IN ('open', 'pending')`)
+    .all(userId, preset) as BotTradeRow[];
   return rows.map(logFromRow);
 }
 
@@ -195,10 +177,9 @@ function loadOpenOrPendingTrades(userId: number, preset: Preset): TradeLog[] {
  * stop-loss actually realizes them.
  */
 function getOpenFloatingPnl(userId: number, preset: Preset): number {
-  const f = presetSymbolFilter(preset);
   const row = getDb()
-    .prepare(`SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status = 'open'`)
-    .get(userId, ...f.params) as { floating: number };
+    .prepare(`SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`)
+    .get(userId, preset) as { floating: number };
   return row.floating;
 }
 
@@ -217,7 +198,6 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
   // daily cap and immediately re-pause itself (server tz != UTC).
   const start = new Date();
   start.setUTCHours(0, 0, 0, 0);
-  const f = presetSymbolFilter(preset);
   const row = getDb()
     .prepare(
        `SELECT
@@ -227,9 +207,9 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
          COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
          COALESCE(SUM(CASE WHEN status = 'won' THEN profit ELSE 0 END), 0) AS totalWon,
          COALESCE(SUM(CASE WHEN status = 'lost' THEN profit ELSE 0 END), 0) AS totalLost
-       FROM bot_trades WHERE user_id = ? AND ${f.sql} AND time >= ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
+       FROM bot_trades WHERE user_id = ? AND preset = ? AND time >= ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get(userId, ...f.params, start.getTime(), mode ?? null, mode ?? null) as {
+    .get(userId, preset, start.getTime(), mode ?? null, mode ?? null) as {
       pnl: number;
       count: number;
       wins: number;
@@ -254,16 +234,15 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
  * misleading — this stays scoped to the user's own trades.
  */
 export function getAllTimeStats(userId: number, preset: Preset, mode?: "demo" | "live"): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
-  const f = presetSymbolFilter(preset);
   const row = getDb()
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
          COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl
-       FROM bot_trades WHERE user_id = ? AND ${f.sql} AND (? IS NULL OR mode = ? OR mode IS NULL)`,
+       FROM bot_trades WHERE user_id = ? AND preset = ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get(userId, ...f.params, mode ?? null, mode ?? null) as { wins: number; losses: number; pnl: number };
+    .get(userId, preset, mode ?? null, mode ?? null) as { wins: number; losses: number; pnl: number };
   const trades = row.wins + row.losses;
   return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
 }
@@ -273,14 +252,13 @@ export function getRecentPerformance(
   preset: Preset,
   limit = 100,
 ): { trades: number; pnl: number; expectancy: number; profitFactor: number } {
-  const f = presetSymbolFilter(preset);
   const rows = getDb()
     .prepare(
       `SELECT profit FROM bot_trades
-       WHERE user_id = ? AND ${f.sql} AND status IN ('won','lost')
+       WHERE user_id = ? AND preset = ? AND status IN ('won','lost')
        ORDER BY COALESCE(closed_at, time) DESC LIMIT ?`,
     )
-    .all(userId, ...f.params, limit) as { profit: number }[];
+    .all(userId, preset, limit) as { profit: number }[];
   const grossWin = rows.reduce((sum, row) => sum + Math.max(0, row.profit), 0);
   const grossLoss = Math.abs(rows.reduce((sum, row) => sum + Math.min(0, row.profit), 0));
   const pnl = grossWin - grossLoss;
@@ -448,7 +426,7 @@ class ServerBotEngine {
     if (idx >= 0) this.logs[idx] = log;
     else this.logs.unshift(log);
     if (this.logs.length > 60) this.logs.length = 60;
-    upsertTrade(this.userId, log, this.config.mode === "live" ? "live" : "demo");
+    upsertTrade(this.userId, this.preset, log, this.config.mode === "live" ? "live" : "demo");
     this.notify(log, prevStatus);
   }
 
@@ -1545,10 +1523,9 @@ export function updateConfigForUser(userId: number, preset: Preset, config: Auto
  * positions (one +$30+ floating), frozen mid-flight with no tracking.
  */
 export function hasOpenPositions(userId: number, preset: Preset): boolean {
-  const f = presetSymbolFilter(preset);
   const row = getDb()
-    .prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND ${f.sql} AND status = 'open'`)
-    .get(userId, ...f.params) as { n: number };
+    .prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`)
+    .get(userId, preset) as { n: number };
   return row.n > 0;
 }
 

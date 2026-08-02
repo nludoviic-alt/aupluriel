@@ -163,7 +163,8 @@ function migrate(db: Database.Database) {
       note             TEXT,
       entry_price      REAL,
       duration_minutes INTEGER,
-      expiry           INTEGER
+      expiry           INTEGER,
+      preset           TEXT    -- 'default' | 'boom' | 'crash' | 'scalping' — set explicitly at insert (see upsertTrade in bot-engine.server.ts), never inferred from symbol (two presets can share a symbol, e.g. Scalping trading BOOM500 alongside Boom itself — 2026-08-02)
     );
     CREATE INDEX IF NOT EXISTS idx_bot_trades_user_time ON bot_trades(user_id, time DESC);
 
@@ -418,6 +419,27 @@ function migrate(db: Database.Database) {
     // NULL on rows written before this migration (filtered as a wildcard, see
     // getTodayStats/getAllTimeStats) so old history doesn't just vanish.
     db.exec("ALTER TABLE bot_trades ADD COLUMN mode TEXT");
+  }
+  if (!botTradeCols.has("preset")) {
+    // Explicit preset attribution (see bot_trades CREATE TABLE comment above)
+    // — added 2026-08-02 when Scalping was introduced trading BOOM500
+    // alongside Boom itself, which broke the old symbol→preset inference
+    // (two presets, one symbol). One-time backfill below classifies every
+    // pre-existing row the same way the old inference did, so historical
+    // reports don't shift under anyone; every row written from now on gets
+    // its preset explicitly at insert time (upsertTrade) and is never
+    // reclassified.
+    db.exec("ALTER TABLE bot_trades ADD COLUMN preset TEXT");
+    const BOOM_SYMS_BACKFILL = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+    const CRASH_SYMS_BACKFILL = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
+    db.prepare(`
+      UPDATE bot_trades SET preset = CASE
+        WHEN symbol IN (${BOOM_SYMS_BACKFILL.map(() => "?").join(",")}) THEN 'boom'
+        WHEN symbol IN (${CRASH_SYMS_BACKFILL.map(() => "?").join(",")}) THEN 'crash'
+        ELSE 'default'
+      END
+      WHERE preset IS NULL
+    `).run(...BOOM_SYMS_BACKFILL, ...CRASH_SYMS_BACKFILL);
   }
 
   // --- Additive column migrations on `user_settings` (idempotent) ---

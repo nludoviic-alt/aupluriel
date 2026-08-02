@@ -25,12 +25,15 @@ import {
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
-const PRESETS: Preset[] = ["default", "boom", "crash"];
+const PRESETS: Preset[] = ["default", "boom", "crash", "scalping"];
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
-  return preset === "boom" ? BOOM_PRESET : preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+  if (preset === "boom") return BOOM_PRESET;
+  if (preset === "crash") return CRASH_PRESET;
+  if (preset === "scalping") return SCALPING_PRESET;
+  return DEFAULT_CONFIG;
 }
 
 function loadStatusForPreset(userId: number, preset: Preset) {
@@ -95,8 +98,8 @@ export const Route = createFileRoute("/api/bot")({
           config?: Partial<AutoTraderConfig>;
         };
 
-        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
-          return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
+        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default" && body.preset !== "scalping") {
+          return json({ error: "preset doit être 'boom', 'crash', 'default' ou 'scalping'." }, 400);
         }
         const preset = body.preset;
 
@@ -122,7 +125,11 @@ export const Route = createFileRoute("/api/bot")({
             1,
             500,
           );
-          const mode = requested.mode === "live" ? "live" : "demo";
+          // Scalping never trades real money — it's an isolated experiment
+          // (see SCALPING_PRESET's header comment), forced back to demo
+          // server-side regardless of what's requested, not just defaulted
+          // client-side where a stale draft could slip through.
+          const mode = preset === "scalping" ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -152,6 +159,7 @@ export const Route = createFileRoute("/api/bot")({
           };
           const next: AutoTraderConfig = { ...current, ...(body.config ?? {}) };
           if (next.mode === "simulation") next.mode = "demo";
+          if (preset === "scalping") next.mode = "demo"; // never real money, see SCALPING_PRESET
           const increasesFrequency =
             Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)
             || Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
@@ -203,7 +211,7 @@ export const Route = createFileRoute("/api/bot")({
             ...presetFieldsFor(preset),
             stakeUsd,
             maxDailyLossUsd,
-            mode,
+            mode: preset === "scalping" ? "demo" : mode, // never real money, see SCALPING_PRESET
             symbolMode,
             symbols,
             excludedSymbols,

@@ -254,8 +254,8 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
   aggressive: AGGRESSIVE_PRESET,
 };
 
-// ── Quick-switch presets (Default vs Boom 1000 vs Crash) ─────────────────────
-export type QuickPreset = "default" | "boom" | "crash";
+// ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
+export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
 /** The 3 Boom indices Deriv actually offers as Multiplier that are
  * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
@@ -476,6 +476,64 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === CRASH_SYMBOLS.length
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
+}
+
+/** Scalping is deliberately BOOM500 only — the single strongest, most
+ * heavily-sampled symbol found this session (89.1% WR, +$14.07 on Ludovic's
+ * own 156-trade history; +$21.46 across all Boom traders). It's not a
+ * shorter-duration strategy: the 2026-08-02 sweeps (Volatility indices,
+ * Boom/Crash at 10-20min hold, Multi at 5min) all showed negative edge once
+ * you go below the ~60min horizon this signal engine is actually calibrated
+ * for — see those sweep results before assuming "scalping" implies a shorter
+ * maxHoldMinutes here. This preset is a narrower CONFIDENCE BAND experiment
+ * on an already-proven symbol, not a different trading mechanism. */
+export const SCALPING_SYMBOLS = ["BOOM500"];
+
+/**
+ * "Scalping" preset (2026-08-02) — an isolated, low-risk variant of
+ * BOOM_PRESET to test whether narrowing the confidence band to 80-89%
+ * (Ludovic's own /journal data: that bracket had the best expectancy,
+ * +$0.04/trade, PF 1.19) beats the wider 80-100% band Boom itself runs.
+ * Everything else is inherited from BOOM_PRESET UNCHANGED (same TP/SL/
+ * leverage/hold) — the experiment isolates ONE variable, per the user's own
+ * plan ("ne modifier qu'un paramètre à la fois").
+ *
+ * Runs as a genuinely separate server engine so it can trade BOOM500
+ * alongside Boom itself without disrupting Boom's own live config — the two
+ * are told apart in bot_trades via the explicit `preset` column (not symbol
+ * inference, which can't distinguish them since they share BOOM500).
+ *
+ * Risk guards are scaled down for the deliberately tiny stake ($1, vs
+ * Boom's $5) — NOT left at BOOM_PRESET's values. Leaving a $-denominated
+ * guard sized for a $5 stake while the stake shrinks 5x is exactly the bug
+ * class already documented on BOOM_PRESET.trailingStopMinPeakUsd (a guard
+ * that doesn't scale with stake pauses the bot after a handful of normal
+ * losses, or does nothing at all).
+ */
+export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist",
+  symbols: SCALPING_SYMBOLS,
+  minConfidence: 80,
+  maxConfidence: 89,
+  stakeUsd: 1,
+  // Scaled 5x down from BOOM_PRESET (stake $5→$1): a single SL30% loss is
+  // ~$0.30 here instead of ~$1.50, so every $-denominated guard below is
+  // BOOM_PRESET's value ÷ 5, not copied verbatim.
+  maxDailyLossUsd: 5,
+  maxConsecutiveLosses: 3,
+  trailingStopMinPeakUsd: 6,
+  // mode is forced back to "demo" server-side on every start (see
+  // api/bot.ts) regardless of what's requested — this preset never trades
+  // real money, by design, until the comparison in step 10 of the plan says
+  // otherwise and a human explicitly decides to graduate it.
+  mode: "demo",
+};
+
+export function isScalpingPresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === SCALPING_SYMBOLS.length
+    && SCALPING_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
 /** Custom user preset with performance tracking */

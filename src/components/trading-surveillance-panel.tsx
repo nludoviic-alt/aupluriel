@@ -13,7 +13,7 @@ import { CollapsibleBlock } from "@/components/collapsible-section";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type Preset = "default" | "boom" | "crash";
+type Preset = "default" | "boom" | "crash" | "scalping";
 
 interface BotStatus {
   userId: number;
@@ -79,6 +79,7 @@ const PRESET_LABELS: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
   crash: "Crash",
+  scalping: "Scalping",
 };
 
 function relativeTime(time: number | null): string {

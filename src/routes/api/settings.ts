@@ -115,6 +115,7 @@ export const Route = createFileRoute("/api/settings")({
           // brokers are enabled.
           const rows = db.prepare("SELECT preset, config FROM bot_state WHERE user_id = ?").all(auth.userId) as { preset: string; config: string }[];
           const { updateConfigForUser } = await import("@/lib/bot-engine.server");
+          type Preset = "default" | "boom" | "crash" | "scalping";
           for (const botState of rows) {
             // Un JSON illisible faisait repartir de {} — et le UPDATE plus bas
             // écrasait alors TOUTE la stratégie (preset, symboles, TP/SL) par
@@ -128,7 +129,7 @@ export const Route = createFileRoute("/api/settings")({
             if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
             if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
             // Hot-swaps if that preset's bot is running.
-            updateConfigForUser(auth.userId, botState.preset as "default" | "boom" | "crash", config as any);
+            updateConfigForUser(auth.userId, botState.preset as Preset, config as any);
           }
         }
 

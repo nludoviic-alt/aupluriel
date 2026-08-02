@@ -24,19 +24,30 @@ Produce findings with exact file:line references, never vague impressions.
   `config-change-impact`).
 
 ### 2. Preset reset / drift bugs
-- Check that `BOOM_PRESET`/`CRASH_PRESET` in `src/lib/autotrader.ts` never set
-  `excludedSymbols` themselves (see the comment on `BOOM_PRESET` — this was a
-  real production bug on 2026-08-01: BOOM600 reappeared after a preset
-  round-trip because the preset silently reset `excludedSymbols` to nothing).
+- Check that `BOOM_PRESET`/`CRASH_PRESET`/`SCALPING_PRESET` in
+  `src/lib/autotrader.ts` never set `excludedSymbols` themselves (see the
+  comment on `BOOM_PRESET` — this was a real production bug on 2026-08-01:
+  BOOM600 reappeared after a preset round-trip because the preset silently
+  reset `excludedSymbols` to nothing).
 - Confirm all THREE application points (client `applyPreset`, `/api/bot`
   action=update/reset, `/api/admin/user-config.ts` `resetToCanonical`)
   preserve `excludedSymbols`/`minConfidence`/`maxConfidence` from the existing
   config instead of overwriting them with the raw preset spread.
-- Run `node .claude/skills/verify-trading-code/scripts/check-duplicated-constants.mjs`
-  — catches BOOM_SYMBOLS/CRASH_SYMBOLS (`autotrader.ts`, client-importable)
-  drifting from their hand-duplicated server copies BOOM_SYMS/CRASH_SYMS
-  (`bot-engine.server.ts`, duplicated on purpose because that file can't
-  import browser-only modules — see its own comment).
+- Preset attribution on `bot_trades` is an explicit `preset` column set at
+  insert time (2026-08-02), not inferred from `symbol` — this replaced the old
+  hand-duplicated `BOOM_SYMS`/`CRASH_SYMS` constants in `bot-engine.server.ts`
+  (removed) once Scalping needed to trade BOOM500, a symbol Boom already uses.
+  There is no more constant-drift class to check here; instead confirm every
+  preset-scoped query (`loadRecentTrades`, `getTodayStats`, `getAllTimeStats`,
+  etc.) filters on `preset = ?` and that `upsertTrade` is always called with
+  the engine's own `this.preset`, never a value derived from `symbol`.
+- Run `node .claude/skills/verify-trading-code/scripts/check-symbol-overlap.mjs DB_PATH`
+  — catches a symbol present in BOTH `symbols` and `excludedSymbols` on the
+  same saved config, which silently drops it from every scan even though the
+  watchlist UI shows it active (real bug, found in production 2026-08-02
+  re-adding BOOM900 after an earlier exclusion — `excludedSymbols` applies in
+  watchlist mode too, not just all-markets, despite what an earlier version
+  of the field's comment implied).
 
 ### 3. Risk-guard calibration
 - Whenever `stopLossPctOfStake` changed recently in `BOOM_PRESET`/

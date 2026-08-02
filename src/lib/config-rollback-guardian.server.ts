@@ -25,7 +25,7 @@
 // "auto-rollback") and pushed to the account's admins — it must never be a
 // silent action.
 import { getDb } from "./db.server";
-import { updateConfigForUser, presetSymbolFilter, type Preset } from "./bot-engine.server";
+import { updateConfigForUser, type Preset } from "./bot-engine.server";
 import { summarize } from "./analytics";
 import type { TradeLog, AutoTraderConfig } from "./signal-core";
 
@@ -42,14 +42,13 @@ interface ConfigChangeRow {
 }
 
 function tradesForUserPreset(userId: number, preset: Preset): TradeLog[] {
-  const filter = presetSymbolFilter(preset);
   return getDb()
     .prepare(
       `SELECT time, symbol, status, profit FROM bot_trades
-       WHERE user_id = ? AND status IN ('won','lost') AND ${filter.sql}
+       WHERE user_id = ? AND preset = ? AND status IN ('won','lost')
        ORDER BY time ASC`,
     )
-    .all(userId, ...filter.params) as TradeLog[];
+    .all(userId, preset) as TradeLog[];
 }
 
 async function notifyRollback(userId: number, username: string, preset: Preset, fields: Record<string, { from: unknown; to: unknown }>): Promise<void> {

@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
 import { getUserInsights } from "@/lib/journal-insights.server";
-import { presetSymbolFilter, type Preset } from "@/lib/bot-engine.server";
+import type { Preset } from "@/lib/bot-engine.server";
 import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 // How close two different users' trades on the same symbol+direction need to
@@ -114,16 +114,16 @@ export const Route = createFileRoute("/api/admin/stats")({
           });
         }
 
-        // Optional ?preset=default|boom|crash — scopes the whole recap (and
-        // the duplicate-signal check below) to one engine, using the exact
-        // symbol classification the live engines use. Omitted = every preset
+        // Optional ?preset=default|boom|crash|scalping — scopes the whole
+        // recap (and the duplicate-signal check below) to one engine, using
+        // the trade's own explicit `preset` column (not symbol inference —
+        // Scalping and Boom can both trade BOOM500). Omitted = every preset
         // combined, the original behavior.
         const presetParam = url.searchParams.get("preset");
         const preset: Preset | null =
-          presetParam === "default" || presetParam === "boom" || presetParam === "crash" ? presetParam : null;
-        const presetFilter = preset ? presetSymbolFilter(preset) : null;
-        const presetClause = presetFilter ? ` AND ${presetFilter.sql}` : "";
-        const presetParams = presetFilter ? presetFilter.params : [];
+          presetParam === "default" || presetParam === "boom" || presetParam === "crash" || presetParam === "scalping" ? presetParam : null;
+        const presetClause = preset ? ` AND preset = ?` : "";
+        const presetParams = preset ? [preset] : [];
 
         // Démo et live ne doivent jamais être additionnés dans un même total —
         // le P&L "Cumulé" affiché en haut de l'admin doit rester un chiffre de
@@ -284,7 +284,16 @@ export const Route = createFileRoute("/api/admin/stats")({
           })
           .filter((b) => b.trades > 0);
 
-        // Boom per-symbol breakdown: trades, win rate, P&L for each Boom index
+        // Boom per-symbol breakdown: trades, win rate, P&L for each Boom index.
+        // Scoped to preset = 'boom' explicitly (not a symbol IN list) — since
+        // 2026-08-02 Scalping can also trade BOOM500, so a symbol-only filter
+        // would silently blend its trades into this "Boom" breakdown. Also
+        // demo-only, same rule as everywhere else on this page ("Démo et live
+        // ne doivent jamais être additionnés" — see the comment above `rows`)
+        // — this query used to have no mode filter at all either, silently
+        // mixing demo and live into one $ total that disagreed with the
+        // "P&L Boom" KPI card above (which IS demo-only). Found 2026-08-02
+        // comparing the two side by side in production.
         const boomRows = db
           .prepare(
             `SELECT symbol,
@@ -294,10 +303,10 @@ export const Route = createFileRoute("/api/admin/stats")({
                     COALESCE(SUM(profit) FILTER (WHERE status IN ('won','lost')), 0) AS net_pnl,
                     MAX(time) AS last_trade_at
              FROM bot_trades
-             WHERE symbol IN (${BOOM_SYMBOLS.map(() => "?").join(",")})
+             WHERE preset = 'boom' AND (mode = 'demo' OR mode IS NULL)
              GROUP BY symbol`,
           )
-          .all(...BOOM_SYMBOLS) as { symbol: string; trades: number; wins: number; losses: number; net_pnl: number; last_trade_at: number | null }[];
+          .all() as { symbol: string; trades: number; wins: number; losses: number; net_pnl: number; last_trade_at: number | null }[];
         const boomBySymbol = new Map(boomRows.map((r) => [r.symbol, r]));
         const boomBreakdown = BOOM_SYMBOLS.map((sym) => {
           const r = boomBySymbol.get(sym);

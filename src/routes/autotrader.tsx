@@ -17,6 +17,7 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Timer,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -200,6 +201,7 @@ import {
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
+  SCALPING_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -243,7 +245,11 @@ export const Route = createFileRoute("/autotrader")({
 });
 
 const CONFIG_KEY = "lio23.autotrader_config";
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash" } as const;
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" } as const;
+// Not a shorter-duration strategy despite the name — a narrower confidence
+// band (80-89%) on the SAME BOOM_PRESET mechanics (TP/SL/leverage/hold all
+// unchanged). See SCALPING_PRESET's header comment in autotrader.ts for why.
+const SCALPING_SUBTITLE = "Boom 500 · confiance 80-89% (pas une durée plus courte)";
 
 function loadConfig(): AutoTraderConfig {
   try {
@@ -306,7 +312,7 @@ function AutoTraderPage() {
   // Default/"Multi", Boom, Crash. `selectedPreset` is purely a VIEW selector
   // — which one's dashboard/config/journal is on screen — not a switch that
   // stops the others. Each can be started/stopped on its own.
-  type PresetKey = "default" | "boom" | "crash";
+  type PresetKey = "default" | "boom" | "crash" | "scalping";
   interface PresetStatus {
     enabled: boolean;
     running: boolean;
@@ -336,7 +342,7 @@ function AutoTraderPage() {
   const [cloudBusy, setCloudBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false });
 
   const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
   // True the moment ANY of the three presets is enabled — used for guards
@@ -605,14 +611,23 @@ function AutoTraderPage() {
    * as a starting point if the user edits it) so the CONFIG tab shows
    * sensible values instead of whatever the previous selection left behind.
    */
-  function selectPresetView(target: "boom" | "crash" | "default") {
+  function selectPresetView(target: "boom" | "crash" | "default" | "scalping") {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
-    const next: AutoTraderConfig = {
-      ...DEFAULT_CONFIG, ...presetFields,
-      stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
-    };
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : DEFAULT_CONFIG;
+    // Every OTHER preset here carries the user's own stake/risk choice
+    // forward across tabs (a personal risk tolerance, not a preset
+    // property). Scalping is the deliberate exception: its whole design is
+    // a fixed tiny stake with dollar guards scaled to match (see
+    // SCALPING_PRESET's header comment) — carrying over whatever stake was
+    // set on Boom/Crash would silently defeat that, so it always starts
+    // from its own canonical values instead.
+    const next: AutoTraderConfig = target === "scalping"
+      ? { ...DEFAULT_CONFIG, ...presetFields }
+      : {
+          ...DEFAULT_CONFIG, ...presetFields,
+          stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
+        };
     setConfig(next);
     setDraftDuration(next.durationMinutes);
     setDraftMaxTrades(next.maxTradesPerDay);
@@ -807,6 +822,21 @@ function AutoTraderPage() {
           </span>
         )}
       </button>
+      <button
+        onClick={() => selectPresetView("scalping")}
+        className={cn(
+          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
+          selectedPreset === "scalping" ? "bg-cyan-500/35 text-cyan-300" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Timer className="h-3.5 w-3.5 shrink-0" /> Scalping
+        {cloud?.presets?.scalping?.enabled && cloud?.presets?.scalping?.running && (
+          <span className="flex items-center gap-1 ml-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
+          </span>
+        )}
+      </button>
     </div>
   );
 
@@ -823,7 +853,9 @@ function AutoTraderPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight leading-none">Auto-Trader</h1>
-            <p className="hidden md:block text-sm text-muted-foreground mt-1">Algorithme multi-indicateurs · 4 timeframes · Patterns japonais</p>
+            <p className="hidden md:block text-sm text-muted-foreground mt-1">
+              {selectedPreset === "scalping" ? SCALPING_SUBTITLE : "Algorithme multi-indicateurs · 4 timeframes · Patterns japonais"}
+            </p>
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2">
@@ -859,8 +891,8 @@ function AutoTraderPage() {
           ("Fonds disponibles" plus bas) ne dit pas lequel a généré quoi,
           donc ce comparatif est la seule vue qui répond directement à
           "qu'est-ce qui gagne en ce moment". Cliquer saute sur cet onglet. ── */}
-      <div className="grid grid-cols-3 gap-2">
-        {(["default", "boom", "crash"] as const).map((p) => {
+      <div className="grid grid-cols-4 gap-2">
+        {(["default", "boom", "crash", "scalping"] as const).map((p) => {
           const st = cloud?.presets?.[p];
           const pnlVal = st?.todayPnl ?? 0;
           // Static class strings only — Tailwind's JIT scanner can't see
@@ -871,6 +903,7 @@ function AutoTraderPage() {
             default: { active: "border-violet-500/40 bg-violet-500/10" },
             boom: { active: "border-orange-500/40 bg-orange-500/10" },
             crash: { active: "border-yellow-500/40 bg-yellow-500/10" },
+            scalping: { active: "border-cyan-500/40 bg-cyan-500/10" },
           } as const;
           return (
             <button
@@ -1075,7 +1108,7 @@ function AutoTraderPage() {
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
-                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée. Indépendant des deux autres presets.
+                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée. Indépendant des trois autres presets.
                 </p>
               </div>
               <Switch

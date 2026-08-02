@@ -195,10 +195,16 @@ export interface AutoTraderConfig {
   maxDailyLossUsd: number;
   maxTradesPerDay: number;
   symbols: string[];
-  // Symbols to skip even in "all-markets" mode, where `symbols` above isn't
-  // consulted at all — a per-account override for a market that's proven
-  // to be a net loser on THIS account's own track record, without having
-  // to fork the whole strategy into "watchlist" mode to get there.
+  // Applied AFTER `symbols`/all-markets candidate selection, in every
+  // symbolMode — see the `.filter((s) => !excluded.has(s))` in
+  // bot-engine.server.ts's scan loop. A per-account override for a market
+  // that's proven to be a net loser on THIS account's own track record,
+  // without having to fork the whole strategy into "watchlist" mode to get
+  // there. CORRECTNESS TRAP (hit in prod 2026-08-02): if a symbol is ever
+  // added back to `symbols` after having been excluded, it must ALSO be
+  // removed from `excludedSymbols` — leaving both set silently drops that
+  // symbol from every scan with no error, even though the UI/watchlist
+  // shows it as active. verify-trading-code's overlap check catches this.
   excludedSymbols: string[];
   // Opt-in safety net (config-rollback-guardian.server.ts, 2026-08-02): if a
   // logged config_changes edit on this preset is followed by a well-sampled

@@ -84,7 +84,9 @@ async function checkDrawdownAlerts(): Promise<void> {
 
     // Drawdown alerts aren't scoped to one preset — a user thinks in terms of
     // "how much am I down today", combined across whichever of the (now up
-    // to three) engines are running.
+    // to four) engines are running. Scalping is deliberately excluded: it
+    // never trades real money (forced demo, see SCALPING_PRESET), so its
+    // paper P&L would misrepresent the user's actual real-money drawdown.
     const pnl = (["default", "boom", "crash"] as const)
       .reduce((sum, preset) => sum + getTodayStats(alert.user_id, preset).pnl, 0);
     const drawdown = pnl < 0 ? Math.abs(pnl) : 0;

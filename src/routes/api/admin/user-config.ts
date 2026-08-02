@@ -16,7 +16,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
@@ -30,7 +30,10 @@ interface PatchBody {
 }
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
-  return preset === "boom" ? BOOM_PRESET : preset === "crash" ? CRASH_PRESET : DEFAULT_CONFIG;
+  if (preset === "boom") return BOOM_PRESET;
+  if (preset === "crash") return CRASH_PRESET;
+  if (preset === "scalping") return SCALPING_PRESET;
+  return DEFAULT_CONFIG;
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -44,8 +47,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash") {
-          return json({ error: "preset doit être 'default', 'boom' ou 'crash'." }, 400);
+        if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash" && body.preset !== "scalping") {
+          return json({ error: "preset doit être 'default', 'boom', 'crash' ou 'scalping'." }, 400);
         }
         if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical) {
           return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols, autoRollbackEnabled ou resetToCanonical requis)." }, 400);
@@ -69,7 +72,10 @@ export const Route = createFileRoute("/api/admin/user-config")({
         const config = JSON.parse(row.config) as AutoTraderConfig;
         if (body.resetToCanonical) {
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
-          Object.assign(config, presetFieldsFor(body.preset), { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled });
+          Object.assign(config, presetFieldsFor(body.preset), {
+            stakeUsd, maxDailyLossUsd, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled,
+            mode: body.preset === "scalping" ? "demo" : mode, // never real money, see SCALPING_PRESET
+          });
         }
         if (body.symbols !== undefined) {
           if (!Array.isArray(body.symbols) || body.symbols.some((s) => typeof s !== "string")) {

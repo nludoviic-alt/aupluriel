@@ -210,7 +210,7 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   excludedSymbols: "Symboles exclus",
 };
 
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash" } as const;
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" } as const;
 
 function AdminPage() {
   const navigate = useNavigate();
@@ -240,12 +240,12 @@ function AdminPage() {
   // accounts head-to-head on just Boom or just Crash instead of only the
   // all-presets-combined total, which hides which preset is actually
   // driving a difference between two users.
-  const [recapPreset, setRecapPreset] = useState<"all" | "default" | "boom" | "crash">("all");
+  const [recapPreset, setRecapPreset] = useState<"all" | "default" | "boom" | "crash" | "scalping">("all");
   const [duplicateSignals, setDuplicateSignals] = useState<DuplicateSignals | null>(null);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
   // Which of the profiled user's up to three bot_state rows (default/boom/
   // crash, 2026-08-01) the panel below is showing/editing.
-  const [profilePreset, setProfilePreset] = useState<"default" | "boom" | "crash">("default");
+  const [profilePreset, setProfilePreset] = useState<"default" | "boom" | "crash" | "scalping">("default");
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
@@ -370,7 +370,7 @@ function AdminPage() {
     }
   }
 
-  async function loadProfileConfig(userId: number, preset: "default" | "boom" | "crash") {
+  async function loadProfileConfig(userId: number, preset: "default" | "boom" | "crash" | "scalping") {
     setJournalLoading(true);
     try {
       const data = await api.get<{
@@ -411,7 +411,7 @@ function AdminPage() {
     if (!profileUser || !journalConfig) return;
     setApplyingRec(rec.message);
     try {
-      const patch: { userId: number; preset: "default" | "boom" | "crash"; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id, preset: profilePreset };
+      const patch: { userId: number; preset: "default" | "boom" | "crash" | "scalping"; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id, preset: profilePreset };
       if (rec.type === "disable-symbol" && rec.symbol) {
         patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
       } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
@@ -565,7 +565,7 @@ function AdminPage() {
     }
   }
 
-  async function toggleBot(userId: number, preset: "default" | "boom" | "crash", action: "start" | "stop") {
+  async function toggleBot(userId: number, preset: "default" | "boom" | "crash" | "scalping", action: "start" | "stop") {
     setBotBusyId(userId);
     try {
       await api.post("/api/admin/bot", { userId, preset, action });
@@ -1171,7 +1171,7 @@ function AdminPage() {
         {/* Preset scope — compare accounts on one engine at a time instead of
             only the all-presets-combined total. */}
         <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-fit">
-          {(["all", "default", "boom", "crash"] as const).map((p) => (
+          {(["all", "default", "boom", "crash", "scalping"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setRecapPreset(p)}
@@ -1312,7 +1312,7 @@ function AdminPage() {
               </div>
               <div>
                 <h2 className="text-base font-bold text-foreground">🚀 Performance par Index Boom</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom (BOOM1000/500/600/900).</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom (BOOM1000/500/600/900) — démo uniquement, jamais mélangé au réel.</p>
               </div>
             </div>
           }
@@ -1872,18 +1872,18 @@ function AdminPage() {
                     <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset consulté</span>
                       <div className="flex w-full shrink-0 items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5 sm:w-auto">
-                        {(["default", "boom", "crash"] as const).map((p) => (
+                        {(["default", "boom", "crash", "scalping"] as const).map((p) => (
                           <button
                             key={p}
                             onClick={() => { setProfilePreset(p); loadProfileConfig(profileUser.id, p); }}
                             className={cn(
                               "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
                               profilePreset === p
-                                ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : "bg-cyan-500/15 text-cyan-400"
+                                ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : p === "scalping" ? "bg-cyan-500/15 text-cyan-400" : "bg-cyan-500/15 text-cyan-400"
                                 : "text-muted-foreground hover:text-foreground",
                             )}
                           >
-                            {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : "Multi"}
+                            {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : p === "scalping" ? "⏱️ Scalping" : "Multi"}
                           </button>
                         ))}
                       </div>
