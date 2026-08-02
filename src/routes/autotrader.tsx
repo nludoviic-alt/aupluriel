@@ -270,6 +270,41 @@ const PRESET_TABS: Record<
 // scalping-signal.server.ts for the rules and the backtest behind them.
 const SCALPING_SUBTITLE = "Boom 500 · tendance M5 + repli M1 · stop structurel 1.5R · démo";
 
+type OpportunityDecision = "take" | "wait" | "avoid";
+interface OpportunityItem {
+  id: string;
+  preset: "default" | "boom" | "crash" | "scalping";
+  presetLabel: string;
+  symbol: string;
+  label: string;
+  decision: OpportunityDecision;
+  direction: "CALL" | "PUT" | null;
+  directionLabel: string;
+  confidence: number;
+  agreement: number;
+  risk: "faible" | "modere" | "eleve";
+  instrument: "binary" | "multiplier";
+  durationMinutes: number;
+  takeProfitUsd: number | null;
+  stopLossUsd: number | null;
+  reasons: string[];
+  blockers: string[];
+  stats: {
+    trades: number;
+    winRate: number | null;
+    pnl: number;
+    expectancy: number | null;
+    profitFactor: number | null;
+  };
+  updatedAt: number;
+}
+
+interface OpportunitiesResponse {
+  generatedAt: number;
+  opportunities: OpportunityItem[];
+  summary: { take: number; wait: number; avoid: number; presets: number };
+}
+
 function loadConfig(): AutoTraderConfig {
   try {
     const cfg: AutoTraderConfig = {
@@ -367,6 +402,9 @@ function AutoTraderPage() {
   const [selectedPreset, setSelectedPreset] = useState<PresetKey>("default");
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
+  const [opportunities, setOpportunities] = useState<OpportunitiesResponse | null>(null);
+  const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
+  const [manualBusy, setManualBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false });
@@ -406,11 +444,28 @@ function AutoTraderPage() {
     } catch { /* signed out or server unreachable — leave as-is */ }
   }, [selectedPreset]);
 
+  const refreshOpportunities = useCallback(async () => {
+    setOpportunitiesBusy(true);
+    try {
+      setOpportunities(await api.get<OpportunitiesResponse>("/api/opportunities"));
+    } catch {
+      setOpportunities(null);
+    } finally {
+      setOpportunitiesBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshCloud();
     const id = setInterval(refreshCloud, 5_000);
     return () => clearInterval(id);
   }, [refreshCloud]);
+
+  useEffect(() => {
+    refreshOpportunities();
+    const id = setInterval(refreshOpportunities, 15_000);
+    return () => clearInterval(id);
+  }, [refreshOpportunities]);
 
   // If the admin hides a preset that was currently selected, the tab strip
   // would lose its active button — silently jump to the first visible one.
@@ -635,6 +690,11 @@ function AutoTraderPage() {
   }, [config.symbols, cloudActive]);
 
   const visibleBreakdowns = cloudActive ? cloudBreakdowns : breakdowns;
+  const selectedPresetOpportunities = useMemo(() => {
+    return (opportunities?.opportunities ?? []).filter((o) => o.preset === selectedPreset);
+  }, [opportunities?.opportunities, selectedPreset]);
+  const selectedOpportunity = selectedPresetOpportunities[0] ?? null;
+  const actionableOpportunity = selectedPresetOpportunities.find((o) => o.decision === "take") ?? null;
 
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
@@ -719,6 +779,53 @@ function AutoTraderPage() {
     // running/riskStopReasons are updated by the engine store itself.
     toast.error(`Auto-trader arrêté — ${reasons[0]}`, { duration: 10000 });
   }, []);
+
+  async function executeManualOpportunity() {
+    if (!actionableOpportunity?.direction) {
+      toast.error("Aucun signal 'Prendre' disponible sur ce preset.");
+      return;
+    }
+    if (config.mode === "simulation") {
+      toast.error("Passe en Démo pour exécuter une position manuelle sur Deriv.");
+      return;
+    }
+    if (!derivSession.connected) {
+      toast.error("Connexion Deriv requise avant d'exécuter.");
+      return;
+    }
+
+    const isLive = config.mode === "live";
+    const stake = config.stakeUsd;
+    const confirmed = await confirm({
+      title: isLive ? "Exécuter ce signal en LIVE ?" : "Exécuter ce signal en démo ?",
+      description: `${actionableOpportunity.label} · ${actionableOpportunity.directionLabel} · confiance ${Math.round(actionableOpportunity.confidence)}% · mise $${stake}.`,
+      confirmLabel: isLive ? "Exécuter en réel" : "Exécuter en démo",
+      danger: isLive,
+    });
+    if (!confirmed) return;
+
+    setManualBusy(true);
+    toast.info(`Exécution manuelle — ${actionableOpportunity.label} ${actionableOpportunity.direction}…`);
+    try {
+      await forceDemoTrade(
+        actionableOpportunity.symbol,
+        actionableOpportunity.direction,
+        stake,
+        actionableOpportunity.durationMinutes || config.durationMinutes,
+        (log) => {
+          handleEvent(log);
+          if (log.status === "open") {
+            toast.success(`Position ouverte — ${actionableOpportunity.label} ${actionableOpportunity.direction}`);
+          }
+        },
+      );
+      await refreshOpportunities();
+    } catch (e) {
+      toast.error(`Échec exécution: ${(e as Error).message}`);
+    } finally {
+      setManualBusy(false);
+    }
+  }
 
   async function toggleEngine() {
     if (anyPresetEnabled) {
@@ -935,6 +1042,24 @@ function AutoTraderPage() {
         })}
       </div>
 
+      <OpportunityCommandCenter
+        presetLabel={presetLabels[selectedPreset]}
+        opportunity={selectedOpportunity}
+        takeCount={selectedPresetOpportunities.filter((o) => o.decision === "take").length}
+        waitCount={selectedPresetOpportunities.filter((o) => o.decision === "wait").length}
+        avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
+        loading={opportunitiesBusy && !opportunities}
+        config={config}
+        mode={config.mode}
+        autoEnabled={!!cloudSelected?.enabled}
+        cloudBusy={cloudBusy}
+        manualBusy={manualBusy}
+        derivConnected={derivSession.connected}
+        onRefresh={refreshOpportunities}
+        onManual={executeManualOpportunity}
+        onAuto={toggleCloud}
+      />
+
       {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (
         <div className="rounded-xl border border-down/40 bg-down/8 p-5 flex gap-4">
@@ -1105,13 +1230,13 @@ function AutoTraderPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-base leading-none">☁️</span>
-                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Bot serveur — {presetLabels[selectedPreset]}</span>
+                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Mode automatique — {presetLabels[selectedPreset]}</span>
                   {cloudSelected?.enabled && (
                     <span className={cn("h-2 w-2 rounded-full", cloudSelected.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
-                  Tourne sur le serveur 24h/24 — même téléphone verrouillé ou app fermée. Indépendant des trois autres presets.
+                  Exécute automatiquement les signaux validés du preset — même téléphone verrouillé ou app fermée.
                 </p>
               </div>
               <Switch
@@ -1164,7 +1289,7 @@ function AutoTraderPage() {
               </div>
             )}
           </div>
-          {/* Force Trade panel — a debug/QA tool (manually fire a trade to verify
+          {/* Free manual panel — a fallback tool (manually fire a trade to verify
               the Deriv pipeline), not a core action — desktop-only on mobile to
               cut clutter. Toujours visible en mode demo/live pour éviter les
               clignotements de l'interface. */}
@@ -1174,14 +1299,14 @@ function AutoTraderPage() {
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
                   <Zap className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Test pipeline Deriv</span>
+                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Manuel libre</span>
                 </div>
                 {!derivSession.connected && (
                   <span className="text-[10px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-bold animate-pulse">Déconnecté</span>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground/80 mb-3 leading-relaxed font-medium">
-                Ouvre un vrai trade immédiatement, sans vérification de signal. Vérifie que la connexion Deriv fonctionne de bout en bout.
+                Ouvre un trade sans attendre un voyant “Prendre”. À utiliser seulement si tu veux décider toi-même.
               </p>
               <div className="space-y-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -2550,6 +2675,185 @@ function AutoTraderPage() {
       <ConfirmDialog state={confirmState} />
     </div>
   );
+}
+
+function OpportunityCommandCenter({
+  presetLabel,
+  opportunity,
+  takeCount,
+  waitCount,
+  avoidCount,
+  loading,
+  config,
+  mode,
+  autoEnabled,
+  cloudBusy,
+  manualBusy,
+  derivConnected,
+  onRefresh,
+  onManual,
+  onAuto,
+}: {
+  presetLabel: string;
+  opportunity: OpportunityItem | null;
+  takeCount: number;
+  waitCount: number;
+  avoidCount: number;
+  loading: boolean;
+  config: AutoTraderConfig;
+  mode: TradingMode;
+  autoEnabled: boolean;
+  cloudBusy: boolean;
+  manualBusy: boolean;
+  derivConnected: boolean;
+  onRefresh: () => void;
+  onManual: () => void;
+  onAuto: () => void;
+}) {
+  const decision = opportunity?.decision ?? "wait";
+  const style = decisionTone(decision);
+  const canManual = !!opportunity?.direction && opportunity.decision === "take" && mode !== "simulation" && derivConnected && !manualBusy;
+  const manualHint = mode === "simulation"
+    ? "Passe en Démo"
+    : !derivConnected
+      ? "Deriv requis"
+      : opportunity?.decision !== "take"
+        ? "Signal non validé"
+        : "Exécuter";
+
+  return (
+    <section className={cn("glass-panel overflow-hidden rounded-2xl border", style.panel)}>
+      <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+        <div className="p-4 md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-black uppercase tracking-wider", style.badge)}>
+                  <style.Icon className="h-3.5 w-3.5" />
+                  {style.label}
+                </span>
+                <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">
+                  {presetLabel}
+                </span>
+                {loading && (
+                  <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">
+                    Analyse…
+                  </span>
+                )}
+              </div>
+
+              <h2 className="mt-3 text-lg font-black tracking-tight md:text-xl">
+                {opportunity ? `${opportunity.label} · ${opportunity.directionLabel}` : "Aucun signal exploitable pour l'instant"}
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                {opportunity
+                  ? `Confiance ${Math.round(opportunity.confidence)}% · Accord ${opportunity.agreement}/4 · Risque ${riskLabel(opportunity.risk)} · ${opportunity.durationMinutes} min`
+                  : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
+              </p>
+              <p className="mt-2 text-xs font-semibold text-muted-foreground/80">
+                Configuration active : {mode === "live" ? "Live" : mode === "demo" ? "Démo" : "Simulation"} · mise ${config.stakeUsd} · confiance {config.minConfidence}-{config.maxConfidence}% · accord {config.minTfAgreement}/4 TF
+              </p>
+            </div>
+
+            <button
+              onClick={onRefresh}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-card/40 px-3 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              Actualiser
+            </button>
+          </div>
+
+          {!!opportunity?.reasons.length && (
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {opportunity.reasons.slice(0, 4).map((reason) => (
+                <div key={reason} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-sm text-muted-foreground">
+                  {reason}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border/40 bg-black/10 p-4 lg:border-l lg:border-t-0">
+          <div className="grid grid-cols-3 gap-2">
+            <MiniDecision label="Prendre" value={takeCount} className="text-up" />
+            <MiniDecision label="Attendre" value={waitCount} className="text-amber-300" />
+            <MiniDecision label="Éviter" value={avoidCount} className="text-down" />
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <Button
+              onClick={onManual}
+              disabled={!canManual}
+              className={cn(
+                "h-11 w-full gap-2 font-black",
+                canManual
+                  ? "border border-up/30 bg-up/15 text-up hover:bg-up/25"
+                  : "border border-border/60 bg-muted/10 text-muted-foreground",
+              )}
+            >
+              {manualBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Zap className="h-4 w-4" />}
+              Manuel · {manualHint}
+            </Button>
+            <Button
+              onClick={onAuto}
+              disabled={cloudBusy}
+              className={cn(
+                "h-11 w-full gap-2 font-black",
+                autoEnabled
+                  ? "border border-down/30 bg-down/15 text-down hover:bg-down/25"
+                  : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25",
+              )}
+            >
+              {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />}
+              {autoEnabled ? "Arrêter l'automatique" : "Automatique"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniDecision({ label, value, className }: { label: string; value: number; className: string }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-center">
+      <div className={cn("text-lg font-black", className)}>{value}</div>
+      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function decisionTone(decision: OpportunityDecision) {
+  if (decision === "take") {
+    return {
+      label: "Prendre",
+      Icon: CheckCircle2,
+      panel: "border-up/25",
+      badge: "border-up/25 bg-up/10 text-up",
+    };
+  }
+  if (decision === "avoid") {
+    return {
+      label: "Éviter",
+      Icon: ShieldAlert,
+      panel: "border-down/25",
+      badge: "border-down/25 bg-down/10 text-down",
+    };
+  }
+  return {
+    label: "Attendre",
+    Icon: Clock,
+    panel: "border-amber-500/25",
+    badge: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+  };
+}
+
+function riskLabel(risk: OpportunityItem["risk"]) {
+  if (risk === "faible") return "faible";
+  if (risk === "modere") return "modéré";
+  return "élevé";
 }
 
 function StatusBadge({ status }: { status: TradeLog["status"] }) {
