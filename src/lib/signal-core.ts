@@ -373,24 +373,18 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  // 70 : analyse des 30 trades (juil. 2026) — paradoxe critique : plus la
-  // confiance est haute, plus le bot perd. <80 → 62.5% win, 80-84 → 42.9%,
-  // 85-89 → 33.3%, 90+ → 0%. Les indicateurs sont lagging : quand tout est
-  // aligné (haute confiance), le mouvement est déjà fini. Le bucket <80 était
-  // le SEUL rentable. On baisse à 70 pour capturer ces signaux, compensé par
-  // minTfAgreement=4 (les 4 TFs doivent quand même être d'accord).
-  minConfidence: 72,
-  // 100 = désactivé par défaut. Champ ajustable par compte (voir
+  // Audit production 2026-08-02 : le noyau Multi rentable est le panier filtré
+  // ci-dessous avec confiance 80-89. Le bucket 90-100 a rendu plus de gains
+  // qu'il n'en a produit, donc maxConfidence reste volontairement à 89.
+  minConfidence: 80,
+  // Champ ajustable par compte (voir
   // /api/admin/user-config), pas une propriété de preset — voir le
   // commentaire sur le champ dans l'interface AutoTraderConfig plus haut.
-  maxConfidence: 100,
-  // 4 (sur 4 TFs) au lieu de 3 : analyse live (30 trades, juil. 2026) —
-  // 3/4 → 20 trades, 45% win, -$38.32 (86% des pertes totales !). Le 4e TF
-  // dissentant avait raison 55% du temps. 4/4 → 7 trades, 42.9% win, -$3.51
-  // seulement. Le backtest disait EV 4/4 > 3/4 mais le live confirme : 3/4
-  // est le tueur n°1. Exiger 4/4 réduit la fréquence mais élimine l'essentiel
-  // des pertes. Moins de trades, moins de pertes.
-  minTfAgreement: 4,
+  maxConfidence: 89,
+  // Le panier courant était positif avec TF 3+ ; TF 4 reste meilleur mais trop
+  // rare pour porter seul le preset. TF 3+ garde le volume sans rouvrir les
+  // symboles qui ont causé les drawdowns.
+  minTfAgreement: 3,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
   // 200 (était 50, avant ça 12) : le vrai frein sur le volume de trades n'a
@@ -403,19 +397,18 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // il évitait juste une boucle de scan qui tournerait pour rien une fois la
   // limite atteinte.
   maxTradesPerDay: 200,
-  // Forex + Or + BTC : l'or (XAU/USD) est réintégré avec la nouvelle config
-  // binaire (CALL/PUT, confiance 70, 4/4 TF). Les pertes historiques (1W/3L)
-  // étaient avec l'ancien mode multiplier + confiance 80+ — la nouvelle config
-  // devrait mieux performer. L'or est très liquide et volatil : gros potentiel
-  // de gain si le bot capte les bonnes tendances. maxVolatilityPct relevé à 5
-  // pour ne pas bloquer les signaux (l'or évolue naturellement à 2-4% ATR).
-  // ETH reste exclu (0W/3L, jamais gagné). BTC reste (4W/1L, +$15.67).
-  // Les indices synthétiques (R_*, 1HZ*…) restent exclus — RNG Deriv.
+  // Multi filtré après audit production (2026-08-02) : conserver uniquement
+  // les marchés dont l'espérance restait positive dans le noyau confiance
+  // 80-89 + accord TF 3+. Or/argent/ETH et les forex faibles restent exclus :
+  // ils redonnaient les gains plus vite que le preset ne les construisait.
   symbols: [
-    "frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxAUDUSD", "frxUSDCAD", "frxUSDCHF",
-    "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "cryBTCUSD"
+    "OTC_DJI", "OTC_NDX", "OTC_SPC", "OTC_GDAXI",
+    "frxEURGBP", "frxGBPUSD", "frxUSDCAD"
   ],
-  excludedSymbols: [],
+  excludedSymbols: [
+    "frxXAUUSD", "frxXAGUSD", "frxUSDCHF", "frxEURJPY", "frxGBPJPY",
+    "frxEURUSD", "frxAUDUSD", "frxUSDJPY", "cryETHUSD", "cryBTCUSD"
+  ],
   autoRollbackEnabled: false,
   initialCapital: 100,
   maxConsecutiveLosses: 3,
@@ -461,16 +454,16 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   trailingStopPct: 0.1,
   trailingStopMinPeakUsd: 10,
   blockCorrelated: true,
-  symbolMode: "all-markets",
+  symbolMode: "watchlist",
   // 6 (était 3) : pousse plus de volume — plusieurs signaux valides dans un
   // même cycle de scan (60s) ne devraient pas s'auto-éliminer entre eux.
-  maxSimultaneousTrades: 6,
+  maxSimultaneousTrades: 2,
   // 10 (était 5) : relevé en même temps que maxSimultaneousTrades pour ne
   // pas juste déplacer le goulot d'étranglement d'un plafond à l'autre.
   // maxDailyLossUsd (perte réalisée) reste le vrai garde-fou de risque — ce
   // plafond-ci ne limite que le nombre de paris ouverts en parallèle, pas
   // la perte max si tous perdent en même temps (ça reste stake × count).
-  maxOpenPositions: 10,
+  maxOpenPositions: 3,
   newsFilter: true,
   // A weak counter-trend 4H used to cancel the trade outright — the single
   // biggest signal-frequency killer found in the engine audit. Only a
@@ -495,13 +488,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // type à chaque trade.
   instrumentType: "binary",
   symbolInstrumentOverrides: {
-    "cryBTCUSD": "multiplier",
-    // Backtest 2026-07-25 (backtestOandaSlTpServer, 400-1200 bougies, accord
-    // 3/4 TF) : stop fixe large (50% — jamais touché par le bruit normal) +
-    // petit objectif (10% du stake, ~1$ sur une mise de 10$) → or +11,88$/47
-    // trades, GBP/USD +12,33$/82 trades. Voir MULTIPLIER_SYMBOL_OVERRIDES
-    // ci-dessous : ces deux symboles utilisent CES réglages, pas ceux de BTC.
-    "frxXAUUSD": "multiplier",
+    // GBP/USD reste en Multiplier avec son override mesuré. Or/BTC sont exclus
+    // du panier Multi courant après audit production.
     "frxGBPUSD": "multiplier",
   },
   multiplierLevel: 20,

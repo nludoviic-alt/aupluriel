@@ -261,12 +261,12 @@ export type QuickPreset = "default" | "boom" | "crash" | "scalping";
  * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
  * Deriv Options/Multipliers at all; BOOM600 excluded after production
  * audit: 62.7% WR, -$46.95 over 150 trades). */
-export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM900"];
+export const BOOM_SYMBOLS = ["BOOM500", "BOOM900"];
 
 /** Mirror of BOOM_SYMBOLS for Crash — same 4 numeric variants, NOT yet
  * confirmed live the way BOOM_SYMBOLS was. Treat as a starting guess until a
  * real proposal/contracts_for call against Deriv confirms these four order. */
-export const CRASH_SYMBOLS = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
+export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
 
 /**
  * BOOM preset — scalping haute fréquence sur les 3 index Boom rentables.
@@ -327,7 +327,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   instrumentType: "multiplier",
   symbolInstrumentOverrides: {},
   // ── Signaux — très permissif pour du volume ──
-  minConfidence: 55,
+  minConfidence: 80,
+  maxConfidence: 89,
   minTfAgreement: 2,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
@@ -367,8 +368,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
   // symbole déjà en position), donc 3 positions simultanées avec 3 symboles.
   // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
-  maxSimultaneousTrades: 3,
-  maxOpenPositions: 20,
+  maxSimultaneousTrades: 2,
+  maxOpenPositions: 3,
   maxTradesPerDay: 100_000,
   maxDailyProfitUsd: 0,
   // ── Take-profit/stop-loss + levier — recalibrés après audit production
@@ -384,10 +385,10 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   //    MULTDOWN (79.3% WR, -$203.86 avec TP 5%) devient EV +$0.09/trade.
   // 3) Contrepartie : le win rate baissera (TP plus distant), mais l'EV
   //    s'améliore sur tous les symboles. Les garde-fous (maxConsecutiveLosses,
-  //    cooldown, maxDailyLoss) restent calibrés sur SL 30% = $1.50/trade.
+  //    cooldown, maxDailyLoss) restent calibrés sur SL 20% = $1.00/trade.
   multiplierLevel: 100,
   takeProfitPctOfStake: 10,
-  stopLossPctOfStake: 30,
+  stopLossPctOfStake: 20,
   atrStopMode: false,
   partialTakeProfitPct: 0,
   maxHoldMinutes: 60,
@@ -460,15 +461,13 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   symbols: CRASH_SYMBOLS,
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
   takeProfitPctOfStake: 10,
-  stopLossPctOfStake: 30,
-  // minConfidence relevé de 60 à 70 (2026-08-02) : décision explicite
-  // d'exclure la bande 60–69% plutôt que de la conserver — plancher simple
-  // (tout ce qui est sous 70% est écarté), pas une zone morte isolée. Les
-  // bots déjà démarrés gardent leur savedConfig tant qu'ils ne sont pas
-  // relancés ou reconfigurés — ce nouveau plancher ne s'applique qu'aux
-  // futurs (re)démarrages du preset.
+  stopLossPctOfStake: 20,
+  // Noyau prod retenu le 2026-08-02 : CRASH1000/900 avec accord TF 3+.
+  // La confiance reste large (70-100) car ce preset manque encore de marge ;
+  // le vrai filtre est le symbole + TF, pas un bucket 80-89 comme Boom.
   minConfidence: 70,
-  minTfAgreement: 2,
+  maxConfidence: 100,
+  minTfAgreement: 3,
   multiplierLevel: 100,
 };
 
@@ -514,16 +513,11 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  // Confidence band left WIDE OPEN on purpose. generateScalpingSignal emits
-  // 70-100 (70 + trendStrength*15 + bodyPct*15), a different scale from the
-  // indicator engine's, and the backtest above applied no band at all — so a
-  // band here would trade a subset that was never validated. An earlier draft
-  // carried minConfidence 80 / maxConfidence 89 (tuned on the OLD indicator
-  // distribution): that silently rejected every strongest setup (90+, best
-  // trend AND best confirmation candle) as "too-confident". Re-tune only
-  // against this signal's own live/backtest distribution.
-  minConfidence: 70,
-  maxConfidence: 100,
+  // Keep scalping in the same conservative confidence band as the current
+  // production test. The sample is still tiny, so volume stays intentionally
+  // constrained until it proves itself.
+  minConfidence: 80,
+  maxConfidence: 89,
   stakeUsd: 1,
   // Scaled 5x down from BOOM_PRESET (stake $5→$1): a single SL30% loss is
   // ~$0.30 here instead of ~$1.50, so every $-denominated guard below is
@@ -531,6 +525,8 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   maxDailyLossUsd: 5,
   maxConsecutiveLosses: 3,
   trailingStopMinPeakUsd: 6,
+  maxSimultaneousTrades: 2,
+  maxOpenPositions: 3,
   // mode is forced back to "demo" server-side on every start (see
   // api/bot.ts) regardless of what's requested — this preset never trades
   // real money, by design, until the comparison in step 10 of the plan says
