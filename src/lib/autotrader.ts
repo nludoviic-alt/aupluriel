@@ -478,25 +478,25 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping is deliberately BOOM500 only — the single strongest, most
- * heavily-sampled symbol found this session (89.1% WR, +$14.07 on Ludovic's
- * own 156-trade history; +$21.46 across all Boom traders). It's not a
- * shorter-duration strategy: the 2026-08-02 sweeps (Volatility indices,
- * Boom/Crash at 10-20min hold, Multi at 5min) all showed negative edge once
- * you go below the ~60min horizon this signal engine is actually calibrated
- * for — see those sweep results before assuming "scalping" implies a shorter
- * maxHoldMinutes here. This preset is a narrower CONFIDENCE BAND experiment
- * on an already-proven symbol, not a different trading mechanism. */
+/** Scalping is deliberately BOOM500 only — the price-action signal in
+ * scalping-signal.server.ts was backtested on real Deriv M1 candles across
+ * several instruments and only BOOM500 held up (+0.35R/trade, PF 1.79, 895
+ * trades / 13.9 days). Volatility 10 and Volatility 10 (1s) were both far
+ * weaker on the same test, so this list is a backtest result, not a
+ * preference. */
 export const SCALPING_SYMBOLS = ["BOOM500"];
 
 /**
- * "Scalping" preset (2026-08-02) — an isolated, low-risk variant of
- * BOOM_PRESET to test whether narrowing the confidence band to 80-89%
- * (Ludovic's own /journal data: that bracket had the best expectancy,
- * +$0.04/trade, PF 1.19) beats the wider 80-100% band Boom itself runs.
- * Everything else is inherited from BOOM_PRESET UNCHANGED (same TP/SL/
- * leverage/hold) — the experiment isolates ONE variable, per the user's own
- * plan ("ne modifier qu'un paramètre à la fois").
+ * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
+ * strategy: M5 trend (price vs SMA20) → M1 pullback to SMA10 → M1
+ * confirmation candle → structural stop at the last swing low/high → 1.5R
+ * target. Full rules and backtest numbers in scalping-signal.server.ts.
+ *
+ * This is a DIFFERENT TRADING MECHANISM, not a confidence-band variant of
+ * Boom: bot-engine.server.ts branches on preset === "scalping" and calls
+ * generateScalpingSignal instead of analyzeSymbolCore, and sizes the stop via
+ * computeStructuralStopUsd instead of ATR/flat-% of stake. It therefore does
+ * NOT inherit Boom's TP/SL — those fields are ignored for this preset.
  *
  * Runs as a genuinely separate server engine so it can trade BOOM500
  * alongside Boom itself without disrupting Boom's own live config — the two
@@ -514,8 +514,16 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  minConfidence: 80,
-  maxConfidence: 89,
+  // Confidence band left WIDE OPEN on purpose. generateScalpingSignal emits
+  // 70-100 (70 + trendStrength*15 + bodyPct*15), a different scale from the
+  // indicator engine's, and the backtest above applied no band at all — so a
+  // band here would trade a subset that was never validated. An earlier draft
+  // carried minConfidence 80 / maxConfidence 89 (tuned on the OLD indicator
+  // distribution): that silently rejected every strongest setup (90+, best
+  // trend AND best confirmation candle) as "too-confident". Re-tune only
+  // against this signal's own live/backtest distribution.
+  minConfidence: 70,
+  maxConfidence: 100,
   stakeUsd: 1,
   // Scaled 5x down from BOOM_PRESET (stake $5→$1): a single SL30% loss is
   // ~$0.30 here instead of ~$1.50, so every $-denominated guard below is

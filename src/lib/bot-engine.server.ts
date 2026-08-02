@@ -24,11 +24,13 @@ import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indica
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
+import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
   computeAdaptiveStake,
   computeAtrStopUsd,
+  computeStructuralStopUsd,
   computeKellyFraction,
   computeProgressiveStake,
   computeDynamicMinConfidence,
@@ -47,6 +49,7 @@ import {
   type AutoTraderConfig,
   type ScanResult,
   type ScanSymbolResult,
+  type SymbolAnalysis,
   type TradeLog,
   type TradingSession,
 } from "./signal-core";
@@ -1087,20 +1090,50 @@ class ServerBotEngine {
       return fetchCandlesServer(symbol, granularity, count);
     };
 
-    const analyzed = await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
-      let weights: ReturnType<typeof getLearnedWeightsServer> | undefined;
-      try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
-      return {
-        symbol,
-        analysis: (await analyzeSymbolCore(symbol, candleFetcher, {
-          weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
-          confluenceMode: config.confluenceMode ?? "vote",
-          adxFilterMode: config.adxFilterMode ?? "off",
-          adxBlockThreshold: config.adxBlockThreshold,
-          adxStrongThreshold: config.adxStrongThreshold,
-        })).analysis,
-      };
-    });
+    // Scalping trades a completely different, finer-grained (M1/M5) signal —
+    // see scalping-signal.server.ts's header for why it can't reuse
+    // analyzeSymbolCore's 5m/15m/1H/4H aggregation. riskAbs/rewardAbs (price
+    // distances) are stashed here, keyed by symbol, and consumed below when
+    // computing stopLossUsd/takeProfitUsd for THIS tick only — never persisted.
+    const scalpingLevels = new Map<string, { riskAbs: number; rewardAbs: number }>();
+
+    const analyzed = this.preset === "scalping"
+      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const m1 = await candleFetcher(symbol, 60, Math.max(MIN_M1_CANDLES + 10, 300));
+          const sig = m1.length >= MIN_M1_CANDLES ? generateScalpingSignal(m1) : null;
+          if (sig) scalpingLevels.set(symbol, { riskAbs: sig.riskAbs, rewardAbs: sig.rewardAbs });
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0, // both M5-trend and M1-confirmation already agreed, or there's no signal
+            premiumCount: 0,
+            volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas de setup M5-tendance / repli M1 / confirmation"],
+            dominantTf: "1m",
+            suggestedDuration: 0,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: 0,
+            // Deliberately no `components` — this isn't the indicator-based
+            // engine, so its outcomes must not feed the cross-user learned
+            // weights (indicator-weights.server.ts) meant for that system.
+          };
+          return { symbol, analysis };
+        })
+      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          let weights: ReturnType<typeof getLearnedWeightsServer> | undefined;
+          try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
+          return {
+            symbol,
+            analysis: (await analyzeSymbolCore(symbol, candleFetcher, {
+              weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
+              confluenceMode: config.confluenceMode ?? "vote",
+              adxFilterMode: config.adxFilterMode ?? "off",
+              adxBlockThreshold: config.adxBlockThreshold,
+              adxStrongThreshold: config.adxStrongThreshold,
+            })).analysis,
+          };
+        });
 
     const ordered = config.symbolMode === "all-markets"
       ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
@@ -1287,7 +1320,13 @@ class ServerBotEngine {
       // for crypto (20 assumed vs 10 actually applied on the wire).
       const effMultiplier = effectiveMultiplier(symbol, config.multiplierLevel);
       const useAtrStop = multiplierOverride?.atrStopMode ?? config.atrStopMode;
-      const { stopLossUsd, takeProfitUsd } = useAtrStop
+      // Scalping's stop/target come from the structural swing high/low found
+      // at signal time (scalpingLevels, populated above), not ATR or a flat
+      // % of stake — see scalping-signal.server.ts.
+      const scalpingLevel = this.preset === "scalping" ? scalpingLevels.get(symbol) : undefined;
+      const { stopLossUsd, takeProfitUsd } = scalpingLevel
+        ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, scalpingLevel.riskAbs, scalpingLevel.rewardAbs)
+        : useAtrStop
         ? computeAtrStopUsd(
             stakeForTrade, effMultiplier, analysis.volatilityPct,
             multiplierOverride?.atrStopMultiple ?? config.atrStopMultiple,

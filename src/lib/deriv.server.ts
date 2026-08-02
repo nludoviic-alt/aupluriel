@@ -158,7 +158,7 @@ export function closePublicSocket(): void {
   publicSocket = null;
 }
 
-export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number): Promise<ServerCandle[]> {
+export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number, end: number | "latest" = "latest"): Promise<ServerCandle[]> {
   const res = await getPublicSocket().request<{
     candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
   }>({
@@ -166,7 +166,7 @@ export async function fetchCandlesServer(symbol: string, granularitySeconds: num
     style: "candles",
     granularity: granularitySeconds,
     count,
-    end: "latest",
+    end,
   });
   return (res.candles ?? []).map((c) => ({
     epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),

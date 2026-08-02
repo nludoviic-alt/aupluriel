@@ -317,6 +317,29 @@ export function computeAtrStopUsd(
   return { stopLossUsd, takeProfitUsd };
 }
 
+/**
+ * Same $ conversion as computeAtrStopUsd, but fed a STRUCTURAL price distance
+ * (last swing low/high, from scalping-signal.server.ts) instead of an
+ * ATR-derived one — used only by the Scalping preset. `riskAbs`/`rewardAbs`
+ * are absolute price distances (not %), converted here so the caller doesn't
+ * need to redo the leverage math at the execution site, where entryPrice can
+ * have drifted slightly from the one used at signal time.
+ */
+export function computeStructuralStopUsd(
+  stakeUsd: number,
+  multiplierLevel: number,
+  entryPrice: number,
+  riskAbs: number,
+  rewardAbs: number,
+): { stopLossUsd: number; takeProfitUsd: number } {
+  if (entryPrice <= 0) return { stopLossUsd: Math.max(0.5, stakeUsd * 0.1), takeProfitUsd: Math.max(0.75, stakeUsd * 0.15) };
+  const stopDistancePct = (riskAbs / entryPrice) * 100;
+  const rewardDistancePct = (rewardAbs / entryPrice) * 100;
+  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, stakeUsd * (multiplierLevel * stopDistancePct) / 100)) * 100) / 100;
+  const takeProfitUsd = Math.round(Math.max(0.5, stakeUsd * (multiplierLevel * rewardDistancePct) / 100) * 100) / 100;
+  return { stopLossUsd, takeProfitUsd };
+}
+
 export const DEFAULT_CONFIG: AutoTraderConfig = {
   // --- Regime detection ---
   adxFilterMode: "block",
