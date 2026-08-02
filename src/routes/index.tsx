@@ -464,7 +464,7 @@ function Dashboard() {
 // blind-defaulting, so a quick tap here can't silently reset their stake or
 // flip live back to demo (see savedConfig in routes/api/bot.ts).
 
-interface CloudBotStatus {
+interface PresetStatus {
   enabled: boolean;
   running: boolean;
   mode: "demo" | "live";
@@ -473,6 +473,10 @@ interface CloudBotStatus {
   todayCount: number;
   allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
   savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+}
+interface CloudBotStatus {
+  presets: Record<string, PresetStatus>;
+  brokerBalances?: Record<string, unknown>;
 }
 
 function BotStatusCard() {
@@ -497,18 +501,24 @@ function BotStatusCard() {
     if (busy || !status) return;
     setBusy(true);
     try {
-      if (status.enabled) {
-        await api.post("/api/bot", { action: "stop" });
+      if (enabled) {
+        // Stop all active presets
+        for (const [name, p] of Object.entries(status.presets ?? {})) {
+          if (p.enabled) await api.post("/api/bot", { action: "stop", preset: name });
+        }
         toast.info("Bot serveur arrêté");
-      } else if (status.savedConfig) {
-        if (status.savedConfig.mode === "live") {
-          const { trades, winRate } = status.allTimeStats;
+      } else {
+        // Start the first preset that has a saved config (prefer default)
+        const startPreset = status.presets?.["default"] ?? allPresets[0];
+        if (!startPreset?.savedConfig) return;
+        if (startPreset.savedConfig.mode === "live") {
+          const { trades, winRate } = startPreset.allTimeStats;
           const sampleLine = trades < 20
             ? `⚠️ Seulement ${trades} trade(s) enregistré(s) — échantillon trop faible pour juger la fiabilité.`
             : `Historique : ${trades} trades, ${Math.round(winRate * 100)}% de réussite.`;
           const ok = await confirm({
             title: "Démarrer le bot en mode LIVE ?",
-            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${status.savedConfig.stakeUsd} par trade. Limite journalière : $${status.savedConfig.maxDailyLossUsd}.\n\n${sampleLine}`,
+            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${startPreset.savedConfig.stakeUsd} par trade. Limite journalière : $${startPreset.savedConfig.maxDailyLossUsd}.\n\n${sampleLine}`,
             confirmLabel: "Démarrer en réel",
             danger: true,
           });
@@ -517,13 +527,13 @@ function BotStatusCard() {
           // Demo — lighter confirmation so a stray tap can't start the bot.
           const ok = await confirm({
             title: "Démarrer le bot serveur (Démo) ?",
-            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${status.savedConfig.stakeUsd} par trade.`,
+            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${startPreset.savedConfig.stakeUsd} par trade.`,
             confirmLabel: "Démarrer",
           });
           if (!ok) return;
         }
-        await api.post("/api/bot", { action: "start", config: status.savedConfig });
-        toast.success(status.savedConfig.mode === "live" ? "Bot démarré en LIVE — argent réel" : "Bot démarré");
+        await api.post("/api/bot", { action: "start", preset: "default", config: startPreset.savedConfig });
+        toast.success(startPreset.savedConfig.mode === "live" ? "Bot démarré en LIVE — argent réel" : "Bot démarré");
       }
       await refresh();
     } catch (err) {
@@ -535,9 +545,14 @@ function BotStatusCard() {
 
   if (!status) return null;
 
-  const isLive = status.mode === "live";
-  const paused = !!status.pausedUntil && status.pausedUntil > Date.now();
-  const canToggle = status.enabled || !!status.savedConfig;
+  // Aggregate across all presets: show "Actif" if ANY preset is running.
+  const allPresets = Object.values(status.presets ?? {});
+  const activePreset = allPresets.find((p) => p.enabled && p.running) ?? allPresets.find((p) => p.enabled);
+  const enabled = !!activePreset;
+  const isLive = activePreset?.mode === "live";
+  const paused = !!(activePreset?.pausedUntil && activePreset.pausedUntil > Date.now());
+  const canToggle = enabled || allPresets.some((p) => !!p.savedConfig);
+  const todayPnl = allPresets.reduce((s, p) => s + (p.todayPnl ?? 0), 0);
 
   return (
     <div className="md:hidden glass-panel rounded-2xl p-4 flex items-center justify-between gap-3">
@@ -545,9 +560,9 @@ function BotStatusCard() {
       <div className="flex items-center gap-3 min-w-0">
         <div className={cn(
           "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-          status.enabled ? (isLive ? "bg-[color:var(--down)]/15" : "bg-[color:var(--up)]/15") : "bg-muted/15",
+          enabled ? (isLive ? "bg-[color:var(--down)]/15" : "bg-[color:var(--up)]/15") : "bg-muted/15",
         )}>
-          <Zap className={cn("h-5 w-5", status.enabled ? (isLive ? "text-[color:var(--down)]" : "text-[color:var(--up)]") : "text-muted-foreground")} />
+          <Zap className={cn("h-5 w-5", enabled ? (isLive ? "text-[color:var(--down)]" : "text-[color:var(--up)]") : "text-muted-foreground")} />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -560,8 +575,8 @@ function BotStatusCard() {
             </span>
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {paused ? "En pause (risque)" : status.enabled ? "Actif" : "Arrêté"}
-            {status.enabled && !paused && ` · ${status.todayPnl >= 0 ? "+" : ""}$${status.todayPnl.toFixed(2)} auj.`}
+            {paused ? "En pause (risque)" : enabled ? `Actif${allPresets.filter((p) => p.enabled).length > 1 ? ` (${allPresets.filter((p) => p.enabled).length} presets)` : ""}` : "Arrêté"}
+            {enabled && !paused && ` · ${todayPnl >= 0 ? "+" : ""}$${todayPnl.toFixed(2)} auj.`}
           </div>
         </div>
       </div>
@@ -578,7 +593,7 @@ function BotStatusCard() {
             disabled={busy}
             className={cn(
               "flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:opacity-50",
-              status.enabled
+              enabled
                 ? "bg-[color:var(--down)]/15 text-[color:var(--down)] hover:bg-[color:var(--down)]/25"
                 : "bg-[color:var(--up)]/15 text-[color:var(--up)] hover:bg-[color:var(--up)]/25",
             )}

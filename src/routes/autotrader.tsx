@@ -720,14 +720,14 @@ function AutoTraderPage() {
         onClick={() => selectPresetView("default")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "default" ? "bg-[#800020]/20 text-[#e0446e]" : "text-muted-foreground hover:text-foreground",
+          selectedPreset === "default" ? "bg-violet-500/35 text-violet-300" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <Layers className="h-3.5 w-3.5 shrink-0" /> Multi
         {cloud?.presets?.default?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#e0446e] animate-pulse shadow-[0_0_6px_rgba(128,0,32,0.8)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-[#e0446e]">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse shadow-[0_0_6px_rgba(167,139,250,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-violet-300">LIVE</span>
           </span>
         )}
       </button>
@@ -735,14 +735,14 @@ function AutoTraderPage() {
         onClick={() => selectPresetView("boom")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "boom" ? "bg-orange-500/15 text-orange-400" : "text-muted-foreground hover:text-foreground",
+          selectedPreset === "boom" ? "bg-orange-500/35 text-orange-300" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <Rocket className="h-3.5 w-3.5 shrink-0" /> Boom
         {cloud?.presets?.boom?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-orange-400">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(251,146,60,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-orange-300">LIVE</span>
           </span>
         )}
       </button>
@@ -750,14 +750,14 @@ function AutoTraderPage() {
         onClick={() => selectPresetView("crash")}
         className={cn(
           "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "crash" ? "bg-yellow-500/15 text-yellow-400" : "text-muted-foreground hover:text-foreground",
+          selectedPreset === "crash" ? "bg-yellow-500/35 text-yellow-300" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <TrendingDown className="h-3.5 w-3.5 shrink-0" /> Crash
         {cloud?.presets?.crash?.enabled && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(234,179,8,0.8)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-yellow-400">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(250,204,21,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-yellow-300">LIVE</span>
           </span>
         )}
       </button>
@@ -821,7 +821,7 @@ function AutoTraderPage() {
           // dynamically-built names like `border-${accent}-500/40`, so those
           // would silently produce no CSS at all in the production build.
           const styles = {
-            default: { active: "border-[#800020]/40 bg-[#800020]/10", dot: "bg-[#e0446e]" },
+            default: { active: "border-violet-500/40 bg-violet-500/10", dot: "bg-violet-400" },
             boom: { active: "border-orange-500/40 bg-orange-500/10", dot: "bg-orange-400" },
             crash: { active: "border-yellow-500/40 bg-yellow-500/10", dot: "bg-yellow-400" },
           } as const;
@@ -831,7 +831,13 @@ function AutoTraderPage() {
               onClick={() => selectPresetView(p)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 transition-all",
-                selectedPreset === p ? styles[p].active : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]",
+                selectedPreset === p
+                  ? styles[p].active
+                  : pnlVal > 0
+                    ? "border-up/30 bg-up/8"
+                    : pnlVal < 0
+                      ? "border-down/30 bg-down/8"
+                      : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]",
               )}
             >
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -1295,7 +1301,13 @@ function AutoTraderPage() {
               />
             </div>
 
-            <BotDashboard logs={logs} lastScan={lastScan} config={config} running={running} pnl={pnl} />
+            <BotDashboard
+              logs={cloudActive ? (cloudSelected?.trades ?? []) : logs}
+              lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
+              config={config}
+              running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
+              pnl={pnl}
+            />
 
           {/* Positions en direct + derniers trades côte à côte sur grand écran */}
           {openTradeList.length > 0 || running ? (

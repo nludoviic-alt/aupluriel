@@ -71,7 +71,7 @@ function engineKey(userId: number, preset: Preset): string {
 // Same symbol lists as BOOM_SYMBOLS/CRASH_SYMBOLS in autotrader.ts, duplicated
 // here rather than imported: autotrader.ts pulls in browser-only modules
 // (WebSocket-based ./deriv client) that have no business loading server-side.
-const BOOM_SYMS: readonly string[] = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+const BOOM_SYMS: readonly string[] = ["BOOM1000", "BOOM500", "BOOM900"];
 const CRASH_SYMS: readonly string[] = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
 
 /** SQL fragment + bound params to scope a bot_trades query to one preset's

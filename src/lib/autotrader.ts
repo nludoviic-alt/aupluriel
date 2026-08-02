@@ -257,9 +257,11 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash) ─────────────────────
 export type QuickPreset = "default" | "boom" | "crash";
 
-/** The 4 Boom indices Deriv actually offers as Multiplier (confirmed live —
- * Boom 100/150/200/300/50 don't exist on Deriv Options/Multipliers at all). */
-export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
+/** The 3 Boom indices Deriv actually offers as Multiplier that are
+ * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
+ * Deriv Options/Multipliers at all; BOOM600 excluded after production
+ * audit: 62.7% WR, -$46.95 over 150 trades). */
+export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM900"];
 
 /** Mirror of BOOM_SYMBOLS for Crash — same 4 numeric variants, NOT yet
  * confirmed live the way BOOM_SYMBOLS was. Treat as a starting guess until a
@@ -267,16 +269,16 @@ export const BOOM_SYMBOLS = ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"];
 export const CRASH_SYMBOLS = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
 
 /**
- * BOOM preset — scalping haute fréquence sur les 4 index Boom.
+ * BOOM preset — scalping haute fréquence sur les 3 index Boom rentables.
  *
  * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
  * gain (même quelques centimes) plutôt que d'attendre un objectif ambitieux.
  * Trades/positions illimités (pas de plafond artificiel — seule limite
- * réelle : 1 position par symbole, donc 4 max avec 4 symboles), mais la
+ * réelle : 1 position par symbole, donc 3 max avec 3 symboles), mais la
  * protection anti-série-de-pertes reste active (maxConsecutiveLosses).
  *
  * Différences clés vs Default :
- * - 4 symboles (BOOM1000/500/600/900), pas de scan all-markets
+ * - 3 symboles (BOOM1000/500/900), pas de scan all-markets
  * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
@@ -311,7 +313,7 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"];
  * - stakeMode fixed : mise constante, pas de Kelly
  */
 export const BOOM_PRESET: Partial<AutoTraderConfig> = {
-  // ── 4 symboles Boom ──
+  // ── 3 symboles Boom (BOOM600 exclu — 62.7% WR, -$46.95 sur 150 trades) ──
   symbolMode: "watchlist",
   symbols: BOOM_SYMBOLS,
   // Pas de excludedSymbols ici : c'est une curation indépendante (ex. BOOM600
@@ -363,39 +365,28 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // bloquée ne peut plus se rétablir puisqu'elle ne trade plus.
   hourlyEdgeFilter: false,
   // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
-  // symbole déjà en position), donc 4 positions simultanées avec 4 symboles.
+  // symbole déjà en position), donc 3 positions simultanées avec 3 symboles.
   // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
-  maxSimultaneousTrades: 4,
+  maxSimultaneousTrades: 3,
   maxOpenPositions: 20,
   maxTradesPerDay: 100_000,
   maxDailyProfitUsd: 0,
-  // ── Take-profit/stop-loss + levier — mesurés par sweep réel (skill
-  // tune-boom-preset), pas devinés. Deux trouvailles du sweep :
-  // 1) À multiplierLevel 20 (défaut générique), 93% des trades BOOM1000
-  //    n'atteignaient ni le TP ni le SL en 60 min — la distance de prix
-  //    requise (~0.5%) dépassait le mouvement réel de Boom sur cette
-  //    fenêtre. À 100x (le défaut de DTrader lui-même pour les Boom), ce
-  //    taux tombe à 2.5% : le trade se résout vraiment sur TP/SL au lieu
-  //    d'expirer sur la dérive aléatoire du timeout.
-  // 2) TP 5% / SL 30% retenu après un test WALK-FORWARD, pas un simple sweep :
-  //    on optimise sur la 1re moitié de l'historique puis on vérifie sur la 2e
-  //    moitié, jamais vue par l'optimisation. C'est le seul protocole qui
-  //    distingue un vrai réglage d'un surapprentissage — un sweep simple avait
-  //    d'abord désigné TP10/SL15 sur 37.5h, réglage qui se dégradait dès qu'on
-  //    élargissait la fenêtre (rang 2 → 6 → 14 sur 72 à 38h/75h/150h).
-  //    Sur ~150h et 1450 trades, net après spread (0.01% annoncé par Deriv) :
-  //      TP5/SL30  : +$5.70 puis +$21.79  → positif des DEUX côtés,
-  //                  WR stable 86.9% → 88.0%, finit 3e/72 hors échantillon.
-  //      TP10/SL15 : -$19.69 puis +$16.38 → change de signe selon la fenêtre.
-  //    Contrepartie assumée : ratio 6:1 (gain $0.25 / perte $1.50) — beaucoup
-  //    de petits gains, pertes rares mais 6x plus grosses. Les garde-fous
-  //    plus haut sont calibrés SUR cette taille de perte.
-  //    Marge réelle : l'EV brute mesurée (+$0.081/trade) ne dépasse le coût de
-  //    transaction annoncé que d'un facteur ~1.6. Le vrai coût des Multipliers
-  //    Deriv n'a PAS pu être vérifié (l'API refuse les offerings sans compte
-  //    authentifié) — à mesurer sur les trades demo réels via le journal.
+  // ── Take-profit/stop-loss + levier — recalibrés après audit production
+  //    (8 juillet → 2 août, 874 trades Boom clôturés).
+  // 1) multiplierLevel 100x confirmé : à 20x, 93% des trades n'atteignaient
+  //    ni TP ni SL en 60 min. À 100x, les trades se résolvent sur TP/SL.
+  // 2) TP relevé de 5% à 10% après analyse des données réelles :
+  //    TP 5% / SL 30% → break-even à 85.7% de wins. BOOM500 (86.3%) et
+  //    BOOM900 (82.2%) passent juste, mais BOOM1000 (74.1%) perd.
+  //    TP 10% / SL 30% → break-even à 75%. Gain $0.50 au lieu de $0.25.
+  //    BOOM500 : EV +$0.23/trade (was +$0.08), BOOM900 : +$0.14 (was +$0.07),
+  //    BOOM1000 : EV -$0.02 (was -$0.20) — quasi break-even au lieu de perte.
+  //    MULTDOWN (79.3% WR, -$203.86 avec TP 5%) devient EV +$0.09/trade.
+  // 3) Contrepartie : le win rate baissera (TP plus distant), mais l'EV
+  //    s'améliore sur tous les symboles. Les garde-fous (maxConsecutiveLosses,
+  //    cooldown, maxDailyLoss) restent calibrés sur SL 30% = $1.50/trade.
   multiplierLevel: 100,
-  takeProfitPctOfStake: 5,
+  takeProfitPctOfStake: 10,
   stopLossPctOfStake: 30,
   atrStopMode: false,
   partialTakeProfitPct: 0,
@@ -468,7 +459,7 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
-  takeProfitPctOfStake: 5,
+  takeProfitPctOfStake: 10,
   stopLossPctOfStake: 30,
   minConfidence: 60,
   minTfAgreement: 2,
