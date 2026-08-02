@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimisation Multi"
+  short_description: "Optimise le preset Multi (forex/or/BTC) sur données réelles"
+  default_prompt: "Utilise $tune-multi-preset pour tester et optimiser la configuration Multi avec des données réelles."

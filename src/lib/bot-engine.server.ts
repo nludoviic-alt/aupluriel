@@ -76,8 +76,11 @@ const CRASH_SYMS: readonly string[] = ["CRASH1000", "CRASH500", "CRASH600", "CRA
 
 /** SQL fragment + bound params to scope a bot_trades query to one preset's
  * symbols. Default = everything that isn't Boom or Crash (open-ended set —
- * forex/gold/crypto/indices), so this is a NOT IN rather than an IN list. */
-function presetSymbolFilter(preset: Preset): { sql: string; params: string[] } {
+ * forex/gold/crypto/indices), so this is a NOT IN rather than an IN list.
+ * Exported so admin-side cross-user views (api/admin/stats.ts) can scope
+ * their comparisons by preset using the exact same symbol classification
+ * the live engines use, instead of a second hand-maintained copy. */
+export function presetSymbolFilter(preset: Preset): { sql: string; params: string[] } {
   if (preset === "boom") return { sql: `symbol IN (${BOOM_SYMS.map(() => "?").join(",")})`, params: [...BOOM_SYMS] };
   if (preset === "crash") return { sql: `symbol IN (${CRASH_SYMS.map(() => "?").join(",")})`, params: [...CRASH_SYMS] };
   const excluded = [...BOOM_SYMS, ...CRASH_SYMS];
@@ -1475,15 +1478,60 @@ function runningPresetsFor(userId: number): Preset[] {
   return out;
 }
 
+// Fields worth logging to config_changes for the "compare performance
+// before/after" view — the ones that actually change trading behavior
+// (risk caps, entry filters, TP/SL/leverage, watchlist). Deliberately not
+// every AutoTraderConfig field: things like mode or adaptiveStake toggle
+// don't have a comparable "did this help" question in the same way.
+const CONFIG_CHANGE_FIELDS: readonly (keyof AutoTraderConfig)[] = [
+  "stakeUsd", "maxDailyLossUsd", "maxDailyProfitUsd",
+  "minConfidence", "maxConfidence", "minTfAgreement",
+  "takeProfitPctOfStake", "stopLossPctOfStake", "multiplierLevel",
+  "symbols", "excludedSymbols",
+];
+
+function stableStringify(v: unknown): string {
+  return Array.isArray(v) ? JSON.stringify([...v].sort()) : JSON.stringify(v);
+}
+
+export type ConfigChangeSource = "user" | "admin" | "auto-rollback";
+
+/** Diffs `oldConfig` vs `newConfig` on CONFIG_CHANGE_FIELDS and, if anything
+ * changed, records a config_changes row so the admin panel can show
+ * performance right before vs. right after this exact edit. */
+function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderConfig | null, newConfig: AutoTraderConfig, changedBy: number | undefined, source: ConfigChangeSource): void {
+  if (!oldConfig) return; // first-ever config for this user/preset — nothing to diff against
+  const fields: Record<string, { from: unknown; to: unknown }> = {};
+  for (const key of CONFIG_CHANGE_FIELDS) {
+    const from = oldConfig[key];
+    const to = newConfig[key];
+    if (stableStringify(from) !== stableStringify(to)) fields[key] = { from, to };
+  }
+  if (Object.keys(fields).length === 0) return;
+  getDb()
+    .prepare("INSERT INTO config_changes (id, user_id, preset, changed_at, changed_by, fields, source) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(`cfg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, userId, preset, Date.now(), changedBy ?? null, JSON.stringify(fields), source);
+}
+
 /**
  * Persists a config change to bot_state and, if this user's bot is currently
  * running, hot-swaps it into the live engine so it applies on the next scan
- * tick instead of waiting for a manual stop/restart.
+ * tick instead of waiting for a manual stop/restart. Also logs a
+ * config_changes row for whatever performance-relevant fields moved, so
+ * their effect can be measured after the fact (see logConfigChange above).
+ * `source` defaults from `changedBy` (admin id present → "admin" edit,
+ * absent → the account's own "user" edit) — pass `"auto-rollback"` explicitly
+ * from config-rollback-guardian.server.ts so its reverts are never mistaken
+ * for a fresh human edit worth re-judging.
  */
-export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig): void {
-  getDb()
-    .prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?")
+export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig, changedBy?: number, source?: ConfigChangeSource): void {
+  const db = getDb();
+  const oldRow = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
+  const oldConfig = oldRow ? (JSON.parse(oldRow.config) as AutoTraderConfig) : null;
+
+  db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?")
     .run(JSON.stringify(config), userId, preset);
+  logConfigChange(userId, preset, oldConfig, config, changedBy, source ?? (changedBy ? "admin" : "user"));
   engines.get(engineKey(userId, preset))?.updateConfig(config);
 }
 

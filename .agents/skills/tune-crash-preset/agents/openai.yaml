@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimisation Crash"
+  short_description: "Optimise Crash sur des bougies Deriv réelles"
+  default_prompt: "Utilise $tune-crash-preset pour tester et optimiser la configuration Crash avec des données réelles."

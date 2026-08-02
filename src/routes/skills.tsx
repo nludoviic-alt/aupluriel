@@ -6,6 +6,7 @@ import {
   Clipboard,
   Code2,
   FlaskConical,
+  RefreshCcw,
   Rocket,
   ShieldCheck,
   Sparkles,
@@ -39,14 +40,54 @@ const ACTIVE_SKILLS = [
     tone: "amber",
     capabilities: ["Sweep TP et SL", "Confiance et accord TF", "Levier et durée", "Détail par symbole"],
   },
+  {
+    name: "tune-crash-preset",
+    title: "Optimisation Crash",
+    description: "Même moteur de sweep que Boom, réglé sur CRASH1000/500/600/900 — walk-forward sur bougies Deriv réelles.",
+    prompt: "Utilise $tune-crash-preset pour optimiser Crash avec des données réelles.",
+    icon: Sparkles,
+    tone: "emerald",
+    capabilities: ["Sweep TP et SL", "Confiance et accord TF", "Levier et durée", "Détail par symbole"],
+  },
+  {
+    name: "tune-multi-preset",
+    title: "Optimisation Multi",
+    description: "Sweep confiance/accord TF pour le preset Multi (forex + or + BTC) avec le même moteur binaire CALL/PUT que l’auto-backtest en production.",
+    prompt: "Utilise $tune-multi-preset pour optimiser Multi avec des données réelles.",
+    icon: BrainCircuit,
+    tone: "amber",
+    capabilities: ["Confiance et accord TF", "Moteur binaire CALL/PUT", "Détail par symbole", "Comparaison au seuil de rentabilité"],
+  },
+  {
+    name: "verify-trading-code",
+    title: "Vérification du moteur",
+    description: "Contrôle en lecture seule : configs réellement utilisées, dérive frontend/API/serveur, régressions de preset, calculs P&L/PF/espérance, cohérence entre Dashboard/Admin/Surveillance/Auto-Trader.",
+    prompt: "Utilise $verify-trading-code pour vérifier la cohérence du moteur de trading.",
+    icon: Code2,
+    tone: "emerald",
+    capabilities: ["Configs vs. code serveur", "Détection de dérive", "Calculs P&L/PF/espérance", "Cohérence inter-pages"],
+  },
+  {
+    name: "production-trading-guardian",
+    title: "Gardien Production",
+    description: "Procédure de sécurité pour un déploiement touchant le moteur : sauvegarde, vérification du build, confirmation du redémarrage des bots, comparaison avant/après.",
+    prompt: "Utilise $production-trading-guardian pour sécuriser un déploiement touchant le moteur de trading.",
+    icon: ShieldCheck,
+    tone: "amber",
+    capabilities: ["Pré-vol : build + migrations", "Sauvegarde avant déploiement", "Confirmation des bots restaurés", "Comparaison 20/50/100 trades"],
+  },
+  {
+    name: "config-change-impact",
+    title: "Impact des changements",
+    description: "S'appuie sur la table config_changes : pour chaque modification de preset, compare automatiquement les trades juste avant vs. juste après — win rate, P&L, espérance, profit factor. Un gardien serveur (config-rollback-guardian) surveille en continu et revient tout seul à l'ancienne config si la dégradation est confirmée (PF < 1, échantillon ≥20) — désactivé par défaut, à activer par preset dans le profil utilisateur.",
+    prompt: "Utilise $config-change-impact pour comparer les performances avant et après les derniers changements de configuration.",
+    icon: RefreshCcw,
+    tone: "emerald",
+    capabilities: ["Avant/après par changement", "Espérance et profit factor", "Rollback automatique opt-in", "Par utilisateur et preset"],
+  },
 ] as const;
 
-const PLANNED_SKILLS = [
-  { name: "tune-crash-preset", title: "Optimisation Crash", description: "Walk-forward et recherche de paramètres pour CRASH900/1000.", icon: Sparkles },
-  { name: "tune-multi-preset", title: "Optimisation Multi", description: "Validation séparée OTC, Forex et crypto sans mélanger leurs profils.", icon: BrainCircuit },
-  { name: "verify-trading-code", title: "Vérification du moteur", description: "Contrôle frontend, API, serveur, calculs et régressions de configuration.", icon: Code2 },
-  { name: "production-trading-guardian", title: "Gardien Production", description: "Sauvegarde, déploiement, restauration et comparaison avant/après.", icon: ShieldCheck },
-] as const;
+const PLANNED_SKILLS: readonly { name: string; title: string; description: string; icon: typeof Sparkles }[] = [];
 
 function SkillsPage() {
   const { user } = useAuth();
@@ -135,31 +176,33 @@ function SkillsPage() {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <div className="border-b border-white/[0.07] pb-3">
-          <h3 className="text-sm font-black uppercase text-foreground">Feuille de route</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Prochains modules spécialisés, à construire et valider séparément.</p>
-        </div>
-        <div className="divide-y divide-white/[0.06]">
-          {PLANNED_SKILLS.map((skill, index) => (
-            <div key={skill.name} className="grid gap-3 py-4 sm:grid-cols-[40px_minmax(0,1fr)_auto] sm:items-center">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.025] text-muted-foreground">
-                <skill.icon className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-sm font-bold text-foreground">{skill.title}</h4>
-                  <span className="font-mono text-[10px] text-muted-foreground">${skill.name}</span>
+      {PLANNED_SKILLS.length > 0 && (
+        <section className="space-y-3">
+          <div className="border-b border-white/[0.07] pb-3">
+            <h3 className="text-sm font-black uppercase text-foreground">Feuille de route</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Prochains modules spécialisés, à construire et valider séparément.</p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            {PLANNED_SKILLS.map((skill, index) => (
+              <div key={skill.name} className="grid gap-3 py-4 sm:grid-cols-[40px_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.025] text-muted-foreground">
+                  <skill.icon className="h-4 w-4" />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{skill.description}</p>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-foreground">{skill.title}</h4>
+                    <span className="font-mono text-[10px] text-muted-foreground">${skill.name}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{skill.description}</p>
+                </div>
+                <span className="w-fit rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[9px] font-black uppercase text-muted-foreground">
+                  Étape {index + 2}
+                </span>
               </div>
-              <span className="w-fit rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[9px] font-black uppercase text-muted-foreground">
-                Étape {index + 2}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="flex items-start gap-3 border-t border-sky-500/15 pt-5 text-xs text-muted-foreground">
         <Rocket className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />

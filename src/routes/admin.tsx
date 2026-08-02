@@ -101,6 +101,12 @@ interface UserRecap {
   netPnlLive: number;
 }
 
+interface DuplicateSignals {
+  count: number;
+  windowMs: number;
+  samples: { symbol: string; direction: string; time: number; users: string[] }[];
+}
+
 interface ComponentStat {
   symbol: string;
   component: string;
@@ -168,6 +174,42 @@ interface UserBotConfig {
   [key: string]: unknown;
 }
 
+interface PerfSummary {
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  netPnl: number;
+  profitFactor: number;
+  expectancy: number;
+}
+
+interface ConfigChangeEntry {
+  id: string;
+  changedAt: number;
+  changedBy: string;
+  source: "user" | "admin" | "auto-rollback";
+  fields: Record<string, { from: unknown; to: unknown }>;
+  before: PerfSummary | null;
+  beforeSampleSize: number;
+  after: PerfSummary | null;
+  afterSampleSize: number;
+}
+
+const CONFIG_FIELD_LABELS: Record<string, string> = {
+  stakeUsd: "Mise",
+  maxDailyLossUsd: "Limite perte/jour",
+  maxDailyProfitUsd: "Objectif gain/jour",
+  minConfidence: "Confiance min.",
+  maxConfidence: "Confiance max.",
+  minTfAgreement: "Accord TF min.",
+  takeProfitPctOfStake: "TP % mise",
+  stopLossPctOfStake: "SL % mise",
+  multiplierLevel: "Levier",
+  symbols: "Symboles",
+  excludedSymbols: "Symboles exclus",
+};
+
 const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash" } as const;
 
 function AdminPage() {
@@ -194,6 +236,12 @@ function AdminPage() {
   const [componentBreakdown, setComponentBreakdown] = useState<ComponentStat[]>([]);
   const [calibration, setCalibration] = useState<CalibrationBucket[]>([]);
   const [recapLoading, setRecapLoading] = useState(true);
+  // Scopes the trading recap table to one engine — lets an admin compare
+  // accounts head-to-head on just Boom or just Crash instead of only the
+  // all-presets-combined total, which hides which preset is actually
+  // driving a difference between two users.
+  const [recapPreset, setRecapPreset] = useState<"all" | "default" | "boom" | "crash">("all");
+  const [duplicateSignals, setDuplicateSignals] = useState<DuplicateSignals | null>(null);
   const [profileUser, setProfileUser] = useState<AdminUser | null>(null);
   // Which of the profiled user's up to three bot_state rows (default/boom/
   // crash, 2026-08-01) the panel below is showing/editing.
@@ -202,8 +250,11 @@ function AdminPage() {
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
   const [journalInsights, setJournalInsights] = useState<{ demo: UserInsights; live: UserInsights } | null>(null);
+  const [configChanges, setConfigChanges] = useState<ConfigChangeEntry[]>([]);
+  const [configChangesLoading, setConfigChangesLoading] = useState(false);
   const [insightsMode, setInsightsMode] = useState<"demo" | "live">("demo");
   const [applyingRec, setApplyingRec] = useState<string | null>(null);
+  const [autoRollbackBusy, setAutoRollbackBusy] = useState(false);
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
@@ -238,18 +289,20 @@ function AdminPage() {
   const loadRecap = useCallback(async () => {
     setRecapLoading(true);
     try {
-      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal; calibration?: CalibrationBucket[]; boomBreakdown?: BoomSymbolStat[] }>("/api/admin/stats");
+      const qs = recapPreset === "all" ? "" : `?preset=${recapPreset}`;
+      const data = await api.get<{ recap: UserRecap[]; componentBreakdown: ComponentStat[]; backtestVsReal?: BacktestVsReal; calibration?: CalibrationBucket[]; boomBreakdown?: BoomSymbolStat[]; duplicateSignals?: DuplicateSignals }>(`/api/admin/stats${qs}`);
       setRecap(data.recap);
       setComponentBreakdown(data.componentBreakdown);
       setBacktestVsReal(data.backtestVsReal ?? null);
       setCalibration(data.calibration ?? []);
       setBoomBreakdown(data.boomBreakdown ?? []);
+      setDuplicateSignals(data.duplicateSignals ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur de chargement du récap");
     } finally {
       setRecapLoading(false);
     }
-  }, []);
+  }, [recapPreset]);
 
   const loadBotStatus = useCallback(async () => {
     try {
@@ -333,6 +386,15 @@ function AdminPage() {
     } finally {
       setJournalLoading(false);
     }
+    setConfigChangesLoading(true);
+    try {
+      const data = await api.get<{ changes: ConfigChangeEntry[] }>(`/api/admin/config-changes?userId=${userId}&preset=${preset}`);
+      setConfigChanges(data.changes);
+    } catch {
+      setConfigChanges([]);
+    } finally {
+      setConfigChangesLoading(false);
+    }
   }
 
   async function openProfile(u: AdminUser) {
@@ -364,6 +426,22 @@ function AdminPage() {
       toast.error(err instanceof Error ? err.message : "Impossible d'appliquer la recommandation");
     } finally {
       setApplyingRec(null);
+    }
+  }
+
+  async function toggleAutoRollback(enabled: boolean) {
+    if (!profileUser) return;
+    setAutoRollbackBusy(true);
+    try {
+      const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", {
+        userId: profileUser.id, preset: profilePreset, autoRollbackEnabled: enabled,
+      });
+      setJournalConfig(res.config);
+      toast.success(enabled ? "Rollback automatique activé ✓" : "Rollback automatique désactivé");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de changer ce réglage");
+    } finally {
+      setAutoRollbackBusy(false);
     }
   }
 
@@ -1090,6 +1168,42 @@ function AdminPage() {
           </div>
         }
       >
+        {/* Preset scope — compare accounts on one engine at a time instead of
+            only the all-presets-combined total. */}
+        <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-fit">
+          {(["all", "default", "boom", "crash"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => setRecapPreset(p)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all",
+                recapPreset === p ? "bg-orange-500/25 text-orange-300" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {p === "all" ? "Tous" : presetLabels[p]}
+            </button>
+          ))}
+        </div>
+
+        {/* Duplicate-signal notice — both accounts scan off the same shared
+            learned weights, so a P&L difference between them can partly be
+            the SAME market call taken twice, not two independent edges. */}
+        {duplicateSignals && duplicateSignals.count > 0 && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-4 py-3 text-xs text-amber-200/90">
+            <span className="font-bold text-amber-300">{duplicateSignals.count} signal{duplicateSignals.count > 1 ? "aux" : ""} dupliqué{duplicateSignals.count > 1 ? "s" : ""}</span>
+            {" "}détecté{duplicateSignals.count > 1 ? "s" : ""} — même symbole/direction pris par deux comptes différents à moins de {Math.round(duplicateSignals.windowMs / 1000)}s d'écart (signal partagé, pas deux edges indépendants).
+            {duplicateSignals.samples.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-amber-200/70">
+                {duplicateSignals.samples.slice(0, 4).map((s, i) => (
+                  <li key={i}>
+                    {s.symbol} {s.direction} · {s.users.join(" & ")} · {new Date(s.time).toLocaleString("fr-FR")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.02] text-left text-xs text-muted-foreground font-semibold uppercase tracking-wider">
@@ -1878,6 +1992,27 @@ function AdminPage() {
                   />
                 )}
 
+                {journalConfig && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                        <RefreshCcw className="h-3.5 w-3.5 text-amber-400" />
+                        Rollback automatique
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Si un changement de config est suivi d'une dégradation confirmée (PF &lt; 1, échantillon ≥20 des deux côtés), revient automatiquement aux anciennes valeurs. Désactivé par défaut.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={Boolean(journalConfig.autoRollbackEnabled)}
+                      disabled={autoRollbackBusy}
+                      onCheckedChange={toggleAutoRollback}
+                    />
+                  </div>
+                )}
+
+                <ConfigChangesPanel changes={configChanges} loading={configChangesLoading} />
+
                 {(() => {
                   const MINI_JOURNAL_LIMIT = 24;
                   const outcomeTrades = journalTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open");
@@ -2129,6 +2264,96 @@ function BrokerDot({ label, active, color }: { label: string; active: boolean; c
     <div className="flex items-center gap-1" title={`${label}: ${active ? "connecte" : "non configure"}`}>
       <span className={cn("h-2 w-2 rounded-full", active ? colorMap[color] : "bg-white/10")} />
       <span className={cn("text-[10px] font-bold", active ? "text-foreground" : "text-muted-foreground/50")}>{label}</span>
+    </div>
+  );
+}
+
+function ConfigChangesPanel({ changes, loading }: { changes: ConfigChangeEntry[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 py-6 text-center">
+        <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+  if (changes.length === 0) return null;
+
+  function fmtVal(v: unknown): string {
+    if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
+    if (typeof v === "number") return String(v);
+    return v == null ? "—" : String(v);
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+        <RefreshCcw className="h-4 w-4 text-cyan-400" />
+        Historique des changements — avant / après
+      </div>
+      <div className="space-y-3">
+        {[...changes].reverse().map((c) => (
+          <div key={c.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {new Date(c.changedAt).toLocaleString("fr-FR")} · par <span className="font-semibold text-foreground">{c.changedBy}</span>
+              </span>
+              {c.source === "auto-rollback" && (
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                  ⏪ Rollback automatique
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(c.fields).map(([key, { from, to }]) => (
+                <span key={key} className="rounded-md border border-cyan-500/20 bg-cyan-500/[0.06] px-2 py-1 text-[11px] text-cyan-200">
+                  <span className="font-semibold">{CONFIG_FIELD_LABELS[key] ?? key}</span>{" "}
+                  <span className="text-muted-foreground line-through">{fmtVal(from)}</span>{" "}
+                  → <span className="font-bold text-cyan-100">{fmtVal(to)}</span>
+                </span>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["before", "after"] as const).map((side) => {
+                const s = c[side];
+                const sampleSize = side === "before" ? c.beforeSampleSize : c.afterSampleSize;
+                return (
+                  <div key={side} className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                      {side === "before" ? "Avant" : "Après"} ({sampleSize} trade{sampleSize > 1 ? "s" : ""})
+                    </div>
+                    {s ? (
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Win rate</span>
+                          <span className="font-semibold">{s.winRate.toFixed(1)}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">P&amp;L</span>
+                          <span className={cn("font-bold", s.netPnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                            {s.netPnl >= 0 ? "+" : ""}{s.netPnl.toFixed(2)}$
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Espérance</span>
+                          <span className={cn("font-mono", s.expectancy >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                            {s.expectancy >= 0 ? "+" : ""}{s.expectancy.toFixed(3)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">PF</span>
+                          <span className="font-mono font-semibold">{s.profitFactor === Infinity ? "∞" : s.profitFactor.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground italic">Pas encore de trades clôturés</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

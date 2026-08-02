@@ -57,6 +57,16 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[daily-summary] Démarrage échoué:", e));
   }, 10000);
 
+  // Auto-rollback guardian: reverts a preset's config to its pre-change
+  // values when a logged edit is followed by a well-sampled, confirmed
+  // degradation — opt-in per preset (AutoTraderConfig.autoRollbackEnabled),
+  // see config-rollback-guardian.server.ts for the exact thresholds.
+  setTimeout(() => {
+    import("./lib/config-rollback-guardian.server")
+      .then((m) => m.startConfigRollbackGuardian())
+      .catch((e) => console.error("[config-guardian] Démarrage échoué:", e));
+  }, 11000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so

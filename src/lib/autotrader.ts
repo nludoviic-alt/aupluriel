@@ -461,7 +461,13 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
   takeProfitPctOfStake: 10,
   stopLossPctOfStake: 30,
-  minConfidence: 60,
+  // minConfidence relevé de 60 à 70 (2026-08-02) : décision explicite
+  // d'exclure la bande 60–69% plutôt que de la conserver — plancher simple
+  // (tout ce qui est sous 70% est écarté), pas une zone morte isolée. Les
+  // bots déjà démarrés gardent leur savedConfig tant qu'ils ne sont pas
+  // relancés ou reconfigurés — ce nouveau plancher ne s'applique qu'aux
+  // futurs (re)démarrages du preset.
+  minConfidence: 70,
   minTfAgreement: 2,
   multiplierLevel: 100,
 };

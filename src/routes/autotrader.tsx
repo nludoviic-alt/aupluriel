@@ -226,7 +226,7 @@ import { AmountInput } from "@/components/amount-input";
 import { activeStrategySymbols } from "@/lib/strategies";
 import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
-import { BotDashboard } from "@/components/bot-dashboard";
+import { BotDashboard, LiveSignals } from "@/components/bot-dashboard";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
 import {
@@ -511,7 +511,7 @@ function AutoTraderPage() {
   const {
     pnl: localPnl, tradeCount: localTradeCount, wins: localWins, losses: localLosses, errors,
     totalWon: localTotalWon, totalLost: localTotalLost,
-    openTradeList, recentClosedTrades, consecutiveLosses, effectiveStake,
+    openTradeList: localOpenTradeList, recentClosedTrades,
   } = stats;
 
   // The server bot's trades never touch the browser's localStorage rollup
@@ -521,8 +521,9 @@ function AutoTraderPage() {
   // SQL-computed, never-trimmed cloud numbers whenever the server bot is on.
   const cloudActive = !!cloudSelected?.enabled;
   const isToday = (ms: number) => new Date(ms).toDateString() === new Date().toDateString();
+  const cloudTrades = cloudSelected?.trades ?? [];
   const cloudClosedToday = cloudActive
-    ? (cloudSelected?.trades ?? []).filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
+    ? cloudTrades.filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
     : [];
   const pnl = cloudActive ? (cloudSelected?.todayPnl ?? 0) : localPnl;
   const lossUsedUsd = cloudActive
@@ -538,15 +539,55 @@ function AutoTraderPage() {
   const totalLost = cloudActive
     ? cloudClosedToday.filter((t) => t.status === "lost").reduce((s, t) => s + t.profit, 0)
     : localTotalLost;
-  const openTrades = openTradeList.length;
 
-  // Reads localStorage per configured symbol (indicator-weights.ts) — only recompute
-  // when the watchlist changes or a trade closes (logs update), not on every render.
+  // Same local↔cloud switch, extended to the raw trade ROWS (not just the
+  // aggregates above) — the journal table, open-positions cards, stake-at-
+  // risk and the adaptive-stake preview all read individual trades. Without
+  // this they silently kept reading the local engine's log even while the
+  // server bot was the one actually trading this preset, so they'd look
+  // empty/stuck right next to KPIs that were correctly showing cloud data.
+  const journalTrades = cloudActive ? cloudTrades : logs;
+  const openTradeList = cloudActive
+    ? cloudTrades.filter((t) => t.status === "open" || t.status === "pending")
+    : localOpenTradeList;
+  const openTrades = openTradeList.length;
+  const consecutiveLosses = countConsecutiveLosses(journalTrades);
+  const effectiveStake = config.adaptiveStake
+    ? computeAdaptiveStake(config.stakeUsd, journalTrades)
+    : config.stakeUsd;
+
+  // Reads localStorage per configured symbol (indicator-weights.ts) — only
+  // reflects what the LOCAL engine has learned. The server bot learns
+  // independently server-side (indicator-weights.server.ts), so once it's
+  // the active engine for this preset, fall back to its own stats via
+  // /api/learning instead of showing the (irrelevant) local numbers.
   const breakdowns = useMemo(() => {
+    if (cloudActive) return [];
     return config.symbols
       .map((sym) => ({ sym, rows: getComponentBreakdown(sym) }))
       .filter((b) => b.rows.length > 0);
-  }, [config.symbols, logs]);
+  }, [config.symbols, logs, cloudActive]);
+
+  const [cloudBreakdowns, setCloudBreakdowns] = useState<{ sym: string; rows: { name: string; wins: number; losses: number; weight: number }[] }[]>([]);
+  useEffect(() => {
+    if (!cloudActive) { setCloudBreakdowns([]); return; }
+    let cancelled = false;
+    Promise.all(
+      config.symbols.map((sym) =>
+        api.get<{ stats: { symbol: string; component: string; wins: number; losses: number; weight: number }[] }>(`/api/learning?symbol=${encodeURIComponent(sym)}`)
+          .then((data) => ({
+            sym,
+            rows: data.stats.map((r) => ({ name: r.component, wins: r.wins, losses: r.losses, weight: r.weight })),
+          }))
+          .catch(() => ({ sym, rows: [] })),
+      ),
+    ).then((results) => {
+      if (!cancelled) setCloudBreakdowns(results.filter((b) => b.rows.length > 0));
+    });
+    return () => { cancelled = true; };
+  }, [config.symbols, cloudActive]);
+
+  const visibleBreakdowns = cloudActive ? cloudBreakdowns : breakdowns;
 
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
@@ -729,10 +770,10 @@ function AutoTraderPage() {
         )}
       >
         <Layers className="h-3.5 w-3.5 shrink-0" /> Multi
-        {cloud?.presets?.default?.enabled && (
+        {cloud?.presets?.default?.enabled && cloud?.presets?.default?.running && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse shadow-[0_0_6px_rgba(167,139,250,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-violet-300">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
           </span>
         )}
       </button>
@@ -744,10 +785,10 @@ function AutoTraderPage() {
         )}
       >
         <Rocket className="h-3.5 w-3.5 shrink-0" /> Boom
-        {cloud?.presets?.boom?.enabled && (
+        {cloud?.presets?.boom?.enabled && cloud?.presets?.boom?.running && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse shadow-[0_0_6px_rgba(251,146,60,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-orange-300">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
           </span>
         )}
       </button>
@@ -759,10 +800,10 @@ function AutoTraderPage() {
         )}
       >
         <TrendingDown className="h-3.5 w-3.5 shrink-0" /> Crash
-        {cloud?.presets?.crash?.enabled && (
+        {cloud?.presets?.crash?.enabled && cloud?.presets?.crash?.running && (
           <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_6px_rgba(250,204,21,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-yellow-300">LIVE</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
+            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
           </span>
         )}
       </button>
@@ -825,10 +866,11 @@ function AutoTraderPage() {
           // Static class strings only — Tailwind's JIT scanner can't see
           // dynamically-built names like `border-${accent}-500/40`, so those
           // would silently produce no CSS at all in the production build.
+          const isOnline = !!st?.enabled && !!st?.running;
           const styles = {
-            default: { active: "border-violet-500/40 bg-violet-500/10", dot: "bg-violet-400" },
-            boom: { active: "border-orange-500/40 bg-orange-500/10", dot: "bg-orange-400" },
-            crash: { active: "border-yellow-500/40 bg-yellow-500/10", dot: "bg-yellow-400" },
+            default: { active: "border-violet-500/40 bg-violet-500/10" },
+            boom: { active: "border-orange-500/40 bg-orange-500/10" },
+            crash: { active: "border-yellow-500/40 bg-yellow-500/10" },
           } as const;
           return (
             <button
@@ -847,7 +889,7 @@ function AutoTraderPage() {
             >
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 {presetLabels[p]}
-                {st?.enabled && <span className={cn("h-1.5 w-1.5 rounded-full animate-pulse", styles[p].dot)} />}
+                <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-up animate-pulse" : "bg-down")} />
               </span>
               <span className={cn("text-sm font-extrabold font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
                 {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
@@ -983,7 +1025,7 @@ function AutoTraderPage() {
                     {running && cloudSelected?.enabled && cloudSelected?.running
                       ? `● Actif (local + serveur ${presetLabels[selectedPreset]})`
                       : cloudSelected?.enabled && cloudSelected?.running
-                      ? `● Actif sur le serveur (${presetLabels[selectedPreset]})`
+                      ? `● Actif sur (${presetLabels[selectedPreset]})`
                       : running
                       ? "● Actif"
                       : "○ Arrêté"}
@@ -1402,6 +1444,15 @@ function AutoTraderPage() {
                 <div className="block mt-5">
                   <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
                 </div>
+
+                {/* Live signals — compact static list, below the gold ticker */}
+                <div className="mt-5">
+                  <LiveSignals
+                    lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
+                    config={config}
+                    running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -1454,6 +1505,15 @@ function AutoTraderPage() {
               {/* Gold live ticker — below standby sessions */}
               <div className="block mt-5">
                 <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
+              </div>
+
+              {/* Live signals — compact static list, below the gold ticker */}
+              <div className="mt-5">
+                <LiveSignals
+                  lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
+                  config={config}
+                  running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
+                />
               </div>
             </div>
           )}
@@ -2139,7 +2199,7 @@ function AutoTraderPage() {
 
       {/* ── Adaptive indicator weights — the real "learns from its mistakes" mechanism ── */}
       {(() => {
-        if (!breakdowns.length) return null;
+        if (!visibleBreakdowns.length) return null;
         return (
           <div className="glass-panel rounded-2xl overflow-hidden">
             <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
@@ -2147,8 +2207,11 @@ function AutoTraderPage() {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">🧠 Poids adaptatifs</span>
                 <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">
-                  {breakdowns.length} paire{breakdowns.length > 1 ? "s" : ""} avec historique
+                  {visibleBreakdowns.length} paire{visibleBreakdowns.length > 1 ? "s" : ""} avec historique
                 </span>
+                {cloudActive && (
+                  <span className="text-[10px] bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] rounded-md px-2 py-0.5">serveur</span>
+                )}
               </div>
               {showWeights ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </button>
@@ -2160,7 +2223,7 @@ function AutoTraderPage() {
                   mécanisme qui fait que le bot ajuste sa confiance dans chaque indicateur au fil des trades,
                   au lieu de garder des poids fixes pour toujours.
                 </p>
-                {breakdowns.map(({ sym, rows }) => (
+                {visibleBreakdowns.map(({ sym, rows }) => (
                   <div key={sym}>
                     <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
                       {SYMBOLS.find((s) => s.deriv === sym)?.label ?? sym}
@@ -2205,19 +2268,24 @@ function AutoTraderPage() {
           onClick={() => setShowLogs((v) => !v)}>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold">Journal</span>
-            <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">{logs.length} trades</span>
+            <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">{journalTrades.length} trades</span>
             {wins > 0 && <span className="text-[10px] bg-up/15 text-up rounded-md px-2 py-0.5">{wins} gagnés</span>}
             {losses > 0 && <span className="text-[10px] bg-down/15 text-down rounded-md px-2 py-0.5">{losses} perdus</span>}
+            {cloudActive && (
+              <span className="text-[10px] bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] rounded-md px-2 py-0.5">
+                serveur · {presetLabels[selectedPreset]}
+              </span>
+            )}
           </div>
           {showLogs ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </button>
 
         {showLogs && (
           <div className="border-t border-border/40">
-            {logs.length > 0 && (
+            {journalTrades.length > 0 && (
               <div className="flex gap-1 px-5 pt-3 pb-1 flex-wrap">
                 {(["all","won","lost","open","error"] as const).map((f) => {
-                  const count = f === "all" ? logs.length : logs.filter((l) => l.status === f).length;
+                  const count = f === "all" ? journalTrades.length : journalTrades.filter((l) => l.status === f).length;
                   return (
                     <button key={f} onClick={() => setLogFilter(f)}
                       className={cn("rounded-lg px-3 py-1 text-[10px] font-semibold transition-colors",
@@ -2232,7 +2300,7 @@ function AutoTraderPage() {
               </div>
             )}
             {(() => {
-              const fl = logFilter === "all" ? logs : logs.filter((l) => l.status === logFilter);
+              const fl = logFilter === "all" ? journalTrades : journalTrades.filter((l) => l.status === logFilter);
               return fl.length === 0 ? (
                 <div className="px-5 py-10 text-center text-xs text-muted-foreground">
                   {logFilter === "all" ? "Aucun trade — démarre le bot." : `Aucun trade "${logFilter}".`}
@@ -2286,16 +2354,18 @@ function AutoTraderPage() {
                       ))}
                     </tbody>
                   </table>
-                  <div className="flex justify-end px-5 py-2.5 border-t border-border/30">
-                    <button onClick={async () => {
-                      const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
-                      if (!ok) return;
-                      localStorage.removeItem("lio23.autotrader_log");
-                      setEngineLogs([]);
-                    }} className="text-[10px] text-muted-foreground hover:text-down transition-colors">
-                      Effacer le journal
-                    </button>
-                  </div>
+                  {!cloudActive && (
+                    <div className="flex justify-end px-5 py-2.5 border-t border-border/30">
+                      <button onClick={async () => {
+                        const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
+                        if (!ok) return;
+                        localStorage.removeItem("lio23.autotrader_log");
+                        setEngineLogs([]);
+                      }} className="text-[10px] text-muted-foreground hover:text-down transition-colors">
+                        Effacer le journal
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })()}

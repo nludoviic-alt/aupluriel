@@ -7,7 +7,15 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
 import { getUserInsights } from "@/lib/journal-insights.server";
+import { presetSymbolFilter, type Preset } from "@/lib/bot-engine.server";
 import { BOOM_SYMBOLS } from "@/lib/autotrader";
+
+// How close two different users' trades on the same symbol+direction need to
+// land to count as one "duplicate signal" event rather than coincidence —
+// both accounts scan the same watchlist off the same shared learned weights
+// (indicator-weights.server.ts), so a real correlated signal fires for both
+// within seconds of each other, not minutes.
+const DUPLICATE_SIGNAL_WINDOW_MS = 90_000;
 
 // Prediction from the offline replay harness (52 days, 2717 trades, exact live
 // pipeline, neutral weights, no lookahead — commit 3629f36). Live trades are
@@ -106,6 +114,17 @@ export const Route = createFileRoute("/api/admin/stats")({
           });
         }
 
+        // Optional ?preset=default|boom|crash — scopes the whole recap (and
+        // the duplicate-signal check below) to one engine, using the exact
+        // symbol classification the live engines use. Omitted = every preset
+        // combined, the original behavior.
+        const presetParam = url.searchParams.get("preset");
+        const preset: Preset | null =
+          presetParam === "default" || presetParam === "boom" || presetParam === "crash" ? presetParam : null;
+        const presetFilter = preset ? presetSymbolFilter(preset) : null;
+        const presetClause = presetFilter ? ` AND ${presetFilter.sql}` : "";
+        const presetParams = presetFilter ? presetFilter.params : [];
+
         // Démo et live ne doivent jamais être additionnés dans un même total —
         // le P&L "Cumulé" affiché en haut de l'admin doit rester un chiffre de
         // test, pas un mélange avec de l'argent réel. NULL (lignes d'avant la
@@ -125,10 +144,10 @@ export const Route = createFileRoute("/api/admin/stats")({
                COALESCE(AVG(confidence) FILTER (WHERE status IN ('won','lost')), 0) AS avg_confidence,
                MAX(time) AS last_trade_at
              FROM bot_trades
-             WHERE mode = 'demo' OR mode IS NULL
+             WHERE (mode = 'demo' OR mode IS NULL)${presetClause}
              GROUP BY user_id`,
           )
-          .all() as UserStatsRow[];
+          .all(...presetParams) as UserStatsRow[];
 
         // Live totals kept fully separate — surfaced per-user instead of
         // silently folded into (or dropped from) the demo recap above.
@@ -139,10 +158,10 @@ export const Route = createFileRoute("/api/admin/stats")({
                COUNT(*) FILTER (WHERE status IN ('won','lost')) AS trades,
                COALESCE(SUM(profit) FILTER (WHERE status IN ('won','lost')), 0) AS net_pnl
              FROM bot_trades
-             WHERE mode = 'live'
+             WHERE mode = 'live'${presetClause}
              GROUP BY user_id`,
           )
-          .all() as { user_id: number; trades: number; net_pnl: number }[];
+          .all(...presetParams) as { user_id: number; trades: number; net_pnl: number }[];
         const liveByUser = new Map(liveRows.map((r) => [r.user_id, r]));
 
         const users = db.prepare("SELECT id, username, email FROM users").all() as {
@@ -294,7 +313,39 @@ export const Route = createFileRoute("/api/admin/stats")({
           };
         });
 
-        return json({ recap, componentBreakdown, backtestVsReal, calibration, boomBreakdown });
+        // Duplicate-signal detection: both accounts scan off the same shared
+        // learned weights (indicator-weights.server.ts), so a real signal
+        // fires for everyone within seconds of each other, not by chance.
+        // Flagging these makes it visible that two P&L lines in the recap
+        // above can be the SAME market call taken twice, not two independent
+        // edges — important context before comparing accounts head-to-head.
+        const rawSignalRows = db
+          .prepare(
+            `SELECT bt.id, bt.user_id, bt.time, bt.symbol, bt.direction, u.username
+             FROM bot_trades bt JOIN users u ON u.id = bt.user_id
+             WHERE bt.stake > 0${presetClause}
+             ORDER BY bt.symbol, bt.direction, bt.time`,
+          )
+          .all(...presetParams) as { id: string; user_id: number; time: number; symbol: string; direction: string; username: string }[];
+
+        let duplicateCount = 0;
+        const duplicateSamples: { symbol: string; direction: string; time: number; users: string[] }[] = [];
+        for (let i = 0; i < rawSignalRows.length; i++) {
+          const a = rawSignalRows[i];
+          for (let j = i + 1; j < rawSignalRows.length; j++) {
+            const b = rawSignalRows[j];
+            if (b.symbol !== a.symbol || b.direction !== a.direction) break; // sorted — no more matches for `a`
+            if (b.time - a.time > DUPLICATE_SIGNAL_WINDOW_MS) break; // sorted by time within the group — no more matches
+            if (b.user_id === a.user_id) continue; // same account trading itself isn't a "duplicate signal"
+            duplicateCount++;
+            if (duplicateSamples.length < 8) {
+              duplicateSamples.push({ symbol: a.symbol, direction: a.direction, time: a.time, users: [a.username, b.username] });
+            }
+          }
+        }
+        const duplicateSignals = { count: duplicateCount, windowMs: DUPLICATE_SIGNAL_WINDOW_MS, samples: duplicateSamples };
+
+        return json({ recap, componentBreakdown, backtestVsReal, calibration, boomBreakdown, preset, duplicateSignals });
       },
     },
   },

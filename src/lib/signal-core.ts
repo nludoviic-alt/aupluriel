@@ -200,6 +200,14 @@ export interface AutoTraderConfig {
   // to be a net loser on THIS account's own track record, without having
   // to fork the whole strategy into "watchlist" mode to get there.
   excludedSymbols: string[];
+  // Opt-in safety net (config-rollback-guardian.server.ts, 2026-08-02): if a
+  // logged config_changes edit on this preset is followed by a well-sampled
+  // profit-factor-under-1 degradation, automatically revert the changed
+  // fields to their pre-change values. OFF by default — this reverses a
+  // human trading decision, unlike the health-monitor's auto-repairs which
+  // only restore already-intended state, so it must be explicitly enabled
+  // per preset rather than assumed safe for every account.
+  autoRollbackEnabled: boolean;
   initialCapital: number;          // starting capital for virtual P&L tracking
   // --- Risk protection ---
   maxConsecutiveLosses: number;   // pause the SYMBOL after N consecutive losses on it
@@ -379,6 +387,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
     "frxEURGBP", "frxEURJPY", "frxGBPJPY", "frxXAUUSD", "cryBTCUSD"
   ],
   excludedSymbols: [],
+  autoRollbackEnabled: false,
   initialCapital: 100,
   maxConsecutiveLosses: 3,
   cooldownMinutes: 60,

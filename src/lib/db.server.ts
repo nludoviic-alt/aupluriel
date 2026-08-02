@@ -129,6 +129,22 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (user_id, preset)
     );
 
+    -- One row per meaningful edit to a user's strategy (see
+    -- CONFIG_CHANGE_FIELDS in bot-engine.server.ts) — lets an admin compare
+    -- performance in the trades right before vs. right after a given change,
+    -- instead of eyeballing whether a tweak "seemed to help".
+    CREATE TABLE IF NOT EXISTS config_changes (
+      id          TEXT    PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset      TEXT    NOT NULL,
+      changed_at  INTEGER NOT NULL,   -- epoch ms
+      changed_by  INTEGER,            -- admin user_id, NULL if the user (or the auto-rollback guardian) changed it
+      fields      TEXT    NOT NULL,   -- JSON: { fieldName: { from, to } }
+      source      TEXT    NOT NULL DEFAULT 'user', -- 'user' | 'admin' | 'auto-rollback'
+      resolved_at INTEGER             -- set once config-rollback-guardian.server.ts has judged this change (reverted or confirmed fine)
+    );
+    CREATE INDEX IF NOT EXISTS idx_config_changes_user_preset_time ON config_changes(user_id, preset, changed_at);
+
     -- Trades placed by the SERVER engine (the browser engine logs to localStorage).
     CREATE TABLE IF NOT EXISTS bot_trades (
       id               TEXT    PRIMARY KEY,
@@ -362,6 +378,22 @@ function migrate(db: Database.Database) {
   }
   if (!alertCols.has("last_fired_at")) {
     db.exec("ALTER TABLE alerts ADD COLUMN last_fired_at INTEGER");
+  }
+
+  // --- Additive column migrations on `config_changes` (idempotent) ---
+  // Added for config-rollback-guardian.server.ts: `source` distinguishes a
+  // human edit from an automatic revert (so the revert doesn't itself look
+  // like a fresh user change worth re-judging), `resolved_at` marks a change
+  // the guardian has already judged (reverted OR confirmed fine) so it's
+  // never re-evaluated forever.
+  const configChangeCols = new Set(
+    (db.prepare("PRAGMA table_info(config_changes)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!configChangeCols.has("source")) {
+    db.exec("ALTER TABLE config_changes ADD COLUMN source TEXT NOT NULL DEFAULT 'user'"); // 'user' | 'admin' | 'auto-rollback'
+  }
+  if (!configChangeCols.has("resolved_at")) {
+    db.exec("ALTER TABLE config_changes ADD COLUMN resolved_at INTEGER");
   }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---

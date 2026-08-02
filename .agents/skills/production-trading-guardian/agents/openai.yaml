@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gardien Production"
+  short_description: "Sécurise sauvegarde, déploiement et comparaison avant/après"
+  default_prompt: "Utilise $production-trading-guardian pour sécuriser un déploiement touchant le moteur de trading."

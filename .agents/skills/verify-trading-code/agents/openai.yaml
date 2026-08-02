@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vérification du moteur"
+  short_description: "Contrôle la cohérence du code de trading"
+  default_prompt: "Utilise $verify-trading-code pour vérifier la cohérence du moteur de trading."

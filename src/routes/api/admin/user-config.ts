@@ -25,6 +25,7 @@ interface PatchBody {
   minConfidence?: number;
   maxConfidence?: number;
   excludedSymbols?: string[];
+  autoRollbackEnabled?: boolean;
   resetToCanonical?: boolean;
 }
 
@@ -46,8 +47,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash") {
           return json({ error: "preset doit être 'default', 'boom' ou 'crash'." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && !body.resetToCanonical) {
-          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols ou resetToCanonical requis)." }, 400);
+        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols, autoRollbackEnabled ou resetToCanonical requis)." }, 400);
         }
 
         const db = getDb();
@@ -67,8 +68,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
 
         const config = JSON.parse(row.config) as AutoTraderConfig;
         if (body.resetToCanonical) {
-          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence } = config;
-          Object.assign(config, presetFieldsFor(body.preset), { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence });
+          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
+          Object.assign(config, presetFieldsFor(body.preset), { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled });
         }
         if (body.symbols !== undefined) {
           if (!Array.isArray(body.symbols) || body.symbols.some((s) => typeof s !== "string")) {
@@ -94,8 +95,14 @@ export const Route = createFileRoute("/api/admin/user-config")({
           }
           config.excludedSymbols = body.excludedSymbols;
         }
+        if (body.autoRollbackEnabled !== undefined) {
+          if (typeof body.autoRollbackEnabled !== "boolean") {
+            return json({ error: "autoRollbackEnabled doit être un booléen." }, 400);
+          }
+          config.autoRollbackEnabled = body.autoRollbackEnabled;
+        }
 
-        updateConfigForUser(body.userId, body.preset, config);
+        updateConfigForUser(body.userId, body.preset, config, admin.id);
 
         return json({ success: true, preset: body.preset, config });
       },

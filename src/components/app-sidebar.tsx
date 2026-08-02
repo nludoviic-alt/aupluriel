@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronRight,
   Cpu,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -326,6 +327,17 @@ export function AppSidebar() {
                   <NavItem
                     key="/admin"
                     item={{ title: "Administration", url: "/admin", icon: ShieldCheck, color: "text-amber-400", glow: "shadow-amber-500/30" }}
+                    isActive={active}
+                    onClick={handleNavClick}
+                  />
+                );
+              })()}
+              {user?.is_admin && (() => {
+                const active = isActive("/skills");
+                return (
+                  <NavItem
+                    key="/skills"
+                    item={{ title: "Skills", url: "/skills", icon: Wrench, color: "text-sky-400", glow: "shadow-sky-500/30" }}
                     isActive={active}
                     onClick={handleNavClick}
                   />

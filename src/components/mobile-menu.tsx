@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import {
   LayoutDashboard, Radar, Zap, BriefcaseBusiness, FlaskConical,
   BarChart3, PieChart, CandlestickChart, Workflow, Activity, Settings,
-  ShieldCheck, LogOut, X,
+  ShieldCheck, LogOut, X, Wrench,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -205,6 +205,21 @@ export function MobileMenu() {
                 >
                   <ShieldCheck className="h-4 w-4 shrink-0" />
                   <span>Administration</span>
+                </Link>
+              )}
+              {user?.is_admin && (
+                <Link
+                  to="/skills"
+                  onClick={() => { if (!isActive("/skills")) haptic("light"); close(); }}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-150",
+                    isActive("/skills")
+                      ? "text-sky-400 bg-sky-400/10 border border-sky-400/20 font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]",
+                  )}
+                >
+                  <Wrench className="h-4 w-4 shrink-0" />
+                  <span>Skills</span>
                 </Link>
               )}
             </div>

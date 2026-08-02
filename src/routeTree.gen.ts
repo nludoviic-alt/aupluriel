@@ -66,6 +66,7 @@ import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
+import { Route as ApiAdminConfigChangesRouteImport } from './routes/api/admin/config-changes'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
 import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/groups/members'
@@ -356,6 +357,11 @@ const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
   path: '/api/admin/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminConfigChangesRoute = ApiAdminConfigChangesRouteImport.update({
+  id: '/api/admin/config-changes',
+  path: '/api/admin/config-changes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminChangelogRoute = ApiAdminChangelogRouteImport.update({
   id: '/api/admin/changelog',
   path: '/api/admin/changelog',
@@ -413,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -475,6 +482,7 @@ export interface FileRoutesByTo {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -538,6 +546,7 @@ export interface FileRoutesById {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
+  '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -602,6 +611,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/config-changes'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -664,6 +674,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/config-changes'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -726,6 +737,7 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/api/admin/bot'
     | '/api/admin/changelog'
+    | '/api/admin/config-changes'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -789,6 +801,7 @@ export interface RootRouteChildren {
   ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminBotRoute: typeof ApiAdminBotRoute
   ApiAdminChangelogRoute: typeof ApiAdminChangelogRoute
+  ApiAdminConfigChangesRoute: typeof ApiAdminConfigChangesRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
@@ -1211,6 +1224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/config-changes': {
+      id: '/api/admin/config-changes'
+      path: '/api/admin/config-changes'
+      fullPath: '/api/admin/config-changes'
+      preLoaderRoute: typeof ApiAdminConfigChangesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/changelog': {
       id: '/api/admin/changelog'
       path: '/api/admin/changelog'
@@ -1288,6 +1308,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminBotRoute: ApiAdminBotRoute,
   ApiAdminChangelogRoute: ApiAdminChangelogRoute,
+  ApiAdminConfigChangesRoute: ApiAdminConfigChangesRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Impact des changements"
+  short_description: "Compare le rendement avant/après chaque réglage modifié"
+  default_prompt: "Utilise $config-change-impact pour comparer les performances avant et après les derniers changements de configuration."
