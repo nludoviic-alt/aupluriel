@@ -13,6 +13,7 @@ import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as SurveillanceRouteImport } from './routes/surveillance'
 import { Route as StrategiesRouteImport } from './routes/strategies'
 import { Route as StatsRouteImport } from './routes/stats'
+import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -32,6 +33,7 @@ import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiStatsRouteImport } from './routes/api/stats'
+import { Route as ApiSignalHistoryRouteImport } from './routes/api/signal-history'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiPresenceRouteImport } from './routes/api/presence'
@@ -40,6 +42,7 @@ import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
+import { Route as ApiCustomPresetsRouteImport } from './routes/api/custom-presets'
 import { Route as ApiBotTradesRouteImport } from './routes/api/bot-trades'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
 import { Route as ApiAutoBacktestRouteImport } from './routes/api/auto-backtest'
@@ -85,6 +88,11 @@ const StrategiesRoute = StrategiesRouteImport.update({
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
   path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SkillsRoute = SkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignalsRoute = SignalsRouteImport.update({
@@ -182,6 +190,11 @@ const ApiStatsRoute = ApiStatsRouteImport.update({
   path: '/api/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSignalHistoryRoute = ApiSignalHistoryRouteImport.update({
+  id: '/api/signal-history',
+  path: '/api/signal-history',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSettingsRoute = ApiSettingsRouteImport.update({
   id: '/api/settings',
   path: '/api/settings',
@@ -220,6 +233,11 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
 const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   id: '/api/deriv-session',
   path: '/api/deriv-session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCustomPresetsRoute = ApiCustomPresetsRouteImport.update({
+  id: '/api/custom-presets',
+  path: '/api/custom-presets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBotTradesRoute = ApiBotTradesRouteImport.update({
@@ -370,6 +388,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/skills': typeof SkillsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
@@ -378,6 +397,7 @@ export interface FileRoutesByFullPath {
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
+  '/api/custom-presets': typeof ApiCustomPresetsRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -386,6 +406,7 @@ export interface FileRoutesByFullPath {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -429,6 +450,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/skills': typeof SkillsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
@@ -437,6 +459,7 @@ export interface FileRoutesByTo {
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
+  '/api/custom-presets': typeof ApiCustomPresetsRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -445,6 +468,7 @@ export interface FileRoutesByTo {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -489,6 +513,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
+  '/skills': typeof SkillsRoute
   '/stats': typeof StatsRoute
   '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
@@ -497,6 +522,7 @@ export interface FileRoutesById {
   '/api/auto-backtest': typeof ApiAutoBacktestRoute
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
+  '/api/custom-presets': typeof ApiCustomPresetsRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -505,6 +531,7 @@ export interface FileRoutesById {
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
+  '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
   '/api/trades': typeof ApiTradesRoute
@@ -550,6 +577,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/skills'
     | '/stats'
     | '/strategies'
     | '/surveillance'
@@ -558,6 +586,7 @@ export interface FileRouteTypes {
     | '/api/auto-backtest'
     | '/api/bot'
     | '/api/bot-trades'
+    | '/api/custom-presets'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -566,6 +595,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
@@ -609,6 +639,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/skills'
     | '/stats'
     | '/strategies'
     | '/surveillance'
@@ -617,6 +648,7 @@ export interface FileRouteTypes {
     | '/api/auto-backtest'
     | '/api/bot'
     | '/api/bot-trades'
+    | '/api/custom-presets'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -625,6 +657,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
@@ -668,6 +701,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/signals'
+    | '/skills'
     | '/stats'
     | '/strategies'
     | '/surveillance'
@@ -676,6 +710,7 @@ export interface FileRouteTypes {
     | '/api/auto-backtest'
     | '/api/bot'
     | '/api/bot-trades'
+    | '/api/custom-presets'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -684,6 +719,7 @@ export interface FileRouteTypes {
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
+    | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
     | '/api/trades'
@@ -728,6 +764,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   SignalsRoute: typeof SignalsRoute
+  SkillsRoute: typeof SkillsRoute
   StatsRoute: typeof StatsRoute
   StrategiesRoute: typeof StrategiesRoute
   SurveillanceRoute: typeof SurveillanceRoute
@@ -736,6 +773,7 @@ export interface RootRouteChildren {
   ApiAutoBacktestRoute: typeof ApiAutoBacktestRoute
   ApiBotRoute: typeof ApiBotRoute
   ApiBotTradesRoute: typeof ApiBotTradesRoute
+  ApiCustomPresetsRoute: typeof ApiCustomPresetsRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
@@ -744,6 +782,7 @@ export interface RootRouteChildren {
   ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
+  ApiSignalHistoryRoute: typeof ApiSignalHistoryRoute
   ApiStatsRoute: typeof ApiStatsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
   ApiTradesRoute: typeof ApiTradesRoute
@@ -799,6 +838,13 @@ declare module '@tanstack/react-router' {
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/skills': {
+      id: '/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof SkillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signals': {
@@ -934,6 +980,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/signal-history': {
+      id: '/api/signal-history'
+      path: '/api/signal-history'
+      fullPath: '/api/signal-history'
+      preLoaderRoute: typeof ApiSignalHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/settings': {
       id: '/api/settings'
       path: '/api/settings'
@@ -988,6 +1041,13 @@ declare module '@tanstack/react-router' {
       path: '/api/deriv-session'
       fullPath: '/api/deriv-session'
       preLoaderRoute: typeof ApiDerivSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/custom-presets': {
+      id: '/api/custom-presets'
+      path: '/api/custom-presets'
+      fullPath: '/api/custom-presets'
+      preLoaderRoute: typeof ApiCustomPresetsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bot-trades': {
@@ -1203,6 +1263,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   SignalsRoute: SignalsRoute,
+  SkillsRoute: SkillsRoute,
   StatsRoute: StatsRoute,
   StrategiesRoute: StrategiesRoute,
   SurveillanceRoute: SurveillanceRoute,
@@ -1211,6 +1272,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAutoBacktestRoute: ApiAutoBacktestRoute,
   ApiBotRoute: ApiBotRoute,
   ApiBotTradesRoute: ApiBotTradesRoute,
+  ApiCustomPresetsRoute: ApiCustomPresetsRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
@@ -1219,6 +1281,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
+  ApiSignalHistoryRoute: ApiSignalHistoryRoute,
   ApiStatsRoute: ApiStatsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
   ApiTradesRoute: ApiTradesRoute,

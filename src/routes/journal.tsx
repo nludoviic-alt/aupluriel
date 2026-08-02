@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, CheckCircle2, Download, Info, Microscope, TrendingDown } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Download, Info, Microscope, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useAuth } from "@/hooks/use-auth";
 import { type TradeLog } from "@/lib/autotrader";
 import { api } from "@/lib/api";
 import {
@@ -17,11 +18,15 @@ import {
   slippageBySegment,
   errorsByDay,
   equityCurve,
+  exceptionalDayImpact,
   exportToCsv,
   insights,
+  performanceWindows,
   summarize,
   type Bucket,
   type DayBucket,
+  type ExceptionalDayImpact,
+  type PerformanceWindow,
   type SegmentStats,
 } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -32,6 +37,7 @@ export const Route = createFileRoute("/journal")({
 });
 
 function JournalPage() {
+  const { user } = useAuth();
   const [logs, setLogs] = useState<TradeLog[]>([]);
   const [loading, setLoading] = useState(true);
   // Symbols currently in the watchlist of at least one of the three presets
@@ -87,6 +93,11 @@ function JournalPage() {
   const confWithin = withinSegment(visibleLogs, "confidence");
   const slippage = slippageBySegment(visibleLogs);
   const errDays = errorsByDay(visibleLogs);
+  const windows = performanceWindows(visibleLogs);
+  const exceptionalDay = exceptionalDayImpact(visibleLogs);
+  const recent100 = windows.find((window) => window.size === 100);
+  const frequencyLocked = recent100?.current.trades === 100 && recent100.current.profitFactor < 1;
+  const hasFrequencySample = recent100?.current.trades === 100;
 
   const hasData = s.trades > 0;
 
@@ -101,6 +112,11 @@ function JournalPage() {
           <p className="text-sm text-muted-foreground">
             Ce qui marche vraiment — par paire, session, heure et niveau de confiance.
           </p>
+          {user && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Compte {user.username} · journal serveur uniquement
+            </p>
+          )}
         </div>
         {hasData && (
           <Button variant="outline" size="sm" onClick={() => exportToCsv(logs)} className="gap-2">
@@ -171,6 +187,13 @@ function JournalPage() {
               tone={s.currentStreak > 0 ? "bull" : s.currentStreak < 0 ? "bear" : "default"}
             />
           </div>
+
+          <PerformanceWindows
+            windows={windows}
+            frequencyLocked={frequencyLocked}
+            hasFrequencySample={hasFrequencySample}
+            exceptionalDay={exceptionalDay}
+          />
 
           {/* Insights */}
           {ideas.length > 0 && (
@@ -415,6 +438,96 @@ function Stat({
   );
 }
 
+function PerformanceWindows({
+  windows,
+  frequencyLocked,
+  hasFrequencySample,
+  exceptionalDay,
+}: {
+  windows: PerformanceWindow[];
+  frequencyLocked: boolean;
+  hasFrequencySample: boolean;
+  exceptionalDay: ExceptionalDayImpact | null;
+}) {
+  return (
+    <section className="glass-panel rounded-xl overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">Performance récente</h2>
+          <p className="text-xs text-muted-foreground">Chaque fenêtre est comparée aux trades qui la précèdent.</p>
+        </div>
+        <span className={cn(
+          "inline-flex items-center gap-1.5 text-xs font-semibold",
+          frequencyLocked
+            ? "text-[color:var(--bear)]"
+            : hasFrequencySample
+              ? "text-[color:var(--bull)]"
+              : "text-muted-foreground",
+        )}>
+          {frequencyLocked && <AlertTriangle className="h-3.5 w-3.5" />}
+          {frequencyLocked
+            ? "Fréquence à ne pas augmenter"
+            : hasFrequencySample
+              ? "Aucune alerte sur 100 trades"
+              : "Échantillon inférieur à 100 trades"}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[620px] text-sm">
+          <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2 text-left">Fenêtre</th>
+              <th className="px-4 py-2 text-right">P&amp;L</th>
+              <th className="px-4 py-2 text-right">Espérance</th>
+              <th className="px-4 py-2 text-right">PF</th>
+              <th className="px-4 py-2 text-right">Période précédente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {windows.map((window) => {
+              const current = window.current;
+              const previous = window.previous;
+              return (
+                <tr key={window.size} className="border-t border-border/40">
+                  <td className="px-4 py-2 font-semibold">{current.trades} derniers</td>
+                  <td className={cn("px-4 py-2 text-right font-mono font-semibold", current.netPnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                    {current.netPnl >= 0 ? "+" : ""}${current.netPnl.toFixed(2)}
+                  </td>
+                  <td className={cn("px-4 py-2 text-right font-mono", current.expectancy >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                    {current.expectancy >= 0 ? "+" : ""}${current.expectancy.toFixed(3)}
+                  </td>
+                  <td className={cn("px-4 py-2 text-right font-mono font-semibold", current.profitFactor >= 1 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                    {formatProfitFactor(current.profitFactor)}
+                  </td>
+                  <td className="px-4 py-2 text-right text-muted-foreground">
+                    {previous
+                      ? `${previous.netPnl >= 0 ? "+" : ""}$${previous.netPnl.toFixed(2)} · PF ${formatProfitFactor(previous.profitFactor)}`
+                      : "Échantillon insuffisant"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {exceptionalDay?.concentrated && (
+        <div className="border-t border-[color:var(--brand-amber)]/25 bg-[color:var(--brand-amber)]/[0.04] px-4 py-3 text-xs">
+          <span className="font-semibold text-[color:var(--brand-amber)]">Résultat concentré : </span>
+          la meilleure journée ({new Date(`${exceptionalDay.bestDay.date}T00:00:00Z`).toLocaleDateString("fr-FR")})
+          représente {exceptionalDay.bestDay.pnl >= 0 ? "+" : ""}${exceptionalDay.bestDay.pnl.toFixed(2)}.
+          Sans elle, le P&amp;L serait {exceptionalDay.pnlWithoutBestDay >= 0 ? "+" : ""}${exceptionalDay.pnlWithoutBestDay.toFixed(2)}.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatProfitFactor(value: number): string {
+  return value === Infinity ? "∞" : value.toFixed(2);
+}
+
 /** Montant signé, convention « coût » : positif = défavorable, négatif =
  * favorable. Le signe est toujours explicite pour qu'aucune colonne ne se lise
  * à l'envers d'une autre. */
@@ -584,13 +697,14 @@ function BreakdownTable({ title, buckets, bare = false }: { title?: string; buck
       {buckets.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">Aucune donnée</div>
       ) : (
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[560px] text-sm">
           <thead className="bg-muted/20 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-4 py-2 text-left">Segment</th>
               <th className="px-4 py-2 text-right">Trades</th>
-              <th className="px-4 py-2 text-right">Win Rate</th>
               <th className="px-4 py-2 text-right">P&L</th>
+              <th className="px-4 py-2 text-right">Espérance</th>
+              <th className="px-4 py-2 text-right">PF</th>
             </tr>
           </thead>
           <tbody>
@@ -598,21 +712,14 @@ function BreakdownTable({ title, buckets, bare = false }: { title?: string; buck
               <tr key={b.key} className="border-t border-border/40">
                 <td className="px-4 py-2 font-medium">{b.label}</td>
                 <td className="px-4 py-2 text-right text-muted-foreground">{b.trades}</td>
-                <td className="px-4 py-2 text-right">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="hidden sm:block h-1.5 w-16 overflow-hidden rounded-full bg-muted/40">
-                      <span
-                        className={cn("block h-full rounded-full", b.winRate >= 55 ? "bg-[color:var(--bull)]" : b.winRate >= 45 ? "bg-[color:var(--brand-amber)]" : "bg-[color:var(--bear)]")}
-                        style={{ width: `${Math.min(100, b.winRate)}%` }}
-                      />
-                    </span>
-                    <span className={cn("font-semibold", b.winRate >= 55 ? "text-[color:var(--bull)]" : b.winRate >= 45 ? "text-foreground" : "text-[color:var(--bear)]")}>
-                      {b.winRate.toFixed(0)}%
-                    </span>
-                  </span>
-                </td>
                 <td className={cn("px-4 py-2 text-right font-mono font-semibold", b.pnl >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
                   {b.pnl >= 0 ? "+" : ""}{b.pnl.toFixed(2)}
+                </td>
+                <td className={cn("px-4 py-2 text-right font-mono", b.expectancy >= 0 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                  {b.expectancy >= 0 ? "+" : ""}{b.expectancy.toFixed(3)}
+                </td>
+                <td className={cn("px-4 py-2 text-right font-mono font-semibold", b.profitFactor >= 1 ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                  {formatProfitFactor(b.profitFactor)}
                 </td>
               </tr>
             ))}
@@ -622,14 +729,14 @@ function BreakdownTable({ title, buckets, bare = false }: { title?: string; buck
     </>
   );
 
-  if (bare) return content;
+  if (bare) return <div className="overflow-x-auto">{content}</div>;
 
   return (
     <div className="glass-panel rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border/40">
         <h3 className="text-sm font-semibold">{title}</h3>
       </div>
-      {content}
+      <div className="overflow-x-auto">{content}</div>
     </div>
   );
 }

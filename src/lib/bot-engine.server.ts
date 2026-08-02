@@ -199,7 +199,16 @@ function getOpenFloatingPnl(userId: number, preset: Preset): number {
   return row.floating;
 }
 
-export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "live"): { pnl: number; count: number } {
+export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "live"): {
+  pnl: number;
+  floatingLoss: number;
+  riskPnl: number;
+  count: number;
+  wins: number;
+  losses: number;
+  totalWon: number;
+  totalLost: number;
+} {
   // UTC midnight — must match nextUtcMidnight() below. Using local server
   // midnight here let a resumed bot see stale pre-reset P&L still above the
   // daily cap and immediately re-pause itself (server tz != UTC).
@@ -208,13 +217,29 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
   const f = presetSymbolFilter(preset);
   const row = getDb()
     .prepare(
-      `SELECT
+       `SELECT
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl,
-         COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count
+         COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count,
+         COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
+         COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
+         COALESCE(SUM(CASE WHEN status = 'won' THEN profit ELSE 0 END), 0) AS totalWon,
+         COALESCE(SUM(CASE WHEN status = 'lost' THEN profit ELSE 0 END), 0) AS totalLost
        FROM bot_trades WHERE user_id = ? AND ${f.sql} AND time >= ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get(userId, ...f.params, start.getTime(), mode ?? null, mode ?? null) as { pnl: number; count: number };
-  return row;
+    .get(userId, ...f.params, start.getTime(), mode ?? null, mode ?? null) as {
+      pnl: number;
+      count: number;
+      wins: number;
+      losses: number;
+      totalWon: number;
+      totalLost: number;
+    };
+  const floatingLoss = Math.min(0, getOpenFloatingPnl(userId, preset));
+  return {
+    ...row,
+    floatingLoss,
+    riskPnl: row.pnl + floatingLoss,
+  };
 }
 
 /**
@@ -238,6 +263,30 @@ export function getAllTimeStats(userId: number, preset: Preset, mode?: "demo" | 
     .get(userId, ...f.params, mode ?? null, mode ?? null) as { wins: number; losses: number; pnl: number };
   const trades = row.wins + row.losses;
   return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
+}
+
+export function getRecentPerformance(
+  userId: number,
+  preset: Preset,
+  limit = 100,
+): { trades: number; pnl: number; expectancy: number; profitFactor: number } {
+  const f = presetSymbolFilter(preset);
+  const rows = getDb()
+    .prepare(
+      `SELECT profit FROM bot_trades
+       WHERE user_id = ? AND ${f.sql} AND status IN ('won','lost')
+       ORDER BY COALESCE(closed_at, time) DESC LIMIT ?`,
+    )
+    .all(userId, ...f.params, limit) as { profit: number }[];
+  const grossWin = rows.reduce((sum, row) => sum + Math.max(0, row.profit), 0);
+  const grossLoss = Math.abs(rows.reduce((sum, row) => sum + Math.min(0, row.profit), 0));
+  const pnl = grossWin - grossLoss;
+  return {
+    trades: rows.length,
+    pnl,
+    expectancy: rows.length ? pnl / rows.length : 0,
+    profitFactor: grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : 0,
+  };
 }
 
 /**
@@ -1660,4 +1709,8 @@ export async function restoreBots(): Promise<void> {
 
 export function getBotTrades(userId: number, preset: Preset, limit = 20): TradeLog[] {
   return loadRecentTrades(userId, preset, limit);
+}
+
+export function getOpenBotTrades(userId: number, preset: Preset): TradeLog[] {
+  return loadOpenOrPendingTrades(userId, preset);
 }

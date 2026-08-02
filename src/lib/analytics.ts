@@ -86,17 +86,24 @@ export interface Bucket {
   wins: number;
   winRate: number;
   pnl: number;
+  expectancy: number;
+  profitFactor: number;
 }
 
 function bucketStats(key: string, label: string, items: ClosedTrade[]): Bucket {
   const wins = items.filter((x) => x.status === "won").length;
+  const pnl = items.reduce((s, x) => s + x.profit, 0);
+  const grossWin = items.reduce((s, x) => s + Math.max(0, x.profit), 0);
+  const grossLoss = Math.abs(items.reduce((s, x) => s + Math.min(0, x.profit), 0));
   return {
     key,
     label,
     trades: items.length,
     wins,
     winRate: items.length ? (wins / items.length) * 100 : 0,
-    pnl: items.reduce((s, x) => s + x.profit, 0),
+    pnl,
+    expectancy: items.length ? pnl / items.length : 0,
+    profitFactor: grossLoss > 0 ? grossWin / grossLoss : wins ? Infinity : 0,
   };
 }
 
@@ -193,6 +200,59 @@ export function byDay(logs: TradeLog[]): DayBucket[] {
     });
 }
 
+export interface PerformanceWindow {
+  size: number;
+  current: Summary;
+  previous: Summary | null;
+}
+
+/** Recent closed trades, newest first, compared with the immediately
+ * preceding window of the same size. This prevents a profitable all-time
+ * total from hiding a strategy that has recently turned negative. */
+export function performanceWindows(
+  logs: TradeLog[],
+  sizes: readonly number[] = [20, 50, 100, 200],
+): PerformanceWindow[] {
+  const ordered = closedTrades(logs)
+    .slice()
+    .sort((a, b) => (b.closedAt ?? b.time) - (a.closedAt ?? a.time));
+
+  return sizes
+    .filter((size) => ordered.length >= size)
+    .map((size) => {
+      const currentTrades = ordered.slice(0, size);
+      const previousTrades = ordered.slice(size, size * 2);
+      return {
+        size,
+        current: summarize(currentTrades),
+        previous: previousTrades.length === size ? summarize(previousTrades) : null,
+      };
+    });
+}
+
+export interface ExceptionalDayImpact {
+  bestDay: DayBucket;
+  totalPnl: number;
+  pnlWithoutBestDay: number;
+  concentrated: boolean;
+}
+
+/** Isolates the strongest day so one exceptional result cannot silently carry
+ * the all-time headline. */
+export function exceptionalDayImpact(logs: TradeLog[]): ExceptionalDayImpact | null {
+  const days = byDay(logs);
+  if (!days.length) return null;
+  const totalPnl = days.reduce((sum, day) => sum + day.pnl, 0);
+  const bestDay = days.reduce((best, day) => day.pnl > best.pnl ? day : best);
+  const pnlWithoutBestDay = totalPnl - bestDay.pnl;
+  return {
+    bestDay,
+    totalPnl,
+    pnlWithoutBestDay,
+    concentrated: bestDay.pnl > 0 && (pnlWithoutBestDay < 0 || bestDay.pnl > Math.abs(totalPnl) * 0.5),
+  };
+}
+
 export function exportToCsv(logs: TradeLog[]): void {
   const closed = closedTrades(logs).slice().sort((a, b) => a.time - b.time);
   const header = ["Date", "Heure", "Paire", "Direction", "Mise ($)", "P&L ($)", "Résultat", "Confiance (%)", "TF Agreement", "Note"];
@@ -234,23 +294,40 @@ export function insights(logs: TradeLog[]): { type: "good" | "warn" | "info"; te
   if (s.profitFactor >= 1.5) out.push({ type: "good", text: `Profit factor solide (${s.profitFactor.toFixed(2)}) — la stratégie gagne plus qu'elle ne perd.` });
   else if (s.profitFactor < 1) out.push({ type: "warn", text: `Profit factor < 1 (${s.profitFactor.toFixed(2)}) — la config actuelle perd de l'argent. À revoir.` });
 
-  // Best/worst symbols
-  const syms = bySymbol(logs).filter((b) => b.trades >= 5);
-  const worst = syms.slice().sort((a, b) => a.winRate - b.winRate)[0];
-  const best = syms.slice().sort((a, b) => b.winRate - a.winRate)[0];
-  if (worst && worst.winRate < 45) out.push({ type: "warn", text: `${worst.label} : ${worst.winRate.toFixed(0)}% de réussite sur ${worst.trades} trades — envisage de le retirer des paires surveillées.` });
-  if (best && best.winRate >= 60) out.push({ type: "good", text: `${best.label} : ${best.winRate.toFixed(0)}% de réussite sur ${best.trades} trades — ta paire la plus fiable.` });
+  // Symbols and sessions: decisions use expectancy and profit factor, never
+  // win rate alone. A high hit rate can still lose money when losses are
+  // larger than wins.
+  const syms = bySymbol(logs).filter((b) => b.trades >= 20);
+  const worst = syms.slice().sort((a, b) => a.expectancy - b.expectancy)[0];
+  const best = syms.slice().sort((a, b) => b.expectancy - a.expectancy)[0];
+  if (worst && worst.profitFactor < 1) {
+    out.push({ type: "warn", text: `${worst.label} : PF ${worst.profitFactor.toFixed(2)}, espérance ${worst.expectancy >= 0 ? "+" : ""}$${worst.expectancy.toFixed(2)} sur ${worst.trades} trades — segment à suspendre ou revoir.` });
+  }
+  if (best && best.profitFactor > 1 && best.expectancy > 0) {
+    out.push({ type: "good", text: `${best.label} : PF ${best.profitFactor.toFixed(2)}, espérance +$${best.expectancy.toFixed(2)} sur ${best.trades} trades — meilleur segment suffisamment échantillonné.` });
+  }
 
-  // Best session
-  const sess = bySession(logs).filter((b) => b.trades >= 5).sort((a, b) => b.winRate - a.winRate)[0];
-  if (sess && sess.winRate >= 58) out.push({ type: "good", text: `Session ${sess.label} : ${sess.winRate.toFixed(0)}% — concentre ton trading sur ce créneau.` });
+  const sess = bySession(logs)
+    .filter((b) => b.trades >= 20 && b.profitFactor > 1 && b.expectancy > 0)
+    .sort((a, b) => b.expectancy - a.expectancy)[0];
+  if (sess) {
+    out.push({ type: "good", text: `Session ${sess.label} : PF ${sess.profitFactor.toFixed(2)}, espérance +$${sess.expectancy.toFixed(2)} sur ${sess.trades} trades.` });
+  }
 
   // Confidence correlation
   const conf = byConfidence(logs);
   const high = conf.find((c) => c.key === "gte90" || c.key === "80-90");
   const low = conf.find((c) => c.key === "lt70");
-  if (high && low && high.winRate > low.winRate + 10) {
-    out.push({ type: "good", text: `Les signaux à forte confiance gagnent davantage (${high.label}: ${high.winRate.toFixed(0)}%) — augmente le seuil de confiance minimum.` });
+  if (high && low && high.trades >= 20 && low.trades >= 20 && high.expectancy > low.expectancy && high.profitFactor > 1) {
+    out.push({ type: "good", text: `Les signaux ${high.label} ont une meilleure espérance (${high.expectancy >= 0 ? "+" : ""}$${high.expectancy.toFixed(2)}) et un PF de ${high.profitFactor.toFixed(2)}.` });
+  }
+
+  const recent100 = performanceWindows(logs, [100])[0];
+  if (recent100?.current.trades === 100 && recent100.current.profitFactor < 1) {
+    out.unshift({
+      type: "warn",
+      text: `Les 100 derniers trades ont un PF de ${recent100.current.profitFactor.toFixed(2)} et une espérance de ${recent100.current.expectancy >= 0 ? "+" : ""}$${recent100.current.expectancy.toFixed(2)} — ne pas augmenter la fréquence.`,
+    });
   }
 
   // Streak warning

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Trading Production"
+  short_description: "Audite rendement, risque et cohérence du bot"
+  default_prompt: "Utilise $audit-trading-production pour auditer les performances réelles du bot Au Pluriel en production."

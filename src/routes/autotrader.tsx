@@ -315,6 +315,8 @@ function AutoTraderPage() {
     lastError?: string | null;
     lastScan?: ScanResult | null;
     todayPnl: number;
+    todayFloatingLoss: number;
+    todayRiskPnl: number;
     todayCount: number;
     trades: TradeLog[];
     allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
@@ -523,6 +525,9 @@ function AutoTraderPage() {
     ? (cloudSelected?.trades ?? []).filter((t) => (t.status === "won" || t.status === "lost") && isToday(t.time))
     : [];
   const pnl = cloudActive ? (cloudSelected?.todayPnl ?? 0) : localPnl;
+  const lossUsedUsd = cloudActive
+    ? Math.abs(Math.min(0, cloudSelected?.todayRiskPnl ?? pnl))
+    : Math.abs(Math.min(0, pnl));
   const tradeCount = cloudActive ? (cloudSelected?.todayCount ?? 0) : localTradeCount;
   const wins = cloudActive ? cloudClosedToday.filter((t) => t.status === "won").length : localWins;
   const losses = cloudActive ? cloudClosedToday.filter((t) => t.status === "lost").length : localLosses;
@@ -1295,9 +1300,9 @@ function AutoTraderPage() {
               <KpiCard
                 className="col-span-2 sm:col-span-1"
                 label="Limite de perte"
-                value={`${Math.round((Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd) * 100)}%`}
-                tone={Math.abs(pnl) > config.maxDailyLossUsd * 0.7 ? "bear" : Math.abs(pnl) > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
-                delta={`$${Math.abs(Math.min(0, pnl)).toFixed(0)} / $${config.maxDailyLossUsd}`}
+                value={`${Math.round((lossUsedUsd / config.maxDailyLossUsd) * 100)}%`}
+                tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
+                delta={`$${lossUsedUsd.toFixed(2)} / $${config.maxDailyLossUsd}`}
               />
             </div>
 
@@ -1307,6 +1312,7 @@ function AutoTraderPage() {
               config={config}
               running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
               pnl={pnl}
+              lossUsedUsd={lossUsedUsd}
             />
 
           {/* Positions en direct + derniers trades côte à côte sur grand écran */}

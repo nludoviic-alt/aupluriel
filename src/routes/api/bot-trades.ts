@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/bot-trades")({
           )
           .all(auth.userId, limit) as Record<string, unknown>[];
 
-        const trades = rows.map((r) => logFromRow(r as Parameters<typeof logFromRow>[0]));
+        const trades = rows.map((r) => logFromRow(r as unknown as Parameters<typeof logFromRow>[0]));
         return json(trades);
       },
     },

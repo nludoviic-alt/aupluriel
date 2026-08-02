@@ -14,7 +14,9 @@ import {
   getAllTimeStats,
   getBotRuntime,
   getBotTrades,
+  getOpenBotTrades,
   getBrokerBalances,
+  getRecentPerformance,
   getTodayStats,
   loadBotConfig,
   startBotForUser,
@@ -37,20 +39,8 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     .get(userId, preset) as { enabled: number; config: string } | undefined;
   const runtime = getBotRuntime(userId, preset);
   const trades = getBotTrades(userId, preset, 20);
-  const savedConfig = (() => {
-    if (!state?.config) return null;
-    try {
-      const saved = JSON.parse(state.config) as Partial<AutoTraderConfig>;
-      return {
-        stakeUsd: Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd,
-        maxDailyLossUsd: Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
-        mode: saved.mode === "live" ? "live" as const : "demo" as const,
-      };
-    } catch {
-      return null;
-    }
-  })();
-  const mode: "demo" | "live" = savedConfig?.mode ?? "demo";
+  const savedConfig = loadBotConfig(userId, preset);
+  const mode: "demo" | "live" = savedConfig?.mode === "live" ? "live" : "demo";
   // SQL over ALL of today's rows — summing the 20-trade window instead
   // made early wins vanish from the display as new events pushed them out.
   const today = getTodayStats(userId, preset, mode);
@@ -67,8 +57,15 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     lastScan: runtime.lastScan,
     lastError: runtime.lastError,
     todayPnl: today.pnl,
+    todayFloatingLoss: today.floatingLoss,
+    todayRiskPnl: today.riskPnl,
     todayCount: today.count,
+    todayWins: today.wins,
+    todayLosses: today.losses,
+    todayTotalWon: today.totalWon,
+    todayTotalLost: today.totalLost,
     trades,
+    openTrades: getOpenBotTrades(userId, preset),
     allTimeStats: allTime,
   };
 }
@@ -93,7 +90,7 @@ export const Route = createFileRoute("/api/bot")({
         if (!user) return json({ error: "Non authentifié" }, 401);
 
         const body = (await request.json().catch(() => ({}))) as {
-          action?: "start" | "stop" | "reset";
+          action?: "start" | "stop" | "reset" | "update";
           preset?: Preset;
           config?: Partial<AutoTraderConfig>;
         };
@@ -148,6 +145,35 @@ export const Route = createFileRoute("/api/bot")({
           return json({ ok: true, running: false, preset });
         }
 
+        if (body.action === "update") {
+          const current = loadBotConfig(user.id, preset) ?? {
+            ...DEFAULT_CONFIG,
+            ...presetFieldsFor(preset),
+          };
+          const next: AutoTraderConfig = { ...current, ...(body.config ?? {}) };
+          if (next.mode === "simulation") next.mode = "demo";
+          const increasesFrequency =
+            Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)
+            || Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
+          if (increasesFrequency) {
+            const recent = getRecentPerformance(user.id, preset, 100);
+            if (recent.trades === 100 && recent.profitFactor < 1) {
+              return json({
+                error: `Augmentation refusée : les 100 derniers trades ${preset} ont un profit factor de ${recent.profitFactor.toFixed(2)} et une espérance de ${recent.expectancy >= 0 ? "+" : ""}$${recent.expectancy.toFixed(2)}.`,
+                code: "NEGATIVE_RECENT_EDGE",
+                recent,
+              }, 409);
+            }
+          }
+          getDb().prepare(`
+            INSERT INTO bot_state (user_id, preset, enabled, config, updated_at)
+            VALUES (?, ?, 0, ?, unixepoch())
+            ON CONFLICT(user_id, preset) DO NOTHING
+          `).run(user.id, preset, JSON.stringify(next));
+          updateConfigForUser(user.id, preset, next);
+          return json({ ok: true, preset, config: next });
+        }
+
         // Reset this ONE preset's config back to its canonical values —
         // replaces the old cross-preset "switch" action now that all three
         // run independently. Money fields (stake/cap/mode) and per-account
@@ -159,8 +185,34 @@ export const Route = createFileRoute("/api/bot")({
         // kind of reset with no preservation).
         if (body.action === "reset") {
           const current = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG };
-          const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence } = current;
-          const next: AutoTraderConfig = { ...current, ...presetFieldsFor(preset), stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence };
+          const {
+            stakeUsd,
+            maxDailyLossUsd,
+            mode,
+            symbolMode,
+            symbols,
+            excludedSymbols,
+            minConfidence,
+            maxConfidence,
+            minTfAgreement,
+            maxSimultaneousTrades,
+            maxOpenPositions,
+          } = current;
+          const next: AutoTraderConfig = {
+            ...current,
+            ...presetFieldsFor(preset),
+            stakeUsd,
+            maxDailyLossUsd,
+            mode,
+            symbolMode,
+            symbols,
+            excludedSymbols,
+            minConfidence,
+            maxConfidence,
+            minTfAgreement,
+            maxSimultaneousTrades,
+            maxOpenPositions,
+          };
 
           // updateConfigForUser only UPDATEs — a preset never started has no
           // bot_state row yet, so the reset would silently no-op.
@@ -173,7 +225,7 @@ export const Route = createFileRoute("/api/bot")({
           return json({ ok: true, preset, config: next });
         }
 
-        return json({ error: "action start|stop|reset requise" }, 400);
+        return json({ error: "action start|stop|reset|update requise" }, 400);
       },
     },
   },

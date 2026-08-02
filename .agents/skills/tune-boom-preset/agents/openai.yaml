@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimisation Boom"
+  short_description: "Optimise Boom sur des bougies Deriv réelles"
+  default_prompt: "Utilise $tune-boom-preset pour tester et optimiser la configuration Boom avec des données réelles."

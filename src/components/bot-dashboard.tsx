@@ -11,6 +11,7 @@ interface BotDashboardProps {
   config: AutoTraderConfig;
   running: boolean;
   pnl: number;
+  lossUsedUsd: number;
 }
 
 /** Isolated so the once-a-second tick only re-renders this text, not the whole
@@ -28,7 +29,7 @@ function ScanCountdownText({ lastScanTime, running }: { lastScanTime: number; ru
   return <>{secsLeft > 0 ? `scan dans ${secsLeft}s` : "scan en cours…"}</>;
 }
 
-export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config, running, pnl }: BotDashboardProps) {
+export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config, running, pnl, lossUsedUsd }: BotDashboardProps) {
   // ── Equity curve ─────────────────────────────────────────────────────────────
   const equityPoints = useMemo(() => {
     const startOfDay = new Date();
@@ -84,7 +85,7 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
       : "";
 
   // ── Risk gauges ──────────────────────────────────────────────────────────────
-  const lossRatio = Math.min(1, Math.abs(Math.min(0, pnl)) / config.maxDailyLossUsd);
+  const lossRatio = Math.min(1, lossUsedUsd / config.maxDailyLossUsd);
   const profitRatio =
     config.maxDailyProfitUsd > 0
       ? Math.min(1, Math.max(0, pnl) / config.maxDailyProfitUsd)
@@ -276,30 +277,32 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
                   <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground/80" />
                   <span className="text-[10px] text-neutral-400 font-extrabold uppercase tracking-widest">Limite perte</span>
                 </div>
-                <span className={cn("text-xs font-extrabold font-mono-tabular px-1.5 py-0.5 rounded bg-black/45 border border-white/5 shadow-inner", lossRatio > 0.7 ? "text-down text-glow-orange border-down/20" : lossRatio > 0.4 ? "text-amber-400 border-amber-500/20" : "text-neutral-300")}>
-                  ${Math.abs(Math.min(0, pnl)).toFixed(2)} / ${config.maxDailyLossUsd}
+                <span className={cn("text-xs font-extrabold font-mono-tabular px-1.5 py-0.5 rounded bg-black/45 border border-white/5 shadow-inner", lossRatio > 0.7 ? "text-down text-glow-orange border-down/20" : lossRatio > 0.4 ? "text-amber-400 border-amber-500/20" : lossRatio > 0 ? "text-up border-up/20" : "text-neutral-300")}>
+                  ${lossUsedUsd.toFixed(2)} / ${config.maxDailyLossUsd}
                 </span>
               </div>
 
               {/* Segmented LED Bar */}
               <div className="flex gap-1 h-2.5 items-stretch mt-3">
                 {Array.from({ length: 10 }).map((_, idx) => {
-                  const threshold = (idx + 1) / 10;
-                  const isLit = lossRatio >= threshold;
+                  const segmentProgress = Math.min(1, Math.max(0, (lossRatio - idx / 10) * 10));
                   return (
                     <div
                       key={idx}
-                      className={cn(
-                        "flex-1 rounded-sm transition-all duration-300",
-                        isLit
-                          ? lossRatio > 0.7 
-                            ? "bg-down shadow-[0_0_6px_var(--down)]" 
-                            : lossRatio > 0.4 
-                              ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" 
-                              : "bg-neutral-400 shadow-[0_0_4px_rgba(255,255,255,0.2)]"
-                          : "bg-neutral-900/60 border border-white/5"
-                      )}
-                    />
+                      className="flex-1 overflow-hidden rounded-sm bg-neutral-900/60 border border-white/5"
+                    >
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-300",
+                          lossRatio > 0.7
+                            ? "bg-down shadow-[0_0_6px_var(--down)]"
+                            : lossRatio > 0.4
+                              ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]"
+                              : "bg-up shadow-[0_0_5px_var(--up)]",
+                        )}
+                        style={{ width: `${segmentProgress * 100}%` }}
+                      />
+                    </div>
                   );
                 })}
               </div>
