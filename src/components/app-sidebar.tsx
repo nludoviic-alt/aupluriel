@@ -47,6 +47,7 @@ const analysisItems = [
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
+  { title: "Skills",           url: "/skills",          icon: Wrench,           color: "text-sky-400",    glow: "shadow-sky-500/30" },
   { title: "Surveillance",     url: "/surveillance",    icon: Activity,         color: "text-emerald-400", glow: "shadow-emerald-500/30" },
 ];
 
@@ -220,7 +221,7 @@ export function AppSidebar() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredAnalysisItems = analysisItems.filter(
-    (item) => item.url !== "/backtest" || showBacktest
+    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/skills" || !!user?.is_admin)
   );
 
   const filteredToolItems = toolItems;
@@ -327,17 +328,6 @@ export function AppSidebar() {
                   <NavItem
                     key="/admin"
                     item={{ title: "Administration", url: "/admin", icon: ShieldCheck, color: "text-amber-400", glow: "shadow-amber-500/30" }}
-                    isActive={active}
-                    onClick={handleNavClick}
-                  />
-                );
-              })()}
-              {user?.is_admin && (() => {
-                const active = isActive("/skills");
-                return (
-                  <NavItem
-                    key="/skills"
-                    item={{ title: "Skills", url: "/skills", icon: Wrench, color: "text-sky-400", glow: "shadow-sky-500/30" }}
                     isActive={active}
                     onClick={handleNavClick}
                   />

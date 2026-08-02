@@ -303,11 +303,13 @@ function AdminPage() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdBusy, setPwdBusy] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
-  // Which preset tabs the admin's OWN Auto-Trader shows on mobile. Display
-  // filter only — a hidden preset keeps trading, keeps appearing in this
-  // admin panel and in the journal, and desktop still shows all four.
+  // Which preset tabs a user's Auto-Trader shows on mobile. Admin can manage
+  // any user, not just themselves. Display filter only — a hidden preset keeps
+  // trading, keeps appearing in this admin panel and in the journal, and
+  // desktop still shows all four.
   const [visiblePresets, setVisiblePresets] = useState<PresetKey[] | null>(null);
   const [visiblePresetsBusy, setVisiblePresetsBusy] = useState(false);
+  const [vpUserId, setVpUserId] = useState<number | null>(null);
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -386,17 +388,20 @@ function AdminPage() {
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
-  // Loaded once: it's a preference the admin sets here, so nothing else can
-  // change it underneath us (unlike bot status / trading recap, which poll).
+  // Load visible presets whenever the selected user changes. Defaults to the
+  // admin's own account on first load.
   useEffect(() => {
     if (!user?.is_admin) return;
-    api.get<{ visiblePresets: PresetKey[] }>("/api/admin/visible-presets")
+    const target = vpUserId ?? user.id;
+    setVisiblePresets(null);
+    api.get<{ visiblePresets: PresetKey[] }>(`/api/admin/visible-presets?userId=${target}`)
       .then((d) => setVisiblePresets(d.visiblePresets))
       .catch(() => setVisiblePresets(["default", "boom", "crash"]));
-  }, [user?.is_admin]);
+  }, [user?.is_admin, vpUserId]);
 
   async function toggleVisiblePreset(p: PresetKey) {
-    if (visiblePresetsBusy || !visiblePresets) return;
+    if (visiblePresetsBusy || !visiblePresets || !user) return;
+    const target = vpUserId ?? user.id;
     const isOn = visiblePresets.includes(p);
     if (isOn && visiblePresets.length === 1) {
       toast.error("Garde au moins un preset affiché — sinon l'Auto-Trader n'aurait plus aucun onglet.");
@@ -416,7 +421,7 @@ function AdminPage() {
     setVisiblePresets(next); // optimistic — reverted below if the API refuses
     setVisiblePresetsBusy(true);
     try {
-      const res = await api.patch<{ visiblePresets: PresetKey[] }>("/api/admin/visible-presets", { visiblePresets: next });
+      const res = await api.patch<{ visiblePresets: PresetKey[] }>("/api/admin/visible-presets", { userId: target, visiblePresets: next });
       setVisiblePresets(res.visiblePresets);
     } catch (err) {
       setVisiblePresets(prev);
@@ -937,13 +942,30 @@ function AdminPage() {
           </div>
         ) : (
           <>
+            {/* User selector — admin can manage any user's mobile tabs, not just their own. */}
+            <div className="flex items-center gap-2 mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Utilisateur</label>
+              <select
+                value={vpUserId ?? user!.id}
+                onChange={(e) => setVpUserId(Number(e.target.value))}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-sm text-foreground focus:border-orange-500/40 focus:outline-none"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id} className="bg-[#0A0A0A]">
+                    {u.username}{u.id === user!.id ? " (toi)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {PRESET_KEYS.map((p) => {
                 const st = presetCardStyles[p];
                 const on = visiblePresets.includes(p);
-                // botStatus is keyed by `${userId}:${preset}` — this card is
-                // about the admin's own account, so that's the key to read.
-                const running = !!botStatus[`${user!.id}:${p}`]?.running;
+                // botStatus is keyed by `${userId}:${preset}` — use the
+                // selected user's id, not just the admin's own.
+                const targetId = vpUserId ?? user!.id;
+                const running = !!botStatus[`${targetId}:${p}`]?.running;
                 const atCap = !on && visiblePresets.length >= MAX_VISIBLE_PRESETS;
                 const lastOne = on && visiblePresets.length === 1;
                 return (
@@ -997,8 +1019,9 @@ function AdminPage() {
                 to see or stop it. Called out explicitly instead of relying on
                 the admin remembering. */}
             {(() => {
+              const targetId = vpUserId ?? user!.id;
               const hiddenRunning = PRESET_KEYS.filter(
-                (p) => !visiblePresets.includes(p) && botStatus[`${user!.id}:${p}`]?.running,
+                (p) => !visiblePresets.includes(p) && botStatus[`${targetId}:${p}`]?.running,
               );
               if (!hiddenRunning.length) return null;
               return (

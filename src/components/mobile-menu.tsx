@@ -25,6 +25,7 @@ const NAV_MORE = [
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
   { title: "Stratégies",      url: "/strategies",      icon: Workflow,         hover: "hover:bg-mint/[0.04] hover:text-mint/80" },
+  { title: "Skills",          url: "/skills",          icon: Wrench,           hover: "hover:bg-sky-500/[0.04] hover:text-sky-300" },
   { title: "Surveillance",    url: "/surveillance",  icon: Activity,        hover: "hover:bg-emerald-500/[0.04] hover:text-emerald-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];
@@ -37,7 +38,7 @@ export function MobileMenu() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredNavMore = NAV_MORE.filter(
-    (item) => item.url !== "/backtest" || showBacktest
+    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/skills" || !!user?.is_admin)
   );
 
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
@@ -205,21 +206,6 @@ export function MobileMenu() {
                 >
                   <ShieldCheck className="h-4 w-4 shrink-0" />
                   <span>Administration</span>
-                </Link>
-              )}
-              {user?.is_admin && (
-                <Link
-                  to="/skills"
-                  onClick={() => { if (!isActive("/skills")) haptic("light"); close(); }}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-150",
-                    isActive("/skills")
-                      ? "text-sky-400 bg-sky-400/10 border border-sky-400/20 font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/[0.04]",
-                  )}
-                >
-                  <Wrench className="h-4 w-4 shrink-0" />
-                  <span>Skills</span>
                 </Link>
               )}
             </div>
