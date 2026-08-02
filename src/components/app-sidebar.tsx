@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Cpu,
   Wrench,
+  Target,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -37,6 +38,7 @@ import { cn } from "@/lib/utils";
 const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
+  { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Signaux",          url: "/signals",         icon: Radar,            color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
   { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },

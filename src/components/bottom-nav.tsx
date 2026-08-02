@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, ShieldCheck, X, Menu, LineChart } from "lucide-react";
+import { LayoutDashboard, Zap, ShieldCheck, X, Menu, Target } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ export function BottomNav() {
 
   const primaryItems = [
     { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
-    { title: "Backtest",    url: "/backtest",   icon: LineChart },
+    { title: "Opportunités", url: "/opportunities", icon: Target },
     { title: "Auto-Trader", url: "/autotrader", icon: Zap },
   ];
 

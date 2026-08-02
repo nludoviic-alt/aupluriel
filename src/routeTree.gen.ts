@@ -18,6 +18,7 @@ import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as MessengerRouteImport } from './routes/messenger'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as LoginRouteImport } from './routes/login'
@@ -37,6 +38,7 @@ import { Route as ApiSignalHistoryRouteImport } from './routes/api/signal-histor
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiPresenceRouteImport } from './routes/api/presence'
+import { Route as ApiOpportunitiesRouteImport } from './routes/api/opportunities'
 import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
@@ -115,6 +117,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpportunitiesRoute = OpportunitiesRouteImport.update({
+  id: '/opportunities',
+  path: '/opportunities',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessengerRoute = MessengerRouteImport.update({
@@ -210,6 +217,11 @@ const ApiPushRoute = ApiPushRouteImport.update({
 const ApiPresenceRoute = ApiPresenceRouteImport.update({
   id: '/api/presence',
   path: '/api/presence',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOpportunitiesRoute = ApiOpportunitiesRouteImport.update({
+  id: '/api/opportunities',
+  path: '/api/opportunities',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNotifyMeRoute = ApiNotifyMeRouteImport.update({
@@ -396,6 +408,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -415,6 +428,7 @@ export interface FileRoutesByFullPath {
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
@@ -460,6 +474,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -479,6 +494,7 @@ export interface FileRoutesByTo {
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
@@ -525,6 +541,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
+  '/opportunities': typeof OpportunitiesRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -544,6 +561,7 @@ export interface FileRoutesById {
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
+  '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
@@ -591,6 +609,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/markets'
     | '/messenger'
+    | '/opportunities'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -610,6 +629,7 @@ export interface FileRouteTypes {
     | '/api/learning'
     | '/api/notes'
     | '/api/notify-me'
+    | '/api/opportunities'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
@@ -655,6 +675,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/markets'
     | '/messenger'
+    | '/opportunities'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -674,6 +695,7 @@ export interface FileRouteTypes {
     | '/api/learning'
     | '/api/notes'
     | '/api/notify-me'
+    | '/api/opportunities'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
@@ -719,6 +741,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/markets'
     | '/messenger'
+    | '/opportunities'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -738,6 +761,7 @@ export interface FileRouteTypes {
     | '/api/learning'
     | '/api/notes'
     | '/api/notify-me'
+    | '/api/opportunities'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
@@ -784,6 +808,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   MarketsRoute: typeof MarketsRoute
   MessengerRoute: typeof MessengerRoute
+  OpportunitiesRoute: typeof OpportunitiesRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -803,6 +828,7 @@ export interface RootRouteChildren {
   ApiLearningRoute: typeof ApiLearningRoute
   ApiNotesRoute: typeof ApiNotesRoute
   ApiNotifyMeRoute: typeof ApiNotifyMeRoute
+  ApiOpportunitiesRoute: typeof ApiOpportunitiesRoute
   ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
@@ -899,6 +925,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/opportunities': {
+      id: '/opportunities'
+      path: '/opportunities'
+      fullPath: '/opportunities'
+      preLoaderRoute: typeof OpportunitiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messenger': {
@@ -1032,6 +1065,13 @@ declare module '@tanstack/react-router' {
       path: '/api/presence'
       fullPath: '/api/presence'
       preLoaderRoute: typeof ApiPresenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/opportunities': {
+      id: '/api/opportunities'
+      path: '/api/opportunities'
+      fullPath: '/api/opportunities'
+      preLoaderRoute: typeof ApiOpportunitiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/notify-me': {
@@ -1299,6 +1339,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   MarketsRoute: MarketsRoute,
   MessengerRoute: MessengerRoute,
+  OpportunitiesRoute: OpportunitiesRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
@@ -1318,6 +1359,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiLearningRoute: ApiLearningRoute,
   ApiNotesRoute: ApiNotesRoute,
   ApiNotifyMeRoute: ApiNotifyMeRoute,
+  ApiOpportunitiesRoute: ApiOpportunitiesRoute,
   ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,

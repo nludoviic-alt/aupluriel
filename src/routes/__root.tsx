@@ -39,6 +39,7 @@ import {
   Settings,
   ShieldCheck,
   Compass,
+  Target,
 } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -194,6 +195,7 @@ function HamburgerButton() {
 const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }> = {
   "/": { label: "Dashboard", icon: LayoutDashboard },
   "/portfolio": { label: "Portfolio", icon: BriefcaseBusiness },
+  "/opportunities": { label: "Opportunités", icon: Target },
   "/signals": { label: "IA Signals", icon: Radar },
   "/autotrader": { label: "Auto-Trader", icon: Zap },
   "/markets": { label: "Marchés", icon: CandlestickChart },
