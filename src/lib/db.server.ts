@@ -365,6 +365,13 @@ function migrate(db: Database.Database) {
     // Free-text note an admin can leave on a user's profile (typo history, VIP status, etc.) — never shown to the user themselves.
     db.exec("ALTER TABLE users ADD COLUMN admin_note TEXT");
   }
+  if (!userCols.has("visible_presets")) {
+    // JSON array of preset keys shown in the Auto-Trader's MOBILE tab strip
+    // (2026-08-02). Purely a display filter: hiding a preset never stops its
+    // engine, and desktop always shows all four regardless. NULL = no choice
+    // made yet, which VISIBLE_PRESETS_DEFAULT below resolves.
+    db.exec("ALTER TABLE users ADD COLUMN visible_presets TEXT");
+  }
 
   // --- Additive column migrations on `alerts` (idempotent) ---
   // The API/table existed but was never wired to the UI (alerts.tsx and

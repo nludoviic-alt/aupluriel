@@ -231,6 +231,7 @@ import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard, LiveSignals } from "@/components/bot-dashboard";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   useAutoTraderEngine,
   startAutoTraderEngine,
@@ -246,10 +247,28 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" } as const;
-// Not a shorter-duration strategy despite the name — a narrower confidence
-// band (80-89%) on the SAME BOOM_PRESET mechanics (TP/SL/leverage/hold all
-// unchanged). See SCALPING_PRESET's header comment in autotrader.ts for why.
-const SCALPING_SUBTITLE = "Boom 500 · confiance 80-89% (pas une durée plus courte)";
+
+/** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
+ * list rather than used directly, so tabs always appear in the same order
+ * regardless of the order they were enabled in /admin. */
+const PRESET_ORDER = ["default", "boom", "crash", "scalping"] as const;
+
+/** Per-tab presentation. Class strings are static: Tailwind's JIT scanner
+ * can't see names assembled at runtime, which would emit no CSS in the
+ * production build. */
+const PRESET_TABS: Record<
+  (typeof PRESET_ORDER)[number],
+  { label: string; Icon: typeof Layers; active: string; card: string }
+> = {
+  default:  { label: "Multi",    Icon: Layers,       active: "bg-violet-500/35 text-violet-300", card: "border-violet-500/40 bg-violet-500/10" },
+  boom:     { label: "Boom",     Icon: Rocket,       active: "bg-orange-500/35 text-orange-300", card: "border-orange-500/40 bg-orange-500/10" },
+  crash:    { label: "Crash",    Icon: TrendingDown, active: "bg-yellow-500/35 text-yellow-300", card: "border-yellow-500/40 bg-yellow-500/10" },
+  scalping: { label: "Scalping", Icon: Timer,        active: "bg-cyan-500/35 text-cyan-300",     card: "border-cyan-500/40 bg-cyan-500/10" },
+};
+// A genuinely different engine from the other three presets, not a variant of
+// Boom: price action on M1/M5 instead of the 4-timeframe indicator vote. See
+// scalping-signal.server.ts for the rules and the backtest behind them.
+const SCALPING_SUBTITLE = "Boom 500 · tendance M5 + repli M1 · stop structurel 1.5R · démo";
 
 function loadConfig(): AutoTraderConfig {
   try {
@@ -306,6 +325,10 @@ function AutoTraderPage() {
   const balanceRef = useRef<number | undefined>(undefined);
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
+  // Drives the preset-tab filter below. Same 768px breakpoint as Tailwind's
+  // `md:`, so the JS filter and the CSS md:hidden/hidden md:flex split can't
+  // disagree about what counts as mobile.
+  const isMobile = useIsMobile();
 
   // ── Server-side bot (runs with the app closed / phone locked) ──
   // Up to three fully independent engines per account now (2026-08-01):
@@ -330,6 +353,10 @@ function AutoTraderPage() {
   }
   interface CloudStatus {
     presets: Record<PresetKey, PresetStatus>;
+    // Which presets to show in the MOBILE tab strip (set in /admin). Display
+    // filter only — `presets` above always carries all four, and a hidden
+    // preset keeps running server-side.
+    visiblePresets?: PresetKey[];
     brokerBalances?: {
       deriv: { balance: number; currency: string } | null;
       kraken: { balance: number; currency: string } | null;
@@ -343,6 +370,12 @@ function AutoTraderPage() {
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false });
+
+  // Mobile shows at most 3 of the 4 preset tabs (admin choice) — four didn't
+  // fit a phone-width strip. Desktop is never filtered. Falls back to all four
+  // until /api/bot answers, so the tabs never flicker down to a subset.
+  const mobilePresets: PresetKey[] = cloud?.visiblePresets?.length ? cloud.visiblePresets : [...PRESET_ORDER];
+  const shownPresets: PresetKey[] = isMobile ? mobilePresets : [...PRESET_ORDER];
 
   const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
   // True the moment ANY of the three presets is enabled — used for guards
@@ -378,6 +411,14 @@ function AutoTraderPage() {
     const id = setInterval(refreshCloud, 5_000);
     return () => clearInterval(id);
   }, [refreshCloud]);
+
+  // If the admin hides a preset that was currently selected, the tab strip
+  // would lose its active button — silently jump to the first visible one.
+  useEffect(() => {
+    if (shownPresets.length && !shownPresets.includes(selectedPreset)) {
+      selectPresetView(shownPresets[0]);
+    }
+  }, [shownPresets, selectedPreset]);
 
   async function toggleCloud() {
     if (cloudBusy) return;
@@ -777,66 +818,28 @@ function AutoTraderPage() {
   // A preset can show its dot lit while you're viewing a different tab.
   const presetSwitch = (
     <div className="flex w-full items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1 md:w-auto">
-      <button
-        onClick={() => selectPresetView("default")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "default" ? "bg-violet-500/35 text-violet-300" : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Layers className="h-3.5 w-3.5 shrink-0" /> Multi
-        {cloud?.presets?.default?.enabled && cloud?.presets?.default?.running && (
-          <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
-          </span>
-        )}
-      </button>
-      <button
-        onClick={() => selectPresetView("boom")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "boom" ? "bg-orange-500/35 text-orange-300" : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Rocket className="h-3.5 w-3.5 shrink-0" /> Boom
-        {cloud?.presets?.boom?.enabled && cloud?.presets?.boom?.running && (
-          <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
-          </span>
-        )}
-      </button>
-      <button
-        onClick={() => selectPresetView("crash")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "crash" ? "bg-yellow-500/35 text-yellow-300" : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <TrendingDown className="h-3.5 w-3.5 shrink-0" /> Crash
-        {cloud?.presets?.crash?.enabled && cloud?.presets?.crash?.running && (
-          <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
-          </span>
-        )}
-      </button>
-      <button
-        onClick={() => selectPresetView("scalping")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-          selectedPreset === "scalping" ? "bg-cyan-500/35 text-cyan-300" : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Timer className="h-3.5 w-3.5 shrink-0" /> Scalping
-        {cloud?.presets?.scalping?.enabled && cloud?.presets?.scalping?.running && (
-          <span className="flex items-center gap-1 ml-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-            <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
-          </span>
-        )}
-      </button>
+      {shownPresets.map((p) => {
+        const { label, Icon, active } = PRESET_TABS[p];
+        const st = cloud?.presets?.[p];
+        return (
+          <button
+            key={p}
+            onClick={() => selectPresetView(p)}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
+              selectedPreset === p ? active : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" /> {label}
+            {st?.enabled && st?.running && (
+              <span className="flex items-center gap-1 ml-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
+                <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -891,8 +894,8 @@ function AutoTraderPage() {
           ("Fonds disponibles" plus bas) ne dit pas lequel a généré quoi,
           donc ce comparatif est la seule vue qui répond directement à
           "qu'est-ce qui gagne en ce moment". Cliquer saute sur cet onglet. ── */}
-      <div className="grid grid-cols-4 gap-2">
-        {(["default", "boom", "crash", "scalping"] as const).map((p) => {
+      <div className={cn("grid gap-2", shownPresets.length === 3 ? "grid-cols-3" : "grid-cols-4")}>
+        {shownPresets.map((p) => {
           const st = cloud?.presets?.[p];
           const pnlVal = st?.todayPnl ?? 0;
           // Static class strings only — Tailwind's JIT scanner can't see

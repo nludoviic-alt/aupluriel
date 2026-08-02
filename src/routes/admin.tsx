@@ -212,6 +212,42 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
 
 const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" } as const;
 
+type PresetKey = "default" | "boom" | "crash" | "scalping";
+const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping"];
+// Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts — the API rejects more
+// than this, so the UI must not let you select more either.
+const MAX_VISIBLE_PRESETS = 3;
+
+/** Static class strings only: Tailwind's JIT scanner can't see names built at
+ * runtime like `border-${accent}-500/40`, which would silently emit no CSS in
+ * the production build. */
+const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: string; desc: string }> = {
+  default: {
+    on: "border-violet-500/40 bg-violet-500/[0.10]",
+    dot: "bg-violet-500",
+    icon: "🌐",
+    desc: "Forex, or, crypto, indices",
+  },
+  boom: {
+    on: "border-orange-500/40 bg-orange-500/[0.10]",
+    dot: "bg-orange-500",
+    icon: "🚀",
+    desc: "Boom 1000 / 500 / 900",
+  },
+  crash: {
+    on: "border-yellow-500/40 bg-yellow-500/[0.10]",
+    dot: "bg-yellow-500",
+    icon: "📉",
+    desc: "Crash 1000 / 500 / 600 / 900",
+  },
+  scalping: {
+    on: "border-cyan-500/40 bg-cyan-500/[0.10]",
+    dot: "bg-cyan-500",
+    icon: "⏱️",
+    desc: "Boom 500 · M1/M5 · démo",
+  },
+};
+
 function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -267,6 +303,11 @@ function AdminPage() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdBusy, setPwdBusy] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current: "", next: "", confirm: "" });
+  // Which preset tabs the admin's OWN Auto-Trader shows on mobile. Display
+  // filter only — a hidden preset keeps trading, keeps appearing in this
+  // admin panel and in the journal, and desktop still shows all four.
+  const [visiblePresets, setVisiblePresets] = useState<PresetKey[] | null>(null);
+  const [visiblePresetsBusy, setVisiblePresetsBusy] = useState(false);
 
   // Guard: only admins. Non-admins (or signed-out) get bounced home.
   useEffect(() => {
@@ -344,6 +385,46 @@ function AdminPage() {
     const id = setInterval(() => { loadBotStatus(); loadRecap(); }, 20_000);
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
+
+  // Loaded once: it's a preference the admin sets here, so nothing else can
+  // change it underneath us (unlike bot status / trading recap, which poll).
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    api.get<{ visiblePresets: PresetKey[] }>("/api/admin/visible-presets")
+      .then((d) => setVisiblePresets(d.visiblePresets))
+      .catch(() => setVisiblePresets(["default", "boom", "crash"]));
+  }, [user?.is_admin]);
+
+  async function toggleVisiblePreset(p: PresetKey) {
+    if (visiblePresetsBusy || !visiblePresets) return;
+    const isOn = visiblePresets.includes(p);
+    if (isOn && visiblePresets.length === 1) {
+      toast.error("Garde au moins un preset affiché — sinon l'Auto-Trader n'aurait plus aucun onglet.");
+      return;
+    }
+    if (!isOn && visiblePresets.length >= MAX_VISIBLE_PRESETS) {
+      toast.error(`Maximum ${MAX_VISIBLE_PRESETS} onglets sur mobile — désactive-en un d'abord.`);
+      return;
+    }
+    // Rebuilt from PRESET_KEYS so the stored order always matches the tab
+    // order on screen, whatever order they were clicked in.
+    const nextSet = new Set(visiblePresets);
+    if (isOn) nextSet.delete(p); else nextSet.add(p);
+    const next = PRESET_KEYS.filter((k) => nextSet.has(k));
+
+    const prev = visiblePresets;
+    setVisiblePresets(next); // optimistic — reverted below if the API refuses
+    setVisiblePresetsBusy(true);
+    try {
+      const res = await api.patch<{ visiblePresets: PresetKey[] }>("/api/admin/visible-presets", { visiblePresets: next });
+      setVisiblePresets(res.visiblePresets);
+    } catch (err) {
+      setVisiblePresets(prev);
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setVisiblePresetsBusy(false);
+    }
+  }
 
   async function changeOwnPassword() {
     if (pwdForm.next.length < 6) {
@@ -831,6 +912,109 @@ function AdminPage() {
           />
         </div>
       )}
+
+      {/* ── MOBILE PRESET TABS ──────────────────────────────────────────────
+          Four tabs didn't fit a phone-width strip, so the admin picks which
+          three to show. Display filter ONLY: a preset hidden here keeps
+          trading, keeps its P&L in the recap above, and desktop still shows
+          all four — which is why a running-but-hidden preset gets an explicit
+          warning below rather than being silently forgotten. ── */}
+      <CollapsibleBlock
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+        defaultOpen
+        header={
+          <div>
+            <h2 className="text-base font-bold text-foreground">Onglets Auto-Trader (mobile)</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Choisis les {MAX_VISIBLE_PRESETS} presets affichés sur mobile. N'arrête aucun bot — sur ordinateur, les 4 restent visibles.
+            </p>
+          </div>
+        }
+      >
+        {visiblePresets === null ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {PRESET_KEYS.map((p) => {
+                const st = presetCardStyles[p];
+                const on = visiblePresets.includes(p);
+                // botStatus is keyed by `${userId}:${preset}` — this card is
+                // about the admin's own account, so that's the key to read.
+                const running = !!botStatus[`${user!.id}:${p}`]?.running;
+                const atCap = !on && visiblePresets.length >= MAX_VISIBLE_PRESETS;
+                const lastOne = on && visiblePresets.length === 1;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => toggleVisiblePreset(p)}
+                    disabled={visiblePresetsBusy || atCap || lastOne}
+                    className={cn(
+                      "text-left rounded-xl border p-3.5 transition-all",
+                      on ? st.on : "border-white/[0.06] bg-white/[0.02]",
+                      (atCap || lastOne) && "opacity-45 cursor-not-allowed",
+                      !visiblePresetsBusy && !atCap && !lastOne && "hover:border-white/20",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-lg leading-none">{st.icon}</span>
+                      <span
+                        className={cn(
+                          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                          on ? st.dot : "bg-white/10",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+                            on ? "translate-x-[19px]" : "translate-x-[3px]",
+                          )}
+                        />
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm font-bold text-foreground">{presetLabels[p]}</div>
+                    <div className="text-[11px] text-muted-foreground leading-snug">{st.desc}</div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", running ? "bg-[color:var(--bull)] animate-pulse" : "bg-white/20")} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {running ? "Bot actif" : "Bot arrêté"}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              {visiblePresets.length}/{MAX_VISIBLE_PRESETS} affichés · masqués :{" "}
+              {PRESET_KEYS.filter((p) => !visiblePresets.includes(p)).map((p) => presetLabels[p]).join(", ") || "aucun"}
+            </p>
+
+            {/* A hidden preset that's still trading is the one genuinely
+                confusing case: it keeps taking positions with no tab on mobile
+                to see or stop it. Called out explicitly instead of relying on
+                the admin remembering. */}
+            {(() => {
+              const hiddenRunning = PRESET_KEYS.filter(
+                (p) => !visiblePresets.includes(p) && botStatus[`${user!.id}:${p}`]?.running,
+              );
+              if (!hiddenRunning.length) return null;
+              return (
+                <div className="flex gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-3">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                  <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                    <strong>{hiddenRunning.map((p) => presetLabels[p]).join(", ")}</strong> tourne encore mais n'a plus
+                    d'onglet sur mobile — il continue de trader et tu ne pourras l'arrêter que depuis un ordinateur ou en
+                    le réaffichant ici.
+                  </p>
+                </div>
+              );
+            })()}
+          </>
+        )}
+      </CollapsibleBlock>
 
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock

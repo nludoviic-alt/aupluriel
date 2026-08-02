@@ -22,6 +22,7 @@ import {
   startBotForUser,
   stopBotForUser,
   updateConfigForUser,
+  getVisiblePresets,
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
@@ -84,7 +85,10 @@ export const Route = createFileRoute("/api/bot")({
         const presets = Object.fromEntries(PRESETS.map((p) => [p, loadStatusForPreset(user.id, p)]));
         const brokerBalances = await getBrokerBalances(user.id);
 
-        return json({ presets, brokerBalances });
+        // Every preset's status is still returned in full above, whatever
+        // visiblePresets says — it only drives which MOBILE tabs the
+        // Auto-Trader renders, never what the server computes or trades.
+        return json({ presets, brokerBalances, visiblePresets: getVisiblePresets(user.id) });
       },
 
       // start / stop / reset, always scoped to one preset.

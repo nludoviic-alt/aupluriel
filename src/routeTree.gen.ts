@@ -61,6 +61,7 @@ import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api/auth/forgot-password'
 import { Route as ApiAuthChangePasswordRouteImport } from './routes/api/auth/change-password'
+import { Route as ApiAdminVisiblePresetsRouteImport } from './routes/api/admin/visible-presets'
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
@@ -332,6 +333,11 @@ const ApiAuthChangePasswordRoute = ApiAuthChangePasswordRouteImport.update({
   path: '/api/auth/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminVisiblePresetsRoute = ApiAdminVisiblePresetsRouteImport.update({
+  id: '/api/admin/visible-presets',
+  path: '/api/admin/visible-presets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
   id: '/api/admin/users',
   path: '/api/admin/users',
@@ -425,6 +431,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/admin/visible-presets': typeof ApiAdminVisiblePresetsRoute
   '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -488,6 +495,7 @@ export interface FileRoutesByTo {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/admin/visible-presets': typeof ApiAdminVisiblePresetsRoute
   '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -552,6 +560,7 @@ export interface FileRoutesById {
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/admin/visible-presets': typeof ApiAdminVisiblePresetsRoute
   '/api/auth/change-password': typeof ApiAuthChangePasswordRoute
   '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -617,6 +626,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/admin/visible-presets'
     | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -680,6 +690,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/admin/visible-presets'
     | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -743,6 +754,7 @@ export interface FileRouteTypes {
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
+    | '/api/admin/visible-presets'
     | '/api/auth/change-password'
     | '/api/auth/forgot-password'
     | '/api/auth/login'
@@ -807,6 +819,7 @@ export interface RootRouteChildren {
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
+  ApiAdminVisiblePresetsRoute: typeof ApiAdminVisiblePresetsRoute
   ApiAuthChangePasswordRoute: typeof ApiAuthChangePasswordRoute
   ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
@@ -1189,6 +1202,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/visible-presets': {
+      id: '/api/admin/visible-presets'
+      path: '/api/admin/visible-presets'
+      fullPath: '/api/admin/visible-presets'
+      preLoaderRoute: typeof ApiAdminVisiblePresetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/users': {
       id: '/api/admin/users'
       path: '/api/admin/users'
@@ -1314,6 +1334,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
+  ApiAdminVisiblePresetsRoute: ApiAdminVisiblePresetsRoute,
   ApiAuthChangePasswordRoute: ApiAuthChangePasswordRoute,
   ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,

@@ -73,6 +73,53 @@ function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping"];
+
+/** How many preset tabs the Auto-Trader shows on MOBILE. Four tabs squeezed
+ * into a phone-width strip was unreadable, so the user picks which three to
+ * see (2026-08-02). Desktop is unaffected and always renders all four. */
+export const MAX_VISIBLE_PRESETS = 3;
+
+/** Which presets a user sees on mobile before they've ever chosen. Scalping
+ * is the one left out by default: it's the newest, demo-only experiment, so
+ * it's the least costly to have to opt into. */
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash"];
+
+/**
+ * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
+ * starts, stops, or hides the *engine*: a hidden preset keeps trading and
+ * keeps reporting into /api/bot, admin, and the journal exactly as before.
+ * That's why nothing in the scan/execute path reads this.
+ *
+ * Always returns a valid, deduped list of at most MAX_VISIBLE_PRESETS, even
+ * if the stored JSON is corrupt, empty, or references a preset that no longer
+ * exists — the tab strip must never end up with zero tabs and no way back.
+ */
+export function getVisiblePresets(userId: number): Preset[] {
+  const row = getDb().prepare("SELECT visible_presets FROM users WHERE id = ?").get(userId) as
+    { visible_presets: string | null } | undefined;
+  if (!row?.visible_presets) return [...VISIBLE_PRESETS_DEFAULT];
+  try {
+    const parsed: unknown = JSON.parse(row.visible_presets);
+    if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
+    const clean = [...new Set(parsed.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))];
+    return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
+  } catch {
+    return [...VISIBLE_PRESETS_DEFAULT];
+  }
+}
+
+/** Persists the whitelist. Sanitises the same way getVisiblePresets does, so
+ * a bad payload can't lock the tab strip into an unusable state. Returns what
+ * was actually stored. */
+export function setVisiblePresets(userId: number, presets: readonly string[]): Preset[] {
+  const clean = [...new Set(presets.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))]
+    .slice(0, MAX_VISIBLE_PRESETS);
+  const final = clean.length ? clean : [...VISIBLE_PRESETS_DEFAULT];
+  getDb().prepare("UPDATE users SET visible_presets = ? WHERE id = ?").run(JSON.stringify(final), userId);
+  return final;
+}
+
 /** Correlation/active-symbol tracking cares about the underlying bullish/bearish
  * bias, not the contract mechanics — MULTUP is the same bias as CALL. */
 function biasOf(direction: TradeLog["direction"]): "CALL" | "PUT" {
