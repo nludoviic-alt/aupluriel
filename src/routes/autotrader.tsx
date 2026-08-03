@@ -838,21 +838,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         aria-label="Prise directe manuelle"
       >
         {/* Banner Title & Quick Signal Loader */}
-        <div className="glass-panel overflow-hidden rounded-2xl border border-amber-500/30 bg-[#0C0E17]/90 p-5 shadow-xl">
+        <div className="glass-panel overflow-hidden rounded-2xl border border-border/60 p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 shadow-sm">
-                <Zap className="h-6 w-6 text-amber-400" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-sm">
+                <Zap className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-extrabold tracking-tight text-foreground">Prise directe manuelle</h2>
-                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-300">
-                    100% Manuel
-                  </span>
-                </div>
+                <h2 className="text-lg font-extrabold tracking-tight text-foreground">Prise directe manuelle</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Exécute une position spécifique sous ton entière responsabilité, séparément des bots automatiques.
+                  Exécute une position sous ton entière responsabilité, séparément des bots automatiques.
                 </p>
               </div>
             </div>
@@ -874,35 +869,29 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           {/* LEFT: Order Form */}
           <div className="space-y-4">
             {/* Card 1: Symbol & Signal Context */}
-            <div className="glass-panel rounded-2xl border border-white/10 bg-card/30 p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/50 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full border border-cyan/40 bg-cyan/10 font-mono text-xs font-black text-cyan">
+                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                     1
                   </span>
                   <span className="text-xs font-black uppercase tracking-wider text-foreground">Choix du Marché & Ordre</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={cn("h-2 w-2 rounded-full", derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
-                  <span className={cn("font-bold font-mono", derivSession.connected ? "text-up" : derivSession.connecting ? "text-amber-400" : "text-down")}>
-                    {derivSession.connected ? (derivSession.balance !== null ? `$${derivSession.balance.toFixed(2)}` : "Connecté") : derivSession.connecting ? "Connexion…" : "Déconnecté"}
-                  </span>
-                </div>
               </div>
 
               {/* ── Quick Market Selector Bar (Prise Rapide) ── */}
-              <div className="rounded-2xl border border-cyan/20 bg-black/40 p-3.5 space-y-2.5">
+              <div className="rounded-2xl border border-border/50 bg-black/30 p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-cyan" />
-                    <span className="text-xs font-black uppercase tracking-wider text-neutral-200">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
                       Prise Rapide · Marchés Rentables
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowQuickCustomizer((v) => !v)}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-cyan hover:text-cyan/80 transition-colors"
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-primary hover:text-primary/80 transition-colors"
                   >
                     <Settings2 className="h-3.5 w-3.5" />
                     {showQuickCustomizer ? "Masquer" : "⚙️ Raccourcis"}
@@ -955,8 +944,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
                 {/* Quick Customizer Panel if opened directly inside Prise Rapide */}
                 {showQuickCustomizer && (
-                  <div className="mt-3 rounded-xl border border-white/10 bg-black/70 p-3.5 space-y-2 animate-fade-in">
-                    <div className="text-xs font-bold text-neutral-200">
+                  <div className="mt-3 rounded-xl border border-border/50 bg-black/30 p-3.5 space-y-2 animate-fade-in">
+                    <div className="text-xs font-bold text-foreground">
                       Coche tes 4 à 6 marchés favoris pour la Prise Rapide :
                     </div>
                     <div className="flex flex-wrap gap-2 pt-1">
@@ -980,8 +969,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             className={cn(
                               "rounded-lg border px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5",
                               isChecked
-                                ? "border-cyan/50 bg-cyan/20 text-cyan"
-                                : "border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground"
+                                ? "border-primary/50 bg-primary/20 text-primary"
+                                : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                             )}
                           >
                             <span>{isChecked ? "✓" : "+"}</span>
@@ -1004,7 +993,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     setForceSymbol(e.target.value);
                     setPreparedManualOpportunity(null);
                   }}
-                  className="w-full h-11 rounded-xl border border-white/15 bg-black/50 px-3.5 text-sm font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                  className="w-full h-11 rounded-xl border border-border/60 bg-card/30 px-3.5 text-sm font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
                 >
                   {SYMBOLS.map((s) => (
                     <option key={s.deriv} value={s.deriv}>
@@ -1041,10 +1030,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {/* Card 2: Direction & Prise de Risque */}
-            <div className="glass-panel rounded-2xl border border-white/10 bg-card/30 p-5 space-y-5">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-5">
+              <div className="flex items-center justify-between border-b border-border/50 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full border border-cyan/40 bg-cyan/10 font-mono text-xs font-black text-cyan">
+                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                     2
                   </span>
                   <span className="text-xs font-black uppercase tracking-wider text-foreground">Direction & Niveau de Risque</span>
@@ -1074,14 +1063,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           "flex flex-col items-center justify-center gap-1.5 rounded-2xl border p-4 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
                           isSelected
                             ? isUp
-                              ? "border-up/60 bg-up/20 text-up shadow-[0_0_20px_rgba(16,185,129,0.25)] ring-1 ring-up/40"
-                              : "border-down/60 bg-down/20 text-down shadow-[0_0_20px_rgba(239,68,68,0.25)] ring-1 ring-down/40"
-                            : "border-white/10 bg-black/40 text-muted-foreground hover:bg-black/60 hover:text-foreground"
+                              ? "border-up/60 bg-up/20 text-up shadow-up/20 ring-1 ring-up/40"
+                              : "border-down/60 bg-down/20 text-down shadow-down/20 ring-1 ring-down/40"
+                            : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
                         )}
                       >
                         <span className="text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
                         <span className="text-xs font-black uppercase tracking-wider">
-                          {isUp ? "HAUSSE (CALL)" : "BAISSE (PUT)"}
+                          {isUp ? "HAUSSE" : "BAISSE"}
                         </span>
                       </button>
                     );
@@ -1107,12 +1096,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     className={cn(
                       "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
                       forceStake <= 10
-                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-400 font-black shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-                        : "border-white/10 bg-black/40 text-muted-foreground hover:text-foreground"
+                        ? "border-up/60 bg-up/15 text-up font-black shadow-up/10"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span className="text-xs font-bold">🟢 Basse</span>
-                    <span className="font-mono text-[11px] opacity-80">$5 (Prudent)</span>
+                    <span className="font-mono text-[11px] opacity-80">$5</span>
                   </button>
 
                   {/* Moyenne */}
@@ -1123,12 +1112,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     className={cn(
                       "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
                       forceStake > 10 && forceStake <= 30
-                        ? "border-amber-500/60 bg-amber-500/15 text-amber-300 font-black shadow-[0_0_12px_rgba(245,158,11,0.15)]"
-                        : "border-white/10 bg-black/40 text-muted-foreground hover:text-foreground"
+                        ? "border-amber-500/60 bg-amber-500/15 text-amber-300 font-black shadow-amber/10"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span className="text-xs font-bold">🟡 Moyenne</span>
-                    <span className="font-mono text-[11px] opacity-80">$20 (Équilibré)</span>
+                    <span className="font-mono text-[11px] opacity-80">$20</span>
                   </button>
 
                   {/* Haute */}
@@ -1139,20 +1128,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     className={cn(
                       "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
                       forceStake > 30
-                        ? "border-red-500/70 bg-red-500/20 text-red-400 font-black shadow-[0_0_15px_rgba(239,68,68,0.25)] ring-1 ring-red-500/50"
-                        : "border-white/10 bg-black/40 text-muted-foreground hover:text-foreground"
+                        ? "border-down/70 bg-down/20 text-down font-black shadow-down/15 ring-1 ring-down/50"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span className="text-xs font-black uppercase tracking-wider">🔥 Haute</span>
-                    <span className="font-mono text-[11px] opacity-90">$50+ (Agressif)</span>
+                    <span className="font-mono text-[11px] opacity-90">$50+</span>
                   </button>
                 </div>
               </div>
 
               {/* High Risk Banner if Haute is selected */}
               {forceStake > 30 && (
-                <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs flex items-center gap-2.5 text-red-300 animate-fade-in">
-                  <Zap className="h-4 w-4 text-red-400 shrink-0" />
+                <div className="rounded-xl border border-down/40 bg-down/10 p-3 text-xs flex items-center gap-2.5 text-down animate-fade-in">
+                  <Zap className="h-4 w-4 text-down shrink-0" />
                   <div>
                     <span className="font-bold">Mode Prise de Risque Élevée Active ($50+)</span>
                     <p className="text-[11px] text-muted-foreground">Exposition augmentée pour viser des gains élevés.</p>
@@ -1198,8 +1187,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       className={cn(
                         "flex-1 rounded-lg border py-1.5 font-mono text-xs font-bold transition-all disabled:opacity-40",
                         forceStake === presetAmt
-                          ? "border-cyan/50 bg-cyan/20 text-cyan font-black"
-                          : "border-white/10 bg-black/30 text-muted-foreground hover:text-foreground"
+                          ? "border-primary/50 bg-primary/20 text-primary font-black"
+                          : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                       )}
                     >
                       ${presetAmt}
@@ -1211,16 +1200,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           </div>
 
           {/* RIGHT: Order Summary & Hero CTA */}
-          <aside className="glass-panel rounded-2xl border border-white/10 bg-card/30 p-5 space-y-4 lg:sticky lg:top-24">
-            <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-              <span className="grid h-6 w-6 place-items-center rounded-full border border-cyan/40 bg-cyan/10 font-mono text-xs font-black text-cyan">
+          <aside className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4 lg:sticky lg:top-24">
+            <div className="flex items-center gap-2 border-b border-border/50 pb-3">
+              <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                 3
               </span>
-              <span className="text-xs font-black uppercase tracking-wider text-neutral-200">Résumé Tactique & Validation</span>
+              <span className="text-xs font-black uppercase tracking-wider text-foreground">Résumé Tactique & Validation</span>
             </div>
 
             {/* Checklist */}
-            <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-3.5 text-xs">
+            <div className="space-y-2 rounded-xl border border-border/50 bg-black/30 p-3.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-semibold">Connexion Deriv</span>
                 <span className={cn("font-bold", derivSession.connected ? "text-up" : "text-amber-400")}>
@@ -1242,7 +1231,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {/* Parameter Summary */}
-            <div className="space-y-3 rounded-xl border border-white/10 bg-black/40 p-4 text-sm font-mono-tabular">
+            <div className="space-y-3 rounded-xl border border-border/50 bg-black/30 p-4 text-sm font-mono-tabular">
               <ManualSummary label="Marché" value={manualSymbolLabel} />
               <ManualSummary
                 label="Direction"
@@ -1265,7 +1254,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
             {/* Exposition Warning */}
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs leading-relaxed">
-              <p className="font-bold text-amber-300">Responsabilité & Exposition</p>
+              <p className="font-bold text-amber-300">Responsabilité</p>
               <p className="mt-0.5 text-muted-foreground">
                 Cette position est exécutée immédiatement sur votre compte. Elle est 100% manuelle.
               </p>
