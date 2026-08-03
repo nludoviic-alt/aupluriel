@@ -837,7 +837,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         )}
         aria-label="Prise directe manuelle"
       >
-        {/* Banner Title & Quick Signal Loader */}
+        {/* Banner Title */}
         <div className="glass-panel overflow-hidden rounded-2xl border border-border/60 p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3.5">
@@ -847,20 +847,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               <div>
                 <h2 className="text-lg font-extrabold tracking-tight text-foreground">Prise directe manuelle</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Exécute une position sous ton entière responsabilité, séparément des bots automatiques.
+                  Exécution immédiate hors-bot sous ta responsabilité.
                 </p>
               </div>
             </div>
-
-            {actionableOpportunity?.direction && (
-              <Button
-                onClick={prepareManualOpportunity}
-                variant="outline"
-                className="h-10 border-up/40 bg-up/15 px-4 text-xs font-black text-up hover:bg-up/25 shadow-up/10 shrink-0 gap-2 rounded-xl transition-all"
-              >
-                <Zap className="h-4 w-4" /> Utiliser le signal : {actionableOpportunity.symbol} ({actionableOpportunity.direction})
-              </Button>
-            )}
           </div>
         </div>
 
@@ -875,8 +865,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                     1
                   </span>
-                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Choix du Marché & Ordre</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Marché & Signal</span>
                 </div>
+                {actionableOpportunity?.direction && (
+                  <button
+                    onClick={prepareManualOpportunity}
+                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-up hover:text-up/80 transition-all px-2 py-1 rounded-lg border border-up/30 bg-up/5"
+                  >
+                    <Zap className="h-3 w-3" /> Charger le signal : {actionableOpportunity.symbol}
+                  </button>
+                )}
               </div>
 
               {/* ── Quick Market Selector Bar (Prise Rapide) ── */}
@@ -1005,172 +1003,115 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {/* Card 2: Direction & Prise de Risque */}
-            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-5">
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-6">
               <div className="flex items-center justify-between border-b border-border/50 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                     2
                   </span>
-                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Direction & Niveau de Risque</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Direction & Mise</span>
                 </div>
                 <span className={cn("rounded-lg border px-2.5 py-0.5 text-xs font-black uppercase", config.mode === "live" ? "border-down/30 bg-down/10 text-down" : "border-up/30 bg-up/10 text-up")}>
-                  Mode {config.mode === "live" ? "RÉEL" : "DÉMO"}
+                  {config.mode === "live" ? "Compte RÉEL" : "Compte DÉMO"}
                 </span>
               </div>
 
-              {/* Direction selector cards */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">Orientation du marché</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
-                    const isUp = d === "CALL" || d === "MULTUP";
-                    const isSelected = forceDir === d;
-                    return (
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* LEFT: Direction */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Orientation du marché</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
+                      const isUp = d === "CALL" || d === "MULTUP";
+                      const isSelected = forceDir === d;
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          disabled={forcingTrade}
+                          onClick={() => {
+                            setForceDir(d);
+                            setPreparedManualOpportunity(null);
+                          }}
+                          className={cn(
+                            "flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
+                            isSelected
+                              ? isUp
+                                ? "border-up/60 bg-up/20 text-up shadow-up/20 ring-1 ring-up/40"
+                                : "border-down/60 bg-down/20 text-down shadow-down/20 ring-1 ring-down/40"
+                              : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
+                          )}
+                        >
+                          <span className="text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest">{isUp ? "Hausse" : "Baisse"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* RIGHT: Quick Amount Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Intensité du Risque</label>
+                    <span className="text-[10px] font-mono font-bold text-primary">
+                      {forceStake <= 10 ? "🟢 BAS" : forceStake <= 30 ? "🟡 MODÉRÉ" : "🔥 ÉLEVÉ"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[5, 20, 50].map((s) => (
                       <button
-                        key={d}
+                        key={s}
                         type="button"
                         disabled={forcingTrade}
-                        onClick={() => {
-                          setForceDir(d);
-                          setPreparedManualOpportunity(null);
-                        }}
+                        onClick={() => setForceStake(s)}
                         className={cn(
-                          "flex flex-col items-center justify-center gap-1.5 rounded-2xl border p-4 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
-                          isSelected
-                            ? isUp
-                              ? "border-up/60 bg-up/20 text-up shadow-up/20 ring-1 ring-up/40"
-                              : "border-down/60 bg-down/20 text-down shadow-down/20 ring-1 ring-down/40"
-                            : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
+                          "flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 transition-all",
+                          forceStake === s
+                            ? s <= 10 ? "border-up/60 bg-up/15 text-up shadow-up/10" : s <= 30 ? "border-amber-500/60 bg-amber-500/15 text-amber-300 shadow-amber/10" : "border-down/70 bg-down/20 text-down shadow-down/15 ring-1 ring-down/50"
+                            : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
                         )}
                       >
-                        <span className="text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
-                        <span className="text-xs font-black uppercase tracking-wider">
-                          {isUp ? "HAUSSE" : "BAISSE"}
-                        </span>
+                        <span className="text-[11px] font-bold">${s}</span>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                  {/* Precise Input */}
+                  <div className="pt-1">
+                    <AmountInput
+                      value={forceStake}
+                      min={1}
+                      max={100}
+                      step={1}
+                      disabled={forcingTrade}
+                      onCommit={async (v) => {
+                        if (config.mode === "live") {
+                          const ok = await confirm({
+                            title: "Confirmer la mise ?",
+                            description: `Trade manuel à $${v} (argent réel).`,
+                            confirmLabel: "Confirmer",
+                            danger: true,
+                          });
+                          if (!ok) return false;
+                        }
+                        setForceStake(v);
+                        return true;
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Risk Level Selector (Basse, Moyenne, Haute) */}
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Prise de Risque (Intensité)</label>
-                  <span className="text-xs font-mono font-semibold text-primary">
-                    {forceStake <= 10 ? "🟢 Basse" : forceStake <= 30 ? "🟡 Moyenne" : "🔥 Haute (Prise de risque)"}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {/* Basse */}
-                  <button
-                    type="button"
-                    disabled={forcingTrade}
-                    onClick={() => setForceStake(5)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
-                      forceStake <= 10
-                        ? "border-up/60 bg-up/15 text-up font-black shadow-up/10"
-                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <span className="text-xs font-bold">🟢 Basse</span>
-                    <span className="font-mono text-[11px] opacity-80">$5</span>
-                  </button>
-
-                  {/* Moyenne */}
-                  <button
-                    type="button"
-                    disabled={forcingTrade}
-                    onClick={() => setForceStake(20)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
-                      forceStake > 10 && forceStake <= 30
-                        ? "border-amber-500/60 bg-amber-500/15 text-amber-300 font-black shadow-amber/10"
-                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <span className="text-xs font-bold">🟡 Moyenne</span>
-                    <span className="font-mono text-[11px] opacity-80">$20</span>
-                  </button>
-
-                  {/* Haute */}
-                  <button
-                    type="button"
-                    disabled={forcingTrade}
-                    onClick={() => setForceStake(50)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
-                      forceStake > 30
-                        ? "border-down/70 bg-down/20 text-down font-black shadow-down/15 ring-1 ring-down/50"
-                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <span className="text-xs font-black uppercase tracking-wider">🔥 Haute</span>
-                    <span className="font-mono text-[11px] opacity-90">$50+</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* High Risk Banner if Haute is selected */}
+              {/* Warning Banner moved inside the card */}
               {forceStake > 30 && (
                 <div className="rounded-xl border border-down/40 bg-down/10 p-3 text-xs flex items-center gap-2.5 text-down animate-fade-in">
-                  <Zap className="h-4 w-4 text-down shrink-0" />
+                  <AlertTriangle className="h-4 w-4 text-down shrink-0" />
                   <div>
-                    <span className="font-bold">Mode Prise de Risque Élevée Active ($50+)</span>
-                    <p className="text-[11px] text-muted-foreground">Exposition augmentée pour viser des gains élevés.</p>
+                    <span className="font-bold">Risque Élevé ($50+)</span>
+                    <p className="text-[10px] opacity-80">Ton exposition est augmentée. Sois vigilant.</p>
                   </div>
                 </div>
               )}
-
-              {/* Stake Amount input + Quick Presets */}
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Ajustement précis de la Mise ($)</label>
-                  <span className="text-xs font-mono text-muted-foreground">Durée: {manualDurationMinutes} min</span>
-                </div>
-                <AmountInput
-                  value={forceStake}
-                  min={1}
-                  max={100}
-                  step={1}
-                  disabled={forcingTrade}
-                  onCommit={async (v) => {
-                    if (config.mode === "live") {
-                      const ok = await confirm({
-                        title: "Confirmer la mise ?",
-                        description: `Trade manuel à $${v} (argent réel).`,
-                        confirmLabel: "Confirmer",
-                        danger: true,
-                      });
-                      if (!ok) return false;
-                    }
-                    setForceStake(v);
-                    return true;
-                  }}
-                />
-
-                {/* Quick stake preset buttons */}
-                <div className="flex items-center gap-1.5 pt-1">
-                  {[5, 10, 25, 50, 100].map((presetAmt) => (
-                    <button
-                      key={presetAmt}
-                      type="button"
-                      disabled={forcingTrade}
-                      onClick={() => setForceStake(presetAmt)}
-                      className={cn(
-                        "flex-1 rounded-lg border py-1.5 font-mono text-xs font-bold transition-all disabled:opacity-40",
-                        forceStake === presetAmt
-                          ? "border-primary/50 bg-primary/20 text-primary font-black"
-                          : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      ${presetAmt}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -1184,46 +1125,43 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {/* Checklist */}
-            <div className="space-y-2 rounded-xl border border-border/50 bg-black/30 p-3.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Connexion Deriv</span>
-                <span className={cn("text-xs font-bold", derivSession.connected ? "text-up" : "text-amber-400")}>
-                  {derivSession.connected ? "✓ Connecté" : "⚡ Simulée (Démo)"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Type de Compte</span>
-                <span className={cn("text-xs font-bold uppercase", manualAccountMatchesMode ? "text-up" : "text-amber-300")}>
-                  {derivSession.accountType || (config.mode === "demo" ? "Démo (Virtuel)" : "À vérifier")}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Instrument</span>
-                <span className={cn("text-xs font-bold", manualInstrumentSupported ? "text-up" : "text-down")}>
-                  {manualInstrumentSupported ? "✓ Compatible" : "✗ Non disponible"}
-                </span>
-              </div>
+            <div className="space-y-2.5 rounded-xl border border-border/50 bg-black/30 p-4 shadow-inner">
+              <ChecklistItem label="Connexion" value={derivSession.connected ? "Active" : "Simulée"} tone={derivSession.connected ? "up" : "amber"} />
+              <ChecklistItem label="Compte" value={derivSession.accountType || (config.mode === "demo" ? "DÉMO" : "LIVE")} tone={manualAccountMatchesMode ? "up" : "amber"} />
+              <ChecklistItem label="Symbole" value={manualInstrumentSupported ? "OK" : "Indisponible"} tone={manualInstrumentSupported ? "up" : "down"} />
             </div>
 
             {/* Parameter Summary */}
-            <div className="space-y-3 rounded-xl border border-border/50 bg-black/30 p-4 text-sm font-mono-tabular">
-              <ManualSummary label="Marché" value={manualSymbolLabel} />
-              <ManualSummary
-                label="Direction"
-                value={forceDir === "CALL" || forceDir === "MULTUP" ? "▲ HAUSSE (CALL)" : "▼ BAISSE (PUT)"}
-                tone={forceDir === "CALL" || forceDir === "MULTUP" ? "text-up font-black" : "text-down font-black"}
-              />
-              <ManualSummary label="Mise" value={`$${forceStake.toFixed(2)}`} />
-              <ManualSummary
-                label={manualInstrument === "multiplier" ? "Protection" : "Échéance"}
-                value={manualInstrument === "multiplier" ? "Stop-loss + TP" : `${manualDurationMinutes} min`}
-              />
-              <div className="border-t border-dashed border-border/70 pt-2.5">
-                <ManualSummary
-                  label="Exécution"
-                  value={config.mode === "live" ? "100% RÉEL" : "DÉMO (VIRTUEL)"}
-                  tone={config.mode === "live" ? "text-down font-black" : "text-up font-black"}
-                />
+            <div className="space-y-4 rounded-xl border border-border/50 bg-card/40 p-5 shadow-xl ring-1 ring-white/5">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Marché sélectionné</span>
+                <span className="text-sm font-black text-foreground">{manualSymbolLabel}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 border-y border-border/40 py-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Direction</span>
+                  <span className={cn("text-xs font-black uppercase tracking-widest px-2 py-0.5 rounded-md self-start", forceDir === "CALL" || forceDir === "MULTUP" ? "bg-up/15 text-up" : "bg-down/15 text-down")}>
+                    {forceDir === "CALL" || forceDir === "MULTUP" ? "▲ HAUSSE" : "▼ BAISSE"}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mise</span>
+                  <span className="text-sm font-black font-mono-tabular text-foreground">${forceStake.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{manualInstrument === "multiplier" ? "Protection" : "Échéance"}</span>
+                  <span className="text-xs font-bold text-foreground/80">{manualInstrument === "multiplier" ? "Auto TP/SL" : `${manualDurationMinutes} minutes`}</span>
+                </div>
+                <div className="text-right flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Exécution</span>
+                  <span className={cn("text-xs font-black uppercase tracking-widest", config.mode === "live" ? "text-down" : "text-up")}>
+                    {config.mode === "live" ? "100% RÉEL" : "DÉMO"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -2446,6 +2384,20 @@ function ManualOrderItem({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-border/60 bg-card/30 px-3 py-2.5 shadow-inner">
       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-1 truncate text-sm font-black text-foreground" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function ChecklistItem({ label, value, tone }: { label: string; value: string; tone: "up" | "down" | "amber" }) {
+  const tones = {
+    up: "text-up",
+    down: "text-down",
+    amber: "text-amber-400",
+  };
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={cn("text-xs font-black uppercase tracking-widest", tones[tone])}>{value}</span>
     </div>
   );
 }
