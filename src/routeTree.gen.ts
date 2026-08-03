@@ -21,6 +21,7 @@ import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as MessengerRouteImport } from './routes/messenger'
 import { Route as MarketsRouteImport } from './routes/markets'
+import { Route as ManualTraderRouteImport } from './routes/manual-trader'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -132,6 +133,11 @@ const MessengerRoute = MessengerRouteImport.update({
 const MarketsRoute = MarketsRouteImport.update({
   id: '/markets',
   path: '/markets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManualTraderRoute = ManualTraderRouteImport.update({
+  id: '/manual-trader',
+  path: '/manual-trader',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -406,6 +412,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
+  '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -472,6 +479,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
+  '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -539,6 +547,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
+  '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
   '/opportunities': typeof OpportunitiesRoute
@@ -607,6 +616,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/journal'
     | '/login'
+    | '/manual-trader'
     | '/markets'
     | '/messenger'
     | '/opportunities'
@@ -673,6 +683,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/journal'
     | '/login'
+    | '/manual-trader'
     | '/markets'
     | '/messenger'
     | '/opportunities'
@@ -739,6 +750,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/journal'
     | '/login'
+    | '/manual-trader'
     | '/markets'
     | '/messenger'
     | '/opportunities'
@@ -806,6 +818,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
+  ManualTraderRoute: typeof ManualTraderRoute
   MarketsRoute: typeof MarketsRoute
   MessengerRoute: typeof MessengerRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
@@ -946,6 +959,13 @@ declare module '@tanstack/react-router' {
       path: '/markets'
       fullPath: '/markets'
       preLoaderRoute: typeof MarketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manual-trader': {
+      id: '/manual-trader'
+      path: '/manual-trader'
+      fullPath: '/manual-trader'
+      preLoaderRoute: typeof ManualTraderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1337,6 +1357,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
+  ManualTraderRoute: ManualTraderRoute,
   MarketsRoute: MarketsRoute,
   MessengerRoute: MessengerRoute,
   OpportunitiesRoute: OpportunitiesRoute,

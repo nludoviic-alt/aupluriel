@@ -55,6 +55,10 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
   }, [logs]);
 
   const lastPt = equityPoints[equityPoints.length - 1];
+  // The server intentionally sends a capped recent-trade window here. Never
+  // present this curve as the complete day P&L — the authoritative daily P&L
+  // is shown in AutoTraderStatusBar from getTodayStats().
+  const displayedPnl = lastPt?.pnl ?? 0;
   const isPositive = (lastPt?.pnl ?? 0) >= 0;
   const lineColor = isPositive ? "var(--bull)" : "var(--bear)";
 
@@ -84,7 +88,7 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
       <div>
         <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
           <Activity className="h-4 w-4 text-[color:var(--brand-cyan)]" />
-          Dashboard Bot
+          Historique récent
         </h2>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           {winRate !== null && (
@@ -110,10 +114,10 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
           <div className="flex items-baseline justify-between mb-3">
             <h3 className="text-base font-semibold flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[color:var(--brand-cyan)]" />
-              Courbe P&L aujourd'hui
+              Courbe des transactions affichées
             </h3>
             <span className={cn("text-xl font-bold font-mono-tabular tracking-tight", isPositive ? "text-up" : "text-down")}>
-              {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+              {displayedPnl >= 0 ? "+" : ""}${displayedPnl.toFixed(2)}
             </span>
           </div>
 

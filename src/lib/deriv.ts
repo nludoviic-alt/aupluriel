@@ -541,6 +541,50 @@ export async function proposalContract(params: {
   };
 }
 
+/**
+ * Quote a Deriv Multiplier contract. Unlike Rise/Fall, a multiplier has no
+ * expiry: it is closed by its stop/take-profit or by an explicit sell.
+ * Keeping this request alongside `proposalContract` ensures the manual desk
+ * uses the same authenticated browser session as the rest of the app.
+ */
+export async function proposalMultiplierContract(params: {
+  symbol: string;
+  amount: number;
+  contractType: "MULTUP" | "MULTDOWN";
+  multiplier: number;
+  stopLossUsd: number;
+  takeProfitUsd: number;
+  currency?: string;
+}): Promise<ProposalResult> {
+  const res = await derivRequest<{
+    proposal?: {
+      id: string;
+      ask_price: number;
+      payout: number;
+      longcode: string;
+    };
+  }>({
+    proposal: 1,
+    amount: Math.round(params.amount * 100) / 100,
+    basis: "stake",
+    contract_type: params.contractType,
+    currency: params.currency ?? accountCurrency ?? "USD",
+    underlying_symbol: params.symbol,
+    multiplier: params.multiplier,
+    limit_order: {
+      stop_loss: Math.round(params.stopLossUsd * 100) / 100,
+      take_profit: Math.round(params.takeProfitUsd * 100) / 100,
+    },
+  });
+  if (!res.proposal) throw new Error("Proposition Multiplicateur indisponible");
+  return {
+    id: res.proposal.id,
+    askPrice: Number(res.proposal.ask_price),
+    payout: Number(res.proposal.payout),
+    longcode: res.proposal.longcode,
+  };
+}
+
 export interface BuyResult {
   contractId: number;
   buyPrice: number;

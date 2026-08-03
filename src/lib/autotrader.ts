@@ -3,7 +3,7 @@
 // server engine (bot-engine.server.ts) so the two can never drift apart.
 // Only executes trades when strict signal quality thresholds are met.
 
-import { fetchCandles, proposalContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
+import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
 import { relayPush } from "./notify-push";
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
@@ -90,6 +90,37 @@ async function proposeAndBuy(params: {
     }
   }
   throw lastError ?? new Error("Échec achat après plusieurs tentatives");
+}
+
+async function proposeAndBuyMultiplier(params: {
+  symbol: string;
+  amount: number;
+  direction: "MULTUP" | "MULTDOWN";
+  multiplier: number;
+  stopLossUsd: number;
+  takeProfitUsd: number;
+}, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number }> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const proposal = await proposalMultiplierContract({
+        symbol: params.symbol,
+        amount: params.amount,
+        contractType: params.direction,
+        multiplier: params.symbol.startsWith("cry") ? Math.min(params.multiplier, 10) : params.multiplier,
+        stopLossUsd: params.stopLossUsd,
+        takeProfitUsd: params.takeProfitUsd,
+      });
+      const maxPrice = Math.round(proposal.askPrice * 1.05 * 100) / 100;
+      const bought = await buyContract(proposal.id, maxPrice);
+      return { contractId: bought.contractId, buyPrice: bought.buyPrice };
+    } catch (e) {
+      lastError = e as Error;
+      if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) break;
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
+    }
+  }
+  throw lastError ?? new Error("Échec achat Multiplicateur");
 }
 
 /**
@@ -833,20 +864,25 @@ export async function openPreviewTrade(
 }
 
 /**
- * Bypasses signal filters and opens a real trade on the connected Deriv account.
- * Used to verify the Deriv pipeline works end-to-end during testing.
+ * Opens a manual trade on the connected Deriv account. The UI already requires
+ * an explicit confirmation; this function only routes that confirmed choice to
+ * the valid Deriv contract family for the selected market.
  */
 export async function forceDemoTrade(
   symbolDeriv: string,
-  direction: "CALL" | "PUT",
+  direction: TradeLog["direction"],
   stake: number,
   durationMinutes: number,
   onEvent: TradeEventHandler,
+  multiplierSettings: Pick<AutoTraderConfig, "multiplierLevel" | "stopLossPctOfStake" | "takeProfitPctOfStake"> = DEFAULT_CONFIG,
 ): Promise<void> {
-  if (!isCallPutAvailable(symbolDeriv)) {
-    throw new Error("CALL/PUT indisponible sur les cryptos — choisis un indice Volatility (R_100…) ou une paire forex");
+  const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
+  if (!isSymbolTradeable(symbolDeriv, isMultiplier ? "multiplier" : "binary")) {
+    throw new Error(isMultiplier
+      ? "Le contrat Multiplicateur n’est pas disponible sur ce marché."
+      : "Ce marché nécessite un contrat Multiplicateur (MULTUP/MULTDOWN).");
   }
-  durationMinutes = Math.max(durationMinutes, minContractMinutes(symbolDeriv));
+  if (!isMultiplier) durationMinutes = Math.max(durationMinutes, minContractMinutes(symbolDeriv));
   const logs = loadTradeLog();
   const emit = (log: TradeLog) => {
     const idx = logs.findIndex((l) => l.id === log.id);
@@ -864,6 +900,8 @@ export async function forceDemoTrade(
   } catch { /* ignore */ }
 
   const logId = `force_${Date.now()}_${symbolDeriv}`;
+  const stopLossUsd = Math.round(stake * (multiplierSettings.stopLossPctOfStake / 100) * 100) / 100;
+  const takeProfitUsd = Math.round(stake * (multiplierSettings.takeProfitPctOfStake / 100) * 100) / 100;
   const pending: TradeLog = {
     id: logId,
     time: Date.now(),
@@ -875,14 +913,33 @@ export async function forceDemoTrade(
     profit: 0,
     confidence: 0,
     tfAgreement: 0,
-    note: "Trade forcé (test pipeline)",
+    note: isMultiplier ? "Prise manuelle · Multiplicateur" : "Prise manuelle · CALL/PUT",
     entryPrice: entryPrice || undefined,
-    durationMinutes,
-    expiry: Date.now() + durationMinutes * 60_000,
+    ...(isMultiplier
+      ? { multiplier: symbolDeriv.startsWith("cry") ? Math.min(multiplierSettings.multiplierLevel, 10) : multiplierSettings.multiplierLevel, stopLossUsd, takeProfitUsd }
+      : { durationMinutes, expiry: Date.now() + durationMinutes * 60_000 }),
   };
   emit(pending);
 
   try {
+    if (isMultiplier) {
+      const bought = await proposeAndBuyMultiplier({
+        symbol: symbolDeriv,
+        amount: stake,
+        direction: direction as "MULTUP" | "MULTDOWN",
+        multiplier: multiplierSettings.multiplierLevel,
+        stopLossUsd,
+        takeProfitUsd,
+      });
+      const openLog: TradeLog = { ...pending, status: "open", contractId: bought.contractId };
+      emit(openLog);
+      const unsub = subscribeContract(bought.contractId, (update) => {
+        if (update.status === "open") return;
+        unsub();
+        emit({ ...openLog, status: update.status === "won" ? "won" : "lost", profit: update.profit, closedAt: Date.now() });
+      });
+      return;
+    }
     const bought = await proposeAndBuy({ symbol: symbolDeriv, amount: stake, contractType: direction, durationMinutes });
 
     const openLog: TradeLog = { ...pending, status: "open", payout: bought.payout, contractId: bought.contractId };

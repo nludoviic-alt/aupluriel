@@ -1,4 +1,3 @@
-import { KpiCard } from "@/components/kpi-card";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -34,8 +33,9 @@ import {
   deleteCustomPreset,
   dismissTrade,
   forceDemoTrade,
-  isCallPutAvailable,
+  getInstrumentForSymbol,
   isInTradingSession,
+  isSymbolTradeable,
   loadCumulativePnl,
   loadCustomPresets,
   loadDailyPnl,
@@ -48,7 +48,6 @@ import {
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
-  todayTradeCount,
   type AutoTraderConfig,
   type CustomPreset,
   type PresetConfig,
@@ -88,6 +87,22 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 type PresetKey = "default" | "boom" | "crash" | "scalping";
 
 const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" };
+
+// These are presentation labels only. The actual instruments and execution
+// rules remain in the server-side config for each independent preset.
+const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: string; experimental?: boolean }> = {
+  default: { market: "Forex · Métaux · Crypto", description: "Marchés configurés" },
+  boom: { market: "Indices Boom", description: "Boom 500 · Boom 900" },
+  crash: { market: "Indices Crash", description: "Crash 1000 · Crash 900" },
+  scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
+};
+
+function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
+  if (!symbols?.length) return fallback;
+  return symbols
+    .map((symbol) => SYMBOLS.find((item) => item.deriv === symbol)?.label ?? symbol)
+    .join(" · ");
+}
 
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
@@ -165,8 +180,11 @@ interface PresetStatus {
   todayRiskPnl: number;
   todayCount: number;
   trades: TradeLog[];
+  /** Complete server-side set, unlike `trades` which is intentionally capped. */
+  openTrades: TradeLog[];
   allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
-  savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+  /** Configuration réellement chargée par le moteur serveur pour ce preset. */
+  savedConfig: AutoTraderConfig | null;
 }
 
 interface CloudStatus {
@@ -180,7 +198,7 @@ interface CloudStatus {
   };
 }
 
-function AutoTraderPage() {
+export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | "manual" }) {
   const [config, setConfig] = useState<AutoTraderConfig>(DEFAULT_CONFIG);
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
@@ -196,11 +214,14 @@ function AutoTraderPage() {
   const [cumulativePnl, setCumulativePnl] = useState(0);
   const [forcingTrade, setForcingTrade] = useState(false);
   const [forceSymbol, setForceSymbol] = useState("");
-  const [forceDir, setForceDir] = useState<"CALL" | "PUT">("CALL");
+  const [forceDir, setForceDir] = useState<"CALL" | "PUT" | "MULTUP" | "MULTDOWN">("CALL");
   const [forceStake, setForceStake] = useState(DEFAULT_CONFIG.stakeUsd);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [tradingTab] = useState<"auto" | "manual">(defaultTab);
+  const [preparedManualOpportunity, setPreparedManualOpportunity] = useState<OpportunityItem | null>(null);
+  const manualTradeRef = useRef<HTMLElement>(null);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
@@ -223,7 +244,6 @@ function AutoTraderPage() {
   const [cloudBusy, setCloudBusy] = useState(false);
   const [opportunities, setOpportunities] = useState<OpportunitiesResponse | null>(null);
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
-  const [manualBusy, setManualBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false });
@@ -244,18 +264,15 @@ function AutoTraderPage() {
     try {
       const data = await api.get<CloudStatus>("/api/bot");
       setCloud(data);
-      // This browser's saved draft (stakeUsd/maxDailyLossUsd) can silently
-      // fall behind whatever was last changed server-side (support fix, or
-      // another device) — the START action always sends THIS draft, so a
-      // stale one quietly overwrites the server's value the next time
-      // anyone hits start. Sync once per preset, before the user can touch
-      // anything, so opening this page (or switching preset tabs) is always
-      // enough to catch up — never overwrites a value being actively edited.
+      // This browser's draft can silently fall behind the server's saved
+      // configuration (for example after an admin edit or another device).
+      // The decision summary must describe what the engine actually uses;
+      // sync once per preset before the user edits anything locally.
       const savedConfig = data.presets?.[selectedPreset]?.savedConfig;
       if (!syncedFromServerRef.current[selectedPreset] && savedConfig) {
         syncedFromServerRef.current[selectedPreset] = true;
         setConfig((prev) => {
-          const next = { ...prev, stakeUsd: savedConfig.stakeUsd, maxDailyLossUsd: savedConfig.maxDailyLossUsd };
+          const next = { ...prev, ...savedConfig };
           saveConfig(next, selectedPreset);
           return next;
         });
@@ -352,6 +369,20 @@ function AutoTraderPage() {
     }
   }
 
+  async function changeTradingMode(mode: TradingMode) {
+    if (mode === config.mode) return;
+    if (mode === "live") {
+      const ok = await confirm({
+        title: "Passer en mode LIVE ?",
+        description: "Le mode LIVE engage de l'argent réel sur les transactions Deriv. Es-tu sûr de vouloir passer en mode LIVE ?",
+        confirmLabel: "Passer en LIVE",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    patchConfig("mode", mode);
+  }
+
   // Réconcilie les positions réelles avec Deriv après chaque (re)connexion :
   // re-suit les contrats encore ouverts, règle ceux fermés pendant l'absence.
   useEffect(() => {
@@ -397,25 +428,17 @@ function AutoTraderPage() {
     // Rollup persisté (jamais tronqué) — la somme du journal perdait les gains
     // du début de journée dès que le log dépassait sa fenêtre de rétention.
     const pnl = loadDailyPnl().pnl;
-    const tradeCount = todayTradeCount(logs);
-    const closedLogs = logs.filter((l) => l.status === "won" || l.status === "lost");
     const wins = logs.filter((l) => l.status === "won").length;
     const losses = logs.filter((l) => l.status === "lost").length;
-    const errors = logs.filter((l) => l.status === "error").length;
-    const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-    const totalWon = closedLogs.filter((l) => l.status === "won").reduce((s, l) => s + l.profit, 0);
-    const totalLost = closedLogs.filter((l) => l.status === "lost").reduce((s, l) => s + l.profit, 0);
     const openTradeList = logs.filter((l) => l.status === "open");
-    const recentClosedTrades = [...closedLogs].sort((a, b) => b.time - a.time).slice(0, 6);
     const consecutiveLosses = countConsecutiveLosses(logs);
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(config.stakeUsd, logs) : config.stakeUsd;
-    return { pnl, tradeCount, wins, losses, errors, winRate, totalWon, totalLost, openTradeList, recentClosedTrades, consecutiveLosses, effectiveStake };
+    return { pnl, wins, losses, openTradeList, consecutiveLosses, effectiveStake };
   }, [logs, config.adaptiveStake, config.stakeUsd]);
 
   const {
-    pnl: localPnl, tradeCount: localTradeCount, wins: localWins, losses: localLosses, errors,
-    totalWon: localTotalWon, totalLost: localTotalLost,
-    openTradeList: localOpenTradeList, recentClosedTrades,
+    pnl: localPnl, wins: localWins, losses: localLosses,
+    openTradeList: localOpenTradeList,
   } = stats;
 
   // The server bot's trades never touch the browser's localStorage rollup
@@ -433,17 +456,9 @@ function AutoTraderPage() {
   const lossUsedUsd = cloudActive
     ? Math.abs(Math.min(0, cloudSelected?.todayRiskPnl ?? pnl))
     : Math.abs(Math.min(0, pnl));
-  const tradeCount = cloudActive ? (cloudSelected?.todayCount ?? 0) : localTradeCount;
   const wins = cloudActive ? cloudClosedToday.filter((t) => t.status === "won").length : localWins;
   const losses = cloudActive ? cloudClosedToday.filter((t) => t.status === "lost").length : localLosses;
   const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-  const totalWon = cloudActive
-    ? cloudClosedToday.filter((t) => t.status === "won").reduce((s, t) => s + t.profit, 0)
-    : localTotalWon;
-  const totalLost = cloudActive
-    ? cloudClosedToday.filter((t) => t.status === "lost").reduce((s, t) => s + t.profit, 0)
-    : localTotalLost;
-
   // Same local↔cloud switch, extended to the raw trade ROWS (not just the
   // aggregates above) — the journal table, open-positions cards, stake-at-
   // risk and the adaptive-stake preview all read individual trades. Without
@@ -452,7 +467,7 @@ function AutoTraderPage() {
   // empty/stuck right next to KPIs that were correctly showing cloud data.
   const journalTrades = cloudActive ? cloudTrades : logs;
   const openTradeList = cloudActive
-    ? cloudTrades.filter((t) => t.status === "open" || t.status === "pending")
+    ? (cloudSelected?.openTrades ?? [])
     : localOpenTradeList;
   const openTrades = openTradeList.length;
   const consecutiveLosses = countConsecutiveLosses(journalTrades);
@@ -465,6 +480,40 @@ function AutoTraderPage() {
   }, [opportunities?.opportunities, selectedPreset]);
   const selectedOpportunity = selectedPresetOpportunities[0] ?? null;
   const actionableOpportunity = selectedPresetOpportunities.find((o) => o.decision === "take") ?? null;
+  const manualOpportunity = selectedPresetOpportunities.find((o) => o.symbol === forceSymbol) ?? null;
+  const manualInstrument = forceSymbol ? getInstrumentForSymbol(forceSymbol, config) : "binary";
+  const manualDirectionBias = forceDir === "CALL" || forceDir === "MULTUP" ? "CALL" : "PUT";
+  const manualSignalAligned = !!manualOpportunity
+    && manualOpportunity.decision === "take"
+    && manualOpportunity.direction === manualDirectionBias;
+  const manualInstrumentSupported = !!forceSymbol && isSymbolTradeable(forceSymbol, manualInstrument);
+  const manualAccountMatchesMode = config.mode === "demo"
+    ? derivSession.accountType === "demo"
+    : derivSession.accountType === "live";
+  const manualTradeAllowed = derivSession.connected && manualInstrumentSupported && manualAccountMatchesMode;
+  const manualReady = manualTradeAllowed && manualSignalAligned;
+  const manualSymbolLabel = (SYMBOLS.find((symbol) => symbol.deriv === forceSymbol)?.label ?? forceSymbol) || "Choisir un marché";
+  const manualDurationMinutes = preparedManualOpportunity?.symbol === forceSymbol
+    ? preparedManualOpportunity.durationMinutes
+    : config.durationMinutes;
+
+  // The selected <option> can look valid even while forceSymbol is still an
+  // empty string after a config refresh. Keep the actual value synchronized
+  // with the current watchlist before enabling a manual trade.
+  useEffect(() => {
+    if (!forceSymbol || !config.symbols.includes(forceSymbol)) {
+      setForceSymbol(config.symbols[0] ?? "");
+    }
+  }, [config.symbols, forceSymbol]);
+
+  // A manual order must always use the contract family the selected market
+  // actually offers. Switching EUR/USD → Boom 500 therefore changes
+  // CALL/PUT into MULTUP/MULTDOWN before the confirmation can be enabled.
+  useEffect(() => {
+    const multiplier = forceSymbol && getInstrumentForSymbol(forceSymbol, config) === "multiplier";
+    if (multiplier && (forceDir === "CALL" || forceDir === "PUT")) setForceDir(forceDir === "CALL" ? "MULTUP" : "MULTDOWN");
+    if (!multiplier && (forceDir === "MULTUP" || forceDir === "MULTDOWN")) setForceDir(forceDir === "MULTUP" ? "CALL" : "PUT");
+  }, [config, forceDir, forceSymbol]);
 
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
@@ -542,54 +591,36 @@ function AutoTraderPage() {
     }
   }, [config.mode]);
 
-  async function executeManualOpportunity() {
+  function prepareManualOpportunity() {
     if (!actionableOpportunity?.direction) {
-      toast.error("Aucun signal 'Prendre' disponible sur ce preset.");
+      toast.error("Aucun signal « à prendre » n’est disponible pour le moment.");
       return;
     }
-    if (!derivSession.connected) {
-      toast.error("Connexion Deriv requise avant d'exécuter.");
-      return;
-    }
-
-    const isLive = config.mode === "live";
-    const stake = config.stakeUsd;
-    const confirmed = await confirm({
-      title: isLive ? "Exécuter ce signal en LIVE ?" : "Exécuter ce signal en démo ?",
-      description: `${actionableOpportunity.label} · ${actionableOpportunity.directionLabel} · confiance ${Math.round(actionableOpportunity.confidence)}% · mise $${stake}.`,
-      confirmLabel: isLive ? "Exécuter en réel" : "Exécuter en démo",
-      danger: isLive,
-    });
-    if (!confirmed) return;
-
-    setManualBusy(true);
-    toast.info(`Exécution manuelle — ${actionableOpportunity.label} ${actionableOpportunity.direction}…`);
-    try {
-      await forceDemoTrade(
-        actionableOpportunity.symbol,
-        actionableOpportunity.direction,
-        stake,
-        actionableOpportunity.durationMinutes || config.durationMinutes,
-        (log) => {
-          handleEvent(log);
-          if (log.status === "open") {
-            toast.success(`Position ouverte — ${actionableOpportunity.label} ${actionableOpportunity.direction}`);
-          }
-        },
-      );
-      await refreshOpportunities();
-    } catch (e) {
-      toast.error(`Échec exécution: ${(e as Error).message}`);
-    } finally {
-      setManualBusy(false);
-    }
+    setForceSymbol(actionableOpportunity.symbol);
+    setForceDir(actionableOpportunity.direction);
+    setForceStake(config.stakeUsd);
+    setPreparedManualOpportunity(actionableOpportunity);
+    window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   }
 
   // ── derived helpers ─────────────────────────────────────────────────────────
   const anyRunning = anyPresetEnabled;
-  // Rendered twice — inline in the desktop header, and as its own full-width
+  const brokerBalances = cloud?.brokerBalances;
+  const totalBrokerBalance =
+    (brokerBalances?.deriv?.balance ?? 0) +
+    (brokerBalances?.kraken?.balance ?? 0) +
+    (brokerBalances?.binance?.balance ?? 0) +
+    (brokerBalances?.oanda?.balance ?? 0);
+  const hasBrokerBalance = !!brokerBalances && !!(brokerBalances.deriv || brokerBalances.kraken || brokerBalances.binance || brokerBalances.oanda);
+  const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
+  const balanceLabel = hasBrokerBalance
+    ? `$${totalBrokerBalance.toFixed(2)}`
+    : derivSession.balance !== null
+      ? `$${derivSession.balance.toFixed(2)}`
+      : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
+
   return (
-    <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-4 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-[1480px] space-y-5 px-4 py-4 sm:px-6 lg:px-8">
 
       {/* ── Header ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -598,9 +629,9 @@ function AutoTraderPage() {
             <Zap className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight leading-none sm:text-xl">Auto-Trader</h1>
+            <h1 className="text-lg font-bold tracking-tight leading-none sm:text-xl">{tradingTab === "manual" ? "Prise directe" : "Auto-Trader"}</h1>
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
-              Scanner, conseiller, exécuter — sur ton autorisation.
+              {tradingTab === "manual" ? "Valider une position manuelle, sous ton entière responsabilité." : "Scanner, conseiller, exécuter — sur ton autorisation."}
             </p>
           </div>
         </div>
@@ -614,16 +645,42 @@ function AutoTraderPage() {
         </Button>
       </div>
 
-      {/* ── P&L par système — l'unique sélecteur de preset. Les 3 presets
-          tournent indépendamment (2026-08-01) ; le solde total ("Fonds
-          disponibles" plus bas) ne dit pas lequel a généré quoi, donc ce
-          comparatif est la seule vue qui répond directement à "qu'est-ce qui
-          gagne en ce moment", en plus de servir de sélecteur. Cliquer saute
-          sur cet onglet. ── */}
-      <div className={cn("grid gap-2", shownPresets.length === 3 ? "grid-cols-3" : "grid-cols-4")}>
+      <AutoTraderStatusBar
+        mode={config.mode}
+        presetLabel={presetLabels[selectedPreset]}
+        autoEnabled={!!cloudSelected?.enabled}
+        autoRunning={!!cloudSelected?.running}
+        cloudBusy={cloudBusy}
+        pnl={pnl}
+        lossUsedUsd={lossUsedUsd}
+        maxDailyLossUsd={config.maxDailyLossUsd}
+        openTrades={openTrades}
+        balance={balanceLabel}
+        winRate={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
+        onAuto={toggleCloud}
+        onModeChange={changeTradingMode}
+      />
+
+      {/* A preset is a separate trading engine. The selector makes the market
+          scope explicit, rather than implying that the four names are merely
+          risk profiles for one shared strategy. */}
+      <>
+      {tradingTab === "auto" && <section aria-label="Choisir une stratégie">
+        <div className="mb-2 flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Stratégie active</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Choisis le moteur et les marchés à consulter. Cela ne démarre ni n’arrête aucun bot.</p>
+          </div>
+          <span className="hidden text-xs font-semibold text-muted-foreground sm:block">P&L aujourd’hui</span>
+        </div>
+      <div className={cn(
+        "flex gap-2 overflow-x-auto pb-1 scrollbar-none md:grid md:overflow-visible md:pb-0",
+        shownPresets.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4",
+      )}>
         {shownPresets.map((p) => {
           const st = cloud?.presets?.[p];
           const pnlVal = st?.todayPnl ?? 0;
+          const configuredMarkets = formatConfiguredMarkets(st?.savedConfig?.symbols, PRESET_PRESENTATION[p].description);
           // Static class strings only — Tailwind's JIT scanner can't see
           // dynamically-built names like `border-${accent}-500/40`, so those
           // would silently produce no CSS at all in the production build.
@@ -639,7 +696,7 @@ function AutoTraderPage() {
               key={p}
               onClick={() => selectPresetView(p)}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 transition-all",
+                "flex min-w-[172px] flex-1 flex-col items-start gap-1 rounded-xl border px-3 py-3 text-left transition-all md:min-w-0",
                 selectedPreset === p
                   ? styles[p].active
                   : pnlVal > 0
@@ -649,74 +706,96 @@ function AutoTraderPage() {
                       : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]",
               )}
             >
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {presetLabels[p]}
-                <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-up animate-pulse" : "bg-down")} />
+              <div className="flex w-full items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-foreground">
+                  {presetLabels[p]}
+                  <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-up animate-pulse" : "bg-muted-foreground")} />
+                </span>
+                {PRESET_PRESENTATION[p].experimental && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan-300">
+                    <FlaskConical className="h-2.5 w-2.5" /> Test
+                  </span>
+                )}
+              </div>
+              <span className="text-xs font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
+              <span className="text-[11px] text-muted-foreground/80" title={configuredMarkets}>
+                {p === "default" || p === "scalping" ? PRESET_PRESENTATION[p].description : configuredMarkets}
               </span>
-              <span className={cn("text-sm font-extrabold font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
+              <span className={cn("mt-1 text-sm font-extrabold font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
                 {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
               </span>
             </button>
           );
         })}
       </div>
+      </section>}
 
-      {/* ── 1. BANDEAU DE MÉTRIQUES FINANCIÈRES (Grille unifiée 4 cartes) ── */}
-      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 animate-fade-in">
-        {(() => {
-          const bb = cloud?.brokerBalances;
-          const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
-          const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
-          const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
-          const value = hasAny
-            ? `$${total.toFixed(2)}`
-            : derivSession.balance !== null
-              ? `$${derivSession.balance.toFixed(2)}`
-              : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
-          const delta = hasAny
-            ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "")}`
-            : derivSession.balance !== null
-              ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
-              : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
-          return (
-            <KpiCard
-              label="Fonds disponibles"
-              value={value}
-              tone={cumulativePnl >= 0 ? "bull" : "bear"}
-              delta={delta}
-            />
-          );
-        })()}
-
-        <KpiCard
-          label="P&L Aujourd'hui"
-          value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
-          tone={pnl >= 0 ? "bull" : "bear"}
-          delta={`${tradeCount} trade${tradeCount > 1 ? "s" : ""} · Gains $${totalWon.toFixed(2)}`}
-        />
-
-        <KpiCard
-          label="Win Rate"
-          value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
-          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
-          delta={`${wins} gagnés · ${losses} perdus`}
-        />
-
-        <KpiCard
-          label="Limite de perte"
-          value={`${Math.round((lossUsedUsd / config.maxDailyLossUsd) * 100)}%`}
-          tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "cyan" : "default"}
-          delta={`$${lossUsedUsd.toFixed(2)} / $${config.maxDailyLossUsd}`}
-        />
+      <div className="inline-flex rounded-xl border border-border/60 bg-muted/10 p-1" role="tablist" aria-label="Espace de trading">
+        <Link to="/autotrader" role="tab" aria-selected={tradingTab === "auto"}
+          className={cn("rounded-lg px-4 py-2 text-sm font-black transition-colors", tradingTab === "auto" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground")}>
+          <Power className="mr-2 inline h-4 w-4" /> Automatique
+        </Link>
+        <Link to="/manual-trader" role="tab" aria-selected={tradingTab === "manual"}
+          className={cn("rounded-lg px-4 py-2 text-sm font-black transition-colors", tradingTab === "manual" ? "bg-amber-500/15 text-amber-300" : "text-muted-foreground hover:text-foreground")}>
+          <Zap className="mr-2 inline h-4 w-4" /> Prise directe
+        </Link>
       </div>
 
-      {/* ── Quick Trade Bar — manual trading in ≤2 clicks, always visible ── */}
-      <div className="glass-panel rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <div className={cn("grid items-start gap-5", tradingTab === "auto" ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
+      <div className={cn("min-w-0", tradingTab !== "auto" && "hidden")}>
+      <OpportunityCommandCenter
+        presetLabel={presetLabels[selectedPreset]}
+        opportunity={selectedOpportunity}
+        takeCount={selectedPresetOpportunities.filter((o) => o.decision === "take").length}
+        waitCount={selectedPresetOpportunities.filter((o) => o.decision === "wait").length}
+        avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
+        loading={opportunitiesBusy && !opportunities}
+        config={config}
+        autoEnabled={!!cloudSelected?.enabled}
+        cloudBusy={cloudBusy}
+        onRefresh={refreshOpportunities}
+        onAuto={toggleCloud}
+      />
+      </div>
+
+      <div className={cn("order-3 min-w-0 xl:col-start-1", tradingTab !== "auto" && "hidden")}>
+      <OpportunityBoard
+        opportunities={selectedPresetOpportunities}
+        loading={opportunitiesBusy && !opportunities}
+        onRefresh={refreshOpportunities}
+      />
+      </div>
+
+      {/* A manual order stays in the Auto flow but is never sent automatically. */}
+      <section ref={manualTradeRef} className={cn("order-2 w-full glass-panel rounded-2xl border border-cyan/25 p-4 space-y-4", tradingTab === "manual" ? "xl:col-span-2 xl:col-start-1" : "hidden")} aria-label="Prise directe manuelle">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-amber-400" />
-            <span className="text-xs font-black uppercase tracking-wider text-foreground">Trade manuel</span>
+            <div>
+              <span className="text-sm font-black text-foreground">Prise directe</span>
+              <p className="mt-0.5 text-xs font-medium text-amber-300">Décision 100 % manuelle · position distincte de l’auto</p>
+            </div>
           </div>
+          {actionableOpportunity?.direction && (
+            <Button onClick={prepareManualOpportunity} variant="outline" className="h-9 border-up/30 bg-up/10 px-3 text-xs font-black text-up hover:bg-up/20">
+              <Zap className="mr-1.5 h-3.5 w-3.5" /> Utiliser le signal
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2 border-y border-border/50 py-3 text-xs font-black uppercase tracking-wider xl:hidden">
+          <div className="flex items-center gap-2 text-cyan"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan/40 bg-cyan/10">1</span> Signal</div>
+          <div className="flex items-center gap-2 text-muted-foreground"><span className="grid h-6 w-6 place-items-center rounded-full border border-border">2</span> Paramètres</div>
+          <div className="flex items-center gap-2 text-muted-foreground"><span className="grid h-6 w-6 place-items-center rounded-full border border-border">3</span> Révision</div>
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[150px_minmax(0,1fr)_330px]">
+          <aside className="hidden xl:flex flex-col gap-14 border-r border-border/60 pt-3 text-sm">
+            <ManualStep number="1" label="Signal" detail="Aperçu" active />
+            <ManualStep number="2" label="Paramètres" detail="Votre prise" />
+            <ManualStep number="3" label="Révision" detail="& confirmation" />
+            <div className="mt-auto rounded-xl border border-cyan/20 bg-cyan/[0.04] p-3 text-xs leading-relaxed text-cyan">La prise directe est 100 % manuelle. Aucune exécution automatique.</div>
+          </aside>
+          <div className="min-w-0 space-y-4">
+        <>
           <div className="flex items-center gap-2 text-xs">
             <span className={cn("h-2 w-2 rounded-full",
               derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
@@ -727,40 +806,83 @@ function AutoTraderPage() {
                 : derivSession.connecting ? "Connexion…" : "Déconnecté"}
             </span>
           </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="rounded-xl border border-white/[0.08] bg-black/10 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-black text-foreground">1. Aperçu du signal</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {manualReady
+                    ? "Tu vas créer une position manuelle distincte, en plus de l’auto si elle est déjà ouverte."
+                    : config.mode === "demo" && derivSession.accountType === "live"
+                      ? "Compte réel détecté : le mode Démo bloque toute exécution manuelle."
+                      : "Tu peux exécuter en démo, mais vérifie les réserves signalées."}
+                </p>
+              </div>
+              <span className={cn("rounded-lg border px-2.5 py-1 text-xs font-black", manualReady ? "border-up/30 bg-up/15 text-up" : "border-amber-500/30 bg-amber-500/10 text-amber-300")}>
+                {manualReady ? "PRÊT" : "À VÉRIFIER"}
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <ManualCheck label="Deriv" tone={derivSession.connected ? "ok" : derivSession.connecting ? "warn" : "bad"} detail={derivSession.connected ? "Connecté" : derivSession.connecting ? "Connexion…" : "Requis"} />
+              <ManualCheck label="Compte" tone={manualAccountMatchesMode ? "ok" : derivSession.accountType ? "bad" : "warn"} detail={derivSession.accountType === "demo" ? "Démo" : derivSession.accountType === "live" ? "Réel détecté" : "À vérifier"} />
+              <ManualCheck label="Instrument" tone={manualInstrumentSupported ? "ok" : "bad"} detail={manualInstrumentSupported ? "Compatible" : "Non disponible"} />
+              <ManualCheck label="Signal" tone={manualOpportunity?.decision === "take" ? "ok" : manualOpportunity?.decision === "avoid" ? "bad" : "warn"} detail={manualOpportunity?.decision === "take" ? "À prendre" : manualOpportunity?.decision === "avoid" ? "À éviter" : "En attente"} />
+              <ManualCheck label="Direction" tone={manualSignalAligned ? "ok" : manualOpportunity?.direction ? "warn" : "warn"} detail={manualSignalAligned ? "Alignée" : manualOpportunity?.direction ? `Signal ${manualOpportunity.direction}` : "Sans signal"} />
+            </div>
+          </div>
+          <div className="hidden rounded-xl border border-border/60 bg-card/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-foreground">2. Définir ta prise manuelle</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{preparedManualOpportunity ? `Signal repris : ${preparedManualOpportunity.label} · ${Math.round(preparedManualOpportunity.confidence)}% de confiance.` : "Choisis le marché et la direction, puis vérifie le résumé avant de valider."}</p>
+              </div>
+              <span className={cn("rounded-lg border px-2.5 py-1 text-xs font-black uppercase", config.mode === "live" ? "border-down/30 bg-down/10 text-down" : "border-up/30 bg-up/10 text-up")}>
+                {config.mode === "live" ? "Réel" : "Démo"}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <ManualOrderItem label="Marché" value={manualSymbolLabel} />
+              <ManualOrderItem label="Direction" value={forceDir === "CALL" ? "Hausse · CALL" : "Baisse · PUT"} />
+              <ManualOrderItem label="Mise" value={`$${forceStake.toFixed(2)}`} />
+              <ManualOrderItem label="Durée" value={`${manualDurationMinutes} min`} />
+            </div>
+          </div>
+          <div className="grid gap-3">
           <div className="flex-1 space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Symbole</label>
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Symbole</label>
             <select
               value={forceSymbol}
               disabled={!derivSession.connected || forcingTrade}
-              onChange={(e) => setForceSymbol(e.target.value)}
+              onChange={(e) => { setForceSymbol(e.target.value); setPreparedManualOpportunity(null); }}
               className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-50 font-semibold"
             >
-              {config.symbols.map((s) => (
-                <option key={s} value={s}>{SYMBOLS.find((x) => x.deriv === s)?.label ?? s}</option>
+              {SYMBOLS.map((s) => (
+                <option key={s.deriv} value={s.deriv}>{s.label}</option>
               ))}
             </select>
+            <p className="text-[11px] text-muted-foreground">
+              {manualInstrument === "multiplier" ? "Multiplicateur · position protégée par stop et objectif." : "CALL/PUT · position à échéance fixe."}
+            </p>
           </div>
-          <div className="flex gap-2 sm:flex-none">
-            {(["CALL", "PUT"] as const).map((d) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(manualInstrument === "multiplier" ? ["MULTUP", "MULTDOWN"] : ["CALL", "PUT"] as const).map((d) => (
               <button key={d}
                 disabled={!derivSession.connected || forcingTrade}
-                onClick={() => setForceDir(d)}
+                onClick={() => { setForceDir(d); setPreparedManualOpportunity(null); }}
                 className={cn(
-                  "flex-1 sm:w-20 h-10 rounded-lg text-sm font-extrabold transition-all disabled:opacity-40 disabled:cursor-not-allowed border",
+                  "h-10 min-w-0 rounded-lg border px-3 text-sm font-extrabold transition-all disabled:cursor-not-allowed disabled:opacity-40",
                   forceDir === d
-                    ? d === "CALL"
+                    ? d === "CALL" || d === "MULTUP"
                       ? "bg-up/20 text-up border-up/40 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
                       : "bg-down/20 text-down border-down/40 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
                     : "text-muted-foreground border-border hover:text-foreground hover:border-muted-foreground/40",
                 )}>
-                {d === "CALL" ? "▲ Hausse" : "▼ Baisse"}
+                {d === "CALL" || d === "MULTUP" ? "▲ Hausse" : "▼ Baisse"}
               </button>
             ))}
           </div>
-          <div className="flex-1 sm:w-32 space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mise ($)</label>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Mise ($)</label>
             <AmountInput value={forceStake} min={1} max={100} step={1}
               disabled={!derivSession.connected || forcingTrade}
               onCommit={async (v) => {
@@ -773,14 +895,14 @@ function AutoTraderPage() {
               }} />
           </div>
           <Button
-            disabled={!derivSession.connected || forcingTrade || (forceSymbol ? !isCallPutAvailable(forceSymbol) : false)}
+            disabled={!manualTradeAllowed || forcingTrade}
             onClick={async () => {
               if (!forceSymbol) return;
               const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
               const isLive = config.mode === "live";
               const confirmed = await confirm({
                 title: isLive ? "⚠️ CONFIRMER LE TRADE (RÉEL) ?" : "Confirmer le trade (démo) ?",
-                description: `Position ${forceDir === "CALL" ? "Hausse (CALL)" : "Baisse (PUT)"} sur ${label} · $${forceStake}`,
+                description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
                 confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
                 danger: isLive,
               });
@@ -788,24 +910,25 @@ function AutoTraderPage() {
               setForcingTrade(true);
               toast.info(`Trade en cours — ${label} ${forceDir}…`);
               try {
-                await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
+                await forceDemoTrade(forceSymbol, forceDir, forceStake, manualDurationMinutes, (log) => {
                   handleEvent(log);
                   if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
-                });
+                }, config);
               } catch (e) {
                 toast.error(`Échec: ${(e as Error).message}`);
               } finally {
                 setForcingTrade(false);
               }
             }}
-            className={cn("w-full sm:w-auto h-10 px-6 gap-1.5 text-sm font-bold shrink-0",
-              forceDir === "CALL"
+            id="manual-submit"
+            className={cn("hidden h-11 w-full shrink-0 gap-1.5 px-4 text-sm font-black",
+              forceDir === "CALL" || forceDir === "MULTUP"
                 ? "bg-up/20 text-up border border-up/40 hover:bg-up/30"
                 : "bg-down/20 text-down border border-down/40 hover:bg-down/30",
               "disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed")}>
             {forcingTrade
               ? <><Activity className="h-4 w-4 animate-pulse" /> Envoi…</>
-              : <><Zap className="h-4 w-4" /> Exécuter (${forceStake})</>}
+              : <><Zap className="h-4 w-4" /> 3. {manualReady ? "Confirmer la prise manuelle" : "Confirmer malgré réserves"} (${forceStake})</>}
           </Button>
         </div>
         {!derivSession.connected && (
@@ -813,37 +936,35 @@ function AutoTraderPage() {
             Connecte Deriv pour trader manuellement.
           </p>
         )}
-        {derivSession.connected && forceSymbol && !isCallPutAvailable(forceSymbol) && (
+        {derivSession.connected && forceSymbol && !manualInstrumentSupported && (
           <p className="text-[11px] text-amber-400 font-medium">
-            {forceSymbol.startsWith("BOOM") || forceSymbol.startsWith("CRASH")
-              ? "Symbole Multiplier uniquement — le trade manuel binaire n'est pas supporté sur Boom/Crash."
-              : "Symbole Multiplier uniquement — le trade manuel binaire n'est pas supporté sur les cryptos."}
+            Ce marché n’est pas disponible avec le type de contrat sélectionné.
           </p>
         )}
+        </>
+          </div>
+          <aside className="rounded-2xl border border-border/60 bg-black/10 p-5 xl:sticky xl:top-24 xl:self-start">
+            <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Résumé de la prise</p>
+            <div className="mt-4 space-y-4 rounded-xl border border-white/[0.08] bg-black/10 p-4 text-sm">
+              <ManualSummary label="Marché" value={manualSymbolLabel} />
+              <ManualSummary label="Direction" value={forceDir} tone={forceDir === "CALL" || forceDir === "MULTUP" ? "text-up" : "text-down"} />
+              <ManualSummary label="Mise" value={`$${forceStake.toFixed(2)}`} />
+              <ManualSummary label={manualInstrument === "multiplier" ? "Protection" : "Durée"} value={manualInstrument === "multiplier" ? "Stop + objectif" : `${manualDurationMinutes} min`} />
+              <div className="border-t border-dashed border-border/70 pt-3"><ManualSummary label="Compte" value={config.mode === "live" ? "RÉEL" : "DÉMO"} tone={config.mode === "live" ? "text-down" : "text-up"} /></div>
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/[0.07] p-4 text-sm">
+              <p className="font-black text-amber-300">Exposition à vérifier</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Cette position est distincte de l’auto et peut augmenter ton exposition globale.</p>
+            </div>
+            <Button onClick={() => document.getElementById("manual-submit")?.click()} disabled={!manualTradeAllowed || forcingTrade} className="mt-4 h-32 w-full border border-down/50 bg-down/20 px-4 text-base font-black text-down hover:bg-down/30 disabled:bg-muted/10 disabled:text-muted-foreground">
+              <ShieldAlert className="mr-2 h-6 w-6" /> Confirmer la prise manuelle
+            </Button>
+            <p className="mt-3 text-center text-xs font-medium text-muted-foreground">Aucune exécution automatique · 100 % manuel</p>
+          </aside>
+        </div>
+      </section>
       </div>
-
-      <OpportunityCommandCenter
-        presetLabel={presetLabels[selectedPreset]}
-        opportunity={selectedOpportunity}
-        takeCount={selectedPresetOpportunities.filter((o) => o.decision === "take").length}
-        waitCount={selectedPresetOpportunities.filter((o) => o.decision === "wait").length}
-        avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
-        loading={opportunitiesBusy && !opportunities}
-        config={config}
-        autoEnabled={!!cloudSelected?.enabled}
-        cloudBusy={cloudBusy}
-        manualBusy={manualBusy}
-        derivConnected={derivSession.connected}
-        onRefresh={refreshOpportunities}
-        onManual={executeManualOpportunity}
-        onAuto={toggleCloud}
-      />
-
-      <OpportunityBoard
-        opportunities={selectedPresetOpportunities}
-        loading={opportunitiesBusy && !opportunities}
-        onRefresh={refreshOpportunities}
-      />
+      </>
 
       {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (
@@ -872,6 +993,7 @@ function AutoTraderPage() {
           "Avancé" button controls — one source of truth, two entry points,
           instead of mobile always showing this content regardless of the
           flag desktop gates it behind. ── */}
+      {showAdvanced && (
       <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
         {([
           { id: "control", label: "Exécution", icon: Power },
@@ -898,8 +1020,10 @@ function AutoTraderPage() {
           );
         })}
       </div>
+      )}
 
       {/* ── Main 2-col layout ── */}
+      {showAdvanced && (
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
 
         {/* ── LEFT: Control panel ── */}
@@ -1000,7 +1124,6 @@ function AutoTraderPage() {
               </div>
             </div>
 
-            <AutoBacktestStatus className="mt-3" />
           </div>
           {/* Mise Kelly réduite — affects the actual stake in play, so it stays
               visible on mobile even though the sessions panel below doesn't. */}
@@ -1014,9 +1137,21 @@ function AutoTraderPage() {
 
         </div>
 
-        {/* ── RIGHT: Dashboard + positions ── */}
+        {/* The operational dashboard remains available, but stays out of the
+            decision flow until the user explicitly asks for the detail. */}
         <div className={cn(mobileTab === "dashboard" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
-            
+          <details className="group rounded-2xl border border-border/60 bg-card/20">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+              <span>
+                Détails d’exécution
+                <span className="ml-2 font-medium text-muted-foreground/70">
+                  {openTrades > 0 ? `${openTrades} position${openTrades > 1 ? "s" : ""} ouverte${openTrades > 1 ? "s" : ""}` : "aucune position ouverte"}
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-5 border-t border-border/40 p-4">
+              <AutoBacktestStatus />
             <BotDashboard
               logs={cloudActive ? (cloudSelected?.trades ?? []) : logs}
               lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
@@ -1068,8 +1203,11 @@ function AutoTraderPage() {
               config={config}
             />
           </div>
+            </div>
+          </details>
         </div>
       </div>
+      )}
 
       {/* ── Config: grouped under the mobile "Données" tab, same showAdvanced
           flag desktop's "Avancé" button drives — one source of truth. ── */}
@@ -1667,10 +1805,7 @@ function OpportunityCommandCenter({
   config,
   autoEnabled,
   cloudBusy,
-  manualBusy,
-  derivConnected,
   onRefresh,
-  onManual,
   onAuto,
 }: {
   presetLabel: string;
@@ -1682,113 +1817,190 @@ function OpportunityCommandCenter({
   config: AutoTraderConfig;
   autoEnabled: boolean;
   cloudBusy: boolean;
-  manualBusy: boolean;
-  derivConnected: boolean;
   onRefresh: () => void;
-  onManual: () => void;
   onAuto: () => void;
 }) {
   const decision = opportunity?.decision ?? "wait";
   const style = decisionTone(decision);
-  const canManual = !!opportunity?.direction && opportunity.decision === "take" && derivConnected && !manualBusy;
-  const manualHint = !derivConnected
-    ? "Deriv requis"
-    : opportunity?.decision !== "take"
-      ? "Signal non validé"
-      : "Exécuter";
 
   return (
-    <section className={cn("glass-panel overflow-hidden rounded-2xl border", style.panel)}>
-      <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
-        <div className="p-4 md:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-black uppercase tracking-wider", style.badge)}>
-                  <style.Icon className="h-3.5 w-3.5" />
-                  {style.label}
-                </span>
-                <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">
-                  {presetLabel}
-                </span>
-                {loading && (
-                  <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">
-                    Analyse…
-                  </span>
-                )}
-              </div>
+    <section className="glass-panel overflow-hidden rounded-xl border border-border/60">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-black uppercase tracking-wider", style.badge)}>
+            <style.Icon className="h-3.5 w-3.5" /> {style.label}
+          </span>
+          <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">{presetLabel}</span>
+          {loading && <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs font-bold text-muted-foreground">Analyse…</span>}
+        </div>
+        <button onClick={onRefresh} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-card/40 px-3 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground">
+          <Activity className="h-3.5 w-3.5" /> Actualiser
+        </button>
+      </div>
 
-              <h2 className="mt-3 text-lg font-black tracking-tight md:text-xl">
-                {opportunity ? `${opportunity.label} · ${opportunity.directionLabel}` : "Aucun signal exploitable pour l'instant"}
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                {opportunity
-                  ? `Confiance ${Math.round(opportunity.confidence)}% · Accord ${opportunity.agreement}/4 · Risque ${riskLabel(opportunity.risk)} · ${opportunity.durationMinutes} min`
-                  : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
-              </p>
-              <p className="mt-2 text-xs font-semibold text-muted-foreground/80">
-                Configuration active : mise ${config.stakeUsd} · confiance {config.minConfidence}-{config.maxConfidence}% · accord {config.minTfAgreement}/4 TF
-              </p>
-            </div>
+      <div className="grid items-stretch gap-3 p-4 xl:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]">
+        <div className={cn("h-full rounded-xl border p-4", style.card)}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="break-words text-xl font-black tracking-tight md:text-2xl">
+              {opportunity ? `${opportunity.label} · ${opportunity.directionLabel}` : "Aucun signal exploitable pour l'instant"}
+            </h2>
+            {opportunity && <span className={cn("text-sm font-black", style.text)}>{style.label}</span>}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {opportunity ? "Lecture du signal : vérifie les mesures et seuils avant toute exécution." : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
+          </p>
 
-            <button
-              onClick={onRefresh}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 bg-card/40 px-3 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Activity className="h-3.5 w-3.5" />
-              Actualiser
-            </button>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <DecisionMetric className={style.metric} label="Confiance" value={opportunity ? `${Math.round(opportunity.confidence)}%` : "—"} />
+            <DecisionMetric className={style.metric} label="Accord TF" value={opportunity ? `${opportunity.agreement}/4` : "—"} />
+            <DecisionMetric className={style.metric} label="Risque" value={opportunity ? riskLabel(opportunity.risk) : "—"} />
+            <DecisionMetric className={style.metric} label="Durée" value={opportunity ? `${opportunity.durationMinutes} min` : "—"} />
+          </div>
+
+          <div className={cn("mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 text-sm", style.thresholds)}>
+            <span className={cn("font-black uppercase tracking-wider", style.text)}>Seuils actifs</span>
+            <span className="font-bold text-foreground">Mise ${config.stakeUsd}</span>
+            <span className="font-semibold text-muted-foreground">Confiance {config.minConfidence}-{config.maxConfidence}%</span>
+            <span className="font-semibold text-muted-foreground">Accord minimum {config.minTfAgreement}/4 TF</span>
           </div>
 
           {!!opportunity?.reasons.length && (
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
-              {opportunity.reasons.slice(0, 4).map((reason) => (
-                <div key={reason} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-sm text-muted-foreground">
-                  {reason}
-                </div>
-              ))}
+            <div className="mt-2 grid gap-2 md:grid-cols-3">
+              {opportunity.reasons.slice(0, 3).map((reason) => <div key={reason} className="rounded-xl border border-white/[0.08] bg-black/10 px-3 py-2 text-sm text-muted-foreground">{reason}</div>)}
             </div>
           )}
         </div>
-
-        <div className="border-t border-border/40 bg-black/10 p-4 lg:border-l lg:border-t-0">
-          <div className="grid grid-cols-3 gap-2">
+        <aside className="flex h-full flex-col rounded-xl border border-border/60 bg-black/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-foreground"><Power className="h-4 w-4 text-primary" /> Exécuter</div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">L’auto ne prend que les signaux conformes aux seuils affichés.</p>
+          <div className="mt-5 grid grid-cols-3 gap-2">
             <MiniDecision label="Prendre" value={takeCount} className="text-up" />
             <MiniDecision label="Attendre" value={waitCount} className="text-amber-300" />
             <MiniDecision label="Éviter" value={avoidCount} className="text-down" />
           </div>
-
-          <div className="mt-4 grid gap-2">
-            <Button
-              onClick={onManual}
-              disabled={!canManual}
-              className={cn(
-                "h-11 w-full gap-2 font-black",
-                canManual
-                  ? "border border-up/30 bg-up/15 text-up hover:bg-up/25"
-                  : "border border-border/60 bg-muted/10 text-muted-foreground",
-              )}
-            >
-              {manualBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Zap className="h-4 w-4" />}
-              {`Manuel · ${manualHint}`}
-            </Button>
-            <Button
-              onClick={onAuto}
-              disabled={cloudBusy}
-              className={cn(
-                "h-11 w-full gap-2 font-black",
-                autoEnabled
-                  ? "border border-down/30 bg-down/15 text-down hover:bg-down/25"
-                  : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25",
-              )}
-            >
-              {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />}
-              {autoEnabled ? "Arrêter l'automatique" : "Automatique"}
-            </Button>
+          <div className={cn("mt-3 flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-black", autoEnabled ? "border-up/25 bg-up/10 text-up" : "border-border/60 bg-muted/10 text-muted-foreground")}>
+            {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />} {autoEnabled ? "Auto actif" : "Auto en pause"}
           </div>
-        </div>
+          <Button onClick={onAuto} disabled={cloudBusy} className={cn("mt-auto h-11 w-full gap-2 font-black", autoEnabled ? "border border-down/30 bg-down/15 text-down hover:bg-down/25" : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25")}>
+            {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />} {autoEnabled ? "Mettre en pause" : "Activer l’auto"}
+          </Button>
+        </aside>
       </div>
+
     </section>
+  );
+}
+
+function AutoTraderStatusBar({
+  mode,
+  presetLabel,
+  autoEnabled,
+  autoRunning,
+  cloudBusy,
+  pnl,
+  lossUsedUsd,
+  maxDailyLossUsd,
+  openTrades,
+  balance,
+  winRate,
+  onAuto,
+  onModeChange,
+}: {
+  mode: TradingMode;
+  presetLabel: string;
+  autoEnabled: boolean;
+  autoRunning: boolean;
+  cloudBusy: boolean;
+  pnl: number;
+  lossUsedUsd: number;
+  maxDailyLossUsd: number;
+  openTrades: number;
+  balance: string;
+  winRate: string;
+  onAuto: () => void;
+  onModeChange: (mode: TradingMode) => void;
+}) {
+  const remainingLoss = Math.max(0, maxDailyLossUsd - lossUsedUsd);
+  const limitPct = maxDailyLossUsd > 0 ? Math.min(100, Math.round((lossUsedUsd / maxDailyLossUsd) * 100)) : 0;
+  const statusLabel = autoEnabled
+    ? autoRunning
+      ? "Auto actif"
+      : "Auto en démarrage"
+    : "Scan seul";
+  const statusTone = autoEnabled && autoRunning ? "text-up" : autoEnabled ? "text-amber-300" : "text-muted-foreground";
+
+  return (
+    <div className="sticky top-3 z-30 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 rounded-xl border border-border/60 bg-muted/10 p-1">
+            {(["demo", "live"] as TradingMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onModeChange(m)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-colors",
+                  mode === m
+                    ? m === "live"
+                      ? "bg-down/15 text-down"
+                      : "bg-up/15 text-up"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {m === "live" ? "Live" : "Démo"}
+              </button>
+            ))}
+          </div>
+          <span className={cn("inline-flex items-center gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2 text-xs font-black uppercase tracking-wider", statusTone)}>
+            <span className={cn("h-2 w-2 rounded-full", autoEnabled && autoRunning ? "animate-pulse bg-up" : autoEnabled ? "animate-pulse bg-amber-300" : "bg-muted-foreground")} />
+            {statusLabel}
+          </span>
+          <span className="truncate rounded-xl border border-border/60 bg-muted/10 px-3 py-2 text-xs font-bold text-muted-foreground">
+            {presetLabel}
+          </span>
+        </div>
+
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5 lg:flex lg:items-center">
+          <StatusMetric label="Solde" value={balance} tone="text-foreground" />
+          <StatusMetric
+            label="P&L jour"
+            value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
+            tone={pnl >= 0 ? "text-up" : "text-down"}
+          />
+          <StatusMetric
+            label="Perte restante"
+            value={`$${remainingLoss.toFixed(2)}`}
+            tone={limitPct >= 70 ? "text-down" : limitPct >= 40 ? "text-amber-300" : "text-foreground"}
+          />
+          <StatusMetric label="Win" value={winRate} tone={winRate === "—" ? "text-muted-foreground" : "text-foreground"} />
+          <StatusMetric label="Ouverts" value={`${openTrades}`} tone={openTrades > 0 ? "text-cyan" : "text-muted-foreground"} />
+        </div>
+
+        <Button
+          onClick={onAuto}
+          disabled={cloudBusy}
+          className={cn(
+            "h-11 w-full shrink-0 gap-2 font-black lg:w-auto",
+            autoEnabled
+              ? "border border-down/30 bg-down/15 text-down hover:bg-down/25"
+              : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25",
+          )}
+        >
+          {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />}
+          {autoEnabled ? "Pause auto" : "Activer auto"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StatusMetric({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn("mt-0.5 font-mono-tabular text-sm font-black", tone)}>{value}</div>
+    </div>
   );
 }
 
@@ -1801,78 +2013,123 @@ function OpportunityBoard({
   loading: boolean;
   onRefresh: () => void;
 }) {
-  const groups: { decision: OpportunityDecision; title: string; empty: string }[] = [
-    { decision: "take", title: "Prendre", empty: "Aucun marché propre à prendre." },
-    { decision: "wait", title: "Attendre", empty: "Aucun setup en attente." },
-    { decision: "avoid", title: "Éviter", empty: "Rien à éviter explicitement." },
-  ];
+  const takeItems = opportunities.filter((item) => item.decision === "take").slice(0, 3);
+  const waitItems = opportunities.filter((item) => item.decision === "wait").slice(0, 3);
+  const avoidItems = opportunities.filter((item) => item.decision === "avoid").slice(0, 3);
+  const deferredCount = waitItems.length + avoidItems.length;
 
   return (
-    <section className="grid gap-3 lg:grid-cols-3">
-      {groups.map((group) => {
-        const style = decisionTone(group.decision);
-        const items = opportunities.filter((o) => o.decision === group.decision).slice(0, 3);
-        return (
-          <div key={group.decision} className={cn("rounded-2xl border bg-card/25 p-4", style.panel)}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className={cn("grid h-8 w-8 place-items-center rounded-lg border", style.badge)}>
-                  <style.Icon className="h-4 w-4" />
-                </span>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-wider text-foreground">{group.title}</h3>
-                  <p className="text-[11px] font-semibold text-muted-foreground">{items.length} marché{items.length > 1 ? "s" : ""}</p>
-                </div>
-              </div>
-              {group.decision === "wait" && (
-                <button
-                  onClick={onRefresh}
-                  className="rounded-lg border border-border/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-                >
-                  Scanner
-                </button>
-              )}
-            </div>
+    <section className="space-y-3" aria-label="Marchés surveillés">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Marchés surveillés</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Seuls les marchés actionnables restent visibles en premier.</p>
+        </div>
+        <button onClick={onRefresh} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 px-3 text-xs font-bold text-muted-foreground hover:text-foreground">
+          <Activity className="h-3.5 w-3.5" /> Scanner
+        </button>
+      </div>
 
-            <div className="mt-3 space-y-2">
-              {loading && items.length === 0 ? (
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">
-                  Analyse en cours...
-                </div>
-              ) : items.length === 0 ? (
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">
-                  {group.empty}
-                </div>
-              ) : (
-                items.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-black text-foreground">{item.label}</div>
-                        <div className="mt-0.5 text-xs font-semibold text-muted-foreground">
-                          {item.directionLabel} · {Math.round(item.confidence)}% · {item.agreement}/4 TF
-                        </div>
-                      </div>
-                      <span className={cn(
-                        "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                        item.risk === "faible" ? "bg-up/10 text-up" : item.risk === "modere" ? "bg-amber-500/10 text-amber-300" : "bg-down/10 text-down",
-                      )}>
-                        {riskLabel(item.risk)}
-                      </span>
-                    </div>
-                    {item.reasons[0] && (
-                      <p className="mt-2 line-clamp-2 text-xs font-medium leading-relaxed text-muted-foreground/85">
-                        {item.reasons[0]}
-                      </p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      })}
+      <OpportunityList title="À prendre maintenant" decision="take" items={takeItems} loading={loading} empty="Aucun marché ne remplit les critères actuellement." />
+
+      <details className="group rounded-2xl border border-border/60 bg-card/20">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+          <span>Pourquoi aucun autre trade ? <span className="ml-1 font-medium text-muted-foreground/70">{deferredCount} marché{deferredCount > 1 ? "s" : ""}</span></span>
+          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-3 border-t border-border/40 p-3 lg:grid-cols-2">
+          <OpportunityList title="À attendre" decision="wait" items={waitItems} loading={loading} empty="Aucun setup en attente." compact />
+          <OpportunityList title="À éviter" decision="avoid" items={avoidItems} loading={loading} empty="Aucun risque bloquant signalé." compact />
+        </div>
+      </details>
     </section>
+  );
+}
+
+function DecisionMetric({ label, value, className }: { label: string; value: string; className: string }) {
+  return (
+    <div className={cn("rounded-lg border px-3 py-2.5", className)}>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-base font-black text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function ManualCheck({ label, detail, tone }: { label: string; detail: string; tone: "ok" | "warn" | "bad" }) {
+  const colors = {
+    ok: "border-up/25 bg-up/10 text-up",
+    warn: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+    bad: "border-down/25 bg-down/10 text-down",
+  } as const;
+  return (
+    <div className={cn("rounded-lg border px-3 py-2", colors[tone])}>
+      <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider"><span className="h-1.5 w-1.5 rounded-full bg-current" />{label}</div>
+      <div className="mt-1 text-base font-bold text-foreground">{detail}</div>
+    </div>
+  );
+}
+
+function ManualOrderItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/[0.07] bg-black/10 px-3 py-2.5">
+      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-sm font-black text-foreground" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function ManualStep({ number, label, detail, active = false }: { number: string; label: string; detail: string; active?: boolean }) {
+  return <div className={cn("relative flex items-center gap-3", active ? "text-cyan" : "text-muted-foreground")}><span className={cn("grid h-9 w-9 place-items-center rounded-full border text-lg font-black", active ? "border-cyan bg-cyan/10" : "border-border")}>{number}</span><span><span className="block font-black">{label}</span><span className="block text-xs font-medium">{detail}</span></span></div>;
+}
+
+function ManualSummary({ label, value, tone = "text-foreground" }: { label: string; value: string; tone?: string }) {
+  return <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{label}</span><span className={cn("font-mono-tabular font-black", tone)}>{value}</span></div>;
+}
+
+function OpportunityList({
+  title,
+  decision,
+  items,
+  loading,
+  empty,
+  compact = false,
+}: {
+  title: string;
+  decision: OpportunityDecision;
+  items: OpportunityItem[];
+  loading: boolean;
+  empty: string;
+  compact?: boolean;
+}) {
+  const style = decisionTone(decision);
+  return (
+    <div className={cn("rounded-2xl border bg-card/25 p-4", style.panel)}>
+      <div className="flex items-center gap-2">
+        <span className={cn("grid h-8 w-8 place-items-center rounded-lg border", style.badge)}><style.Icon className="h-4 w-4" /></span>
+        <div>
+          <h3 className="text-sm font-black uppercase tracking-wider text-foreground">{title}</h3>
+          <p className="text-[11px] font-semibold text-muted-foreground">{items.length} marché{items.length > 1 ? "s" : ""}</p>
+        </div>
+      </div>
+      <div className="mt-3 space-y-2">
+        {loading && items.length === 0 ? (
+          <p className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">Analyse en cours...</p>
+        ) : items.length === 0 ? (
+          <p className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">{empty}</p>
+        ) : items.map((item) => (
+          <div key={item.id} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-foreground">{item.label}</div>
+                <div className="mt-0.5 text-xs font-semibold text-muted-foreground">{item.directionLabel} · {Math.round(item.confidence)}% · {item.agreement}/4 TF</div>
+              </div>
+              <span className={cn("shrink-0 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider", item.risk === "faible" ? "bg-up/10 text-up" : item.risk === "modere" ? "bg-amber-500/10 text-amber-300" : "bg-down/10 text-down")}>{riskLabel(item.risk)}</span>
+            </div>
+            {item.reasons[0] && <p className={cn("mt-2 text-xs font-medium leading-relaxed text-muted-foreground/85", compact && "line-clamp-2")}>{item.reasons[0]}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1890,23 +2147,35 @@ function decisionTone(decision: OpportunityDecision) {
     return {
       label: "Prendre",
       Icon: CheckCircle2,
-      panel: "border-up/25",
+      panel: "border-up/50 bg-up/15 shadow-up/10",
       badge: "border-up/25 bg-up/10 text-up",
+      card: "border-up/35 bg-up/10",
+      metric: "border-up/25 bg-up/10",
+      thresholds: "border-up/30 bg-up/10",
+      text: "text-up",
     };
   }
   if (decision === "avoid") {
     return {
       label: "Éviter",
       Icon: ShieldAlert,
-      panel: "border-down/25",
+      panel: "border-down/50 bg-down/15 shadow-down/10",
       badge: "border-down/25 bg-down/10 text-down",
+      card: "border-down/35 bg-down/10",
+      metric: "border-down/25 bg-down/10",
+      thresholds: "border-down/30 bg-down/10",
+      text: "text-down",
     };
   }
   return {
     label: "Attendre",
     Icon: Clock,
-    panel: "border-amber-500/25",
+    panel: "border-amber-500/50 bg-amber-500/15 shadow-amber-500/10",
     badge: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+    card: "border-amber-500/35 bg-amber-500/10",
+    metric: "border-amber-500/25 bg-amber-500/10",
+    thresholds: "border-amber-500/30 bg-amber-500/10",
+    text: "text-amber-300",
   };
 }
 
