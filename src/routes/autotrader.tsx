@@ -920,8 +920,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         className={cn(
                           "flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-all duration-200",
                           isSelected
-                            ? "border-cyan/60 bg-cyan/15 text-foreground shadow-[0_0_15px_rgba(6,182,212,0.2)] ring-1 ring-cyan/50"
-                            : "border-white/10 bg-black/50 text-muted-foreground hover:border-white/20 hover:bg-black/70 hover:text-foreground"
+                            ? "border-primary/50 bg-primary/20 text-primary shadow-primary/10 ring-1 ring-primary/40"
+                            : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
                         )}
                       >
                         <div className="flex w-full items-center justify-between gap-1">
@@ -1053,6 +1053,77 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </div>
               </div>
 
+              {/* Risk Level Selector (Basse, Moyenne, Haute) */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Prise de Risque (Intensité)</label>
+                  <span className="text-xs font-mono font-semibold text-primary">
+                    {forceStake <= 10 ? "🟢 Basse" : forceStake <= 30 ? "🟡 Moyenne" : "🔥 Haute (Prise de risque)"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Basse */}
+                  <button
+                    type="button"
+                    disabled={forcingTrade}
+                    onClick={() => setForceStake(5)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
+                      forceStake <= 10
+                        ? "border-up/60 bg-up/15 text-up font-black shadow-up/10"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <span className="text-xs font-bold">🟢 Basse</span>
+                    <span className="font-mono text-[11px] opacity-80">$5</span>
+                  </button>
+
+                  {/* Moyenne */}
+                  <button
+                    type="button"
+                    disabled={forcingTrade}
+                    onClick={() => setForceStake(20)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
+                      forceStake > 10 && forceStake <= 30
+                        ? "border-amber-500/60 bg-amber-500/15 text-amber-300 font-black shadow-amber/10"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <span className="text-xs font-bold">🟡 Moyenne</span>
+                    <span className="font-mono text-[11px] opacity-80">$20</span>
+                  </button>
+
+                  {/* Haute */}
+                  <button
+                    type="button"
+                    disabled={forcingTrade}
+                    onClick={() => setForceStake(50)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1 rounded-xl border p-3 transition-all",
+                      forceStake > 30
+                        ? "border-down/70 bg-down/20 text-down font-black shadow-down/15 ring-1 ring-down/50"
+                        : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <span className="text-xs font-black uppercase tracking-wider">🔥 Haute</span>
+                    <span className="font-mono text-[11px] opacity-90">$50+</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* High Risk Banner if Haute is selected */}
+              {forceStake > 30 && (
+                <div className="rounded-xl border border-down/40 bg-down/10 p-3 text-xs flex items-center gap-2.5 text-down animate-fade-in">
+                  <Zap className="h-4 w-4 text-down shrink-0" />
+                  <div>
+                    <span className="font-bold">Mode Prise de Risque Élevée Active ($50+)</span>
+                    <p className="text-[11px] text-muted-foreground">Exposition augmentée pour viser des gains élevés.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Stake Amount input + Quick Presets */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
@@ -1115,20 +1186,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             {/* Checklist */}
             <div className="space-y-2 rounded-xl border border-border/50 bg-black/30 p-3.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-semibold">Connexion Deriv</span>
-                <span className={cn("font-bold", derivSession.connected ? "text-up" : "text-amber-400")}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Connexion Deriv</span>
+                <span className={cn("text-xs font-bold", derivSession.connected ? "text-up" : "text-amber-400")}>
                   {derivSession.connected ? "✓ Connecté" : "⚡ Simulée (Démo)"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-semibold">Type de Compte</span>
-                <span className={cn("font-bold uppercase", manualAccountMatchesMode ? "text-up" : "text-amber-300")}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Type de Compte</span>
+                <span className={cn("text-xs font-bold uppercase", manualAccountMatchesMode ? "text-up" : "text-amber-300")}>
                   {derivSession.accountType || (config.mode === "demo" ? "Démo (Virtuel)" : "À vérifier")}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground font-semibold">Instrument</span>
-                <span className={cn("font-bold", manualInstrumentSupported ? "text-up" : "text-down")}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Instrument</span>
+                <span className={cn("text-xs font-bold", manualInstrumentSupported ? "text-up" : "text-down")}>
                   {manualInstrumentSupported ? "✓ Compatible" : "✗ Non disponible"}
                 </span>
               </div>
@@ -1157,9 +1228,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {/* Exposition Warning */}
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs leading-relaxed">
-              <p className="font-bold text-amber-300">Responsabilité</p>
-              <p className="mt-0.5 text-muted-foreground">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-[11px] leading-relaxed">
+              <p className="font-bold text-amber-300 uppercase tracking-wider">Responsabilité</p>
+              <p className="mt-1 text-muted-foreground">
                 Cette position est exécutée immédiatement sur votre compte. Elle est 100% manuelle.
               </p>
             </div>
@@ -2372,7 +2443,7 @@ function ManualCheck({ label, detail, tone }: { label: string; detail: string; t
 
 function ManualOrderItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/[0.07] bg-black/10 px-3 py-2.5">
+    <div className="rounded-xl border border-border/60 bg-card/30 px-3 py-2.5 shadow-inner">
       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-1 truncate text-sm font-black text-foreground" title={value}>{value}</div>
     </div>
@@ -2380,11 +2451,26 @@ function ManualOrderItem({ label, value }: { label: string; value: string }) {
 }
 
 function ManualStep({ number, label, detail, active = false }: { number: string; label: string; detail: string; active?: boolean }) {
-  return <div className={cn("relative flex items-center gap-3", active ? "text-cyan" : "text-muted-foreground")}><span className={cn("grid h-9 w-9 place-items-center rounded-full border text-lg font-black", active ? "border-cyan bg-cyan/10" : "border-border")}>{number}</span><span><span className="block font-black">{label}</span><span className="block text-xs font-medium">{detail}</span></span></div>;
+  return (
+    <div className={cn("relative flex items-center gap-3", active ? "text-primary" : "text-muted-foreground")}>
+      <span className={cn("grid h-9 w-9 place-items-center rounded-full border text-lg font-black", active ? "border-primary bg-primary/10" : "border-border")}>
+        {number}
+      </span>
+      <span>
+        <span className="block font-black">{label}</span>
+        <span className="block text-xs font-medium">{detail}</span>
+      </span>
+    </div>
+  );
 }
 
 function ManualSummary({ label, value, tone = "text-foreground" }: { label: string; value: string; tone?: string }) {
-  return <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{label}</span><span className={cn("font-mono-tabular font-black", tone)}>{value}</span></div>;
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={cn("font-mono-tabular text-sm font-black", tone)}>{value}</span>
+    </div>
+  );
 }
 
 function OpportunityList({
@@ -2414,11 +2500,11 @@ function OpportunityList({
       </div>
       <div className="mt-3 space-y-2">
         {loading && items.length === 0 ? (
-          <p className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">Analyse en cours...</p>
+          <p className="rounded-xl border border-border/60 bg-card/30 px-3 py-3 text-sm font-semibold text-muted-foreground italic">Analyse en cours...</p>
         ) : items.length === 0 ? (
-          <p className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">{empty}</p>
+          <p className="rounded-xl border border-border/60 bg-card/30 px-3 py-3 text-sm font-semibold text-muted-foreground italic">{empty}</p>
         ) : items.map((item) => (
-          <div key={item.id} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3">
+          <div key={item.id} className="rounded-xl border border-border/60 bg-card/30 px-3 py-3 shadow-inner">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-black text-foreground">{item.label}</div>
@@ -2436,7 +2522,7 @@ function OpportunityList({
 
 function MiniDecision({ label, value, className }: { label: string; value: number; className: string }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-center">
+    <div className="rounded-xl border border-border/60 bg-card/30 px-3 py-2 text-center shadow-inner">
       <div className={cn("text-lg font-black", className)}>{value}</div>
       <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
     </div>

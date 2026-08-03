@@ -64,7 +64,7 @@ export function AmountInput({ value, min, max, step, unit, onCommit, disabled }:
         type="button"
         disabled={disabled}
         onClick={() => step1("decrement")}
-        className="rounded-md border border-border bg-background px-2.5 py-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+        className="rounded-xl border border-border bg-card/30 px-2.5 py-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 shadow-sm"
       >
         −
       </button>
@@ -94,7 +94,7 @@ export function AmountInput({ value, min, max, step, unit, onCommit, disabled }:
         type="button"
         disabled={disabled}
         onClick={() => step1("increment")}
-        className="rounded-md border border-border bg-background px-2.5 py-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+        className="rounded-xl border border-border bg-card/30 px-2.5 py-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 shadow-sm"
       >
         +
       </button>
