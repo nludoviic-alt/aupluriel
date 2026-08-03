@@ -946,7 +946,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           ) : null}
                         </div>
                         <span className="text-[10px] font-mono text-muted-foreground/70">
-                          {symObj?.category || "Marché"}
+                          {symObj?.market || "Marché"}
                         </span>
                       </button>
                     );
@@ -1030,7 +1030,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                 )}>
                   <div className="space-y-0.5">
-                    <div className="font-black uppercase tracking-wider">Signal IA : {manualOpportunity.decisionLabel}</div>
+                    <div className="font-black uppercase tracking-wider">Signal IA : {manualOpportunity.directionLabel}</div>
                     <div className="text-[11px] opacity-80">{manualOpportunity.reasons[0] || "Analyse technique disponible"}</div>
                   </div>
                   <div className="font-mono text-base font-black">
@@ -1058,7 +1058,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">Orientation du marché</label>
                 <div className="grid grid-cols-2 gap-3">
-                  {(manualInstrument === "multiplier" ? ["MULTUP", "MULTDOWN"] : ["CALL", "PUT"] as const).map((d) => {
+                  {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
                     const isUp = d === "CALL" || d === "MULTUP";
                     const isSelected = forceDir === d;
                     return (
@@ -1813,7 +1813,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           >
                             <span className="font-extrabold">{isChecked ? "✓" : "+"}</span>
                             <span>{s.label}</span>
-                            <span className="text-[10px] opacity-60 font-normal">({s.category})</span>
+                            <span className="text-[10px] opacity-60 font-normal">({s.market})</span>
                           </button>
                         );
                       })}
@@ -3074,7 +3074,7 @@ function PositionsBridgePanel({ openTrades }: { openTrades: TradeLog[] }) {
 
       <div className="space-y-2">
         {openTrades.map((t, idx) => {
-          const isBuy = t.direction === "CALL" || t.direction === "MULTUP" || t.direction === "BUY";
+          const isBuy = t.direction === "CALL" || t.direction === "MULTUP";
           const profit = t.profit || 0;
           const symbolLabel = SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol;
 
