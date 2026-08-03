@@ -983,31 +983,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 )}
               </div>
 
-              {/* Symbol selector dropdown */}
-              <div className="space-y-1.5 pt-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">Marché sélectionné (ou liste complète)</label>
-                <select
-                  value={forceSymbol}
-                  disabled={forcingTrade}
-                  onChange={(e) => {
-                    setForceSymbol(e.target.value);
-                    setPreparedManualOpportunity(null);
-                  }}
-                  className="w-full h-11 rounded-xl border border-border/60 bg-card/30 px-3.5 text-sm font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                >
-                  {SYMBOLS.map((s) => (
-                    <option key={s.deriv} value={s.deriv}>
-                      {s.label} ({s.deriv})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-muted-foreground font-medium">
-                  {manualInstrument === "multiplier"
-                    ? "Multiplicateur · Position avec Take-Profit et Stop-Loss paramétrés."
-                    : "CALL / PUT · Exécution binaire Rise/Fall à échéance fixe."}
-                </p>
-              </div>
-
               {/* Signal badge preview if available for selected symbol */}
               {manualOpportunity && (
                 <div className={cn(
