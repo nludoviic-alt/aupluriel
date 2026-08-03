@@ -773,7 +773,7 @@ function AutoTraderPage() {
               }} />
           </div>
           <Button
-            disabled={!derivSession.connected || forcingTrade}
+            disabled={!derivSession.connected || forcingTrade || (forceSymbol ? !isCallPutAvailable(forceSymbol) : false)}
             onClick={async () => {
               if (!forceSymbol) return;
               const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
@@ -811,6 +811,13 @@ function AutoTraderPage() {
         {!derivSession.connected && (
           <p className="text-[11px] text-muted-foreground font-medium">
             Connecte Deriv pour trader manuellement.
+          </p>
+        )}
+        {derivSession.connected && forceSymbol && !isCallPutAvailable(forceSymbol) && (
+          <p className="text-[11px] text-amber-400 font-medium">
+            {forceSymbol.startsWith("BOOM") || forceSymbol.startsWith("CRASH")
+              ? "Symbole Multiplier uniquement — le trade manuel binaire n'est pas supporté sur Boom/Crash."
+              : "Symbole Multiplier uniquement — le trade manuel binaire n'est pas supporté sur les cryptos."}
           </p>
         )}
       </div>
