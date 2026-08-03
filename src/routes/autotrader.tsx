@@ -35,6 +35,7 @@ import {
   forceDemoTrade,
   openPreviewTrade,
   getInstrumentForSymbol,
+  isCallPutAvailable,
   isInTradingSession,
   isSymbolTradeable,
   loadCumulativePnl,
@@ -799,6 +800,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       <OpportunityCommandCenter
         presetLabel={presetLabels[selectedPreset]}
         opportunity={selectedOpportunity}
+        opportunities={selectedPresetOpportunities}
         takeCount={selectedPresetOpportunities.filter((o) => o.decision === "take").length}
         waitCount={selectedPresetOpportunities.filter((o) => o.decision === "wait").length}
         avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
@@ -823,14 +825,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         confirm={confirm}
         setEngineLogs={setEngineLogs}
         durationMinutes={config.durationMinutes}
-      />
-      </div>
-
-      <div className={cn("order-3 min-w-0 xl:col-start-1", tradingTab !== "auto" && "hidden")}>
-      <OpportunityBoard
-        opportunities={selectedPresetOpportunities}
-        loading={opportunitiesBusy && !opportunities}
-        onRefresh={refreshOpportunities}
       />
       </div>
 
@@ -2228,6 +2222,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 function OpportunityCommandCenter({
   presetLabel,
   opportunity,
+  opportunities,
   takeCount,
   waitCount,
   avoidCount,
@@ -2240,6 +2235,7 @@ function OpportunityCommandCenter({
 }: {
   presetLabel: string;
   opportunity: OpportunityItem | null;
+  opportunities: OpportunityItem[];
   takeCount: number;
   waitCount: number;
   avoidCount: number;
@@ -2316,6 +2312,30 @@ function OpportunityCommandCenter({
           </Button>
         </aside>
       </div>
+
+      {/* ── Marchés surveillés (fusionné depuis OpportunityBoard) ── */}
+      {(() => {
+        const takeItems = opportunities.filter((item) => item.decision === "take").slice(0, 3);
+        const waitItems = opportunities.filter((item) => item.decision === "wait").slice(0, 3);
+        const avoidItems = opportunities.filter((item) => item.decision === "avoid").slice(0, 3);
+        const deferredCount = waitItems.length + avoidItems.length;
+        return (
+          <div className="border-t border-border/50 p-4 space-y-3">
+            <OpportunityList title="À prendre maintenant" decision="take" items={takeItems} loading={loading} empty="Aucun marché ne remplit les critères actuellement." />
+
+            <details className="group rounded-2xl border border-border/60 bg-card/20">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                <span>Pourquoi aucun autre trade ? <span className="ml-1 font-medium text-muted-foreground/70">{deferredCount} marché{deferredCount > 1 ? "s" : ""}</span></span>
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-3 border-t border-border/40 p-3 lg:grid-cols-2">
+                <OpportunityList title="À attendre" decision="wait" items={waitItems} loading={loading} empty="Aucun setup en attente." compact />
+                <OpportunityList title="À éviter" decision="avoid" items={avoidItems} loading={loading} empty="Aucun risque bloquant signalé." compact />
+              </div>
+            </details>
+          </div>
+        );
+      })()}
 
     </section>
   );
@@ -2431,48 +2451,6 @@ function StatusMetric({ label, value, tone }: { label: string; value: string; to
       <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 font-mono-tabular text-sm font-black", tone)}>{value}</div>
     </div>
-  );
-}
-
-function OpportunityBoard({
-  opportunities,
-  loading,
-  onRefresh,
-}: {
-  opportunities: OpportunityItem[];
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const takeItems = opportunities.filter((item) => item.decision === "take").slice(0, 3);
-  const waitItems = opportunities.filter((item) => item.decision === "wait").slice(0, 3);
-  const avoidItems = opportunities.filter((item) => item.decision === "avoid").slice(0, 3);
-  const deferredCount = waitItems.length + avoidItems.length;
-
-  return (
-    <section className="space-y-3" aria-label="Marchés surveillés">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Marchés surveillés</p>
-          <p className="mt-0.5 text-sm text-muted-foreground">Seuls les marchés actionnables restent visibles en premier.</p>
-        </div>
-        <button onClick={onRefresh} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/60 px-3 text-xs font-bold text-muted-foreground hover:text-foreground">
-          <Activity className="h-3.5 w-3.5" /> Scanner
-        </button>
-      </div>
-
-      <OpportunityList title="À prendre maintenant" decision="take" items={takeItems} loading={loading} empty="Aucun marché ne remplit les critères actuellement." />
-
-      <details className="group rounded-2xl border border-border/60 bg-card/20">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
-          <span>Pourquoi aucun autre trade ? <span className="ml-1 font-medium text-muted-foreground/70">{deferredCount} marché{deferredCount > 1 ? "s" : ""}</span></span>
-          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="grid gap-3 border-t border-border/40 p-3 lg:grid-cols-2">
-          <OpportunityList title="À attendre" decision="wait" items={waitItems} loading={loading} empty="Aucun setup en attente." compact />
-          <OpportunityList title="À éviter" decision="avoid" items={avoidItems} loading={loading} empty="Aucun risque bloquant signalé." compact />
-        </div>
-      </details>
-    </section>
   );
 }
 
