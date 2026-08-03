@@ -16,7 +16,6 @@ import {
   Save,
   Settings2,
   ShieldAlert,
-  ShieldCheck,
   Timer,
   Trash2,
   TrendingDown,
@@ -24,157 +23,8 @@ import {
   Zap,
 } from "lucide-react";
 
-let sharedAudioCtx: AudioContext | null = null;
-
-function initAudio() {
-  if (sharedAudioCtx) return;
-  try {
-    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    const activeCtx = new Ctx() as AudioContext;
-    sharedAudioCtx = activeCtx;
-    // Play short silence to warm up AudioContext
-    const buffer = activeCtx.createBuffer(1, 1, 22050);
-    const node = activeCtx.createBufferSource();
-    node.buffer = buffer;
-    node.connect(activeCtx.destination);
-    node.start(0);
-  } catch (e) {
-    console.error("Audio initialization failed:", e);
-  }
-}
-
-if (typeof window !== "undefined") {
-  const resumeAudio = () => {
-    initAudio();
-    if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
-      sharedAudioCtx.resume().then(() => {
-        window.removeEventListener("click", resumeAudio);
-        window.removeEventListener("keydown", resumeAudio);
-        window.removeEventListener("touchstart", resumeAudio);
-      });
-    }
-  };
-  window.addEventListener("click", resumeAudio);
-  window.addEventListener("keydown", resumeAudio);
-  window.addEventListener("touchstart", resumeAudio);
-}
-
-function playWinSound() {
-  try {
-    initAudio();
-    const ctx = sharedAudioCtx;
-    if (!ctx) return;
-    if (ctx.state === "suspended") {
-      ctx.resume();
-    }
-    
-    const notes = [
-      { freq: 523.25, delay: 0, dur: 0.4 },   // C5
-      { freq: 659.25, delay: 0.08, dur: 0.4 }, // E5
-      { freq: 783.99, delay: 0.16, dur: 0.4 }, // G5
-      { freq: 1046.50, delay: 0.24, dur: 0.6 }, // C6
-    ];
-    
-    notes.forEach(({ freq, delay, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.type = "triangle";
-      osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + delay);
-      
-      const t = ctx.currentTime + delay;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.18, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      
-      gain2.gain.setValueAtTime(0, t);
-      gain2.gain.linearRampToValueAtTime(0.04, t + 0.005);
-      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-      
-      osc.start(t);
-      osc.stop(t + dur + 0.1);
-      
-      osc2.start(t);
-      osc2.stop(t + dur + 0.1);
-    });
-  } catch {}
-}
-
-function playLossSound() {
-  try {
-    initAudio();
-    const ctx = sharedAudioCtx;
-    if (!ctx) return;
-    if (ctx.state === "suspended") {
-      ctx.resume();
-    }
-    
-    const notes = [
-      { freq: 392.00, delay: 0, dur: 0.3 },   // G4
-      { freq: 329.63, delay: 0.1, dur: 0.3 }, // E4
-      { freq: 261.63, delay: 0.2, dur: 0.5 }, // C4
-    ];
-    
-    notes.forEach(({ freq, delay, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      
-      const t = ctx.currentTime + delay;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.08, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      
-      osc.start(t);
-      osc.stop(t + dur + 0.1);
-    });
-  } catch {}
-}
-
-function playOpenSound() {
-  try {
-    initAudio();
-    const ctx = sharedAudioCtx;
-    if (!ctx) return;
-    if (ctx.state === "suspended") {
-      ctx.resume();
-    }
-    
-    const notes = [
-      { freq: 880.00, delay: 0, dur: 0.15 },   // A5
-      { freq: 1318.51, delay: 0.05, dur: 0.25 } // E6
-    ];
-    
-    notes.forEach(({ freq, delay, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      
-      const t = ctx.currentTime + delay;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.12, t + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      
-      osc.start(t);
-      osc.stop(t + dur + 0.1);
-    });
-  } catch {}
-}
+import { playWinSound, playLossSound, playOpenSound } from "@/lib/sounds";
+import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SYMBOLS, subscribeTicks, fetchCandles, GRANULARITY } from "@/lib/deriv";
@@ -194,10 +44,8 @@ import {
   loadCumulativePnl,
   loadCustomPresets,
   loadDailyPnl,
-  openPreviewTrade,
   reconcileOpenTrades,
   saveBacktestStats,
-  PRUDENT_CONFIG,
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
@@ -246,7 +94,11 @@ export const Route = createFileRoute("/autotrader")({
 });
 
 const CONFIG_KEY = "lio23.autotrader_config";
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" } as const;
+const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}`;
+
+type PresetKey = "default" | "boom" | "crash" | "scalping";
+
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" };
 
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
@@ -265,11 +117,6 @@ const PRESET_TABS: Record<
   crash:    { label: "Crash",    Icon: TrendingDown, active: "bg-yellow-500/35 text-yellow-300", card: "border-yellow-500/40 bg-yellow-500/10" },
   scalping: { label: "Scalping", Icon: Timer,        active: "bg-cyan-500/35 text-cyan-300",     card: "border-cyan-500/40 bg-cyan-500/10" },
 };
-// A genuinely different engine from the other three presets, not a variant of
-// Boom: price action on M1/M5 instead of the 4-timeframe indicator vote. See
-// scalping-signal.server.ts for the rules and the backtest behind them.
-const SCALPING_SUBTITLE = "Boom 500 · tendance M5 + repli M1 · stop structurel 1.5R · démo";
-
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
   id: string;
@@ -305,12 +152,13 @@ interface OpportunitiesResponse {
   summary: { take: number; wait: number; avoid: number; presets: number };
 }
 
-function loadConfig(): AutoTraderConfig {
+function loadConfig(preset?: string): AutoTraderConfig {
   try {
+    const key = preset ? PRESET_CONFIG_KEY(preset) : CONFIG_KEY;
     const cfg: AutoTraderConfig = {
       ...DEFAULT_CONFIG,
       stakeUsd: loadDefaultStake(),
-      ...JSON.parse(localStorage.getItem(CONFIG_KEY) ?? "{}"),
+      ...JSON.parse(localStorage.getItem(key) ?? "{}"),
     };
     return cfg;
   } catch {
@@ -318,10 +166,38 @@ function loadConfig(): AutoTraderConfig {
   }
 }
 
-function saveConfig(c: AutoTraderConfig) {
+function saveConfig(c: AutoTraderConfig, preset?: string) {
   try {
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(c));
+    const key = preset ? PRESET_CONFIG_KEY(preset) : CONFIG_KEY;
+    localStorage.setItem(key, JSON.stringify(c));
   } catch {}
+}
+
+interface PresetStatus {
+  enabled: boolean;
+  running: boolean;
+  mode: "demo" | "live";
+  pausedUntil: number | null;
+  lastError?: string | null;
+  lastScan?: ScanResult | null;
+  todayPnl: number;
+  todayFloatingLoss: number;
+  todayRiskPnl: number;
+  todayCount: number;
+  trades: TradeLog[];
+  allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
+  savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
+}
+
+interface CloudStatus {
+  presets: Record<PresetKey, PresetStatus>;
+  visiblePresets?: PresetKey[];
+  brokerBalances?: {
+    deriv: { balance: number; currency: string } | null;
+    kraken: { balance: number; currency: string } | null;
+    binance: { balance: number; currency: string } | null;
+    oanda: { balance: number; currency: string } | null;
+  };
 }
 
 function AutoTraderPage() {
@@ -350,6 +226,7 @@ function AutoTraderPage() {
   const [showSaveParams, setShowSaveParams] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
@@ -370,35 +247,6 @@ function AutoTraderPage() {
   // Default/"Multi", Boom, Crash. `selectedPreset` is purely a VIEW selector
   // — which one's dashboard/config/journal is on screen — not a switch that
   // stops the others. Each can be started/stopped on its own.
-  type PresetKey = "default" | "boom" | "crash" | "scalping";
-  interface PresetStatus {
-    enabled: boolean;
-    running: boolean;
-    mode: "demo" | "live";
-    pausedUntil: number | null;
-    lastError?: string | null;
-    lastScan?: ScanResult | null;
-    todayPnl: number;
-    todayFloatingLoss: number;
-    todayRiskPnl: number;
-    todayCount: number;
-    trades: TradeLog[];
-    allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
-    savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
-  }
-  interface CloudStatus {
-    presets: Record<PresetKey, PresetStatus>;
-    // Which presets to show in the MOBILE tab strip (set in /admin). Display
-    // filter only — `presets` above always carries all four, and a hidden
-    // preset keeps running server-side.
-    visiblePresets?: PresetKey[];
-    brokerBalances?: {
-      deriv: { balance: number; currency: string } | null;
-      kraken: { balance: number; currency: string } | null;
-      binance: { balance: number; currency: string } | null;
-      oanda: { balance: number; currency: string } | null;
-    };
-  }
   const [selectedPreset, setSelectedPreset] = useState<PresetKey>("default");
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
@@ -437,7 +285,7 @@ function AutoTraderPage() {
         syncedFromServerRef.current[selectedPreset] = true;
         setConfig((prev) => {
           const next = { ...prev, stakeUsd: savedConfig.stakeUsd, maxDailyLossUsd: savedConfig.maxDailyLossUsd };
-          saveConfig(next);
+          saveConfig(next, selectedPreset);
           return next;
         });
       }
@@ -457,13 +305,13 @@ function AutoTraderPage() {
 
   useEffect(() => {
     refreshCloud();
-    const id = setInterval(refreshCloud, 5_000);
+    const id = setInterval(refreshCloud, 10_000);
     return () => clearInterval(id);
   }, [refreshCloud]);
 
   useEffect(() => {
     refreshOpportunities();
-    const id = setInterval(refreshOpportunities, 15_000);
+    const id = setInterval(refreshOpportunities, 30_000);
     return () => clearInterval(id);
   }, [refreshOpportunities]);
 
@@ -572,7 +420,7 @@ function AutoTraderPage() {
     const pair = new URLSearchParams(window.location.search).get("pair");
     if (pair && SYMBOLS.some((s) => s.deriv === pair) && !loaded.symbols.includes(pair)) {
       loaded.symbols = [...loaded.symbols, pair];
-      saveConfig(loaded);
+      saveConfig(loaded, selectedPreset);
       const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
       toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
     }
@@ -699,7 +547,7 @@ function AutoTraderPage() {
   function patchConfig<K extends keyof AutoTraderConfig>(k: K, v: AutoTraderConfig[K]) {
     const next = { ...config, [k]: v };
     setConfig(next);
-    saveConfig(next);
+    saveConfig(next, selectedPreset);
   }
 
   /**
@@ -716,19 +564,18 @@ function AutoTraderPage() {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
     const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : DEFAULT_CONFIG;
-    // Every OTHER preset here carries the user's own stake/risk choice
-    // forward across tabs (a personal risk tolerance, not a preset
-    // property). Scalping is the deliberate exception: its whole design is
-    // a fixed tiny stake with dollar guards scaled to match (see
-    // SCALPING_PRESET's header comment) — carrying over whatever stake was
-    // set on Boom/Crash would silently defeat that, so it always starts
-    // from its own canonical values instead.
-    const next: AutoTraderConfig = target === "scalping"
-      ? { ...DEFAULT_CONFIG, ...presetFields }
-      : {
-          ...DEFAULT_CONFIG, ...presetFields,
-          stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
-        };
+    // Try to load a previously saved per-preset config draft from localStorage.
+    // Falls back to the canonical preset values if nothing is saved yet.
+    const saved = loadConfig(target);
+    const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
+    const next: AutoTraderConfig = hasSavedOverride
+      ? saved
+      : target === "scalping"
+        ? { ...DEFAULT_CONFIG, ...presetFields }
+        : {
+            ...DEFAULT_CONFIG, ...presetFields,
+            stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
+          };
     setConfig(next);
     setDraftDuration(next.durationMinutes);
     setDraftMaxTrades(next.maxTradesPerDay);
@@ -827,29 +674,6 @@ function AutoTraderPage() {
     }
   }
 
-  async function toggleEngine() {
-    if (anyPresetEnabled) {
-      toast.error("Le bot serveur est actif — désactive-le pour utiliser le moteur local (sinon trades en double)");
-      return;
-    }
-    if (running) {
-      // Stopping is reversible and low-risk — no confirmation
-      stopAutoTraderEngine();
-      toast.info("Auto-trader arrêté");
-    } else {
-      // Local engine retired: it only ran while a tab stayed open, logged to
-      // this one browser's localStorage (invisible everywhere else — other
-      // devices, the journal, admin), and never sent a notification. Real
-      // money moved through it with none of that — the server bot is the
-      // only supported way to trade now: persisted, notified, one shared
-      // source of truth. Stopping (above) still works for anyone who had it
-      // running before this change shipped.
-      toast.error("Le moteur local est désactivé — utilise le Bot serveur (☁️ ci-dessous) : suivi centralisé et notifications sur chaque trade.");
-    }
-  }
-
-
-
   async function runBacktest() {
     setBacktestRunning(true);
     setBacktestResults({});
@@ -900,20 +724,6 @@ function AutoTraderPage() {
   // gold on hover when both are stopped. Previously only reflected the local
   // engine, so activating "Bot serveur" alone left the button looking idle.
   const anyRunning = running || anyPresetEnabled;
-  const modeGlow = anyRunning
-    ? "shadow-[0_0_56px_rgba(34,197,94,0.45)]"
-    : "shadow-[0_0_32px_rgba(255,215,0,0.18)] hover:shadow-[0_0_60px_rgba(255,215,0,0.35)]";
-
-  const modeRing = anyRunning
-    ? "ring-2 ring-up/60"
-    : "ring-1 ring-primary/30 hover:ring-primary/60";
-
-  const modeIcon = anyRunning ? "text-up" : "text-primary";
-
-  const modeBg = anyRunning
-    ? "bg-up/12"
-    : "bg-primary/10 hover:bg-primary/18";
-
   // Rendered twice — inline in the desktop header, and as its own full-width
   // row on mobile. It used to live only inside the header's `hidden md:flex`
   // group, which made switching presets impossible on a phone.
@@ -951,7 +761,7 @@ function AutoTraderPage() {
   );
 
   return (
-    <div className="p-3 md:p-4 space-y-6 max-w-[1600px] mx-auto">
+    <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-4 sm:px-6 lg:px-8">
 
       {/* ── Header — description and quick-action shortcuts are power-user
           extras already reachable from Configuration, so they're desktop-only
@@ -962,33 +772,21 @@ function AutoTraderPage() {
             <Zap className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight leading-none">Auto-Trader</h1>
+            <h1 className="text-xl font-bold tracking-tight leading-none">Opportunités Deriv</h1>
             <p className="hidden md:block text-sm text-muted-foreground mt-1">
-              {selectedPreset === "scalping" ? SCALPING_SUBTITLE : "Algorithme multi-indicateurs · 4 timeframes · Patterns japonais"}
+              Scanner, conseiller, puis exécuter seulement avec ton autorisation.
             </p>
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2">
-          {/* ── Quick Preset Switch: Default vs Boom ── */}
           {presetSwitch}
-          <Button variant="outline" size="sm" disabled={running}
-            onClick={() => { const next = { ...config, ...PRUDENT_CONFIG }; setConfig(next); saveConfig(next);
-              setDraftDuration(next.durationMinutes); setDraftMaxTrades(next.maxTradesPerDay);
-              toast.success("Mode Prudent activé", { description: "DEMO · PREMIUM · 4/4 TF · confiance ≥82% · max 5 trades/jour" }); }}
-            className="gap-2 text-sm border-up/40 text-up hover:bg-up/10 h-9 px-4">
-            <ShieldCheck className="h-4 w-4" /> Mode Prudent
-          </Button>
-          <Button variant="outline" size="sm"
-            disabled={config.symbols.every((s) => openTradeList.some((t) => t.symbol === s))}
-            onClick={async () => {
-              const openSymbols = new Set(openTradeList.map((t) => t.symbol));
-              const sym = config.symbols.find((s) => !openSymbols.has(s));
-              if (!sym) { toast.error("Toutes les paires ont déjà une position ouverte."); return; }
-              toast.info(`Aperçu — ${SYMBOLS.find((x) => x.deriv === sym)?.label ?? sym}…`);
-              await openPreviewTrade(sym, config.durationMinutes, config.stakeUsd, handleEvent);
-            }}
-            className="gap-2 text-sm h-9 px-4">
-            <Activity className="h-4 w-4" /> Aperçu live
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="gap-2 text-sm h-9 px-4"
+          >
+            <Settings2 className="h-4 w-4" /> {showAdvanced ? "Masquer avancé" : "Avancé"}
           </Button>
         </div>
       </div>
@@ -1060,6 +858,12 @@ function AutoTraderPage() {
         onAuto={toggleCloud}
       />
 
+      <OpportunityBoard
+        opportunities={selectedPresetOpportunities}
+        loading={opportunitiesBusy && !opportunities}
+        onRefresh={refreshOpportunities}
+      />
+
       {/* ── Alert banners ── */}
       {riskStopReasons.length > 0 && (
         <div className="rounded-xl border border-down/40 bg-down/8 p-5 flex gap-4">
@@ -1100,9 +904,9 @@ function AutoTraderPage() {
           shows every section). ── */}
       <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
         {([
-          { id: "control", label: "Contrôle", icon: Power },
-          { id: "dashboard", label: "Dashboard", icon: Activity },
-          { id: "config", label: "Config", icon: Settings2 },
+          { id: "control", label: "Exécution", icon: Power },
+          { id: "dashboard", label: "Scanner", icon: Activity },
+          { id: "config", label: "Avancé", icon: Settings2 },
           { id: "journal", label: "Journal", icon: Clock },
         ] as const).map((t) => {
           const Icon = t.icon;
@@ -1124,7 +928,7 @@ function AutoTraderPage() {
       </div>
 
       {/* ── Main 2-col layout ── */}
-      <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
 
         {/* ── LEFT: Control panel ── */}
         <div className={cn(mobileTab === "control" ? "block" : "hidden", "md:block space-y-4")}>
@@ -1168,17 +972,32 @@ function AutoTraderPage() {
               })}
             </div>
 
-            {/* Power button + statuts */}
-            <div className="p-6 flex flex-col items-center gap-5">
-              <div className="relative w-32 h-32">
-                {anyRunning && <span className="absolute inset-0 rounded-full animate-ping bg-up opacity-20" />}
-                <button onClick={toggleEngine}
-                  className={cn("relative w-full h-full rounded-full flex items-center justify-center transition-all duration-300 group", modeBg, modeRing, modeGlow)}>
-                  <Power className={cn("h-12 w-12 transition-transform duration-200 group-hover:scale-110", modeIcon)} />
-                </button>
+            {/* Execution status */}
+            <div className="p-5 space-y-4">
+              <div className={cn(
+                "rounded-xl border p-4 transition-colors",
+                anyRunning ? "border-up/30 bg-up/8" : "border-border/60 bg-muted/10",
+              )}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", anyRunning ? "bg-up animate-pulse" : "bg-muted-foreground")} />
+                      <span className="text-sm font-black uppercase tracking-wider text-foreground">Auto-exécution</span>
+                    </div>
+                    <p className="mt-1 text-xs font-medium leading-relaxed text-muted-foreground">
+                      {cloudSelected?.enabled
+                        ? "Au Pluriel peut exécuter les signaux validés selon tes règles."
+                        : "Au Pluriel scanne et conseille, sans ouvrir de position automatiquement."}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={!!cloudSelected?.enabled}
+                    disabled={cloudBusy}
+                    onCheckedChange={toggleCloud}
+                  />
+                </div>
               </div>
 
-              {/* Statuts */}
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Statut</span>
@@ -1186,10 +1005,10 @@ function AutoTraderPage() {
                     {running && cloudSelected?.enabled && cloudSelected?.running
                       ? `● Actif (local + serveur ${presetLabels[selectedPreset]})`
                       : cloudSelected?.enabled && cloudSelected?.running
-                      ? `● Actif sur (${presetLabels[selectedPreset]})`
+                      ? `● Autorisée (${presetLabels[selectedPreset]})`
                       : running
                       ? "● Actif"
-                      : "○ Arrêté"}
+                      : "○ Désactivée"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
@@ -1200,8 +1019,8 @@ function AutoTraderPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
-                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Paires</span>
-                  <span className="text-sm font-bold text-foreground">{config.symbols.length} surveillées</span>
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Risque</span>
+                  <span className="text-sm font-bold text-foreground">${config.stakeUsd} · max -${config.maxDailyLossUsd}/j</span>
                 </div>
                 {config.mode !== "simulation" && (
                   <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
@@ -1218,32 +1037,6 @@ function AutoTraderPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* ── Server bot: keeps trading with the app closed / phone locked ── */}
-          <div className={cn(
-            "glass-panel rounded-xl px-4 py-4 border transition-all duration-300",
-            cloudSelected?.enabled ? "border-[color:var(--brand-cyan)]/40" : "border-border/60",
-          )}>
-             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-base leading-none">☁️</span>
-                  <span className="text-sm font-black uppercase tracking-wider text-foreground">Mode automatique — {presetLabels[selectedPreset]}</span>
-                  {cloudSelected?.enabled && (
-                    <span className={cn("h-2 w-2 rounded-full", cloudSelected.pausedUntil ? "bg-amber-400" : "bg-up animate-pulse")} />
-                  )}
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
-                  Exécute automatiquement les signaux validés du preset — même téléphone verrouillé ou app fermée.
-                </p>
-              </div>
-              <Switch
-                checked={!!cloudSelected?.enabled}
-                disabled={cloudBusy}
-                onCheckedChange={toggleCloud}
-              />
             </div>
 
             <AutoBacktestStatus className="mt-3" />
@@ -1275,9 +1068,6 @@ function AutoTraderPage() {
                       t.status === "won" || (t.status === "open" && t.profit >= 0) ? "text-up"
                         : t.status === "lost" || (t.status === "open" && t.profit < 0) ? "text-down" : "text-muted-foreground")}>
                       {t.direction} · {
-                        // Multiplier positions push live floating P&L on every "open" tick
-                        // (trackMultiplierPosition) — binary "open" trades don't update profit
-                        // until they resolve, so t.profit is still 0 for those mid-flight.
                         t.status === "won" ? `+$${t.profit.toFixed(2)}`
                           : t.status === "lost" ? `-$${Math.abs(t.profit).toFixed(2)}`
                           : t.status === "open" && t.profit !== 0 ? `${t.profit >= 0 ? "+" : ""}$${t.profit.toFixed(2)} (ouvert)`
@@ -1293,7 +1083,7 @@ function AutoTraderPage() {
               the Deriv pipeline), not a core action — desktop-only on mobile to
               cut clutter. Toujours visible en mode demo/live pour éviter les
               clignotements de l'interface. */}
-          {(config.mode === "demo" || config.mode === "live") && (
+          {showAdvanced && (config.mode === "demo" || config.mode === "live") && (
             <div className={cn("hidden md:block glass-panel rounded-xl px-4 py-3 border border-amber-500/20 transition-all duration-300",
               !derivSession.connected && "opacity-60")}>
               <div className="flex items-center justify-between mb-2.5">
@@ -1404,7 +1194,7 @@ function AutoTraderPage() {
                 Binance/OANDA are Multi-only, see below), so the grid drops
                 to 2 fixed columns there instead of stretching to 4 and
                 leaving an empty gap on desktop. */}
-            <div className={cn("grid gap-3 animate-fade-in", selectedPreset === "default" ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
+            <div className={cn("grid gap-3 animate-fade-in", showAdvanced && selectedPreset === "default" ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
               {(() => {
                 const bb = cloud?.brokerBalances;
                 const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
@@ -1454,7 +1244,7 @@ function AutoTraderPage() {
                   Crash — ce sont des produits Deriv exclusifs, aucun autre
                   courtier ne les propose. Ne montrer ces cartes que sur
                   Multi, où elles peuvent réellement router du forex/crypto. */}
-              {selectedPreset === "default" && (() => {
+              {showAdvanced && selectedPreset === "default" && (() => {
                 const b = cloud?.brokerBalances?.kraken;
                 return (
                   <KpiCard
@@ -1465,7 +1255,7 @@ function AutoTraderPage() {
                   />
                 );
               })()}
-              {selectedPreset === "default" && cloud?.brokerBalances?.binance && (
+              {showAdvanced && selectedPreset === "default" && cloud?.brokerBalances?.binance && (
                 <KpiCard
                   label="Binance"
                   value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
@@ -1473,7 +1263,7 @@ function AutoTraderPage() {
                   tone="binance"
                 />
               )}
-              {selectedPreset === "default" && cloud?.brokerBalances?.oanda && (
+              {showAdvanced && selectedPreset === "default" && cloud?.brokerBalances?.oanda && (
                 <KpiCard
                   label="OANDA"
                   value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
@@ -1557,132 +1347,38 @@ function AutoTraderPage() {
                   </div>
                 )}
 
-                {/* Sessions marchés — grid 4 capsules */}
-                <div className="hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Globe className="h-4 w-4 text-neutral-400" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-4">
-                    {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
-                      const isActive = activeSessions.includes(s);
-                      const inCfg = config.tradingSessions.includes(s);
-                      return (
-                        (() => {
-                          const isMainActive = isActive && inCfg;
-                          const isOpenOnly = isActive && !inCfg;
-                          const containerClass = isMainActive
-                            ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
-                            : isOpenOnly
-                              ? "bg-up/5 border-up/15 text-up/90"
-                              : "bg-down/5 border-down/15 text-down/80";
-                          const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
-                          const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
-                          const badgeClass = isMainActive
-                            ? "bg-up/20 border-up/45 text-up text-glow-green"
-                            : isOpenOnly
-                              ? "bg-up/10 border-up/25 text-up/90"
-                              : "bg-down/10 border-down/20 text-down/90";
-
-                          return (
-                            <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
-                              <div className="space-y-0.5">
-                                <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
-                                <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
-                              </div>
-                              <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
-                                {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
-                              </span>
-                            </div>
-                          );
-                        })()
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Gold live ticker — right below the sessions */}
-                <div className="block mt-5">
-                  <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
-                </div>
-
-                {/* Live signals — compact static list, below the gold ticker */}
-                <div className="mt-5">
-                  <LiveSignals
-                    lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
-                    config={config}
-                    running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
-                  />
-                </div>
+                <ScannerSection
+                  cloudActive={cloudActive}
+                  cloudSelected={cloudSelected}
+                  lastScan={lastScan}
+                  config={config}
+                  running={running}
+                  showAdvanced={showAdvanced}
+                  selectedPreset={selectedPreset}
+                  activeSessions={activeSessions}
+                />
               </div>
             </div>
           ) : (
             /* Standby State: Stacked vertically to fill space cleanly and avoid layout gaps */
             <div className="space-y-5 animate-fade-in">
-              {/* Sessions marchés (Spans full-width inside the right column) */}
-              <div className="hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]">
-                <div className="flex items-center gap-2 mb-3">
-                  <Globe className="h-4 w-4 text-neutral-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-4">
-                  {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
-                    const isActive = activeSessions.includes(s);
-                    const inCfg = config.tradingSessions.includes(s);
-                    return (
-                      (() => {
-                        const isMainActive = isActive && inCfg;
-                        const isOpenOnly = isActive && !inCfg;
-                        const containerClass = isMainActive
-                          ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
-                          : isOpenOnly
-                            ? "bg-up/5 border-up/15 text-up/90"
-                            : "bg-down/5 border-down/15 text-down/80";
-                        const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
-                        const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
-                        const badgeClass = isMainActive
-                          ? "bg-up/20 border-up/45 text-up text-glow-green"
-                          : isOpenOnly
-                            ? "bg-up/10 border-up/25 text-up/90"
-                            : "bg-down/10 border-down/20 text-down/90";
-
-                        return (
-                          <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
-                            <div className="space-y-0.5">
-                              <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
-                              <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
-                            </div>
-                            <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
-                              {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
-                            </span>
-                          </div>
-                        );
-                      })()
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Gold live ticker — below standby sessions */}
-              <div className="block mt-5">
-                <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
-              </div>
-
-              {/* Live signals — compact static list, below the gold ticker */}
-              <div className="mt-5">
-                <LiveSignals
-                  lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
-                  config={config}
-                  running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
-                />
-              </div>
+              <ScannerSection
+                cloudActive={cloudActive}
+                cloudSelected={cloudSelected}
+                lastScan={lastScan}
+                config={config}
+                running={running}
+                showAdvanced={showAdvanced}
+                selectedPreset={selectedPreset}
+                activeSessions={activeSessions}
+              />
             </div>
           )}
         </div>
       </div>
 
       {/* ── Config + adaptive weights: grouped under the mobile "Config" tab ── */}
-      <div className={cn(mobileTab === "config" ? "block" : "hidden", "md:block space-y-6")}>
+      <div className={cn(mobileTab === "config" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden", "space-y-6")}>
 
       {/* ── Config panel (collapsible + tabbed) ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
@@ -1739,7 +1435,7 @@ function AutoTraderPage() {
                     <button disabled={running}
                       onClick={() => {
                         const next = { ...config, mode: "demo" as TradingMode, minConfidence: 60, minTfAgreement: 2, maxTradesPerDay: 20, premiumOnly: false, stopOnRisk: false, maxConsecutiveLosses: 10 };
-                        setConfig(next); saveConfig(next);
+                        setConfig(next); saveConfig(next, selectedPreset);
                         setDraftMaxTrades(20);
                         toast.success("Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
                       }}
@@ -1789,7 +1485,7 @@ function AutoTraderPage() {
                           onClick={() => {
                             const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...pc } = preset;
                             const next = { ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
-                            setConfig(next); saveConfig(next);
+                            setConfig(next); saveConfig(next, selectedPreset);
                             setDraftDuration(next.durationMinutes);
                             setDraftMaxTrades(next.maxTradesPerDay);
                             toast.success(`${preset.emoji} Profil ${preset.name} appliqué`, { description: `Mise conservée: $${config.stakeUsd}` });
@@ -1856,7 +1552,7 @@ function AutoTraderPage() {
                                 onClick={() => {
                                   const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...pc } = preset;
                                   setConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd });
-                                  saveConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd });
+                                  saveConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd }, selectedPreset);
                                   toast.success(`Preset "${preset.name}" appliqué`);
                                 }}>
                                 <div className="flex items-center gap-1.5 mb-1">
@@ -2423,7 +2119,7 @@ function AutoTraderPage() {
       </div>
 
       {/* ── Trade Journal — its own mobile tab ── */}
-      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
+      <div className={cn(mobileTab === "journal" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
       <div className="glass-panel rounded-2xl overflow-hidden">
         <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
           onClick={() => setShowLogs((v) => !v)}>
@@ -2536,7 +2232,7 @@ function AutoTraderPage() {
       </div>
 
       {/* ── Live server scanner — below the trade journal for better visibility ── */}
-      <div className={cn(mobileTab === "journal" ? "block" : "hidden", "md:block")}>
+      <div className={cn(mobileTab === "journal" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
         {cloudSelected?.enabled && cloudSelected.lastScan && (
           <CloudScanPanel lastScan={cloudSelected.lastScan} />
         )}
@@ -2816,6 +2512,90 @@ function OpportunityCommandCenter({
   );
 }
 
+function OpportunityBoard({
+  opportunities,
+  loading,
+  onRefresh,
+}: {
+  opportunities: OpportunityItem[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const groups: { decision: OpportunityDecision; title: string; empty: string }[] = [
+    { decision: "take", title: "À prendre", empty: "Aucun marché propre à prendre." },
+    { decision: "wait", title: "À attendre", empty: "Aucun setup en attente." },
+    { decision: "avoid", title: "À éviter", empty: "Rien à éviter explicitement." },
+  ];
+
+  return (
+    <section className="grid gap-3 lg:grid-cols-3">
+      {groups.map((group) => {
+        const style = decisionTone(group.decision);
+        const items = opportunities.filter((o) => o.decision === group.decision).slice(0, 4);
+        return (
+          <div key={group.decision} className={cn("rounded-2xl border bg-card/25 p-4", style.panel)}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className={cn("grid h-8 w-8 place-items-center rounded-lg border", style.badge)}>
+                  <style.Icon className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-foreground">{group.title}</h3>
+                  <p className="text-[11px] font-semibold text-muted-foreground">{items.length} marché{items.length > 1 ? "s" : ""}</p>
+                </div>
+              </div>
+              {group.decision === "wait" && (
+                <button
+                  onClick={onRefresh}
+                  className="rounded-lg border border-border/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                  Scanner
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {loading && items.length === 0 ? (
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">
+                  Analyse en cours...
+                </div>
+              ) : items.length === 0 ? (
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-sm font-semibold text-muted-foreground">
+                  {group.empty}
+                </div>
+              ) : (
+                items.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black text-foreground">{item.label}</div>
+                        <div className="mt-0.5 text-xs font-semibold text-muted-foreground">
+                          {item.directionLabel} · {Math.round(item.confidence)}% · {item.agreement}/4 TF
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
+                        item.risk === "faible" ? "bg-up/10 text-up" : item.risk === "modere" ? "bg-amber-500/10 text-amber-300" : "bg-down/10 text-down",
+                      )}>
+                        {riskLabel(item.risk)}
+                      </span>
+                    </div>
+                    {item.reasons[0] && (
+                      <p className="mt-2 line-clamp-2 text-xs font-medium leading-relaxed text-muted-foreground/85">
+                        {item.reasons[0]}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function MiniDecision({ label, value, className }: { label: string; value: number; className: string }) {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-center">
@@ -2874,19 +2654,74 @@ function StatusBadge({ status }: { status: TradeLog["status"] }) {
   );
 }
 
-function Kpi({ label, value, tone, sub }: { label: string; value: string; tone: string; sub?: string }) {
-  const cls =
-    tone === "bull" ? "text-[color:var(--bull)]"
-    : tone === "bear" ? "text-[color:var(--bear)]"
-    : tone === "cyan" ? "text-[color:var(--brand-cyan)]"
-    : tone === "violet" ? "text-[color:var(--brand-violet)]"
-    : "text-foreground";
+function SessionsMarches({ activeSessions, config, showAdvanced }: { activeSessions: TradingSession[]; config: AutoTraderConfig; showAdvanced: boolean }) {
   return (
-    <div className="glass-panel rounded-xl p-4">
-      <div className="text-xs text-muted-foreground uppercase tracking-widest font-medium">{label}</div>
-      <div className={cn("mt-2 font-mono-tabular text-2xl font-bold leading-none", cls)}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+    <div className={cn("hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]", !showAdvanced && "md:hidden")}>
+      <div className="flex items-center gap-2 mb-3">
+        <Globe className="h-4 w-4 text-neutral-400" />
+        <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
+          const isActive = activeSessions.includes(s);
+          const inCfg = config.tradingSessions.includes(s);
+          const isMainActive = isActive && inCfg;
+          const isOpenOnly = isActive && !inCfg;
+          const containerClass = isMainActive
+            ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
+            : isOpenOnly
+              ? "bg-up/5 border-up/15 text-up/90"
+              : "bg-down/5 border-down/15 text-down/80";
+          const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
+          const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
+          const badgeClass = isMainActive
+            ? "bg-up/20 border-up/45 text-up text-glow-green"
+            : isOpenOnly
+              ? "bg-up/10 border-up/25 text-up/90"
+              : "bg-down/10 border-down/20 text-down/90";
+          return (
+            <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
+              <div className="space-y-0.5">
+                <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
+                <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
+              </div>
+              <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
+                {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
+  );
+}
+
+function ScannerSection({ cloudActive, cloudSelected, lastScan, config, running, showAdvanced, selectedPreset, activeSessions }: {
+  cloudActive: boolean;
+  cloudSelected: PresetStatus | undefined;
+  lastScan: ScanResult | null;
+  config: AutoTraderConfig;
+  running: boolean;
+  showAdvanced: boolean;
+  selectedPreset: PresetKey;
+  activeSessions: TradingSession[];
+}) {
+  return (
+    <>
+      <SessionsMarches activeSessions={activeSessions} config={config} showAdvanced={showAdvanced} />
+      {selectedPreset === "default" && (
+        <div className={cn("block mt-5", !showAdvanced && "hidden")}>
+          <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
+        </div>
+      )}
+      <div className="mt-5">
+        <LiveSignals
+          lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
+          config={config}
+          running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
+        />
+      </div>
+    </>
   );
 }
 
@@ -3124,23 +2959,6 @@ function GoldTicker({ cloudTrades }: { cloudTrades: TradeLog[] }) {
     </div>
   );
 }
-
-const SCAN_ACTION_META: Record<string, { label: string; dot: string; text: string }> = {
-  "traded":          { label: "Trade",    dot: "bg-up",    text: "text-up" },
-  "low-confidence":  { label: "Confiance", dot: "bg-amber-400", text: "text-amber-400" },
-  "low-agreement":   { label: "Accord",   dot: "bg-amber-400", text: "text-amber-400" },
-  "low-payout":      { label: "Payout",   dot: "bg-amber-400", text: "text-amber-400" },
-  "no-signal":       { label: "No signal", dot: "bg-neutral-600", text: "text-neutral-500" },
-  "session-closed":  { label: "Session",  dot: "bg-neutral-600", text: "text-neutral-500" },
-  "news-block":      { label: "News",     dot: "bg-neutral-600", text: "text-neutral-500" },
-  "volatility":      { label: "Volatilité", dot: "bg-amber-400", text: "text-amber-400" },
-  "cooldown":        { label: "Cooldown", dot: "bg-amber-400", text: "text-amber-400" },
-  "correlated":      { label: "Corrélé",   dot: "bg-neutral-600", text: "text-neutral-500" },
-  "daily-limit":     { label: "Limite",   dot: "bg-neutral-600", text: "text-neutral-500" },
-  "open-trade":      { label: "Ouvert",   dot: "bg-cyan",  text: "text-cyan" },
-  "not-tradeable":   { label: "N/A",      dot: "bg-neutral-600", text: "text-neutral-500" },
-  "not-premium":     { label: "Premium",  dot: "bg-neutral-600", text: "text-neutral-500" },
-};
 
 function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
   const [now, setNow] = useState(Date.now());

@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils";
 import { SYMBOLS } from "@/lib/deriv";
 import type { TradeLog, AutoTraderConfig, ScanResult } from "@/lib/autotrader";
 import { SCAN_INTERVAL_MS } from "@/lib/autotrader";
+import { SCAN_ACTION_META } from "@/lib/scan-actions";
+
+const ACTION_LABEL: Record<string, { text: string; cls: string }> = Object.fromEntries(
+  Object.entries(SCAN_ACTION_META).map(([key, meta]) => [key, { text: meta.label, cls: meta.text }])
+);
 
 interface BotDashboardProps {
   logs: TradeLog[];
@@ -28,23 +33,6 @@ function ScanCountdownText({ lastScanTime, running }: { lastScanTime: number; ru
   const secsLeft = Math.max(0, Math.ceil((lastScanTime + SCAN_INTERVAL_MS - now) / 1000));
   return <>{secsLeft > 0 ? `scan dans ${secsLeft}s` : "scan en cours…"}</>;
 }
-
-const ACTION_LABEL: Record<string, { text: string; cls: string }> = {
-  traded:        { text: "Trade pris",        cls: "text-up" },
-  "open-trade":  { text: "Position ouverte",  cls: "text-[color:var(--brand-cyan)]" },
-  "session-closed": { text: "Hors session",   cls: "text-muted-foreground/50" },
-  "no-signal":   { text: "Pas de signal",      cls: "text-muted-foreground" },
-  "low-confidence": { text: "Confiance faible", cls: "text-amber-400" },
-  "low-agreement":  { text: "Accord TF faible", cls: "text-amber-400" },
-  "not-premium": { text: "Non premium",       cls: "text-amber-400" },
-  volatility:    { text: "Volatilité",         cls: "text-down" },
-  "daily-limit": { text: "Limite atteinte",   cls: "text-down" },
-  cooldown:      { text: "Cooldown",            cls: "text-amber-400" },
-  correlated:    { text: "Corrélée",  cls: "text-muted-foreground/60" },
-  "news-block":  { text: "Fenêtre macro",       cls: "text-amber-400" },
-  "not-tradeable": { text: "Indispo",   cls: "text-muted-foreground/60" },
-  "low-payout":  { text: "Payout faible",   cls: "text-amber-400" },
-};
 
 export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config, running, pnl, lossUsedUsd }: BotDashboardProps) {
   // ── Equity curve ─────────────────────────────────────────────────────────────

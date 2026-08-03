@@ -1,0 +1,16 @@
+export const SCAN_ACTION_META: Record<string, { label: string; dot: string; text: string }> = {
+  "traded":          { label: "Trade",      dot: "bg-up",         text: "text-up" },
+  "low-confidence":  { label: "Confiance",  dot: "bg-amber-400",  text: "text-amber-400" },
+  "low-agreement":   { label: "Accord",     dot: "bg-amber-400",  text: "text-amber-400" },
+  "low-payout":      { label: "Payout",     dot: "bg-amber-400",  text: "text-amber-400" },
+  "no-signal":       { label: "No signal",  dot: "bg-neutral-600", text: "text-neutral-500" },
+  "session-closed":  { label: "Session",    dot: "bg-neutral-600", text: "text-neutral-500" },
+  "news-block":      { label: "News",       dot: "bg-neutral-600", text: "text-neutral-500" },
+  "volatility":      { label: "Volatilité", dot: "bg-amber-400",  text: "text-amber-400" },
+  "cooldown":        { label: "Cooldown",   dot: "bg-amber-400",  text: "text-amber-400" },
+  "correlated":      { label: "Corrélé",    dot: "bg-neutral-600", text: "text-neutral-500" },
+  "daily-limit":     { label: "Limite",     dot: "bg-neutral-600", text: "text-neutral-500" },
+  "open-trade":      { label: "Ouvert",     dot: "bg-cyan",       text: "text-cyan" },
+  "not-tradeable":   { label: "N/A",        dot: "bg-neutral-600", text: "text-neutral-500" },
+  "not-premium":     { label: "Premium",    dot: "bg-neutral-600", text: "text-neutral-500" },
+};
