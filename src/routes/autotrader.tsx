@@ -710,6 +710,111 @@ function AutoTraderPage() {
         />
       </div>
 
+      {/* ── Quick Trade Bar — manual trading in ≤2 clicks, always visible ── */}
+      <div className="glass-panel rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-400" />
+            <span className="text-xs font-black uppercase tracking-wider text-foreground">Trade manuel</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className={cn("h-2 w-2 rounded-full",
+              derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
+            <span className={cn("font-bold",
+              derivSession.connected ? "text-up" : derivSession.connecting ? "text-amber-400" : "text-down")}>
+              {derivSession.connected
+                ? derivSession.balance !== null ? `$${derivSession.balance.toFixed(2)}` : "Connecté"
+                : derivSession.connecting ? "Connexion…" : "Déconnecté"}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Symbole</label>
+            <select
+              value={forceSymbol}
+              disabled={!derivSession.connected || forcingTrade}
+              onChange={(e) => setForceSymbol(e.target.value)}
+              className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-50 font-semibold"
+            >
+              {config.symbols.map((s) => (
+                <option key={s} value={s}>{SYMBOLS.find((x) => x.deriv === s)?.label ?? s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2 sm:flex-none">
+            {(["CALL", "PUT"] as const).map((d) => (
+              <button key={d}
+                disabled={!derivSession.connected || forcingTrade}
+                onClick={() => setForceDir(d)}
+                className={cn(
+                  "flex-1 sm:w-20 h-10 rounded-lg text-sm font-extrabold transition-all disabled:opacity-40 disabled:cursor-not-allowed border",
+                  forceDir === d
+                    ? d === "CALL"
+                      ? "bg-up/20 text-up border-up/40 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                      : "bg-down/20 text-down border-down/40 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
+                    : "text-muted-foreground border-border hover:text-foreground hover:border-muted-foreground/40",
+                )}>
+                {d === "CALL" ? "▲ Hausse" : "▼ Baisse"}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 sm:w-32 space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mise ($)</label>
+            <AmountInput value={forceStake} min={1} max={100} step={1}
+              disabled={!derivSession.connected || forcingTrade}
+              onCommit={async (v) => {
+                if (config.mode === "live") {
+                  const ok = await confirm({ title: "Confirmer la mise ?", description: `Trade manuel à $${v} (argent réel).`, confirmLabel: "Confirmer", danger: true });
+                  if (!ok) return false;
+                }
+                setForceStake(v);
+                return true;
+              }} />
+          </div>
+          <Button
+            disabled={!derivSession.connected || forcingTrade}
+            onClick={async () => {
+              if (!forceSymbol) return;
+              const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
+              const isLive = config.mode === "live";
+              const confirmed = await confirm({
+                title: isLive ? "⚠️ CONFIRMER LE TRADE (RÉEL) ?" : "Confirmer le trade (démo) ?",
+                description: `Position ${forceDir === "CALL" ? "Hausse (CALL)" : "Baisse (PUT)"} sur ${label} · $${forceStake}`,
+                confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                danger: isLive,
+              });
+              if (!confirmed) return;
+              setForcingTrade(true);
+              toast.info(`Trade en cours — ${label} ${forceDir}…`);
+              try {
+                await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
+                  handleEvent(log);
+                  if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
+                });
+              } catch (e) {
+                toast.error(`Échec: ${(e as Error).message}`);
+              } finally {
+                setForcingTrade(false);
+              }
+            }}
+            className={cn("w-full sm:w-auto h-10 px-6 gap-1.5 text-sm font-bold shrink-0",
+              forceDir === "CALL"
+                ? "bg-up/20 text-up border border-up/40 hover:bg-up/30"
+                : "bg-down/20 text-down border border-down/40 hover:bg-down/30",
+              "disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed")}>
+            {forcingTrade
+              ? <><Activity className="h-4 w-4 animate-pulse" /> Envoi…</>
+              : <><Zap className="h-4 w-4" /> Exécuter (${forceStake})</>}
+          </Button>
+        </div>
+        {!derivSession.connected && (
+          <p className="text-[11px] text-muted-foreground font-medium">
+            Connecte Deriv pour trader manuellement.
+          </p>
+        )}
+      </div>
+
       <OpportunityCommandCenter
         presetLabel={presetLabels[selectedPreset]}
         opportunity={selectedOpportunity}
@@ -889,140 +994,7 @@ function AutoTraderPage() {
             </div>
 
             <AutoBacktestStatus className="mt-3" />
-
-            {cloudSelected?.enabled && (
-              <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">Serveur</span>
-                  <span className={cn("font-extrabold", cloudSelected.pausedUntil ? "text-amber-400" : "text-up")}>
-                    {cloudSelected.pausedUntil
-                      ? `⏸ Pause — reprise ${new Date(cloudSelected.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
-                      : cloudSelected.running ? "● Actif sur le serveur" : "Démarrage…"}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">P&L jour (serveur)</span>
-                  <span className={cn("font-extrabold font-mono-tabular", cloudSelected.todayPnl >= 0 ? "text-up" : "text-down")}>
-                    {cloudSelected.todayPnl >= 0 ? "+" : ""}${cloudSelected.todayPnl.toFixed(2)} · {cloudSelected.todayCount} trade{cloudSelected.todayCount > 1 ? "s" : ""}
-                  </span>
-                </div>
-                {cloudSelected.lastError && (
-                  <p className="text-xs font-semibold text-down">⚠ {cloudSelected.lastError}</p>
-                )}
-                {cloudSelected.trades.filter((t) => t.stake > 0).slice(0, 5).map((t) => (
-                  <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-1.5 text-xs font-semibold text-neutral-200">
-                    <span className="truncate">{SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}</span>
-                    <span className={cn("font-bold shrink-0 ml-2",
-                      t.status === "won" || (t.status === "open" && t.profit >= 0) ? "text-up"
-                        : t.status === "lost" || (t.status === "open" && t.profit < 0) ? "text-down" : "text-muted-foreground")}>
-                      {t.direction} · {
-                        t.status === "won" ? `+$${t.profit.toFixed(2)}`
-                          : t.status === "lost" ? `-$${Math.abs(t.profit).toFixed(2)}`
-                          : t.status === "open" && t.profit !== 0 ? `${t.profit >= 0 ? "+" : ""}$${t.profit.toFixed(2)} (ouvert)`
-                          : t.status
-                      }
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-          {/* Free manual panel — a fallback tool (manually fire a trade to verify
-              the Deriv pipeline), not a core action — desktop-only on mobile to
-              cut clutter. Toujours visible en mode demo/live pour éviter les
-              clignotements de l'interface. */}
-          {showAdvanced && (config.mode === "demo" || config.mode === "live") && (
-            <div className={cn("hidden md:block glass-panel rounded-xl px-4 py-3 border border-amber-500/20 transition-all duration-300",
-              !derivSession.connected && "opacity-60")}>
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Trade forcé (test)</span>
-                </div>
-                {!derivSession.connected && (
-                  <span className="text-[10px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-bold animate-pulse">Déconnecté</span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground/80 mb-3 leading-relaxed font-medium">
-                Ouvre un trade sans attendre un voyant “Prendre”. À utiliser seulement si tu veux décider toi-même.
-              </p>
-              <div className="space-y-2">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <select
-                    value={forceSymbol}
-                    disabled={!derivSession.connected || forcingTrade}
-                    onChange={(e) => setForceSymbol(e.target.value)}
-                    className="w-full sm:flex-1 h-9 rounded-lg border border-border bg-background px-2 py-1.5 text-sm disabled:opacity-50 font-semibold"
-                  >
-                    {config.symbols.map((s) => (
-                      <option key={s} value={s}>{SYMBOLS.find((x) => x.deriv === s)?.label ?? s}</option>
-                    ))}
-                  </select>
-                  <div className="flex rounded-lg border border-border overflow-hidden h-9 w-full sm:w-auto shrink-0">
-                    {(["CALL", "PUT"] as const).map((d) => (
-                      <button key={d}
-                        disabled={!derivSession.connected || forcingTrade}
-                        onClick={() => setForceDir(d)}
-                        className={cn("flex-1 sm:flex-none sm:px-3 py-1.5 text-sm font-extrabold transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
-                          forceDir === d
-                            ? d === "CALL" ? "bg-up/20 text-up" : "bg-down/20 text-down"
-                            : "text-muted-foreground hover:text-foreground")}>
-                        {d === "CALL" ? "▲ CALL" : "▼ PUT"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Field label="Mise pour ce trade forcé ($)">
-                  <AmountInput value={forceStake} min={1} max={100} step={1} disabled={!derivSession.connected || forcingTrade}
-                    onCommit={async (v) => {
-                      if (config.mode === "live") {
-                        const ok = await confirm({ title: "Confirmer la mise ?", description: `Trade forcé à $${v} (argent réel).`, confirmLabel: "Confirmer", danger: true });
-                        if (!ok) return false;
-                      }
-                      setForceStake(v);
-                      return true;
-                    }} />
-                </Field>
-                <Button
-                  disabled={!derivSession.connected || forcingTrade}
-                  onClick={async () => {
-                    if (!forceSymbol) return;
-                    const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
-                    const isLive = config.mode === "live";
-                    
-                    const confirmed = await confirm({
-                      title: isLive ? "⚠️ CONFIRMER LE TRADE FORCÉ (RÉEL) ?" : "Confirmer le trade forcé (démo) ?",
-                      description: `Vous allez ouvrir immédiatement une position ${forceDir === "CALL" ? "Hausse (CALL)" : "Baisse (PUT)"} sur ${label} avec une mise de $${forceStake}. Ce trade contourne toutes les validations de l'auto-trader.`,
-                      confirmLabel: isLive ? "Forcer le trade RÉEL" : "Forcer le trade",
-                      danger: isLive,
-                    });
-                    
-                    if (!confirmed) return;
-
-                    setForcingTrade(true);
-                    toast.info(`Trade forcé en cours — ${label} ${forceDir}…`);
-                    try {
-                      await forceDemoTrade(forceSymbol, forceDir, forceStake, config.durationMinutes, (log) => {
-                        handleEvent(log);
-                        if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir} · ID ${log.contractId}`);
-                      });
-                    } catch (e) {
-                      toast.error(`Échec: ${(e as Error).message}`);
-                    } finally {
-                      setForcingTrade(false);
-                    }
-                  }}
-                  className="w-full gap-1.5 text-sm h-9 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 disabled:bg-muted/10 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed font-bold">
-                  {forcingTrade
-                    ? <><Activity className="h-3.5 w-3.5 animate-pulse" /> Envoi en cours…</>
-                    : !derivSession.connected
-                    ? <><Zap className="h-3.5 w-3.5" /> Connexion Deriv requise</>
-                    : <><Zap className="h-3.5 w-3.5" /> Forcer un trade (${forceStake})</>}
-                </Button>
-              </div>
-            </div>
-          )}
           {/* Mise Kelly réduite — affects the actual stake in play, so it stays
               visible on mobile even though the sessions panel below doesn't. */}
           {config.adaptiveStake && effectiveStake < config.stakeUsd && (
@@ -1832,7 +1804,7 @@ function OpportunityBoard({
     <section className="grid gap-3 lg:grid-cols-3">
       {groups.map((group) => {
         const style = decisionTone(group.decision);
-        const items = opportunities.filter((o) => o.decision === group.decision).slice(0, 4);
+        const items = opportunities.filter((o) => o.decision === group.decision).slice(0, 3);
         return (
           <div key={group.decision} className={cn("rounded-2xl border bg-card/25 p-4", style.panel)}>
             <div className="flex items-center justify-between gap-3">
