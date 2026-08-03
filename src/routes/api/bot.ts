@@ -162,7 +162,10 @@ export const Route = createFileRoute("/api/bot")({
             ...presetFieldsFor(preset),
           };
           const next: AutoTraderConfig = { ...current, ...(body.config ?? {}) };
-          if (next.mode === "simulation") next.mode = "demo";
+          // Defense-in-depth: body.config is untyped request input, so a stale
+          // client could still send "simulation" even though TradingMode no
+          // longer allows it at compile time.
+          if ((next.mode as string) === "simulation") next.mode = "demo";
           if (preset === "scalping") next.mode = "demo"; // never real money, see SCALPING_PRESET
           const increasesFrequency =
             Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)

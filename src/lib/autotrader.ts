@@ -1502,23 +1502,20 @@ export function startAutoTrader(
 
       // Confidence alone doesn't guard against a thin payout — Deriv's actual
       // payout varies by instrument/duration/volatility, and a low one raises
-      // the win rate needed just to break even. Skipped entirely in simulation
-      // mode, which already prices its own P&L off a live payout quote.
-      if (config.mode !== "simulation") {
-        try {
-          const proposal = await proposalContract({
-            symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
+      // the win rate needed just to break even.
+      try {
+        const proposal = await proposalContract({
+          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
+        });
+        const payoutRatio = (proposal.payout - proposal.askPrice) / proposal.askPrice;
+        if (payoutRatio > 0 && payoutRatio < 5 && payoutRatio < config.minPayoutRatio) {
+          scanResults.push({
+            symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
+            note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
           });
-          const payoutRatio = (proposal.payout - proposal.askPrice) / proposal.askPrice;
-          if (payoutRatio > 0 && payoutRatio < 5 && payoutRatio < config.minPayoutRatio) {
-            scanResults.push({
-              symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
-              note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
-            });
-            continue;
-          }
-        } catch { /* quote unavailable — don't block the trade on it */ }
-      }
+          continue;
+        }
+      } catch { /* quote unavailable — don't block the trade on it */ }
 
       // Signal qualifies — will trade
       scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
@@ -1585,134 +1582,84 @@ export function startAutoTrader(
         Math.round(analysis.confidence),
       );
 
-      if (config.mode === "simulation") {
-        // Local simulation - no real trades
+      // Real Deriv account (demo or live): verify connection first
+      const connected = await checkDerivConnection();
+      if (!connected) {
+        emit({ ...pendingLog, status: "error", profit: 0, note: "Connexion Deriv non disponible" });
+        continue;
+      }
+
+      try {
         activeSymbols.set(symbol, analysis.direction);
-        emit({ ...pendingLog, status: "open" });
-        // Real current payout quote (no money committed) instead of an assumed flat 85%.
-        const payoutRatio = await fetchRealPayoutRatio(symbol, tradeDuration, stakeForTrade);
+        // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
+        const bought = await proposeAndBuy({
+          symbol,
+          amount: stakeForTrade,
+          contractType: analysis.direction,
+          durationMinutes: tradeDuration,
+        });
 
-        setTimeout(async () => {
+        const openLog: TradeLog = {
+          ...pendingLog,
+          status: "open",
+          payout: bought.payout,
+          contractId: bought.contractId,
+        };
+        emit(openLog);
+
+        let contractResolved = false;
+        const resolveContract = (won: boolean, profit: number) => {
+          if (contractResolved) return;
+          contractResolved = true;
+          clearTimeout(fallbackTimeout);
+          unsub();
+          activeSymbols.delete(symbol);
+          emit({
+            ...openLog,
+            status: won ? "won" : "lost",
+            // REAL Deriv profit — negative on loss, includes partial payouts
+            profit,
+            closedAt: Date.now(),
+          } as TradeLog);
+        };
+
+        const unsub = subscribeContract(bought.contractId, (update) => {
+          if (update.status === "open") return;
+          resolveContract(update.status === "won", update.profit);
+        });
+
+        // Fallback: if contract never resolves via subscription, poll profit table
+        const fallbackTimeout = setTimeout(async () => {
+          if (contractResolved) return;
           try {
-            const exitCandles = await fetchCandles(symbol, GRANULARITY["1m"], 2);
-            const exitPrice = exitCandles[exitCandles.length - 1]?.close ?? 0;
-            // Simulation must reflect a real price move — no Deriv contract actually
-            // resolved. Without both prices there's nothing honest to score, so the
-            // trade is voided (not counted in P&L/win-rate) instead of coin-flipping
-            // a result: a fabricated win/loss here used to inflate simulated stats
-            // with outcomes that never happened.
-            if (entryPrice <= 0 || exitPrice <= 0) {
-              emit({
-                ...pendingLog,
-                status: "error",
-                profit: 0,
-                closedAt: Date.now(),
-                note: "Simulation annulée — prix indisponible pour évaluer le résultat",
-              });
-              return;
-            }
-            const won = analysis.direction === "CALL" ? exitPrice > entryPrice : exitPrice < entryPrice;
-            const profit = won ? stakeForTrade * payoutRatio : -stakeForTrade;
-            emit({
-              ...pendingLog,
-              status: won ? "won" : "lost",
-              profit,
-              payout: won ? stakeForTrade + profit : 0,
-              closedAt: Date.now(),
-            });
-          } catch {
-            emit({
-              ...pendingLog,
-              status: "error",
-              profit: 0,
-              closedAt: Date.now(),
-              note: "Simulation annulée — prix temps réel indisponible",
-            });
-          } finally {
-            activeSymbols.delete(symbol);
-          }
-        }, tradeDuration * 60_000);
-
-      } else {
-        // Real Deriv account (demo or live): verify connection first
-        const connected = await checkDerivConnection();
-        if (!connected) {
-          emit({ ...pendingLog, status: "error", profit: 0, note: "Connexion Deriv non disponible" });
-          continue;
-        }
-
-        try {
-          activeSymbols.set(symbol, analysis.direction);
-          // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
-          const bought = await proposeAndBuy({
-            symbol,
-            amount: stakeForTrade,
-            contractType: analysis.direction,
-            durationMinutes: tradeDuration,
-          });
-
-          const openLog: TradeLog = {
-            ...pendingLog,
-            status: "open",
-            payout: bought.payout,
-            contractId: bought.contractId,
-          };
-          emit(openLog);
-
-          let contractResolved = false;
-          const resolveContract = (won: boolean, profit: number) => {
-            if (contractResolved) return;
-            contractResolved = true;
-            clearTimeout(fallbackTimeout);
-            unsub();
-            activeSymbols.delete(symbol);
-            emit({
-              ...openLog,
-              status: won ? "won" : "lost",
-              // REAL Deriv profit — negative on loss, includes partial payouts
-              profit,
-              closedAt: Date.now(),
-            } as TradeLog);
-          };
-
-          const unsub = subscribeContract(bought.contractId, (update) => {
-            if (update.status === "open") return;
-            resolveContract(update.status === "won", update.profit);
-          });
-
-          // Fallback: if contract never resolves via subscription, poll profit table
-          const fallbackTimeout = setTimeout(async () => {
-            if (contractResolved) return;
-            try {
-              const records = await getProfitTable(20);
-              const match = records.find((r) => r.contractId === bought!.contractId);
-              if (match) {
-                resolveContract(match.profit > 0, match.profit);
-              } else {
-                // Still unknown — mark error but don't leave it open forever
-                if (!contractResolved) {
-                  contractResolved = true;
-                  unsub();
-                  activeSymbols.delete(symbol);
-                  emit({ ...openLog, status: "error", profit: 0, note: "Résolution non reçue — vérifie ton compte Deriv" });
-                }
-              }
-            } catch {
+            const records = await getProfitTable(20);
+            const match = records.find((r) => r.contractId === bought!.contractId);
+            if (match) {
+              resolveContract(match.profit > 0, match.profit);
+            } else {
+              // Still unknown — mark error but don't leave it open forever
               if (!contractResolved) {
                 contractResolved = true;
                 unsub();
                 activeSymbols.delete(symbol);
-                emit({ ...openLog, status: "error", profit: 0, note: "Timeout résolution contrat" });
+                emit({ ...openLog, status: "error", profit: 0, note: "Résolution non reçue — vérifie ton compte Deriv" });
               }
             }
-          }, (tradeDuration + 2) * 60_000);
-        } catch (e) {
-          emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
-          activeSymbols.delete(symbol);
-          // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
-          // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
-          symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
-        }
+          } catch {
+            if (!contractResolved) {
+              contractResolved = true;
+              unsub();
+              activeSymbols.delete(symbol);
+              emit({ ...openLog, status: "error", profit: 0, note: "Timeout résolution contrat" });
+            }
+          }
+        }, (tradeDuration + 2) * 60_000);
+      } catch (e) {
+        emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
+        activeSymbols.delete(symbol);
+        // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
+        // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
+        symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
     }
 

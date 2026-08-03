@@ -20,7 +20,8 @@ import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, closeP
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
 import { OandaTradingConnection, isOandaSymbol, derivToOandaSymbol, fetchOandaCandles, OANDA_DERIV_SYMBOLS, closeOandaSocket } from "./oanda.server";
-import { getLearnedWeightsServer, recordComponentOutcomesServer } from "./indicator-weights.server";
+import { recordComponentOutcomesServer } from "./indicator-weights.server";
+import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
@@ -28,6 +29,7 @@ import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
+  classifyOpportunity,
   computeAdaptiveStake,
   computeAtrStopUsd,
   computeStructuralStopUsd,
@@ -35,6 +37,7 @@ import {
   computeProgressiveStake,
   computeDynamicMinConfidence,
   countConsecutiveLosses,
+  explainOpportunity,
   getMultiplierOverride,
   is24x7Symbol,
   isCorrelatedWithActive,
@@ -44,15 +47,35 @@ import {
   isHourBlocked,
   getInstrumentForSymbol,
   minContractMinutes,
+  riskLevelFor,
   symbolRollingStats,
   currentActiveSessions,
   type AutoTraderConfig,
+  type ClassifyReasonCode,
   type ScanResult,
   type ScanSymbolResult,
   type SymbolAnalysis,
   type TradeLog,
   type TradingSession,
 } from "./signal-core";
+
+// Maps a rejected classifyOpportunity() verdict onto the scan-log vocabulary
+// this file already used before the two decision engines were unified — so
+// the UI's SCAN_ACTION_META labels/colors don't need to change.
+// "bad-stats"/"ok" are unreachable here: the bot never passes a badStats
+// argument (no extra SQL in the 60s tick — see the classifyOpportunity call
+// below) and "ok" only ever accompanies a "take" decision, handled separately.
+const REASON_CODE_ACTION: Record<ClassifyReasonCode, ScanSymbolResult["action"]> = {
+  "bad-stats": "no-signal",
+  "volatility-abs": "volatility",
+  "volatility-ratio": "volatility",
+  "no-direction": "no-signal",
+  "confidence-low": "low-confidence",
+  "confidence-high": "too-confident",
+  "agreement-low": "low-agreement",
+  "not-premium": "not-premium",
+  "ok": "traded",
+};
 
 const SCAN_MS = 60_000;
 // Durée de pause pour un déclencheur RÉVERSIBLE (perte flottante non réalisée,
@@ -1167,20 +1190,10 @@ class ServerBotEngine {
           };
           return { symbol, analysis };
         })
-      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
-          let weights: ReturnType<typeof getLearnedWeightsServer> | undefined;
-          try { weights = getLearnedWeightsServer(symbol); } catch { /* base weights */ }
-          return {
-            symbol,
-            analysis: (await analyzeSymbolCore(symbol, candleFetcher, {
-              weights, veto4h: config.veto4h ?? "strong-only", vetoDaily: config.vetoDaily ?? "off",
-              confluenceMode: config.confluenceMode ?? "vote",
-              adxFilterMode: config.adxFilterMode ?? "off",
-              adxBlockThreshold: config.adxBlockThreshold,
-              adxStrongThreshold: config.adxStrongThreshold,
-            })).analysis,
-          };
-        });
+      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => ({
+          symbol,
+          analysis: (await analyzeSymbolCore(symbol, candleFetcher, buildAnalyzeOptsServer(symbol, config))).analysis,
+        }));
 
     const ordered = config.symbolMode === "all-markets"
       ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
@@ -1199,25 +1212,58 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "no-signal", note: "Creneau horaire bloque (P&L negatif)" });
         continue;
       }
-      if (analysis.volatilityPct > config.maxVolatilityPct) {
-        scanResults.push({ symbol, action: "volatility", note: `ATR ${analysis.volatilityPct.toFixed(2)}% > max` });
-        continue;
-      }
-      if (analysis.volatilityRatio > 3) {
-        scanResults.push({ symbol, action: "volatility", note: `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale` });
-        continue;
-      }
-      if (!analysis.direction) { scanResults.push({ symbol, action: "no-signal", confidence: analysis.confidence }); continue; }
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
-        scanResults.push({ symbol, action: "correlated" });
-        continue;
-      }
-      // ── Dynamic minConfidence based on payout ──
+      // ── Verdict conseiller ──
+      // isMultiplier/multiplierOverride sont de simples lookups (pas d'I/O) —
+      // résolus ici, avant le verdict, pour qu'effectiveMinTfAgreement soit
+      // exactement celui que l'advisor (opportunities.server.ts) utiliserait
+      // pour le même symbole. classifyOpportunity() est la même fonction pure
+      // que le conseiller : un trade automatique n'est possible que si le
+      // conseiller aurait dit "à prendre".
       const isMultiplier = getInstrumentForSymbol(symbol, config) === "multiplier";
       // Per-symbol override (Or/GBP-USD run their own measured settings —
       // see MULTIPLIER_SYMBOL_OVERRIDES) — undefined for BTC and every
       // binary symbol, which keep reading the global config fields below.
       const multiplierOverride = isMultiplier ? getMultiplierOverride(symbol) : undefined;
+      const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
+      const thresholds = {
+        minConfidence: config.minConfidence,
+        maxConfidence: config.maxConfidence,
+        minTfAgreement: effectiveMinTfAgreement,
+        maxVolatilityPct: config.maxVolatilityPct,
+        premiumOnly: config.premiumOnly,
+      };
+      const verdict = classifyOpportunity(analysis, thresholds);
+      if (verdict.decision !== "take") {
+        const note = verdict.reasonCode === "confidence-low" ? `Seuil: ${config.minConfidence}`
+          : verdict.reasonCode === "confidence-high" ? `Plafond: ${config.maxConfidence}`
+          : verdict.reasonCode === "agreement-low" ? `Seuil: ${effectiveMinTfAgreement}`
+          : verdict.reasonCode === "volatility-abs" ? `ATR ${analysis.volatilityPct.toFixed(2)}% > max`
+          : verdict.reasonCode === "volatility-ratio" ? `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale`
+          : undefined;
+        scanResults.push({
+          symbol,
+          action: REASON_CODE_ACTION[verdict.reasonCode],
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          agreement: analysis.agreement,
+          note,
+        });
+        continue;
+      }
+      // classifyOpportunity's "take" branch requires analysis.direction to be
+      // non-null (see the "no-direction" check inside it) — this re-narrows
+      // it for TypeScript's benefit, it can never actually continue here.
+      if (!analysis.direction) continue;
+
+      // ── À partir d'ici : le conseiller dit "à prendre" — reste à vérifier
+      // qu'on PEUT exécuter maintenant (position corrélée, spread, plafond
+      // dynamique de confiance basé sur le payout, mise, durée, payout). Ce
+      // sont des contraintes d'exécution/compte, pas des questions de
+      // "est-ce une bonne opportunité". ──
+      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
+        scanResults.push({ symbol, action: "correlated" });
+        continue;
+      }
       const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
       const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
       const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
@@ -1246,6 +1292,10 @@ class ServerBotEngine {
         } catch { /* ignore spread check failure */ }
       }
 
+      // Plancher de confiance dynamique basé sur le payout : uniquement un
+      // durcissement optionnel AU-DESSUS du seuil déjà validé par le
+      // conseiller (Math.max) — jamais plus permissif, sinon le bot pourrait
+      // trader en dessous de ce que le conseiller aurait classé "à prendre".
       let effectiveMinConfidence = config.minConfidence;
       if (config.dynamicMinConfidence && !isMultiplier && !useAltBroker) {
         // Pre-fetch payout to calibrate confidence threshold
@@ -1253,26 +1303,11 @@ class ServerBotEngine {
           symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: Math.max(analysis.suggestedDuration, minContractMinutes(symbol)),
         }).catch(() => null);
         if (prePayout !== null) {
-          effectiveMinConfidence = computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence);
+          effectiveMinConfidence = Math.max(config.minConfidence, computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence));
         }
       }
       if (analysis.confidence < effectiveMinConfidence) {
         scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil dyn: ${effectiveMinConfidence}` });
-        continue;
-      }
-      // Plafond de confiance — voir le commentaire sur maxConfidence dans
-      // signal-core.ts. 100 = désactivé (comportement par défaut inchangé).
-      if (config.maxConfidence < 100 && analysis.confidence > config.maxConfidence) {
-        scanResults.push({ symbol, action: "too-confident", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Plafond: ${config.maxConfidence}` });
-        continue;
-      }
-      const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
-      if (analysis.agreement < effectiveMinTfAgreement) {
-        scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil: ${effectiveMinTfAgreement}` });
-        continue;
-      }
-      if (config.premiumOnly && analysis.premiumCount < 1) {
-        scanResults.push({ symbol, action: "not-premium", direction: analysis.direction, confidence: analysis.confidence });
         continue;
       }
 
@@ -1330,7 +1365,13 @@ class ServerBotEngine {
       }
 
       // ── Signal qualifies — place the trade ──
-      scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
+      // stats omitted (undefined) — no extra SQL in the 60s tick; the
+      // resulting reasons/risk skip only the EV-history line explainOpportunity
+      // would otherwise add, everything else (confidence/agreement/volatility
+      // wording) is identical to what the advisor would show for this symbol.
+      const tradeReasons = explainOpportunity("take", analysis, thresholds);
+      const tradeRisk = riskLevelFor(analysis);
+      scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: tradeReasons.join(" · ") });
       newTradesThisTick++;
 
       // Reserve the symbol NOW, before any network round-trip. trackContract/
@@ -1396,7 +1437,7 @@ class ServerBotEngine {
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4`,
+        note: `${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker
@@ -1672,7 +1713,10 @@ export async function getBrokerBalances(userId: number): Promise<{
 
 export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
   if (engines.has(engineKey(userId, preset))) return;
-  if (config.mode === "simulation") throw new Error("Le bot serveur trade sur Deriv/Kraken (demo/live) — le mode simulation reste dans le navigateur.");
+  // Defense-in-depth against a stale persisted config from before "simulation"
+  // was removed as a selectable mode — TradingMode no longer allows it, so this
+  // is a runtime-only guard against old bot_state/localStorage rows.
+  if ((config.mode as string) === "simulation") throw new Error("Mode simulation obsolète — repasse en Démo ou Live.");
 
   const settings = getDb()
     .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")

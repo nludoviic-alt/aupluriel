@@ -1,5 +1,5 @@
 import { KpiCard } from "@/components/kpi-card";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -9,14 +9,10 @@ import {
   ChevronUp,
   Clock,
   FlaskConical,
-  Globe,
-  Layers,
   Power,
-  Rocket,
   Save,
   Settings2,
   ShieldAlert,
-  Timer,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -27,10 +23,9 @@ import { playWinSound, playLossSound, playOpenSound } from "@/lib/sounds";
 import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { SYMBOLS, subscribeTicks, fetchCandles, GRANULARITY } from "@/lib/deriv";
+import { SYMBOLS } from "@/lib/deriv";
 import {
   addToCumulativePnl,
-  backtestMultiTf,
   computeAdaptiveStake,
   CORRELATION_GROUPS,
   countConsecutiveLosses,
@@ -45,7 +40,6 @@ import {
   loadCustomPresets,
   loadDailyPnl,
   reconcileOpenTrades,
-  saveBacktestStats,
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
@@ -57,7 +51,6 @@ import {
   todayTradeCount,
   type AutoTraderConfig,
   type CustomPreset,
-  type MultiTfBacktestResult,
   type PresetConfig,
   type RiskProfile,
   type ScanResult,
@@ -73,8 +66,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
-import { activeStrategySymbols } from "@/lib/strategies";
-import { getComponentBreakdown } from "@/lib/indicator-weights";
 import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard, LiveSignals } from "@/components/bot-dashboard";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
@@ -82,8 +73,6 @@ import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hook
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   useAutoTraderEngine,
-  startAutoTraderEngine,
-  stopAutoTraderEngine,
   setEngineLogs,
   setEngineRiskStopReasons,
 } from "@/hooks/use-autotrader-engine";
@@ -105,18 +94,6 @@ const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom"
  * regardless of the order they were enabled in /admin. */
 const PRESET_ORDER = ["default", "boom", "crash", "scalping"] as const;
 
-/** Per-tab presentation. Class strings are static: Tailwind's JIT scanner
- * can't see names assembled at runtime, which would emit no CSS in the
- * production build. */
-const PRESET_TABS: Record<
-  (typeof PRESET_ORDER)[number],
-  { label: string; Icon: typeof Layers; active: string; card: string }
-> = {
-  default:  { label: "Multi",    Icon: Layers,       active: "bg-violet-500/35 text-violet-300", card: "border-violet-500/40 bg-violet-500/10" },
-  boom:     { label: "Boom",     Icon: Rocket,       active: "bg-orange-500/35 text-orange-300", card: "border-orange-500/40 bg-orange-500/10" },
-  crash:    { label: "Crash",    Icon: TrendingDown, active: "bg-yellow-500/35 text-yellow-300", card: "border-yellow-500/40 bg-yellow-500/10" },
-  scalping: { label: "Scalping", Icon: Timer,        active: "bg-cyan-500/35 text-cyan-300",     card: "border-cyan-500/40 bg-cyan-500/10" },
-};
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
   id: string;
@@ -160,6 +137,9 @@ function loadConfig(preset?: string): AutoTraderConfig {
       stakeUsd: loadDefaultStake(),
       ...JSON.parse(localStorage.getItem(key) ?? "{}"),
     };
+    // A stale mode:"simulation" saved before that option was removed would
+    // otherwise load as a literal string the rest of the app can't handle.
+    if ((cfg.mode as string) !== "demo" && (cfg.mode as string) !== "live") cfg.mode = "demo";
     return cfg;
   } catch {
     return DEFAULT_CONFIG;
@@ -205,11 +185,8 @@ function AutoTraderPage() {
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
   // use-autotrader-engine.ts for why.
-  const { running, logs, lastScan, riskStopReasons, pausedUntil } = useAutoTraderEngine();
-  const [showDisclaimer, setShowDisclaimer] = useState(false);
-  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
+  const { logs, lastScan, riskStopReasons, pausedUntil } = useAutoTraderEngine();
   const [showLogs, setShowLogs] = useState(true);
-  const [showWeights, setShowWeights] = useState(true);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showSavePreset, setShowSavePreset] = useState(false);
@@ -221,20 +198,14 @@ function AutoTraderPage() {
   const [forceSymbol, setForceSymbol] = useState("");
   const [forceDir, setForceDir] = useState<"CALL" | "PUT">("CALL");
   const [forceStake, setForceStake] = useState(DEFAULT_CONFIG.stakeUsd);
-  const [draftDuration, setDraftDuration] = useState(DEFAULT_CONFIG.durationMinutes);
-  const [draftMaxTrades, setDraftMaxTrades] = useState(DEFAULT_CONFIG.maxTradesPerDay);
-  const [showSaveParams, setShowSaveParams] = useState(false);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
-  const [mobileTab, setMobileTab] = useState<"control" | "dashboard" | "config" | "journal">("control");
-  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "backtest">("profiles");
-  const [backtestRunning, setBacktestRunning] = useState(false);
-  const [backtestResults, setBacktestResults] = useState<Record<string, MultiTfBacktestResult & { symbol: string }>>({});
-  const balanceRef = useRef<number | undefined>(undefined);
+  const [mobileTab, setMobileTab] = useState<"control" | "dashboard" | "config" | "journal" | "data">("control");
+  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk">("profiles");
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
   // Drives the preset-tab filter below. Same 768px breakpoint as Tailwind's
@@ -329,12 +300,8 @@ function AutoTraderPage() {
     try {
       if (cloudSelected?.enabled) {
         await api.post("/api/bot", { action: "stop", preset: selectedPreset });
-        toast.info(`Bot serveur (${presetLabels[selectedPreset]}) arrêté`);
+        toast.info(`Auto-exécution (${presetLabels[selectedPreset]}) arrêtée`);
       } else {
-        if (config.mode === "simulation") {
-          toast.error("Le bot serveur trade sur Deriv — passe en mode Démo ou Live d'abord");
-          return;
-        }
         // Real money — confirm with an up-to-the-second track record, not
         // whatever `cloud` last polled up to 20s ago.
         if (config.mode === "live") {
@@ -354,8 +321,8 @@ function AutoTraderPage() {
             : "";
 
           const ok = await confirm({
-            title: "Démarrer le bot serveur en mode LIVE ?",
-            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.\n\n${sampleLine}${riskLine}`,
+            title: "Démarrer l'auto-exécution en mode LIVE ?",
+            description: `Au Pluriel va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade. Limite journalière : $${config.maxDailyLossUsd}.\n\n${sampleLine}${riskLine}\n\nAu Pluriel n'exécute que les signaux qu'il classe « à prendre ».`,
             confirmLabel: "Démarrer en réel",
             danger: true,
           });
@@ -363,36 +330,27 @@ function AutoTraderPage() {
         } else {
           // Demo — lighter confirmation so a stray tap can't start the bot.
           const ok = await confirm({
-            title: `Démarrer le bot serveur — ${presetLabels[selectedPreset]} (Démo) ?`,
-            description: `Le bot va scanner les marchés ${presetLabels[selectedPreset]} et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.`,
+            title: `Démarrer l'auto-exécution — ${presetLabels[selectedPreset]} (Démo) ?`,
+            description: `Au Pluriel va scanner les marchés ${presetLabels[selectedPreset]} et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.\n\nAu Pluriel n'exécute que les signaux qu'il classe « à prendre ».`,
             confirmLabel: "Démarrer",
           });
           if (!ok) return;
         }
-        // Never run the retired local engine at the same time as any server
-        // preset — same account, duplicate trades.
-        if (running) {
-          stopAutoTraderEngine();
-          toast.info("Moteur local arrêté — le serveur prend le relais");
-        }
         const started = await api.post<{ maxDailyLossUsd: number; adjustedLossCap: boolean }>("/api/bot", { action: "start", preset: selectedPreset, config });
         toast.success(config.mode === "live"
-          ? `Bot serveur (${presetLabels[selectedPreset]}) démarré en LIVE — argent réel`
-          : `Bot serveur (${presetLabels[selectedPreset]}) démarré — il tourne même téléphone verrouillé`);
+          ? `Auto-exécution (${presetLabels[selectedPreset]}) démarrée en LIVE — argent réel`
+          : `Auto-exécution (${presetLabels[selectedPreset]}) démarrée — elle tourne même téléphone verrouillé`);
         if (started.adjustedLossCap) {
           toast.info(`Limite de perte journalière relevée à $${started.maxDailyLossUsd} — la mise dépassait l'ancien plafond, une perte normale n'aurait laissé aucun trade de la journée.`);
         }
       }
       await refreshCloud();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur bot serveur");
+      toast.error(err instanceof Error ? err.message : "Erreur auto-exécution");
     } finally {
       setCloudBusy(false);
     }
   }
-
-  // Keep balanceRef in sync with the live Deriv balance
-  useEffect(() => { balanceRef.current = derivSession.balance ?? undefined; }, [derivSession.balance]);
 
   // Réconcilie les positions réelles avec Deriv après chaque (re)connexion :
   // re-suit les contrats encore ouverts, règle ceux fermés pendant l'absence.
@@ -425,13 +383,9 @@ function AutoTraderPage() {
       toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
     }
     setConfig(loaded);
-    setDraftDuration(loaded.durationMinutes);
-    setDraftMaxTrades(loaded.maxTradesPerDay);
     setForceSymbol(loaded.symbols[0] ?? "frxEURUSD");
     setForceStake(loaded.stakeUsd);
     setCumulativePnl(loadCumulativePnl());
-    const accepted = localStorage.getItem("lio23.disclaimer_accepted") === "1";
-    setDisclaimerAccepted(accepted);
     // Update active sessions every minute
     setActiveSessions(currentActiveSessions());
     const id = setInterval(() => setActiveSessions(currentActiveSessions()), 60_000);
@@ -506,38 +460,6 @@ function AutoTraderPage() {
     ? computeAdaptiveStake(config.stakeUsd, journalTrades)
     : config.stakeUsd;
 
-  // Reads localStorage per configured symbol (indicator-weights.ts) — only
-  // reflects what the LOCAL engine has learned. The server bot learns
-  // independently server-side (indicator-weights.server.ts), so once it's
-  // the active engine for this preset, fall back to its own stats via
-  // /api/learning instead of showing the (irrelevant) local numbers.
-  const breakdowns = useMemo(() => {
-    if (cloudActive) return [];
-    return config.symbols
-      .map((sym) => ({ sym, rows: getComponentBreakdown(sym) }))
-      .filter((b) => b.rows.length > 0);
-  }, [config.symbols, logs, cloudActive]);
-
-  const [cloudBreakdowns, setCloudBreakdowns] = useState<{ sym: string; rows: { name: string; wins: number; losses: number; weight: number }[] }[]>([]);
-  useEffect(() => {
-    if (!cloudActive) { setCloudBreakdowns([]); return; }
-    let cancelled = false;
-    Promise.all(
-      config.symbols.map((sym) =>
-        api.get<{ stats: { symbol: string; component: string; wins: number; losses: number; weight: number }[] }>(`/api/learning?symbol=${encodeURIComponent(sym)}`)
-          .then((data) => ({
-            sym,
-            rows: data.stats.map((r) => ({ name: r.component, wins: r.wins, losses: r.losses, weight: r.weight })),
-          }))
-          .catch(() => ({ sym, rows: [] })),
-      ),
-    ).then((results) => {
-      if (!cancelled) setCloudBreakdowns(results.filter((b) => b.rows.length > 0));
-    });
-    return () => { cancelled = true; };
-  }, [config.symbols, cloudActive]);
-
-  const visibleBreakdowns = cloudActive ? cloudBreakdowns : breakdowns;
   const selectedPresetOpportunities = useMemo(() => {
     return (opportunities?.opportunities ?? []).filter((o) => o.preset === selectedPreset);
   }, [opportunities?.opportunities, selectedPreset]);
@@ -577,8 +499,6 @@ function AutoTraderPage() {
             stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd, mode: config.mode,
           };
     setConfig(next);
-    setDraftDuration(next.durationMinutes);
-    setDraftMaxTrades(next.maxTradesPerDay);
   }
 
   const handleEvent = useCallback((log: TradeLog, meta?: { cooldownUntil?: number }) => {
@@ -622,18 +542,9 @@ function AutoTraderPage() {
     }
   }, [config.mode]);
 
-  const handleRiskStop = useCallback((reasons: string[]) => {
-    // running/riskStopReasons are updated by the engine store itself.
-    toast.error(`Auto-trader arrêté — ${reasons[0]}`, { duration: 10000 });
-  }, []);
-
   async function executeManualOpportunity() {
     if (!actionableOpportunity?.direction) {
       toast.error("Aucun signal 'Prendre' disponible sur ce preset.");
-      return;
-    }
-    if (config.mode === "simulation") {
-      toast.error("Passe en Démo pour exécuter une position manuelle sur Deriv.");
       return;
     }
     if (!derivSession.connected) {
@@ -674,131 +585,41 @@ function AutoTraderPage() {
     }
   }
 
-  async function runBacktest() {
-    setBacktestRunning(true);
-    setBacktestResults({});
-    const results: Record<string, MultiTfBacktestResult & { symbol: string }> = {};
-    for (const sym of config.symbols) {
-      try {
-        const result = await backtestMultiTf(sym, {
-          minConfidence: config.minConfidence,
-          minTfAgreement: config.minTfAgreement,
-          durationMinutes: config.durationMinutes,
-          stakeUsd: config.stakeUsd,
-        });
-        results[sym] = { ...result, symbol: sym };
-        // Feed the measured win-rate/payout into the persisted store so "Kelly"
-        // stake sizing has real data to size positions from instead of guessing.
-        if (result.trades > 0) {
-          saveBacktestStats(sym, { winRate: result.winRate, payoutPct: result.payoutPct, trades: result.trades });
-        }
-      } catch {
-        // skip failed symbols silently
-      }
-    }
-    setBacktestResults(results);
-    setBacktestRunning(false);
-    const total = Object.values(results).reduce((s, r) => s + r.trades, 0);
-    toast.success(`Backtest terminé — ${total} trades simulés sur ${config.symbols.length} paires`);
-  }
-
-  function acceptDisclaimer() {
-    localStorage.setItem("lio23.disclaimer_accepted", "1");
-    setDisclaimerAccepted(true);
-    setShowDisclaimer(false);
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-    const stratSymbols = activeStrategySymbols();
-    const mergedSymbols = [...new Set([...config.symbols, ...stratSymbols])];
-    const effectiveConfig = mergedSymbols.length > config.symbols.length
-      ? { ...config, symbols: mergedSymbols }
-      : config;
-    if (stratSymbols.length) toast.info(`${stratSymbols.length} paire(s) ajoutée(s) via Stratégies actives`);
-    const started = startAutoTraderEngine(effectiveConfig, handleEvent, handleRiskStop, () => balanceRef.current);
-    if (started) toast.success(`Auto-trader démarré en mode ${config.mode.toUpperCase()}`);
-  }
-
   // ── derived helpers ─────────────────────────────────────────────────────────
-  // Power button: green when EITHER engine is running (local or server bot),
-  // gold on hover when both are stopped. Previously only reflected the local
-  // engine, so activating "Bot serveur" alone left the button looking idle.
-  const anyRunning = running || anyPresetEnabled;
+  const anyRunning = anyPresetEnabled;
   // Rendered twice — inline in the desktop header, and as its own full-width
-  // row on mobile. It used to live only inside the header's `hidden md:flex`
-  // group, which made switching presets impossible on a phone.
-  //
-  // Tab highlight = which preset's dashboard/config/journal is currently
-  // shown (selectedPreset, pure view state). The small pulsing dot = whether
-  // THAT preset's server engine is actually enabled right now — independent
-  // of which tab is selected, since all three can run at once (2026-08-01).
-  // A preset can show its dot lit while you're viewing a different tab.
-  const presetSwitch = (
-    <div className="flex w-full items-center rounded-xl border border-white/5 bg-white/[0.02] p-1 gap-1 md:w-auto">
-      {shownPresets.map((p) => {
-        const { label, Icon, active } = PRESET_TABS[p];
-        const st = cloud?.presets?.[p];
-        return (
-          <button
-            key={p}
-            onClick={() => selectPresetView(p)}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-2 text-xs font-bold uppercase tracking-wide sm:tracking-wider whitespace-nowrap transition-all md:flex-none md:py-1.5",
-              selectedPreset === p ? active : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Icon className="h-3.5 w-3.5 shrink-0" /> {label}
-            {st?.enabled && st?.running && (
-              <span className="flex items-center gap-1 ml-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.9)]" />
-                <span className="hidden sm:inline text-[8px] font-black tracking-widest text-up">LIVE</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-
   return (
     <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-4 sm:px-6 lg:px-8">
 
-      {/* ── Header — description and quick-action shortcuts are power-user
-          extras already reachable from Configuration, so they're desktop-only
-          to keep the mobile screen focused on the core start/stop action. ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15">
+      {/* ── Header ── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
             <Zap className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight leading-none">Opportunités Deriv</h1>
-            <p className="hidden md:block text-sm text-muted-foreground mt-1">
-              Scanner, conseiller, puis exécuter seulement avec ton autorisation.
+            <h1 className="text-lg font-bold tracking-tight leading-none sm:text-xl">Auto-Trader</h1>
+            <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
+              Scanner, conseiller, exécuter — sur ton autorisation.
             </p>
           </div>
         </div>
-        <div className="hidden md:flex items-center gap-2">
-          {presetSwitch}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className="gap-2 text-sm h-9 px-4"
-          >
-            <Settings2 className="h-4 w-4" /> {showAdvanced ? "Masquer avancé" : "Avancé"}
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="shrink-0 gap-2 text-sm h-9 px-3 self-start sm:self-auto"
+        >
+          <Settings2 className="h-4 w-4" /> <span className="hidden lg:inline">{showAdvanced ? "Masquer" : "Avancé"}</span>
+        </Button>
       </div>
 
-      {/* ── Mobile preset switch — desktop keeps it in the header above ── */}
-      <div className="md:hidden">{presetSwitch}</div>
-
-      {/* ── P&L par système — visible peu importe l'onglet consulté. Les 3
-          presets tournent indépendamment (2026-08-01) ; le solde total
-          ("Fonds disponibles" plus bas) ne dit pas lequel a généré quoi,
-          donc ce comparatif est la seule vue qui répond directement à
-          "qu'est-ce qui gagne en ce moment". Cliquer saute sur cet onglet. ── */}
+      {/* ── P&L par système — l'unique sélecteur de preset. Les 3 presets
+          tournent indépendamment (2026-08-01) ; le solde total ("Fonds
+          disponibles" plus bas) ne dit pas lequel a généré quoi, donc ce
+          comparatif est la seule vue qui répond directement à "qu'est-ce qui
+          gagne en ce moment", en plus de servir de sélecteur. Cliquer saute
+          sur cet onglet. ── */}
       <div className={cn("grid gap-2", shownPresets.length === 3 ? "grid-cols-3" : "grid-cols-4")}>
         {shownPresets.map((p) => {
           const st = cloud?.presets?.[p];
@@ -848,7 +669,6 @@ function AutoTraderPage() {
         avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
         loading={opportunitiesBusy && !opportunities}
         config={config}
-        mode={config.mode}
         autoEnabled={!!cloudSelected?.enabled}
         cloudBusy={cloudBusy}
         manualBusy={manualBusy}
@@ -880,41 +700,32 @@ function AutoTraderPage() {
           <button onClick={() => setEngineRiskStopReasons([])} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
         </div>
       )}
-      {config.mode === "simulation" && derivSession.connected && !running && (
-        <div className="rounded-xl border border-up/30 bg-up/6 p-4 flex items-center gap-3 md:gap-4">
-          <span className="text-2xl shrink-0">🎮</span>
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-semibold text-up">Deriv connecté</span>
-            <span className="hidden md:inline text-sm text-muted-foreground ml-2">— passe en mode Demo pour envoyer de vraies positions (argent de test)</span>
-          </div>
-          <button
-            onClick={() => { patchConfig("mode", "demo"); toast.success("Mode Demo activé — trades réels sur compte démo Deriv"); }}
-            className="shrink-0 rounded-lg bg-up/20 px-3 py-2 md:px-4 text-sm font-semibold text-up hover:bg-up/30 transition-colors">
-            Passer en Demo
-          </button>
-        </div>
-      )}
-
       <CooldownBanner lastScan={lastScan} />
 
 
 
-      {/* ── Mobile section switcher — one focused screen instead of every
-          panel stacked. Desktop ignores this entirely (md:block below always
-          shows every section). ── */}
-      <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
+      {/* ── Mobile section switcher — 3 focused tabs instead of 4. Config
+          and Journal are merged into "Données" since both are read-only
+          views when the bot is running. Desktop ignores this entirely.
+          Tapping "Données" also flips the same `showAdvanced` flag desktop's
+          "Avancé" button controls — one source of truth, two entry points,
+          instead of mobile always showing this content regardless of the
+          flag desktop gates it behind. ── */}
+      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
         {([
           { id: "control", label: "Exécution", icon: Power },
           { id: "dashboard", label: "Scanner", icon: Activity },
-          { id: "config", label: "Avancé", icon: Settings2 },
-          { id: "journal", label: "Journal", icon: Clock },
+          { id: "data", label: "Données", icon: Settings2 },
         ] as const).map((t) => {
           const Icon = t.icon;
-          const active = mobileTab === t.id;
+          const active = mobileTab === t.id || (t.id === "data" && (mobileTab === "config" || mobileTab === "journal"));
           return (
             <button
               key={t.id}
-              onClick={() => setMobileTab(t.id)}
+              onClick={() => {
+                setMobileTab(t.id as typeof mobileTab);
+                if (t.id === "data") setShowAdvanced(true);
+              }}
               className={cn(
                 "flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold uppercase tracking-wide transition-all",
                 active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -931,17 +742,17 @@ function AutoTraderPage() {
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
 
         {/* ── LEFT: Control panel ── */}
-        <div className={cn(mobileTab === "control" ? "block" : "hidden", "md:block space-y-4")}>
+        <div className={cn(mobileTab === "control" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-4")}>
 
           {/* Bloc contrôle principal */}
           <div className="glass-panel rounded-2xl overflow-hidden">
 
-            {/* Mode selector — 3 colonnes égales */}
-            <div className="grid grid-cols-3 border-b border-border/40">
-              {(["simulation", "demo", "live"] as TradingMode[]).map((m) => {
+            {/* Mode selector — 2 colonnes égales */}
+            <div className="grid grid-cols-2 border-b border-border/40">
+              {(["demo", "live"] as TradingMode[]).map((m) => {
                 const isSelected = config.mode === m;
                 return (
-                  <button key={m} disabled={running} onClick={async () => {
+                  <button key={m} onClick={async () => {
                     if (m === "live") {
                       const ok = await confirm({
                         title: "Passer en mode LIVE ?",
@@ -956,16 +767,15 @@ function AutoTraderPage() {
                     className={cn(
                       "flex flex-col items-center gap-1.5 py-4 text-center transition-all duration-200 border-r last:border-r-0 border-border/40",
                       isSelected
-                        ? m === "live" ? "bg-down/10 text-down" : m === "demo" ? "bg-up/10 text-up" : "bg-muted/30 text-foreground"
+                        ? m === "live" ? "bg-down/10 text-down" : "bg-up/10 text-up"
                         : "text-muted-foreground hover:bg-muted/10 hover:text-foreground",
-                      running && "opacity-40 cursor-not-allowed pointer-events-none",
                     )}>
-                    <span className="text-xl leading-none">{m === "simulation" ? "🧪" : m === "demo" ? "🎮" : "⚡"}</span>
+                    <span className="text-xl leading-none">{m === "demo" ? "🎮" : "⚡"}</span>
                     <span className="text-xs font-bold uppercase tracking-wider leading-none">
-                      {m === "simulation" ? "Simu" : m === "demo" ? "Démo" : "Live"}
+                      {m === "demo" ? "Démo" : "Live"}
                     </span>
                     {isSelected && (
-                      <span className={cn("h-0.5 w-8 rounded-full", m === "live" ? "bg-down" : m === "demo" ? "bg-up" : "bg-muted-foreground")} />
+                      <span className={cn("h-0.5 w-8 rounded-full", m === "live" ? "bg-down" : "bg-up")} />
                     )}
                   </button>
                 );
@@ -986,7 +796,7 @@ function AutoTraderPage() {
                     </div>
                     <p className="mt-1 text-xs font-medium leading-relaxed text-muted-foreground">
                       {cloudSelected?.enabled
-                        ? "Au Pluriel peut exécuter les signaux validés selon tes règles."
+                        ? "Au Pluriel exécute automatiquement les signaux qu'il classe « à prendre », selon tes règles de risque."
                         : "Au Pluriel scanne et conseille, sans ouvrir de position automatiquement."}
                     </p>
                   </div>
@@ -1001,41 +811,31 @@ function AutoTraderPage() {
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Statut</span>
-                  <span className={cn("text-sm font-bold", anyRunning ? "text-up" : "text-muted-foreground")}>
-                    {running && cloudSelected?.enabled && cloudSelected?.running
-                      ? `● Actif (local + serveur ${presetLabels[selectedPreset]})`
-                      : cloudSelected?.enabled && cloudSelected?.running
-                      ? `● Autorisée (${presetLabels[selectedPreset]})`
-                      : running
-                      ? "● Actif"
-                      : "○ Désactivée"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
-                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mode</span>
                   <span className={cn("text-sm font-bold",
-                    config.mode === "live" ? "text-down" : config.mode === "demo" ? "text-up" : "text-muted-foreground")}>
-                    {config.mode === "simulation" ? "🧪 Simulation" : config.mode === "demo" ? "🎮 Démo" : "⚡ Live Réel"}
+                    !cloudSelected?.enabled ? "text-muted-foreground" : config.mode === "live" ? "text-down" : "text-up")}>
+                    {cloudSelected?.enabled && cloudSelected?.running
+                      ? `● Actif — ${config.mode === "live" ? "Live" : "Démo"}`
+                      : cloudSelected?.enabled
+                      ? "◐ Démarrage…"
+                      : "○ Désactivée"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Risque</span>
                   <span className="text-sm font-bold text-foreground">${config.stakeUsd} · max -${config.maxDailyLossUsd}/j</span>
                 </div>
-                {config.mode !== "simulation" && (
-                  <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Deriv</span>
-                    <span className={cn("text-sm font-bold flex items-center gap-2",
-                      derivSession.connected ? "text-up" : derivSession.connecting ? "text-amber-400" : "text-down")}>
-                      <span className={cn("h-2 w-2 rounded-full",
-                        derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
-                      {derivSession.connected
-                        ? derivSession.balance !== null ? `$${derivSession.balance.toFixed(2)}` : "Connecté"
-                        : derivSession.connecting ? "Connexion…"
-                        : <button onClick={reinitDerivSession} className="underline">Reconnecter</button>}
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between rounded-lg bg-muted/15 px-4 py-2.5">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Deriv</span>
+                  <span className={cn("text-sm font-bold flex items-center gap-2",
+                    derivSession.connected ? "text-up" : derivSession.connecting ? "text-amber-400" : "text-down")}>
+                    <span className={cn("h-2 w-2 rounded-full",
+                      derivSession.connected ? "bg-up" : derivSession.connecting ? "bg-amber-400 animate-pulse" : "bg-down")} />
+                    {derivSession.connected
+                      ? derivSession.balance !== null ? `$${derivSession.balance.toFixed(2)}` : "Connecté"
+                      : derivSession.connecting ? "Connexion…"
+                      : <button onClick={reinitDerivSession} className="underline">Reconnecter</button>}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1044,7 +844,7 @@ function AutoTraderPage() {
             {cloudSelected?.enabled && (
               <div className="mt-3 space-y-2 border-t border-border/40 pt-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">Statut</span>
+                  <span className="text-muted-foreground/70 font-bold uppercase tracking-wider text-[10px]">Serveur</span>
                   <span className={cn("font-extrabold", cloudSelected.pausedUntil ? "text-amber-400" : "text-up")}>
                     {cloudSelected.pausedUntil
                       ? `⏸ Pause — reprise ${new Date(cloudSelected.pausedUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
@@ -1089,7 +889,7 @@ function AutoTraderPage() {
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
                   <Zap className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Manuel libre</span>
+                  <span className="text-xs uppercase tracking-wider text-amber-400 font-black">Trade forcé (test)</span>
                 </div>
                 {!derivSession.connected && (
                   <span className="text-[10px] bg-muted/40 text-amber-400/80 px-1.5 py-0.5 rounded font-bold animate-pulse">Déconnecté</span>
@@ -1187,7 +987,7 @@ function AutoTraderPage() {
         </div>
 
         {/* ── RIGHT: Dashboard + positions ── */}
-        <div className={cn(mobileTab === "dashboard" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
+        <div className={cn(mobileTab === "dashboard" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
             
             {/* Row 1: Fonds disponibles + broker balances. Boom/Crash only
                 ever show 2 cards (Fonds disponibles + Deriv — Kraken/
@@ -1199,23 +999,25 @@ function AutoTraderPage() {
                 const bb = cloud?.brokerBalances;
                 const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
                 const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
-                // Mode simulation (pas de broker réel connecté) : ce chiffre est
-                // un solde purement local (capital de départ + gains/pertes déjà
-                // clôturés). cumulativePnl ne bouge qu'à la clôture d'un trade
-                // (voir addToCumulativePnl) — sans ceci, ouvrir une position
-                // n'avait AUCUN effet visible ici tant qu'elle n'était pas
-                // résolue, contrairement à un vrai broker qui débite la mise
-                // immédiatement à l'achat. On soustrait donc les mises encore
-                // engagées sur des trades ouverts pour refléter ça.
+                // Le broker n'est pas encore connecté (juste après un
+                // chargement de page, ou pendant une reconnexion) : ce
+                // chiffre retombe sur un solde purement local (capital de
+                // départ + gains/pertes déjà clôturés). cumulativePnl ne
+                // bouge qu'à la clôture d'un trade (voir addToCumulativePnl)
+                // — sans ceci, ouvrir une position n'avait AUCUN effet
+                // visible ici tant qu'elle n'était pas résolue, contrairement
+                // à un vrai broker qui débite la mise immédiatement à
+                // l'achat. On soustrait donc les mises encore engagées sur
+                // des trades ouverts pour refléter ça.
                 const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
                 const value = hasAny
                   ? `$${total.toFixed(2)}`
-                  : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                  : derivSession.balance !== null
                     ? `$${derivSession.balance.toFixed(2)}`
                     : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
                 const delta = hasAny
                   ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "") + (bb?.kraken ? "KRAKEN " : "") + (bb?.binance ? "BINANCE " : "") + (bb?.oanda ? "OANDA" : "").trim()}`
-                  : (config.mode === "demo" || config.mode === "live") && derivSession.balance !== null
+                  : derivSession.balance !== null
                     ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
                     : stakeAtRisk > 0
                       ? `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)} · $${stakeAtRisk.toFixed(2)} engagé${stakeAtRisk > 1 ? "s" : ""}`
@@ -1294,7 +1096,7 @@ function AutoTraderPage() {
                 className="col-span-2 sm:col-span-1"
                 label="Limite de perte"
                 value={`${Math.round((lossUsedUsd / config.maxDailyLossUsd) * 100)}%`}
-                tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "bear" : "default"}
+                tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "cyan" : "default"}
                 delta={`$${lossUsedUsd.toFixed(2)} / $${config.maxDailyLossUsd}`}
               />
             </div>
@@ -1303,82 +1105,59 @@ function AutoTraderPage() {
               logs={cloudActive ? (cloudSelected?.trades ?? []) : logs}
               lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
               config={config}
-              running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
+              running={!!cloudSelected?.enabled && !!cloudSelected?.running}
               pnl={pnl}
               lossUsedUsd={lossUsedUsd}
             />
 
-          {/* Positions en direct + derniers trades côte à côte sur grand écran */}
-          {openTradeList.length > 0 || running ? (
-            <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
-              <div className="xl:col-span-2 animate-fade-in space-y-4">
-                {openTradeList.length > 0 ? (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="h-2 w-2 rounded-full bg-up animate-pulse shadow-[0_0_8px_var(--up)]" />
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200">Positions en direct ({openTradeList.length})</h2>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {openTradeList.map((t) => (
-                        <LiveTradeCard key={t.id} trade={t}
-                          onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-8 flex flex-col items-center justify-center gap-5 text-center min-h-[210px] backdrop-blur-sm before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.01),transparent_70%)]">
-                    {/* Radar / scan sweep */}
-                    <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-up/20 bg-up/5">
-                      <span className="absolute inline-flex h-full w-full rounded-full border border-up/25 animate-ping opacity-30" style={{ animationDuration: "2.5s" }} />
-                      <span className="absolute inline-flex h-[70%] w-[70%] rounded-full border border-up/30 animate-pulse opacity-40" />
-                      <Activity className="h-5 w-5 text-up animate-pulse" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-sm font-bold uppercase tracking-wider text-neutral-200">Scan des marchés en cours</div>
-                      <p className="text-xs text-muted-foreground/80 max-w-[280px] leading-relaxed mb-3">
-                        Surveillance des signaux et configurations techniques CALL/PUT en temps réel.
-                      </p>
-                      {/* Live stopwatch style countdown */}
-                      <div className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-neutral-900/60 px-3 py-1 text-xs font-mono font-bold tracking-wider text-cyan shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                        <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
-                        <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <ScannerSection
-                  cloudActive={cloudActive}
-                  cloudSelected={cloudSelected}
-                  lastScan={lastScan}
-                  config={config}
-                  running={running}
-                  showAdvanced={showAdvanced}
-                  selectedPreset={selectedPreset}
-                  activeSessions={activeSessions}
-                />
+          {/* Positions en direct + scanner — always rendered together */}
+          <div className="space-y-5 animate-fade-in">
+            {openTradeList.length > 0 ? (
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="h-2 w-2 rounded-full bg-up animate-pulse shadow-[0_0_8px_var(--up)]" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200">Positions en direct ({openTradeList.length})</h2>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {openTradeList.map((t) => (
+                    <LiveTradeCard key={t.id} trade={t}
+                      onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            /* Standby State: Stacked vertically to fill space cleanly and avoid layout gaps */
-            <div className="space-y-5 animate-fade-in">
-              <ScannerSection
-                cloudActive={cloudActive}
-                cloudSelected={cloudSelected}
-                lastScan={lastScan}
-                config={config}
-                running={running}
-                showAdvanced={showAdvanced}
-                selectedPreset={selectedPreset}
-                activeSessions={activeSessions}
-              />
-            </div>
-          )}
+            ) : (
+              <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-8 flex flex-col items-center justify-center gap-5 text-center min-h-[210px] backdrop-blur-sm before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.01),transparent_70%)]">
+                <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-up/20 bg-up/5">
+                  <span className="absolute inline-flex h-full w-full rounded-full border border-up/25 animate-ping opacity-30" style={{ animationDuration: "2.5s" }} />
+                  <span className="absolute inline-flex h-[70%] w-[70%] rounded-full border border-up/30 animate-pulse opacity-40" />
+                  <Activity className="h-5 w-5 text-up animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-bold uppercase tracking-wider text-neutral-200">Scan des marchés en cours</div>
+                  <p className="text-xs text-muted-foreground/80 max-w-[280px] leading-relaxed mb-3">
+                    Surveillance des signaux et configurations techniques CALL/PUT en temps réel.
+                  </p>
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-neutral-900/60 px-3 py-1 text-xs font-mono font-bold tracking-wider text-cyan shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
+                    <ScanCountdown lastScan={lastScan} SCAN_INTERVAL_MS={SCAN_INTERVAL_MS} config={config} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <ScannerSection
+              cloudActive={cloudActive}
+              cloudSelected={cloudSelected}
+              lastScan={lastScan}
+              config={config}
+            />
+          </div>
         </div>
       </div>
 
-      {/* ── Config + adaptive weights: grouped under the mobile "Config" tab ── */}
-      <div className={cn(mobileTab === "config" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden", "space-y-6")}>
+      {/* ── Config: grouped under the mobile "Données" tab, same showAdvanced
+          flag desktop's "Avancé" button drives — one source of truth. ── */}
+      <div className={cn(showAdvanced && (mobileTab === "config" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden", "space-y-6")}>
 
       {/* ── Config panel (collapsible + tabbed) ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
@@ -1389,7 +1168,7 @@ function AutoTraderPage() {
           <div className="flex items-center gap-2.5">
             <Settings2 className="h-5 w-5 text-muted-foreground" />
             <span className="text-base font-black uppercase tracking-wider text-neutral-200">Configuration</span>
-            {running && <span className="text-xs text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1 font-bold">Arrête le bot pour modifier</span>}
+            {cloudSelected?.enabled && <span className="text-xs text-muted-foreground bg-muted/30 rounded-md px-2.5 py-1 font-bold">S'applique au prochain redémarrage de l'auto-exécution</span>}
           </div>
           {showConfig ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
         </button>
@@ -1400,7 +1179,7 @@ function AutoTraderPage() {
             <div className="border-b border-border/40">
               <div className="max-w-6xl mx-auto flex flex-col gap-4 px-6 pt-4 pb-4 sm:flex-row sm:items-center sm:gap-3 sm:pt-3 sm:pb-0">
                 <div className="flex overflow-x-auto scrollbar-none gap-1.5 -mb-px">
-                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["backtest","Backtest"]] as const).map(([t, label]) => (
+                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"]] as const).map(([t, label]) => (
                     <button key={t} onClick={() => setConfigTab(t)}
                       className={cn("px-5 py-3.5 text-sm font-black uppercase tracking-wider rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2.5",
                         configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
@@ -1408,9 +1187,13 @@ function AutoTraderPage() {
                     </button>
                   ))}
                 </div>
-                <div className="sm:ml-auto pb-1 sm:pb-2.5 self-center w-full sm:w-auto">
-                  <button onClick={() => setShowSavePreset(true)} disabled={running}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-primary/20 text-primary hover:bg-primary/30 border border-primary/20 transition-all font-black text-sm px-4 py-2 w-full sm:w-auto disabled:opacity-40 disabled:cursor-not-allowed sm:text-xs sm:px-3 sm:py-1.5">
+                <div className="flex items-center gap-2 sm:ml-auto pb-1 sm:pb-2.5 self-center w-full sm:w-auto">
+                  <Link to="/backtest"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-muted/20 text-muted-foreground hover:bg-muted/30 hover:text-foreground border border-border/40 transition-all font-black text-sm px-4 py-2 w-full sm:w-auto sm:text-xs sm:px-3 sm:py-1.5">
+                    <FlaskConical className="h-4 w-4" /> Backtester →
+                  </Link>
+                  <button onClick={() => setShowSavePreset(true)}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-primary/20 text-primary hover:bg-primary/30 border border-primary/20 transition-all font-black text-sm px-4 py-2 w-full sm:w-auto sm:text-xs sm:px-3 sm:py-1.5">
                     <Save className="h-4 w-4" /> Sauvegarder config
                   </button>
                 </div>
@@ -1421,29 +1204,6 @@ function AutoTraderPage() {
               {/* TAB: Profils */}
               {configTab === "profiles" && (
                 <div className="space-y-4">
-                  {/* Test rapide — bouton dédié pour tester le pipeline en démo */}
-                  <div className="relative overflow-hidden rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-5 flex flex-col sm:flex-row sm:items-center gap-4 transition-all duration-300 hover:border-amber-500/50 hover:bg-amber-500/[0.07] before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.03),transparent_60%)]">
-                    <div className="flex-1 relative z-10">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm shadow-[0_0_10px_rgba(245,158,11,0.1)]">🧪</span>
-                        <span className="text-xs font-black uppercase tracking-wider text-amber-400">Mode Test Démo</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[480px]">
-                        Configuration d'évaluation rapide (confiance ≥60%, 2/4 TF) pour tester le flux de signaux. Réservé exclusivement à un compte de test démo.
-                      </p>
-                    </div>
-                    <button disabled={running}
-                      onClick={() => {
-                        const next = { ...config, mode: "demo" as TradingMode, minConfidence: 60, minTfAgreement: 2, maxTradesPerDay: 20, premiumOnly: false, stopOnRisk: false, maxConsecutiveLosses: 10 };
-                        setConfig(next); saveConfig(next, selectedPreset);
-                        setDraftMaxTrades(20);
-                        toast.success("Mode Test activé — Démo · confiance ≥60% · 2/4 TF", { description: "Arrête le bot pour changer les seuils" });
-                      }}
-                      className={cn("relative z-10 w-full sm:w-auto shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-300 transition-all shadow-[0_2px_10px_rgba(245,158,11,0.05)] disabled:opacity-40 disabled:cursor-not-allowed",
-                        running && "opacity-40 cursor-not-allowed")}>
-                      Appliquer le Test
-                    </button>
-                  </div>
                   <div className="grid gap-4 sm:grid-cols-3">
                     {(Object.keys(PRESETS) as RiskProfile[]).map((key) => {
                       const preset = PRESETS[key];
@@ -1481,18 +1241,15 @@ function AutoTraderPage() {
                       const th = themeMap[key];
 
                       return (
-                        <button key={key} disabled={running}
+                        <button key={key}
                           onClick={() => {
                             const { name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, ...pc } = preset;
                             const next = { ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd };
                             setConfig(next); saveConfig(next, selectedPreset);
-                            setDraftDuration(next.durationMinutes);
-                            setDraftMaxTrades(next.maxTradesPerDay);
                             toast.success(`${preset.emoji} Profil ${preset.name} appliqué`, { description: `Mise conservée: $${config.stakeUsd}` });
                           }}
-                          className={cn("relative overflow-hidden rounded-xl border p-4.5 text-left transition-all duration-300 flex flex-col justify-between min-h-[220px] disabled:opacity-40 disabled:cursor-not-allowed",
-                            isActive ? th.glow : th.border,
-                            running && "opacity-40 cursor-not-allowed")}>
+                          className={cn("relative overflow-hidden rounded-xl border p-4.5 text-left transition-all duration-300 flex flex-col justify-between min-h-[220px]",
+                            isActive ? th.glow : th.border)}>
                           
                           <div className="w-full relative z-10">
                             {/* Top bar: Icon + Active Dot */}
@@ -1548,7 +1305,7 @@ function AutoTraderPage() {
                           return (
                             <div key={preset.id} className={cn("relative rounded-xl border p-3 transition-all group",
                               isActive ? "border-primary/60 bg-primary/8" : "border-border bg-muted/10 hover:border-muted-foreground/40")}>
-                              <button disabled={running} className="w-full text-left"
+                              <button className="w-full text-left"
                                 onClick={() => {
                                   const { id, name, description, emoji, recommendedCapital, targetWinRate, expectedTradesPerDay, createdAt, performance, ...pc } = preset;
                                   setConfig({ ...config, ...pc, stakeUsd: config.stakeUsd, maxDailyLossUsd: config.maxDailyLossUsd });
@@ -1589,8 +1346,7 @@ function AutoTraderPage() {
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
                     <div className="flex-1 w-full">
                       <Field label="Capital de départ ($)">
-                        <AmountInput value={config.initialCapital} min={10} max={100000} step={10} disabled={running}
-                          onCommit={async (v) => { patchConfig("initialCapital", v); return true; }} />
+                        <AmountInput value={config.initialCapital} min={10} max={100000} step={10}                          onCommit={async (v) => { patchConfig("initialCapital", v); return true; }} />
                       </Field>
                       <p className="mt-1.5 text-xs text-muted-foreground">Base de calcul des fonds disponibles.</p>
                     </div>
@@ -1612,10 +1368,9 @@ function AutoTraderPage() {
                       <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Mode de mise</label>
                       <div className="flex rounded-xl border border-border overflow-hidden w-fit">
                         {(["fixed", "percent", "kelly"] as const).map((m) => (
-                          <button key={m} disabled={running} onClick={() => patchConfig("stakeMode", m)}
+                          <button key={m} onClick={() => patchConfig("stakeMode", m)}
                             className={cn("px-4 py-2 text-xs font-semibold transition-colors",
-                              config.stakeMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
-                              running && "opacity-40 cursor-not-allowed")}>
+                              config.stakeMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground")}>
                             {m === "fixed" ? "$ Fixe" : m === "percent" ? "% Capital" : "Kelly"}
                           </button>
                         ))}
@@ -1624,8 +1379,7 @@ function AutoTraderPage() {
                     <Field label={config.stakeMode === "percent" ? `Mise par trade (${config.stakePercent}% du capital)` : config.stakeMode === "kelly" ? "Mise Kelly — mise de secours ($)" : "Mise par trade ($)"}>
                       {config.stakeMode === "percent" ? (
                         <div>
-                          <input type="range" min={0.5} max={5} step={0.5} value={config.stakePercent} disabled={running}
-                            onChange={(e) => patchConfig("stakePercent", Number(e.target.value))} className="w-full accent-primary" />
+                          <input type="range" min={0.5} max={5} step={0.5} value={config.stakePercent}                            onChange={(e) => patchConfig("stakePercent", Number(e.target.value))} className="w-full accent-primary" />
                           <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5">
                             <span>0.5%</span>
                             {derivSession.balance !== null && (
@@ -1636,8 +1390,7 @@ function AutoTraderPage() {
                           <p className="text-xs font-semibold text-muted-foreground/90 mt-1">Recommandé : 1–2% du capital par trade</p>
                         </div>
                       ) : (
-                        <AmountInput value={config.stakeUsd} min={1} max={100} step={1} disabled={running}
-                          onCommit={async (v) => {
+                        <AmountInput value={config.stakeUsd} min={1} max={100} step={1}                          onCommit={async (v) => {
                             const ok = await confirm({ title: "Modifier la mise ?", description: `$${config.stakeUsd} → $${v} par trade${config.mode === "live" ? " (argent réel)" : ""}`, confirmLabel: "Confirmer", danger: config.mode === "live" });
                             if (ok) { patchConfig("stakeUsd", v); saveDefaultStake(v); toast.success(`Mise: $${v}`); }
                             return ok;
@@ -1649,8 +1402,7 @@ function AutoTraderPage() {
                         <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">
                           Fraction de Kelly ({(config.kellyFraction * 100).toFixed(0)}%)
                         </label>
-                        <input type="range" min={0.1} max={1} step={0.05} value={config.kellyFraction} disabled={running}
-                          onChange={(e) => patchConfig("kellyFraction", Number(e.target.value))} className="w-full accent-primary" />
+                        <input type="range" min={0.1} max={1} step={0.05} value={config.kellyFraction}                          onChange={(e) => patchConfig("kellyFraction", Number(e.target.value))} className="w-full accent-primary" />
                         <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5 leading-relaxed">
                           Mise = fraction de Kelly (f* = gain − perte/payout) calculée à partir du win rate et du payout
                           <strong> réellement mesurés au backtest</strong> pour chaque paire — pas une estimation. 50%
@@ -1659,58 +1411,42 @@ function AutoTraderPage() {
                         </p>
                       </div>
                     )}
-                    <Field label={`Durée contrat${draftDuration !== config.durationMinutes ? " ●" : ""}`}>
+                    <Field label="Durée contrat">
                       <select
-                        value={draftDuration}
-                        disabled={running}
-                        onChange={(e) => setDraftDuration(Number(e.target.value))}
-                        className={cn("cfg-input transition-colors", draftDuration !== config.durationMinutes && "border-amber-500/60 ring-1 ring-amber-500/30")}
+                        value={config.durationMinutes}
+                        onChange={(e) => patchConfig("durationMinutes", Number(e.target.value))}
+                        className="cfg-input"
                       >
                         <option value={5}>5 min</option>
                         <option value={15}>15 min</option>
                         <option value={30}>30 min</option>
                         <option value={60}>1 heure</option>
                       </select>
-                      {draftDuration !== config.durationMinutes && (
-                        <span className="text-xs font-semibold text-amber-400 mt-1 block">
-                          Actuellement sauvegardé : {config.durationMinutes} min
-                        </span>
-                      )}
                     </Field>
-                    <Field label={`Trades max / jour${draftMaxTrades !== config.maxTradesPerDay ? " ●" : ""}`}>
-                      <div className={cn(draftMaxTrades !== config.maxTradesPerDay && "ring-1 ring-amber-500/30 rounded-lg")}>
-                        <AmountInput
-                          value={draftMaxTrades}
-                          min={1}
-                          max={50}
-                          step={1}
-                          onCommit={(v) => { setDraftMaxTrades(v); return true; }}
-                        />
-                      </div>
-                      {draftMaxTrades !== config.maxTradesPerDay && (
-                        <span className="text-xs font-semibold text-amber-400 mt-1 block">
-                          Actuellement sauvegardé : {config.maxTradesPerDay}
-                        </span>
-                      )}
+                    <Field label="Trades max / jour">
+                      <AmountInput
+                        value={config.maxTradesPerDay}
+                        min={1}
+                        max={50}
+                        step={1}
+                        onCommit={(v) => { patchConfig("maxTradesPerDay", v); return true; }}
+                      />
                     </Field>
                     <Field label={`Confiance min (${config.minConfidence}%)`}>
-                      <input type="range" min={55} max={95} step={5} value={config.minConfidence} disabled={running}
-                        onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
+                      <input type="range" min={55} max={95} step={5} value={config.minConfidence}                        onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
                     </Field>
                     <Field label={`Accord TF min (${config.minTfAgreement}/4)`}>
-                      <input type="range" min={1} max={4} step={1} value={config.minTfAgreement} disabled={running}
-                        onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
+                      <input type="range" min={1} max={4} step={1} value={config.minTfAgreement}                        onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
                     </Field>
                     <div className="sm:col-span-2 lg:col-span-3">
                       <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Mode de scan</label>
                       <div className="flex rounded-xl border border-border overflow-hidden w-fit">
                         {(["watchlist", "all-markets"] as const).map((m) => (
-                          <button key={m} disabled={running} onClick={() => patchConfig("symbolMode", m)}
+                          <button key={m} onClick={() => patchConfig("symbolMode", m)}
                             className={cn("px-4 py-2 text-xs font-semibold transition-colors",
-                              config.symbolMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
-                              running && "opacity-40 cursor-not-allowed")}>
+                              config.symbolMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground")}>
                             {m === "watchlist" ? "Paires choisies" : `Tous les marchés (${SYMBOLS.filter((s) => isCallPutAvailable(s.deriv)).length})`}
                           </button>
                         ))}
@@ -1723,8 +1459,7 @@ function AutoTraderPage() {
                     </div>
                     {config.symbolMode === "all-markets" && (
                       <Field label={`Trades max par cycle (${config.maxSimultaneousTrades})`}>
-                        <input type="range" min={1} max={10} step={1} value={config.maxSimultaneousTrades} disabled={running}
-                          onChange={(e) => patchConfig("maxSimultaneousTrades", Number(e.target.value))} className="w-full accent-primary" />
+                        <input type="range" min={1} max={10} step={1} value={config.maxSimultaneousTrades}                          onChange={(e) => patchConfig("maxSimultaneousTrades", Number(e.target.value))} className="w-full accent-primary" />
                         <p className="text-xs font-semibold text-muted-foreground/90 mt-0.5">Limite les nouvelles positions ouvertes en un seul cycle de scan.</p>
                       </Field>
                     )}
@@ -1734,11 +1469,10 @@ function AutoTraderPage() {
                         {SYMBOLS.map((s) => {
                           const active = config.symbols.includes(s.deriv);
                           return (
-                            <button key={s.deriv} disabled={running || config.symbolMode === "all-markets"}
+                            <button key={s.deriv} disabled={config.symbolMode === "all-markets"}
                               onClick={() => { const next = active ? config.symbols.filter((x) => x !== s.deriv) : [...config.symbols, s.deriv]; if (next.length > 0) patchConfig("symbols", next); }}
-                              className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
-                                active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground",
-                                running && "opacity-40 cursor-not-allowed")}>
+                              className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                                active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground")}>
                               {s.label}
                             </button>
                           );
@@ -1746,32 +1480,6 @@ function AutoTraderPage() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Unsaved params banner */}
-                  {(draftDuration !== config.durationMinutes || draftMaxTrades !== config.maxTradesPerDay) && (
-                    <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3">
-                      <div className="text-xs">
-                        <span className="font-semibold text-amber-300">Modifications non sauvegardées</span>
-                        <span className="text-muted-foreground ml-2">
-                          {draftDuration !== config.durationMinutes && `Durée : ${draftDuration} min`}
-                          {draftDuration !== config.durationMinutes && draftMaxTrades !== config.maxTradesPerDay && " · "}
-                          {draftMaxTrades !== config.maxTradesPerDay && `Max trades : ${draftMaxTrades}/jour`}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => { setDraftDuration(config.durationMinutes); setDraftMaxTrades(config.maxTradesPerDay); }}
-                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1">
-                          Annuler
-                        </button>
-                        <button
-                          onClick={() => setShowSaveParams(true)}
-                          className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30 transition-colors">
-                          <Save className="h-3 w-3" /> Sauvegarder
-                        </button>
-                      </div>
-                    </div>
-                  )}
 
                 </div>
               )}
@@ -1794,12 +1502,11 @@ function AutoTraderPage() {
                     <p className="mt-0.5 text-[10px] text-muted-foreground">0 = désactivé</p>
                   </Field>
                   <Field label="Pertes consécutives max">
-                    <input type="number" min={1} max={10} value={config.maxConsecutiveLosses} disabled={running}
-                      onChange={(e) => patchConfig("maxConsecutiveLosses", Number(e.target.value))} className="cfg-input" />
+                    <input type="number" min={1} max={10} value={config.maxConsecutiveLosses}                      onChange={(e) => patchConfig("maxConsecutiveLosses", Number(e.target.value))} className="cfg-input" />
                     <p className="mt-0.5 text-[10px] text-muted-foreground">Arrêt / cooldown après N pertes</p>
                   </Field>
                   <Field label="Volatilité max (ATR%)">
-                    <select value={config.maxVolatilityPct} disabled={running} onChange={(e) => patchConfig("maxVolatilityPct", Number(e.target.value))} className="cfg-input">
+                    <select value={config.maxVolatilityPct} onChange={(e) => patchConfig("maxVolatilityPct", Number(e.target.value))} className="cfg-input">
                       <option value={2}>2% — prudent</option><option value={3}>3%</option>
                       <option value={4}>4% — équilibré</option><option value={6}>6% — agressif</option>
                     </select>
@@ -1813,13 +1520,13 @@ function AutoTraderPage() {
                     <Field key={key} label={label}>
                       <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
                         <span className="text-xs text-muted-foreground">{config[key] ? "Activé" : "Désactivé"}</span>
-                        <Switch checked={config[key] as boolean} disabled={running} onCheckedChange={(v) => patchConfig(key, v)} />
+                        <Switch checked={config[key] as boolean} onCheckedChange={(v) => patchConfig(key, v)} />
                       </div>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">{desc}</p>
                     </Field>
                   ))}
                   <Field label="Veto 4H (contre-tendance)">
-                    <select value={config.veto4h ?? "strong-only"} disabled={running} onChange={(e) => patchConfig("veto4h", e.target.value as Veto4hMode)} className="cfg-input">
+                    <select value={config.veto4h ?? "strong-only"} onChange={(e) => patchConfig("veto4h", e.target.value as Veto4hMode)} className="cfg-input">
                       <option value="strong-only">Signal 4H fort uniquement — recommandé</option>
                       <option value="always">Toujours (strict)</option>
                       <option value="off">Désactivé</option>
@@ -1834,7 +1541,7 @@ function AutoTraderPage() {
                   <Field label="Bloquer les paires corrélées">
                     <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
                       <span className="text-xs text-muted-foreground">{config.blockCorrelated ? "Activé" : "Désactivé"}</span>
-                      <Switch checked={config.blockCorrelated} disabled={running} onCheckedChange={(v) => { patchConfig("blockCorrelated", v); toast.success(v ? "Corrélation activée — une paire par groupe" : "Corrélation désactivée"); }} />
+                      <Switch checked={config.blockCorrelated} onCheckedChange={(v) => { patchConfig("blockCorrelated", v); toast.success(v ? "Corrélation activée — une paire par groupe" : "Corrélation désactivée"); }} />
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
                       Évite d&apos;ouvrir deux paires corrélées en même temps.{" "}
@@ -1842,8 +1549,7 @@ function AutoTraderPage() {
                     </p>
                   </Field>
                   <Field label={`Buffer ouverture/clôture session (${config.sessionEdgeMinutes} min)`}>
-                    <input type="range" min={0} max={60} step={15} value={config.sessionEdgeMinutes} disabled={running}
-                      onChange={(e) => patchConfig("sessionEdgeMinutes", Number(e.target.value))} className="w-full accent-primary" />
+                    <input type="range" min={0} max={60} step={15} value={config.sessionEdgeMinutes}                      onChange={(e) => patchConfig("sessionEdgeMinutes", Number(e.target.value))} className="w-full accent-primary" />
                     <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5"><span>0</span><span>15</span><span>30</span><span>45</span><span>60 min</span></div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">Évite les faux breakouts à l'ouverture/clôture des sessions Forex</p>
                   </Field>
@@ -1854,11 +1560,9 @@ function AutoTraderPage() {
                         const active = config.tradingSessions.includes(s);
                         const isOpen = activeSessions.includes(s);
                         return (
-                          <button key={s} disabled={running}
-                            onClick={() => { const next = active ? config.tradingSessions.filter((x) => x !== s) : [...config.tradingSessions, s]; if (next.length > 0) patchConfig("tradingSessions", next); }}
+                          <button key={s} onClick={() => { const next = active ? config.tradingSessions.filter((x) => x !== s) : [...config.tradingSessions, s]; if (next.length > 0) patchConfig("tradingSessions", next); }}
                             className={cn("rounded-xl border px-4 py-2 text-xs font-medium transition-colors text-left",
-                              active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground",
-                              running && "opacity-40 cursor-not-allowed")}>
+                              active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground")}>
                             <div className="font-semibold">{SESSION_HOURS[s].label} {isOpen ? "●" : ""}</div>
                             <div className="text-[10px] opacity-60">{SESSION_HOURS[s].open}h–{SESSION_HOURS[s].close}h UTC</div>
                           </button>
@@ -1871,260 +1575,21 @@ function AutoTraderPage() {
               )}
 
               {/* TAB: Backtest */}
-              {configTab === "backtest" && (
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground leading-relaxed max-w-lg">
-                        Rejoue le <strong>pipeline live exact</strong> — 4 timeframes (5m/15m/1H/4H), véto 4H, score
-                        d'alignement de tendance et bonus de patterns — sur des données historiques réelles et
-                        synchronisées, sans anticipation (chaque timeframe ne voit que les bougies déjà closes).
-                      </p>
-                      <p className="text-xs text-muted-foreground/60 mt-1.5">
-                        Payout réel utilisé (coté en direct, pas une estimation) : seuil de rentabilité ≈
-                        <strong className="text-amber-400"> {(1 / (1 + (Object.values(backtestResults)[0]?.payoutPct ?? 0.85)) * 100).toFixed(1)}% win rate minimum</strong>
-                      </p>
-                    </div>
-                    <Button size="sm" onClick={runBacktest} disabled={backtestRunning}
-                      className="w-full sm:w-auto shrink-0 gap-2 h-11 sm:h-9 text-sm sm:text-xs font-bold sm:font-semibold">
-                      <FlaskConical className={cn("h-4 w-4 sm:h-3.5 sm:w-3.5", backtestRunning && "animate-pulse")} />
-                      {backtestRunning ? "Analyse…" : "Lancer le backtest"}
-                    </Button>
-                  </div>
-
-                  {backtestRunning && (
-                    <div className="space-y-2">
-                      {config.symbols.map((sym) => (
-                        <div key={sym} className="h-10 rounded-lg bg-muted/20 animate-pulse" />
-                      ))}
-                    </div>
-                  )}
-
-                  {Object.keys(backtestResults).length > 0 && !backtestRunning && (() => {
-                    const allResults = Object.values(backtestResults);
-                    const totalTrades = allResults.reduce((s, r) => s + r.trades, 0);
-                    const totalWins = allResults.reduce((s, r) => s + r.wins, 0);
-                    const globalWinRate = totalTrades > 0 ? totalWins / totalTrades : 0;
-                    const totalPnl = allResults.reduce((s, r) => s + r.pnl, 0);
-                    const breakEven = allResults[0]?.breakEvenWinRate ?? 0.541;
-                    const edge = globalWinRate - breakEven;
-                    return (
-                      <div className="space-y-3">
-                        <div className={cn("rounded-xl border p-4 flex flex-wrap gap-4 items-center",
-                          globalWinRate >= breakEven ? "border-up/30 bg-up/5" : "border-down/30 bg-down/5")}>
-                          <div className="flex-1 min-w-[120px]">
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Win Rate global</div>
-                            <div className={cn("text-2xl font-bold font-mono-tabular mt-0.5",
-                              globalWinRate >= breakEven ? "text-up" : "text-down")}>
-                              {(globalWinRate * 100).toFixed(1)}%
-                            </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">seuil rentabilité : {(breakEven * 100).toFixed(1)}%</div>
-                          </div>
-                          <div className="flex-1 min-w-[100px]">
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">P&L simulé</div>
-                            <div className={cn("text-xl font-bold font-mono-tabular mt-0.5",
-                              totalPnl >= 0 ? "text-up" : "text-down")}>
-                              {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">mise ${config.stakeUsd}/trade</div>
-                          </div>
-                          <div className="flex-1 min-w-[100px]">
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Edge théorique</div>
-                            <div className={cn("text-xl font-bold font-mono-tabular mt-0.5",
-                              edge >= 0 ? "text-up" : "text-down")}>
-                              {edge >= 0 ? "+" : ""}{(edge * 100).toFixed(1)}%
-                            </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">{totalTrades} trades analysés</div>
-                          </div>
-                          <div className={cn("rounded-lg px-3 py-2 text-xs font-bold text-center",
-                            globalWinRate >= breakEven + 0.05 ? "bg-up/20 text-up"
-                            : globalWinRate >= breakEven ? "bg-amber-500/20 text-amber-400"
-                            : "bg-down/20 text-down")}>
-                            {globalWinRate >= breakEven + 0.05 ? "✓ Edge positif"
-                              : globalWinRate >= breakEven ? "⚠ Limite rentable"
-                              : "✗ Edge négatif"}
-                          </div>
-                        </div>
-
-                        <div className="overflow-x-auto rounded-xl border border-border/40">
-                          <table className="w-full text-xs">
-                            <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
-                              <tr>
-                                <th className="px-4 py-2.5 text-left">Paire</th>
-                                <th className="px-4 py-2.5 text-right">Trades</th>
-                                <th className="px-4 py-2.5 text-right">Win Rate</th>
-                                <th className="px-4 py-2.5 text-right">P&L sim.</th>
-                                <th className="px-4 py-2.5 text-right">Conf. moy.</th>
-                                <th className="px-4 py-2.5 text-center">Verdict</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {allResults.map((r) => {
-                                const wr = r.winRate;
-                                const be = r.breakEvenWinRate;
-                                const label = SYMBOLS.find((s) => s.deriv === r.symbol)?.label ?? r.symbol;
-                                return (
-                                  <tr key={r.symbol} className="border-t border-border/30 hover:bg-muted/5">
-                                    <td className="px-4 py-2.5 font-medium">{label}</td>
-                                    <td className="px-4 py-2.5 text-right text-muted-foreground">{r.trades}</td>
-                                    <td className={cn("px-4 py-2.5 text-right font-bold",
-                                      wr >= be ? "text-up" : "text-down")}>
-                                      {r.trades > 0 ? `${(wr * 100).toFixed(1)}%` : "—"}
-                                    </td>
-                                    <td className={cn("px-4 py-2.5 text-right font-bold",
-                                      r.pnl >= 0 ? "text-up" : "text-down")}>
-                                      {r.trades > 0 ? `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}` : "—"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right text-muted-foreground">
-                                      {r.trades > 0 ? `${r.avgConfidence}%` : "—"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-center">
-                                      {r.trades === 0 ? (
-                                        <span className="text-[10px] text-muted-foreground">Pas de signal</span>
-                                      ) : wr >= be + 0.05 ? (
-                                        <span className="text-[10px] font-bold text-up bg-up/10 px-2 py-0.5 rounded">Edge +</span>
-                                      ) : wr >= be ? (
-                                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">Limite</span>
-                                      ) : (
-                                        <span className="text-[10px] font-bold text-down bg-down/10 px-2 py-0.5 rounded">Edge −</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {(() => {
-                          const combined: Record<number, { trades: number; wins: number }> = { 1: { trades: 0, wins: 0 }, 2: { trades: 0, wins: 0 }, 3: { trades: 0, wins: 0 }, 4: { trades: 0, wins: 0 } };
-                          for (const r of allResults) {
-                            for (const k of [1, 2, 3, 4] as const) {
-                              combined[k].trades += r.byAgreement?.[k]?.trades ?? 0;
-                              combined[k].wins += r.byAgreement?.[k]?.wins ?? 0;
-                            }
-                          }
-                          const anyData = Object.values(combined).some((v) => v.trades > 0);
-                          if (!anyData) return null;
-                          return (
-                            <div className="rounded-xl border border-border/40 p-4">
-                              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2.5">
-                                Win rate par niveau d'accord entre timeframes
-                              </div>
-                              <div className="grid grid-cols-4 gap-2">
-                                {[1, 2, 3, 4].map((k) => {
-                                  const d = combined[k];
-                                  const wr = d.trades > 0 ? d.wins / d.trades : null;
-                                  return (
-                                    <div key={k} className="rounded-lg bg-muted/15 px-2 py-2.5 text-center">
-                                      <div className="text-[10px] text-muted-foreground">{k}/4 TF</div>
-                                      <div className={cn("text-sm font-bold font-mono-tabular mt-0.5", wr === null ? "text-muted-foreground" : wr >= breakEven ? "text-up" : "text-down")}>
-                                        {wr === null ? "—" : `${(wr * 100).toFixed(0)}%`}
-                                      </div>
-                                      <div className="text-[9px] text-muted-foreground/70 mt-0.5">{d.trades} trades</div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <p className="mt-2 text-[10px] text-muted-foreground/60">
-                                Si le win rate ne monte pas avec le nombre de TF d'accord, le seuil "minTfAgreement" n'apporte pas l'edge qu'on lui suppose.
-                              </p>
-                            </div>
-                          );
-                        })()}
-
-                        <p className="text-[10px] text-muted-foreground/60">
-                          Pipeline live réel (4 timeframes, véto 4H, alignement de tendance, patterns) — pas une approximation single-TF.
-                          Fenêtre testée limitée (~37h par paire) : reste indicatif, pas une garantie de performance future.
-                        </p>
-                      </div>
-                    );
-                  })()}
-
-                  {Object.keys(backtestResults).length === 0 && !backtestRunning && (
-                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-                      <FlaskConical className="h-8 w-8 text-muted-foreground/20" />
-                      <p className="text-xs text-muted-foreground">Lance le backtest pour voir si le signal a un edge statistique sur les paires configurées.</p>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Adaptive indicator weights — the real "learns from its mistakes" mechanism ── */}
-      {(() => {
-        if (!visibleBreakdowns.length) return null;
-        return (
-          <div className="glass-panel rounded-2xl overflow-hidden">
-            <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
-              onClick={() => setShowWeights((v) => !v)}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">🧠 Poids adaptatifs</span>
-                <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">
-                  {visibleBreakdowns.length} paire{visibleBreakdowns.length > 1 ? "s" : ""} avec historique
-                </span>
-                {cloudActive && (
-                  <span className="text-[10px] bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] rounded-md px-2 py-0.5">serveur</span>
-                )}
-              </div>
-              {showWeights ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-            </button>
-            {showWeights && (
-              <div className="border-t border-border/40 p-5 space-y-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Chaque indicateur part avec un poids neutre (1.0×). Après chaque trade clôturé, le poids des
-                  composants qui l'ont déclenché est recalculé selon leur taux de réussite réel — c'est le
-                  mécanisme qui fait que le bot ajuste sa confiance dans chaque indicateur au fil des trades,
-                  au lieu de garder des poids fixes pour toujours.
-                </p>
-                {visibleBreakdowns.map(({ sym, rows }) => (
-                  <div key={sym}>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
-                      {SYMBOLS.find((s) => s.deriv === sym)?.label ?? sym}
-                    </div>
-                    <div className="overflow-x-auto rounded-lg border border-border/40">
-                      <table className="w-full text-xs">
-                        <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Composant</th>
-                            <th className="px-3 py-2 text-right">Gagnés / Perdus</th>
-                            <th className="px-3 py-2 text-right">Poids actuel</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((r) => (
-                            <tr key={r.name} className="border-t border-border/30">
-                              <td className="px-3 py-2 font-medium">{r.name}</td>
-                              <td className="px-3 py-2 text-right text-muted-foreground">{r.wins} / {r.losses}</td>
-                              <td className={cn("px-3 py-2 text-right font-bold font-mono-tabular",
-                                r.weight > 1.02 ? "text-up" : r.weight < 0.98 ? "text-down" : "text-muted-foreground")}>
-                                {r.weight.toFixed(2)}×
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
       </div>
 
       {/* ── Trade Journal — its own mobile tab ── */}
-      <div className={cn(mobileTab === "journal" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
+      <div className={cn(showAdvanced && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
       <div className="glass-panel rounded-2xl overflow-hidden">
         <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
           onClick={() => setShowLogs((v) => !v)}>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">Journal</span>
+          <div className="flex items-center gap-2.5">
+            <Clock className="h-5 w-5 text-muted-foreground" />
+            <span className="text-base font-black uppercase tracking-wider text-neutral-200">Journal</span>
             <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">{journalTrades.length} trades</span>
             {wins > 0 && <span className="text-[10px] bg-up/15 text-up rounded-md px-2 py-0.5">{wins} gagnés</span>}
             {losses > 0 && <span className="text-[10px] bg-down/15 text-down rounded-md px-2 py-0.5">{losses} perdus</span>}
@@ -2186,7 +1651,7 @@ function AutoTraderPage() {
                               ? <span className="text-muted-foreground italic text-[10px]">{t.note}</span>
                               : <span className={cn("font-medium", t.status === "error" && "text-down")}>
                                   {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                                  {t.note && <span className="block text-[10px] text-muted-foreground truncate">{t.note}</span>}
+                                  {t.note && <span className="block text-[10px] text-muted-foreground truncate" title={t.note}>{t.note}</span>}
                                 </span>}
                           </td>
                           <td className="px-4 py-2.5 text-center">
@@ -2232,108 +1697,11 @@ function AutoTraderPage() {
       </div>
 
       {/* ── Live server scanner — below the trade journal for better visibility ── */}
-      <div className={cn(mobileTab === "journal" ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
+      <div className={cn(showAdvanced && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
         {cloudSelected?.enabled && cloudSelected.lastScan && (
           <CloudScanPanel lastScan={cloudSelected.lastScan} />
         )}
       </div>
-
-      {/* ── Disclaimer modal ── */}
-      {/* ── Save params popup ── */}
-      {showSaveParams && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-md p-4">
-          <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-amber-500/10 text-amber-400">
-                <Save className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold">Sauvegarder les paramètres</h2>
-                <p className="text-[11px] text-muted-foreground">Ces valeurs remplaceront la configuration actuelle.</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {draftDuration !== config.durationMinutes && (
-                <div className="flex items-center justify-between rounded-xl bg-muted/20 px-4 py-3 text-xs">
-                  <span className="text-muted-foreground font-medium">Durée de contrat</span>
-                  <div className="flex items-center gap-2">
-                    <span className="line-through text-muted-foreground/40">{config.durationMinutes} min</span>
-                    <span className="text-amber-300 font-bold">→ {draftDuration} min</span>
-                  </div>
-                </div>
-              )}
-              {draftMaxTrades !== config.maxTradesPerDay && (
-                <div className="flex items-center justify-between rounded-xl bg-muted/20 px-4 py-3 text-xs">
-                  <span className="text-muted-foreground font-medium">Trades max / jour</span>
-                  <div className="flex items-center gap-2">
-                    <span className="line-through text-muted-foreground/40">{config.maxTradesPerDay} trades</span>
-                    <span className="text-amber-300 font-bold">→ {draftMaxTrades} trades</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {running && (
-              <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[11px] text-amber-400 flex gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                Bot actif — les nouvelles valeurs seront effectives dès le prochain scan.
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowSaveParams(false)}>
-                Annuler
-              </Button>
-              <Button className="flex-1 bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/30"
-                onClick={() => {
-                  if (draftDuration !== config.durationMinutes) patchConfig("durationMinutes", draftDuration);
-                  if (draftMaxTrades !== config.maxTradesPerDay) patchConfig("maxTradesPerDay", draftMaxTrades);
-                  setShowSaveParams(false);
-                  toast.success("Paramètres sauvegardés", {
-                    description: [
-                      draftDuration !== config.durationMinutes ? `Durée : ${draftDuration} min` : null,
-                      draftMaxTrades !== config.maxTradesPerDay ? `Max trades : ${draftMaxTrades}/jour` : null,
-                    ].filter(Boolean).join(" · "),
-                  });
-                }}>
-                <Save className="mr-2 h-4 w-4" /> Confirmer
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDisclaimer && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-md p-4">
-          <div className="glass-panel w-full max-w-md rounded-2xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-down/10 text-down"><ShieldAlert className="h-5 w-5" /></div>
-              <h2 className="text-sm font-bold">Avant de commencer</h2>
-            </div>
-            <ul className="space-y-2.5 text-xs text-muted-foreground">
-              {["Aucun algorithme ne garantit des gains — des pertes sont inévitables.",
-                "Les signaux sont basés sur des indicateurs passés, pas sur le futur.",
-                "Le circuit-breaker limite les pertes mais ne les élimine pas.",
-                "En mode LIVE, du vrai argent est engagé à chaque trade.",
-                "Au Pluriel est un outil d'analyse, pas un conseiller financier agréé."
-              ].map((t, i) => (
-                <li key={i} className="flex gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-down" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs font-semibold text-foreground">En acceptant, tu confirmes avoir lu et compris ces risques.</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowDisclaimer(false)}>Annuler</Button>
-              <Button className="flex-1 bg-gradient-to-r from-[color:var(--brand-cyan)] to-[color:var(--brand-violet)] text-background font-semibold" onClick={acceptDisclaimer}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> J'accepte — Démarrer
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Save preset modal ── */}
       {showSavePreset && (
@@ -2381,7 +1749,6 @@ function OpportunityCommandCenter({
   avoidCount,
   loading,
   config,
-  mode,
   autoEnabled,
   cloudBusy,
   manualBusy,
@@ -2397,7 +1764,6 @@ function OpportunityCommandCenter({
   avoidCount: number;
   loading: boolean;
   config: AutoTraderConfig;
-  mode: TradingMode;
   autoEnabled: boolean;
   cloudBusy: boolean;
   manualBusy: boolean;
@@ -2408,14 +1774,12 @@ function OpportunityCommandCenter({
 }) {
   const decision = opportunity?.decision ?? "wait";
   const style = decisionTone(decision);
-  const canManual = !!opportunity?.direction && opportunity.decision === "take" && mode !== "simulation" && derivConnected && !manualBusy;
-  const manualHint = mode === "simulation"
-    ? "Passe en Démo"
-    : !derivConnected
-      ? "Deriv requis"
-      : opportunity?.decision !== "take"
-        ? "Signal non validé"
-        : "Exécuter";
+  const canManual = !!opportunity?.direction && opportunity.decision === "take" && derivConnected && !manualBusy;
+  const manualHint = !derivConnected
+    ? "Deriv requis"
+    : opportunity?.decision !== "take"
+      ? "Signal non validé"
+      : "Exécuter";
 
   return (
     <section className={cn("glass-panel overflow-hidden rounded-2xl border", style.panel)}>
@@ -2447,7 +1811,7 @@ function OpportunityCommandCenter({
                   : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
               </p>
               <p className="mt-2 text-xs font-semibold text-muted-foreground/80">
-                Configuration active : {mode === "live" ? "Live" : mode === "demo" ? "Démo" : "Simulation"} · mise ${config.stakeUsd} · confiance {config.minConfidence}-{config.maxConfidence}% · accord {config.minTfAgreement}/4 TF
+                Configuration active : mise ${config.stakeUsd} · confiance {config.minConfidence}-{config.maxConfidence}% · accord {config.minTfAgreement}/4 TF
               </p>
             </div>
 
@@ -2490,7 +1854,7 @@ function OpportunityCommandCenter({
               )}
             >
               {manualBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Zap className="h-4 w-4" />}
-              Manuel · {manualHint}
+              {`Manuel · ${manualHint}`}
             </Button>
             <Button
               onClick={onAuto}
@@ -2522,9 +1886,9 @@ function OpportunityBoard({
   onRefresh: () => void;
 }) {
   const groups: { decision: OpportunityDecision; title: string; empty: string }[] = [
-    { decision: "take", title: "À prendre", empty: "Aucun marché propre à prendre." },
-    { decision: "wait", title: "À attendre", empty: "Aucun setup en attente." },
-    { decision: "avoid", title: "À éviter", empty: "Rien à éviter explicitement." },
+    { decision: "take", title: "Prendre", empty: "Aucun marché propre à prendre." },
+    { decision: "wait", title: "Attendre", empty: "Aucun setup en attente." },
+    { decision: "avoid", title: "Éviter", empty: "Rien à éviter explicitement." },
   ];
 
   return (
@@ -2654,74 +2018,18 @@ function StatusBadge({ status }: { status: TradeLog["status"] }) {
   );
 }
 
-function SessionsMarches({ activeSessions, config, showAdvanced }: { activeSessions: TradingSession[]; config: AutoTraderConfig; showAdvanced: boolean }) {
-  return (
-    <div className={cn("hidden md:block glass-panel rounded-xl px-5 py-4 border border-white/[0.02]", !showAdvanced && "md:hidden")}>
-      <div className="flex items-center gap-2 mb-3">
-        <Globe className="h-4 w-4 text-neutral-400" />
-        <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Sessions marchés</span>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-4">
-        {(["sydney", "asia", "london", "newyork"] as TradingSession[]).map((s) => {
-          const isActive = activeSessions.includes(s);
-          const inCfg = config.tradingSessions.includes(s);
-          const isMainActive = isActive && inCfg;
-          const isOpenOnly = isActive && !inCfg;
-          const containerClass = isMainActive
-            ? "bg-up/10 border-up/30 text-up shadow-[0_0_12px_rgba(16,185,129,0.15)] animate-pulse"
-            : isOpenOnly
-              ? "bg-up/5 border-up/15 text-up/90"
-              : "bg-down/5 border-down/15 text-down/80";
-          const labelClass = isMainActive ? "text-up/60" : isOpenOnly ? "text-up/50" : "text-down/50";
-          const nameClass = isMainActive ? "text-up" : isOpenOnly ? "text-up/95" : "text-down/95";
-          const badgeClass = isMainActive
-            ? "bg-up/20 border-up/45 text-up text-glow-green"
-            : isOpenOnly
-              ? "bg-up/10 border-up/25 text-up/90"
-              : "bg-down/10 border-down/20 text-down/90";
-          return (
-            <div key={s} className={cn("flex items-center justify-between rounded-xl border px-4 py-3.5 shadow-sm transition-all duration-300", containerClass)}>
-              <div className="space-y-0.5">
-                <span className={cn("block text-[10px] font-bold uppercase tracking-wider leading-none", labelClass)}>Session</span>
-                <span className={cn("block text-sm font-extrabold tracking-tight leading-normal mt-0.5", nameClass)}>{SESSION_HOURS[s].label}</span>
-              </div>
-              <span className={cn("text-[10px] font-extrabold tracking-tight rounded-md px-2 py-0.5 border shadow-inner transition-colors duration-300", badgeClass)}>
-                {isMainActive ? "ACTIVE" : isOpenOnly ? "OUVERTE" : "FERMÉE"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ScannerSection({ cloudActive, cloudSelected, lastScan, config, running, showAdvanced, selectedPreset, activeSessions }: {
+function ScannerSection({ cloudActive, cloudSelected, lastScan, config }: {
   cloudActive: boolean;
   cloudSelected: PresetStatus | undefined;
   lastScan: ScanResult | null;
   config: AutoTraderConfig;
-  running: boolean;
-  showAdvanced: boolean;
-  selectedPreset: PresetKey;
-  activeSessions: TradingSession[];
 }) {
   return (
-    <>
-      <SessionsMarches activeSessions={activeSessions} config={config} showAdvanced={showAdvanced} />
-      {selectedPreset === "default" && (
-        <div className={cn("block mt-5", !showAdvanced && "hidden")}>
-          <GoldTicker cloudTrades={cloudSelected?.trades ?? []} />
-        </div>
-      )}
-      <div className="mt-5">
-        <LiveSignals
-          lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
-          config={config}
-          running={cloudActive ? (!!cloudSelected?.enabled && !!cloudSelected?.running) : running}
-        />
-      </div>
-    </>
+    <LiveSignals
+      lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
+      config={config}
+      running={!!cloudSelected?.enabled && !!cloudSelected?.running}
+    />
   );
 }
 
@@ -2787,179 +2095,6 @@ function ScanCountdown({
     : "Scan en cours…";
 }
 
-function GoldTicker({ cloudTrades }: { cloudTrades: TradeLog[] }) {
-  const [price, setPrice] = useState<number | null>(null);
-  const [prevPrice, setPrevPrice] = useState<number | null>(null);
-  const [dayOpen, setDayOpen] = useState<number | null>(null);
-  const [dayHigh, setDayHigh] = useState<number | null>(null);
-  const [dayLow, setDayLow] = useState<number | null>(null);
-
-  useEffect(() => {
-    // Fetch daily candle for open/high/low
-    fetchCandles("frxXAUUSD", GRANULARITY["1H"], 24)
-      .then((candles) => {
-        if (candles.length > 0) {
-          setDayOpen(candles[0].open);
-          setDayHigh(Math.max(...candles.map((c) => c.high)));
-          setDayLow(Math.min(...candles.map((c) => c.low)));
-        }
-      })
-      .catch(() => {});
-
-    // Subscribe to live ticks
-    const unsub = subscribeTicks("frxXAUUSD", (tick) => {
-      setPrice((prev) => {
-        setPrevPrice(prev);
-        return tick.quote;
-      });
-    });
-    return unsub;
-  }, []);
-
-  const change = price && dayOpen ? price - dayOpen : null;
-  const changePct = price && dayOpen ? (change! / dayOpen) * 100 : null;
-  const isUp = (change ?? 0) >= 0;
-  const flashClass = price && prevPrice ? (price > prevPrice ? "text-up" : price < prevPrice ? "text-down" : "text-foreground") : "text-foreground";
-
-  return (
-    <div className="rounded-2xl overflow-hidden mt-4 bg-[#060d1a] border border-amber-500/20">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/15">
-        <div className="flex items-center gap-2.5">
-          <span className="text-lg">🥇</span>
-          <span className="text-sm font-bold uppercase tracking-wider text-foreground">Or / XAU-USD</span>
-          <span className="text-xs bg-amber-500/15 text-amber-400 rounded-md px-2 py-0.5 font-bold">Live</span>
-        </div>
-        {price && (
-          <span className={cn("text-lg font-bold font-mono tabular-nums transition-colors", flashClass)}>
-            ${price.toFixed(2)}
-          </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border-y border-amber-500/10">
-        <div className="bg-[#08111f] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Variation jour</div>
-          <div className={cn("mt-1 text-sm font-bold", isUp ? "text-up" : "text-down")}>
-            {change !== null ? `${isUp ? "+" : ""}$${change.toFixed(2)}` : "—"}
-            {changePct !== null && <span className="ml-1 text-xs">({isUp ? "+" : ""}{changePct.toFixed(2)}%)</span>}
-          </div>
-        </div>
-        <div className="bg-[#08111f] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Ouverture</div>
-          <div className="mt-1 text-sm font-bold text-foreground font-mono">{dayOpen ? `$${dayOpen.toFixed(2)}` : "—"}</div>
-        </div>
-        <div className="bg-[#08111f] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Haut 24h</div>
-          <div className="mt-1 text-sm font-bold text-up font-mono">{dayHigh ? `$${dayHigh.toFixed(2)}` : "—"}</div>
-        </div>
-        <div className="bg-[#08111f] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Bas 24h</div>
-          <div className="mt-1 text-sm font-bold text-down font-mono">{dayLow ? `$${dayLow.toFixed(2)}` : "—"}</div>
-        </div>
-      </div>
-
-      {/* Gold trading stats from server bot */}
-      {(() => {
-        const goldTrades = cloudTrades.filter((t) => t.symbol === "frxXAUUSD" && t.stake > 0);
-        const goldClosed = goldTrades.filter((t) => t.status === "won" || t.status === "lost");
-        const goldWins = goldClosed.filter((t) => t.status === "won");
-        const goldLosses = goldClosed.filter((t) => t.status === "lost");
-        const goldPnl = goldClosed.reduce((s, t) => s + t.profit, 0);
-        const goldOpen = goldTrades.filter((t) => t.status === "open" || t.status === "pending");
-        const winRate = goldClosed.length > 0 ? (goldWins.length / goldClosed.length) * 100 : null;
-
-        return (
-          <div className="border-t border-amber-500/15 px-5 py-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Stats Bot · Or</span>
-              {goldOpen.length > 0 && (
-                <span className="text-[10px] bg-cyan/15 text-cyan rounded-md px-2 py-0.5 font-bold animate-pulse">
-                  {goldOpen.length} position{goldOpen.length > 1 ? "s" : ""} ouverte{goldOpen.length > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-
-            {goldClosed.length > 0 ? (
-              <>
-                <div className="grid grid-cols-4 gap-2">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Trades</div>
-                    <div className="mt-0.5 text-sm font-bold text-foreground">{goldClosed.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Win Rate</div>
-                    <div className={cn("mt-0.5 text-sm font-bold", winRate !== null && winRate >= 57 ? "text-up" : "text-down")}>
-                      {winRate !== null ? `${winRate.toFixed(0)}%` : "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">W / L</div>
-                    <div className="mt-0.5 text-sm font-bold">
-                      <span className="text-up">{goldWins.length}</span>
-                      <span className="text-muted-foreground/40"> / </span>
-                      <span className="text-down">{goldLosses.length}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">P&L</div>
-                    <div className={cn("mt-0.5 text-sm font-bold", goldPnl >= 0 ? "text-up" : "text-down")}>
-                      {goldPnl >= 0 ? "+" : ""}${goldPnl.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recent gold trades */}
-                <div className="space-y-1">
-                  {goldTrades.slice(0, 4).map((t) => (
-                    <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/8 px-3 py-1.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("h-1.5 w-1.5 rounded-full",
-                          t.status === "won" ? "bg-up" : t.status === "lost" ? "bg-down" :
-                          t.status === "open" || t.status === "pending" ? "bg-cyan animate-pulse" : "bg-neutral-600")} />
-                        <span className="text-muted-foreground font-mono">
-                          {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                        <span className={cn("font-bold",
-                          t.direction === "CALL" ? "text-up" : t.direction === "PUT" ? "text-down" : "text-amber-400")}>
-                          {t.direction === "MULTUP" ? "MULTUP" : t.direction === "MULTDOWN" ? "MULTDOWN" : t.direction}
-                        </span>
-                        <span className="text-muted-foreground">{t.confidence}% conf</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {t.stake > 0 && <span className="text-muted-foreground/60">${t.stake.toFixed(2)}</span>}
-                        <span className={cn("font-bold",
-                          t.status === "won" ? "text-up" : t.status === "lost" ? "text-down" :
-                          t.status === "open" || t.status === "pending" ? "text-cyan" : "text-muted-foreground")}>
-                          {t.status === "won" && `+$${t.profit.toFixed(2)}`}
-                          {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
-                          {t.status === "open" && "ouverte"}
-                          {t.status === "pending" && "en cours…"}
-                          {t.status === "error" && "erreur"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground/50">
-                {goldOpen.length > 0
-                  ? "Position en cours — en attente de clôture…"
-                  : "Aucun trade sur l'or pour le moment. Le bot analyse ce symbole à chaque cycle."}
-              </p>
-            )}
-          </div>
-        );
-      })()}
-
-      <div className="px-5 py-3 border-t border-amber-500/15 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Fréquence bot : scan toutes les 60s · Durée trade : 10 min</span>
-        <span className="font-mono">{price ? "● Temps réel" : "Chargement…"}</span>
-      </div>
-    </div>
-  );
-}
-
 function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
   const [now, setNow] = useState(Date.now());
 
@@ -2991,7 +2126,7 @@ function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
         {traded.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {traded.map((r) => (
-              <span key={r.symbol} className="inline-flex items-center gap-1.5 rounded-lg bg-up/10 border border-up/30 px-3 py-1.5 text-sm font-bold text-up">
+              <span key={r.symbol} className="inline-flex items-center gap-1.5 rounded-lg bg-up/10 border border-up/30 px-3 py-1.5 text-sm font-bold text-up" title={r.note}>
                 {labelFor(r.symbol)} {r.direction} · {r.confidence}%
               </span>
             ))}

@@ -167,7 +167,7 @@ interface UserInsights {
 }
 
 interface UserBotConfig {
-  mode: "simulation" | "demo" | "live";
+  mode: "demo" | "live";
   stakeUsd: number;
   minConfidence: number;
   symbols: string[];

@@ -1,4 +1,5 @@
 import { BOOM_PRESET, CRASH_PRESET, SCALPING_PRESET } from "./autotrader";
+import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
@@ -6,14 +7,24 @@ import { fetchCandlesServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import {
   analyzeSymbolCore,
+  classifyOpportunity,
   DEFAULT_CONFIG,
+  explainOpportunity,
   getInstrumentForSymbol,
+  getMultiplierOverride,
+  isBadStats,
+  riskLevelFor,
   type AutoTraderConfig,
+  type ClassifyThresholds,
+  type OpportunityDecision,
   type SymbolAnalysis,
 } from "./signal-core";
 import { mapWithConcurrency } from "./utils";
 
-export type OpportunityDecision = "take" | "wait" | "avoid";
+// Single source of truth for the take/wait/avoid decision — see
+// classifyOpportunity in signal-core.ts, which the live bot also calls so
+// the two can no longer silently disagree on what's worth trading.
+export type { OpportunityDecision };
 export type OpportunityMode = "manual" | "demo" | "auto";
 
 export interface OpportunityItem {
@@ -118,59 +129,25 @@ function statsFor(preset: Preset, symbol: string): OpportunityItem["stats"] {
   };
 }
 
-function badStats(stats: OpportunityItem["stats"]): boolean {
-  if (stats.trades < 10) return false;
-  if (stats.expectancy !== null && stats.expectancy < 0) return true;
-  return stats.profitFactor !== null && stats.profitFactor < 0.9;
-}
-
-function riskFor(analysis: Pick<SymbolAnalysis, "volatilityRatio" | "volatilityPct">, stats: OpportunityItem["stats"]) {
-  if (analysis.volatilityRatio >= 2.5 || analysis.volatilityPct >= 8 || badStats(stats)) return "eleve";
-  if (analysis.volatilityRatio >= 1.5 || analysis.volatilityPct >= 4 || stats.trades < 10) return "modere";
-  return "faible";
-}
-
 function directionLabel(direction: "CALL" | "PUT" | null, instrument: "binary" | "multiplier") {
   if (!direction) return "Aucune";
   if (instrument === "binary") return direction === "CALL" ? "CALL / Achat" : "PUT / Vente";
   return direction === "CALL" ? "Multiplier hausse" : "Multiplier baisse";
 }
 
-function baseReasons(
-  decision: OpportunityDecision,
-  analysis: SymbolAnalysis,
-  config: AutoTraderConfig,
-  stats: OpportunityItem["stats"],
-): string[] {
-  const reasons: string[] = [];
-  if (decision === "take") {
-    reasons.push(`Signal dans la zone valide (${Math.round(analysis.confidence)}% / ${analysis.agreement} TF).`);
-    if (stats.trades >= 10 && stats.expectancy !== null) {
-      reasons.push(`Historique exploitable: EV ${stats.expectancy >= 0 ? "+" : ""}$${stats.expectancy.toFixed(2)} par trade.`);
-    }
-    if (analysis.volatilityRatio < 1.5) reasons.push("Volatilite normale pour ce marche.");
-  } else if (decision === "wait") {
-    if (!analysis.direction) reasons.push("Aucune direction dominante pour le moment.");
-    if (analysis.direction && analysis.confidence < config.minConfidence) reasons.push(`Confiance sous le seuil ${config.minConfidence}%.`);
-    if (analysis.direction && analysis.confidence > config.maxConfidence) reasons.push(`Signal trop tardif: confiance au-dessus de ${config.maxConfidence}%.`);
-    if (analysis.direction && analysis.agreement < config.minTfAgreement) reasons.push(`Accord TF insuffisant (${analysis.agreement}/${config.minTfAgreement}).`);
-    if (!reasons.length) reasons.push("Setup incomplet, observation conseillee.");
-  } else {
-    if (badStats(stats)) reasons.push("Historique defavorable sur ce symbole/preset.");
-    if (analysis.volatilityRatio >= 2.5) reasons.push("Volatilite anormale par rapport a ce marche.");
-    if (analysis.volatilityPct >= config.maxVolatilityPct) reasons.push(`ATR ${analysis.volatilityPct.toFixed(2)}% au-dessus de la limite ${config.maxVolatilityPct}%.`);
-    if (!reasons.length) reasons.push("Marche classe a eviter par la configuration.");
-  }
-  return reasons;
-}
-
-function classify(analysis: SymbolAnalysis, config: AutoTraderConfig, stats: OpportunityItem["stats"]): OpportunityDecision {
-  if (badStats(stats)) return "avoid";
-  if (analysis.volatilityPct >= config.maxVolatilityPct || analysis.volatilityRatio >= 3) return "avoid";
-  if (!analysis.direction) return "wait";
-  if (analysis.confidence < config.minConfidence || analysis.confidence > config.maxConfidence) return "wait";
-  if (analysis.agreement < config.minTfAgreement) return "wait";
-  return "take";
+// Per-symbol multiplier overrides (e.g. Or/GBP-USD run a looser TF-agreement
+// bar than the global config) must apply here too — the live bot already
+// resolves this before deciding; the advisor didn't, which let it show
+// "take" for a signal the bot would reject as low-agreement.
+function thresholdsFor(symbol: string, instrument: "binary" | "multiplier", config: AutoTraderConfig): ClassifyThresholds {
+  const override = instrument === "multiplier" ? getMultiplierOverride(symbol) : undefined;
+  return {
+    minConfidence: config.minConfidence,
+    maxConfidence: config.maxConfidence,
+    minTfAgreement: override?.minTfAgreement ?? config.minTfAgreement,
+    maxVolatilityPct: config.maxVolatilityPct,
+    premiumOnly: config.premiumOnly,
+  };
 }
 
 async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoTraderConfig): Promise<OpportunityItem> {
@@ -209,7 +186,9 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
           trendAlignmentScore: 0,
           patternBonus: 0,
         };
-    const decision = classify(analysis, config, stats);
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const bad = isBadStats(stats);
+    const { decision } = classifyOpportunity(analysis, thresholds, bad);
     return {
       id: `${preset}:${symbol}`,
       preset,
@@ -222,28 +201,23 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
       directionLabel: directionLabel(analysis.direction, instrument),
       confidence: analysis.confidence,
       agreement: analysis.agreement,
-      risk: riskFor(analysis, stats),
+      risk: riskLevelFor(analysis, stats),
       mode: decision === "take" ? "demo" : "manual",
       instrument,
       durationMinutes: config.durationMinutes,
       takeProfitUsd: config.takeProfitPctOfStake ? config.stakeUsd * (config.takeProfitPctOfStake / 100) : null,
       stopLossUsd: config.stopLossPctOfStake ? config.stakeUsd * (config.stopLossPctOfStake / 100) : null,
-      reasons: baseReasons(decision, analysis, config, stats),
+      reasons: explainOpportunity(decision, analysis, thresholds, stats),
       blockers: analysis.blockers,
       stats,
       updatedAt: now,
     };
   }
 
-  const { analysis } = await analyzeSymbolCore(symbol, fetchCandlesServer, {
-    veto4h: config.veto4h,
-    vetoDaily: config.vetoDaily,
-    confluenceMode: config.confluenceMode,
-    adxFilterMode: config.adxFilterMode,
-    adxBlockThreshold: config.adxBlockThreshold,
-    adxStrongThreshold: config.adxStrongThreshold,
-  });
-  const decision = classify(analysis, config, stats);
+  const { analysis } = await analyzeSymbolCore(symbol, fetchCandlesServer, buildAnalyzeOptsServer(symbol, config));
+  const thresholds = thresholdsFor(symbol, instrument, config);
+  const bad = isBadStats(stats);
+  const { decision } = classifyOpportunity(analysis, thresholds, bad);
 
   return {
     id: `${preset}:${symbol}`,
@@ -257,13 +231,13 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
     directionLabel: directionLabel(analysis.direction, instrument),
     confidence: analysis.confidence,
     agreement: analysis.agreement,
-    risk: riskFor(analysis, stats),
+    risk: riskLevelFor(analysis, stats),
     mode: decision === "take" ? "demo" : "manual",
     instrument,
     durationMinutes: Math.max(config.durationMinutes, analysis.suggestedDuration),
     takeProfitUsd: instrument === "multiplier" && config.takeProfitPctOfStake ? config.stakeUsd * (config.takeProfitPctOfStake / 100) : null,
     stopLossUsd: instrument === "multiplier" && config.stopLossPctOfStake ? config.stakeUsd * (config.stopLossPctOfStake / 100) : null,
-    reasons: baseReasons(decision, analysis, config, stats),
+    reasons: explainOpportunity(decision, analysis, thresholds, stats),
     blockers: analysis.blockers,
     stats,
     updatedAt: now,
@@ -324,7 +298,7 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
         presetLabel: PRESET_LABEL[preset],
         symbol,
         label: meta?.label ?? symbol,
-        reason: badStats(stats) ? "Historique defavorable" : "Exclu de la strategie actuelle",
+        reason: isBadStats(stats) ? "Historique defavorable" : "Exclu de la strategie actuelle",
         stats,
       };
     });

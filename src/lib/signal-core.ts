@@ -173,14 +173,14 @@ export function isHighRiskWindow(): { blocked: boolean; reason?: string } {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-export type TradingMode = "simulation" | "demo" | "live";
+export type TradingMode = "demo" | "live";
 
 /** How the 4H timeframe can veto a trade whose direction it contradicts. */
 export type Veto4hMode = "always" | "strong-only" | "off";
 
 export interface AutoTraderConfig {
   enabled: boolean;
-  mode: TradingMode; // simulation = local, demo = Deriv demo account, live = Deriv real money
+  mode: TradingMode; // demo = Deriv demo account, live = Deriv real money
   stakeUsd: number;
   durationMinutes: number;
   minConfidence: number;
@@ -539,6 +539,103 @@ export const MULTIPLIER_SYMBOL_OVERRIDES: Record<string, MultiplierSymbolOverrid
 
 export function getMultiplierOverride(symbol: string): MultiplierSymbolOverride | undefined {
   return MULTIPLIER_SYMBOL_OVERRIDES[symbol];
+}
+
+// ─── Shared opportunity decision boundary ──────────────────────────────────
+//
+// Single source of truth for "is this symbol worth trading" — used by both
+// the advisor (opportunities.server.ts, shown on /opportunities and the
+// Auto-Trader cockpit) and the live bot (bot-engine.server.ts). Before this
+// existed, each side reimplemented its own version of these checks and could
+// silently disagree (e.g. the bot enforcing premiumOnly while the advisor
+// didn't). Keeping this pure and stats-optional lets the bot call it every
+// scan tick without adding a DB query to the hot loop.
+
+export type OpportunityDecision = "take" | "wait" | "avoid";
+
+export type ClassifyReasonCode =
+  | "bad-stats"
+  | "volatility-abs"
+  | "volatility-ratio"
+  | "no-direction"
+  | "confidence-low"
+  | "confidence-high"
+  | "agreement-low"
+  | "not-premium"
+  | "ok";
+
+export interface ClassifyThresholds {
+  minConfidence: number;
+  maxConfidence: number;
+  minTfAgreement: number;
+  maxVolatilityPct: number;
+  premiumOnly?: boolean;
+}
+
+export function classifyOpportunity(
+  analysis: Pick<SymbolAnalysis, "direction" | "confidence" | "agreement" | "volatilityPct" | "volatilityRatio" | "premiumCount">,
+  thresholds: ClassifyThresholds,
+  badStats = false,
+): { decision: OpportunityDecision; reasonCode: ClassifyReasonCode } {
+  if (badStats) return { decision: "avoid", reasonCode: "bad-stats" };
+  if (analysis.volatilityPct >= thresholds.maxVolatilityPct) return { decision: "avoid", reasonCode: "volatility-abs" };
+  if (analysis.volatilityRatio >= 3) return { decision: "avoid", reasonCode: "volatility-ratio" };
+  if (!analysis.direction) return { decision: "wait", reasonCode: "no-direction" };
+  if (analysis.confidence < thresholds.minConfidence) return { decision: "wait", reasonCode: "confidence-low" };
+  if (analysis.confidence > thresholds.maxConfidence) return { decision: "wait", reasonCode: "confidence-high" };
+  if (analysis.agreement < thresholds.minTfAgreement) return { decision: "wait", reasonCode: "agreement-low" };
+  if (thresholds.premiumOnly && analysis.premiumCount < 1) return { decision: "wait", reasonCode: "not-premium" };
+  return { decision: "take", reasonCode: "ok" };
+}
+
+export interface OpportunityStatsSummary {
+  trades: number;
+  expectancy: number | null;
+  profitFactor: number | null;
+}
+
+export function isBadStats(stats: OpportunityStatsSummary): boolean {
+  if (stats.trades < 10) return false;
+  if (stats.expectancy !== null && stats.expectancy < 0) return true;
+  return stats.profitFactor !== null && stats.profitFactor < 0.9;
+}
+
+export function riskLevelFor(
+  analysis: Pick<SymbolAnalysis, "volatilityRatio" | "volatilityPct">,
+  stats?: OpportunityStatsSummary,
+): "faible" | "modere" | "eleve" {
+  const bad = stats ? isBadStats(stats) : false;
+  if (analysis.volatilityRatio >= 2.5 || analysis.volatilityPct >= 8 || bad) return "eleve";
+  if (analysis.volatilityRatio >= 1.5 || analysis.volatilityPct >= 4 || (stats && stats.trades < 10)) return "modere";
+  return "faible";
+}
+
+export function explainOpportunity(
+  decision: OpportunityDecision,
+  analysis: Pick<SymbolAnalysis, "direction" | "confidence" | "agreement" | "volatilityRatio" | "volatilityPct">,
+  thresholds: ClassifyThresholds,
+  stats?: OpportunityStatsSummary,
+): string[] {
+  const reasons: string[] = [];
+  if (decision === "take") {
+    reasons.push(`Signal dans la zone valide (${Math.round(analysis.confidence)}% / ${analysis.agreement} TF).`);
+    if (stats && stats.trades >= 10 && stats.expectancy !== null) {
+      reasons.push(`Historique exploitable: EV ${stats.expectancy >= 0 ? "+" : ""}$${stats.expectancy.toFixed(2)} par trade.`);
+    }
+    if (analysis.volatilityRatio < 1.5) reasons.push("Volatilite normale pour ce marche.");
+  } else if (decision === "wait") {
+    if (!analysis.direction) reasons.push("Aucune direction dominante pour le moment.");
+    if (analysis.direction && analysis.confidence < thresholds.minConfidence) reasons.push(`Confiance sous le seuil ${thresholds.minConfidence}%.`);
+    if (analysis.direction && analysis.confidence > thresholds.maxConfidence) reasons.push(`Signal trop tardif: confiance au-dessus de ${thresholds.maxConfidence}%.`);
+    if (analysis.direction && analysis.agreement < thresholds.minTfAgreement) reasons.push(`Accord TF insuffisant (${analysis.agreement}/${thresholds.minTfAgreement}).`);
+    if (!reasons.length) reasons.push("Setup incomplet, observation conseillee.");
+  } else {
+    if (stats && isBadStats(stats)) reasons.push("Historique defavorable sur ce symbole/preset.");
+    if (analysis.volatilityRatio >= 2.5) reasons.push("Volatilite anormale par rapport a ce marche.");
+    if (analysis.volatilityPct >= thresholds.maxVolatilityPct) reasons.push(`ATR ${analysis.volatilityPct.toFixed(2)}% au-dessus de la limite ${thresholds.maxVolatilityPct}%.`);
+    if (!reasons.length) reasons.push("Marche classe a eviter par la configuration.");
+  }
+  return reasons;
 }
 
 export const SCAN_INTERVAL_MS = 60_000;
