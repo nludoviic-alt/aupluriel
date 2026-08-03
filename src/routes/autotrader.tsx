@@ -661,6 +661,55 @@ function AutoTraderPage() {
         })}
       </div>
 
+      {/* ── 1. BANDEAU DE MÉTRIQUES FINANCIÈRES (Grille unifiée 4 cartes) ── */}
+      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4 animate-fade-in">
+        {(() => {
+          const bb = cloud?.brokerBalances;
+          const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
+          const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
+          const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
+          const value = hasAny
+            ? `$${total.toFixed(2)}`
+            : derivSession.balance !== null
+              ? `$${derivSession.balance.toFixed(2)}`
+              : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
+          const delta = hasAny
+            ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "")}`
+            : derivSession.balance !== null
+              ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
+              : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
+          return (
+            <KpiCard
+              label="Fonds disponibles"
+              value={value}
+              tone={cumulativePnl >= 0 ? "bull" : "bear"}
+              delta={delta}
+            />
+          );
+        })()}
+
+        <KpiCard
+          label="P&L Aujourd'hui"
+          value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
+          tone={pnl >= 0 ? "bull" : "bear"}
+          delta={`${tradeCount} trade${tradeCount > 1 ? "s" : ""} · Gains $${totalWon.toFixed(2)}`}
+        />
+
+        <KpiCard
+          label="Win Rate"
+          value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
+          tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
+          delta={`${wins} gagnés · ${losses} perdus`}
+        />
+
+        <KpiCard
+          label="Limite de perte"
+          value={`${Math.round((lossUsedUsd / config.maxDailyLossUsd) * 100)}%`}
+          tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "cyan" : "default"}
+          delta={`$${lossUsedUsd.toFixed(2)} / $${config.maxDailyLossUsd}`}
+        />
+      </div>
+
       <OpportunityCommandCenter
         presetLabel={presetLabels[selectedPreset]}
         opportunity={selectedOpportunity}
@@ -989,118 +1038,6 @@ function AutoTraderPage() {
         {/* ── RIGHT: Dashboard + positions ── */}
         <div className={cn(mobileTab === "dashboard" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
             
-            {/* Row 1: Fonds disponibles + broker balances. Boom/Crash only
-                ever show 2 cards (Fonds disponibles + Deriv — Kraken/
-                Binance/OANDA are Multi-only, see below), so the grid drops
-                to 2 fixed columns there instead of stretching to 4 and
-                leaving an empty gap on desktop. */}
-            <div className={cn("grid gap-3 animate-fade-in", showAdvanced && selectedPreset === "default" ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2")}>
-              {(() => {
-                const bb = cloud?.brokerBalances;
-                const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
-                const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
-                // Le broker n'est pas encore connecté (juste après un
-                // chargement de page, ou pendant une reconnexion) : ce
-                // chiffre retombe sur un solde purement local (capital de
-                // départ + gains/pertes déjà clôturés). cumulativePnl ne
-                // bouge qu'à la clôture d'un trade (voir addToCumulativePnl)
-                // — sans ceci, ouvrir une position n'avait AUCUN effet
-                // visible ici tant qu'elle n'était pas résolue, contrairement
-                // à un vrai broker qui débite la mise immédiatement à
-                // l'achat. On soustrait donc les mises encore engagées sur
-                // des trades ouverts pour refléter ça.
-                const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
-                const value = hasAny
-                  ? `$${total.toFixed(2)}`
-                  : derivSession.balance !== null
-                    ? `$${derivSession.balance.toFixed(2)}`
-                    : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
-                const delta = hasAny
-                  ? `${config.mode?.toUpperCase() ?? "DEMO"} · ${(bb?.deriv ? "DERIV " : "") + (bb?.kraken ? "KRAKEN " : "") + (bb?.binance ? "BINANCE " : "") + (bb?.oanda ? "OANDA" : "").trim()}`
-                  : derivSession.balance !== null
-                    ? `${config.mode.toUpperCase()} · ${derivSession.currency}`
-                    : stakeAtRisk > 0
-                      ? `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)} · $${stakeAtRisk.toFixed(2)} engagé${stakeAtRisk > 1 ? "s" : ""}`
-                      : `cumul ${cumulativePnl >= 0 ? "+" : ""}$${cumulativePnl.toFixed(2)}`;
-                return (
-                  <KpiCard
-                    label="Fonds disponibles"
-                    value={value}
-                    tone={cumulativePnl >= 0 ? "bull" : "bear"}
-                    delta={delta}
-                  />
-                );
-              })()}
-              {(() => {
-                const b = cloud?.brokerBalances?.deriv;
-                return (
-                  <KpiCard
-                    label="Deriv"
-                    value={b ? b.balance.toFixed(2) : "0.00"}
-                    delta={b ? b.currency : "USD"}
-                    tone="deriv"
-                  />
-                );
-              })()}
-              {/* Kraken/Binance/OANDA n'entrent JAMAIS en jeu pour Boom ou
-                  Crash — ce sont des produits Deriv exclusifs, aucun autre
-                  courtier ne les propose. Ne montrer ces cartes que sur
-                  Multi, où elles peuvent réellement router du forex/crypto. */}
-              {showAdvanced && selectedPreset === "default" && (() => {
-                const b = cloud?.brokerBalances?.kraken;
-                return (
-                  <KpiCard
-                    label="Kraken"
-                    value={b ? b.balance.toFixed(2) : "0.00"}
-                    delta={b ? b.currency : "USD"}
-                    tone="kraken"
-                  />
-                );
-              })()}
-              {showAdvanced && selectedPreset === "default" && cloud?.brokerBalances?.binance && (
-                <KpiCard
-                  label="Binance"
-                  value={`${cloud.brokerBalances.binance.balance.toFixed(2)}`}
-                  delta={cloud.brokerBalances.binance.currency}
-                  tone="binance"
-                />
-              )}
-              {showAdvanced && selectedPreset === "default" && cloud?.brokerBalances?.oanda && (
-                <KpiCard
-                  label="OANDA"
-                  value={`${cloud.brokerBalances.oanda.balance.toFixed(2)}`}
-                  delta={cloud.brokerBalances.oanda.currency}
-                  tone="oanda"
-                />
-              )}
-            </div>
-
-            {/* Row 2: Trading KPIs — 2 cols on mobile (matches the broker-
-                balance grid above) so P&L and Win Rate sit side by side
-                instead of 3 cramped columns; Limite de perte spans full
-                width below rather than sitting alone. 3 even cols from sm: up. */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 animate-fade-in">
-              <KpiCard
-                label="P&L Aujourd'hui"
-                value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
-                tone={pnl >= 0 ? "bull" : "bear"}
-                delta={`Gains $${totalWon.toFixed(2)} · Pertes $${Math.abs(totalLost).toFixed(2)}`}
-              />
-              <KpiCard
-                label="Win Rate"
-                value={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
-                tone={winRate >= 55 ? "bull" : winRate >= 45 ? "cyan" : wins + losses > 0 ? "bear" : "default"}
-                delta={`${wins} gagnés · ${losses} perdus`}
-              />
-              <KpiCard
-                className="col-span-2 sm:col-span-1"
-                label="Limite de perte"
-                value={`${Math.round((lossUsedUsd / config.maxDailyLossUsd) * 100)}%`}
-                tone={lossUsedUsd > config.maxDailyLossUsd * 0.7 ? "bear" : lossUsedUsd > config.maxDailyLossUsd * 0.4 ? "cyan" : "default"}
-                delta={`$${lossUsedUsd.toFixed(2)} / $${config.maxDailyLossUsd}`}
-              />
-            </div>
-
             <BotDashboard
               logs={cloudActive ? (cloudSelected?.trades ?? []) : logs}
               lastScan={cloudActive ? (cloudSelected?.lastScan ?? null) : lastScan}
