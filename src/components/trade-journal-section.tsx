@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { SYMBOLS } from "@/lib/deriv";
+import { Activity, CheckCircle2 } from "lucide-react";
+import { SYMBOLS, type OpenPosition } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
 
@@ -7,6 +8,7 @@ type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
 
 export function TradeJournalSection({
   journalTrades,
+  liveDerivPositions = [],
   cloudActive,
   selectedPreset,
   presetLabels,
@@ -17,6 +19,7 @@ export function TradeJournalSection({
   durationMinutes = 15,
 }: {
   journalTrades: TradeLog[];
+  liveDerivPositions?: OpenPosition[];
   cloudActive: boolean;
   selectedPreset: PresetKey;
   presetLabels: Record<PresetKey, string>;
@@ -40,14 +43,45 @@ export function TradeJournalSection({
     return 0;
   }, [timeWindow, now]);
 
+  const allCombinedTrades = useMemo(() => {
+    const list: Array<TradeLog & { isLiveDeriv?: boolean }> = [];
+
+    if (liveDerivPositions && liveDerivPositions.length > 0) {
+      for (const pos of liveDerivPositions) {
+        list.push({
+          id: `deriv-${pos.contractId}`,
+          time: pos.dateStart * 1000,
+          timestamp: pos.dateStart * 1000,
+          symbol: pos.symbol,
+          direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+          stake: pos.buyPrice,
+          status: "open",
+          profit: pos.profit,
+          pnl: pos.profit,
+          confidence: 0,
+          isLiveDeriv: true,
+        } as unknown as TradeLog & { isLiveDeriv?: boolean });
+      }
+    }
+
+    for (const t of journalTrades) {
+      if (!list.some((item) => item.id === `deriv-${t.contractId}` || item.id === t.id)) {
+        list.push(t);
+      }
+    }
+
+    return list;
+  }, [journalTrades, liveDerivPositions]);
+
   // Filter trades by time window and small stake/profit filter
   const windowTrades = useMemo(() => {
-    return journalTrades.filter((t) => {
+    return allCombinedTrades.filter((t) => {
+      if (t.isLiveDeriv) return true; // Keep live Deriv positions visible
       if (windowCutoff > 0 && t.time < windowCutoff) return false;
       if (filterSmall && Math.abs(t.profit) < 5 && t.stake < 5) return false;
       return true;
     });
-  }, [journalTrades, windowCutoff, filterSmall]);
+  }, [allCombinedTrades, windowCutoff, filterSmall]);
 
   // Period stats
   const periodTradesCount = windowTrades.length;
@@ -65,12 +99,15 @@ export function TradeJournalSection({
 
   return (
     <div className="glass-panel overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F19]/90 shadow-2xl">
-      {/* ── Top Bar Controls (Matching Screenshot Header) ── */}
+      {/* ── Top Bar Controls ── */}
       <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-black uppercase tracking-widest text-muted-foreground/90">Trades Récents</span>
+          <div className="grid h-7 w-7 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
+            <Activity className="h-4 w-4 animate-pulse" />
+          </div>
+          <span className="text-xs font-black uppercase tracking-wider text-foreground">Suivi des Contrats & Positions</span>
           <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">
-            {journalTrades.length} au total
+            {allCombinedTrades.length} au total
           </span>
           {cloudActive && (
             <span className="rounded-md border border-cyan/30 bg-cyan/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan">

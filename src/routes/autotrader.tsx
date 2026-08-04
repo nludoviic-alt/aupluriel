@@ -880,6 +880,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       />
       <TradeJournalSection
         journalTrades={journalTrades}
+        liveDerivPositions={liveDerivPositions}
         cloudActive={cloudActive}
         selectedPreset={selectedPreset}
         presetLabels={presetLabels}
