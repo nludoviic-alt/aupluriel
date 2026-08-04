@@ -195,86 +195,93 @@ export function TradeJournalSection({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-white/10 bg-black/40 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+            <thead className="border-b border-white/10 bg-black/40 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Origine / Paire</th>
-                <th className="px-4 py-3 text-right">Mise</th>
-                <th className="px-4 py-3 text-center">Conf. / Heure</th>
-                <th className="px-4 py-3 text-center">Fin</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-right">Profit</th>
+                <th className="px-4 py-3.5">Sens</th>
+                <th className="px-4 py-3.5">Marché / Paire</th>
+                <th className="px-4 py-3.5 text-right">Mise Engagée</th>
+                <th className="px-4 py-3.5 text-right">Gain Potentiel</th>
+                <th className="px-4 py-3.5 text-center">Heure / Fin</th>
+                <th className="px-4 py-3.5 text-center">Statut</th>
+                <th className="px-4 py-3.5 text-right">Résultat P&L</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.05]">
+            <tbody className="divide-y divide-white/[0.06]">
               {displayTrades.map((t) => {
                 const isBuy = t.direction === "CALL" || t.direction === "MULTUP";
                 const isWon = t.status === "won";
                 const isLost = t.status === "lost";
+                const isOpen = t.status === "open" || t.status === "pending";
                 const symbolLabel = SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol;
+                const stakeVal = t.stake || 10;
+                const potentialProfit = isWon ? t.profit : stakeVal * 0.85;
 
                 return (
-                  <tr key={t.id} className="hover:bg-white/[0.02] transition-colors">
-                    {/* TYPE */}
-                    <td className="px-4 py-3 whitespace-nowrap">
+                  <tr key={t.id} className="hover:bg-white/[0.03] transition-all">
+                    {/* SENS */}
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <span
                         className={cn(
-                          "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                          isBuy ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
+                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-black uppercase tracking-wider shadow-sm",
+                          isBuy ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
                         )}
                       >
-                        {isBuy ? "BUY" : "SELL"}
+                        {isBuy ? "▲ HAUSSE" : "▼ BAISSE"}
                       </span>
                     </td>
 
                     {/* SYMBOLE */}
-                    <td className="px-4 py-3 font-bold text-foreground max-w-[160px] truncate" title={symbolLabel}>
+                    <td className="px-4 py-4 font-black text-sm text-foreground max-w-[180px] truncate" title={symbolLabel}>
                       {symbolLabel}
                     </td>
 
-                    {/* MISE */}
-                    <td className="px-4 py-3 text-right font-mono-tabular font-bold text-muted-foreground">
-                      {t.stake > 0 ? `$${t.stake.toFixed(2)}` : "—"}
+                    {/* MISE ENGAGÉE */}
+                    <td className="px-4 py-4 text-right font-mono text-sm font-black text-foreground">
+                      ${stakeVal.toFixed(2)} USD
+                    </td>
+
+                    {/* GAIN POTENTIEL */}
+                    <td className="px-4 py-4 text-right font-mono text-sm font-black text-emerald-300">
+                      +${potentialProfit.toFixed(2)} USD <span className="text-[10px] font-semibold text-emerald-400/80">(+85%)</span>
                     </td>
 
                     {/* CONF / HEURE */}
-                    <td className="px-4 py-3 text-center font-mono text-muted-foreground">
-                      {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                      {t.confidence > 0 && <span className="ml-1 text-[10px] text-cyan">({t.confidence}%)</span>}
-                    </td>
-
-                    {/* FIN */}
-                    <td className="px-4 py-3 text-center font-mono text-muted-foreground">
-                      {new Date(t.time + (durationMinutes || 15) * 60 * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                    <td className="px-4 py-4 text-center font-mono text-xs text-muted-foreground/80">
+                      <div>{new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      <div className="text-[10px] text-muted-foreground/50">fin ~{new Date(t.time + (durationMinutes || 15) * 60 * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
                     </td>
 
                     {/* STATUS */}
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={cn(
-                          "inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                          t.status === "open"
-                            ? "bg-cyan/15 text-cyan border border-cyan/30 animate-pulse"
-                            : isWon
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : isLost
-                            ? "bg-red-500/10 text-red-400"
-                            : "bg-white/10 text-muted-foreground"
-                        )}
-                      >
-                        {t.status === "open" ? "OPEN" : isWon ? "CLOSED" : isLost ? "CLOSED" : t.status.toUpperCase()}
-                      </span>
+                    <td className="px-4 py-4 text-center">
+                      {isOpen ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase text-amber-300 animate-pulse">
+                          <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+                          En cours
+                        </span>
+                      ) : isWon ? (
+                        <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-300">
+                          Gagné
+                        </span>
+                      ) : isLost ? (
+                        <span className="inline-flex items-center rounded-full border border-rose-500/40 bg-rose-500/15 px-3 py-1 text-xs font-black uppercase text-rose-300">
+                          Perdu
+                        </span>
+                      ) : (
+                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-muted-foreground">
+                          {t.status.toUpperCase()}
+                        </span>
+                      )}
                     </td>
 
-                    {/* PROFIT */}
+                    {/* PROFIT RÉSULTAT */}
                     <td
                       className={cn(
-                        "px-4 py-3 text-right font-mono-tabular font-black text-sm whitespace-nowrap",
-                        isWon ? "text-emerald-400" : isLost ? "text-red-400" : "text-muted-foreground"
+                        "px-4 py-4 text-right font-mono font-black text-sm whitespace-nowrap",
+                        isWon ? "text-emerald-400" : isLost ? "text-rose-400" : "text-muted-foreground"
                       )}
                     >
-                      {isWon && `+$${t.profit.toFixed(4)}`}
-                      {isLost && `-$${Math.abs(t.profit).toFixed(4)}`}
+                      {isWon && `+$${t.profit.toFixed(2)} USD`}
+                      {isLost && `-$${Math.abs(t.profit).toFixed(2)} USD`}
                       {!isWon && !isLost && "—"}
                     </td>
                   </tr>
