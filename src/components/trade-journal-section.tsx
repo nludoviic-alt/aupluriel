@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Activity, CheckCircle2 } from "lucide-react";
-import { SYMBOLS, type OpenPosition } from "@/lib/deriv";
+import { SYMBOLS, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
 
@@ -48,18 +48,24 @@ export function TradeJournalSection({
 
     if (liveDerivPositions && liveDerivPositions.length > 0) {
       for (const pos of liveDerivPositions) {
+        const direction = normalizeContractDirection(pos.contractType);
         list.push({
           id: `deriv-${pos.contractId}`,
           time: pos.dateStart * 1000,
           timestamp: pos.dateStart * 1000,
           symbol: pos.symbol,
-          direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+          direction,
           stake: pos.buyPrice,
           status: "open",
           profit: pos.profit,
           pnl: pos.profit,
           confidence: 0,
           isLiveDeriv: true,
+          // Deriv's date_expiry is only a real settlement time for binaries —
+          // for Multiplier contracts it's absent/defaulted server-side and
+          // means nothing (they close on TP/SL, not on a clock), so it's kept
+          // off MULTUP/MULTDOWN rows entirely rather than displayed as fact.
+          ...(direction === "CALL" || direction === "PUT" ? { expiry: pos.dateExpiry * 1000 } : {}),
         } as unknown as TradeLog & { isLiveDeriv?: boolean });
       }
     }
@@ -246,6 +252,11 @@ export function TradeJournalSection({
             <tbody className="divide-y divide-white/[0.06]">
               {displayTrades.map((t) => {
                 const isBuy = t.direction === "CALL" || t.direction === "MULTUP";
+                // Multiplier contracts (Boom/Crash/Scalping) have no fixed expiry — they
+                // close on TP/SL, not on a clock, so a "fin ~" time is fabricated for them
+                // and was routinely off by 10-20+ minutes. Only binaries get a real ETA.
+                const isMultiplier = t.direction === "MULTUP" || t.direction === "MULTDOWN";
+                const endTime = t.expiry ?? (t.durationMinutes ? t.time + t.durationMinutes * 60_000 : t.time + (durationMinutes || 15) * 60_000);
                 const isWon = t.status === "won";
                 const isLost = t.status === "lost";
                 const isOpen = t.status === "open" || t.status === "pending";
@@ -285,7 +296,11 @@ export function TradeJournalSection({
                     {/* CONF / HEURE */}
                     <td className="px-4 py-4 text-center font-mono text-xs text-muted-foreground/80">
                       <div>{new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
-                      <div className="text-[10px] text-muted-foreground/50">fin ~{new Date(t.time + (durationMinutes || 15) * 60 * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      {isMultiplier ? (
+                        <div className="text-[10px] text-muted-foreground/50">ferme au TP/SL</div>
+                      ) : (
+                        <div className="text-[10px] text-muted-foreground/50">fin ~{new Date(endTime).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      )}
                     </td>
 
                     {/* STATUS */}

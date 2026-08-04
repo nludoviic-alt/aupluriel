@@ -357,19 +357,21 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // gains suivis d'UNE perte normale).
   // Règle appliquée : le giveback toléré doit couvrir les maxConsecutiveLosses
   // pertes d'affilée, sinon une série normale tue la journée.
-  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 30% = $1.50
-  //   4 pertes    = $6.00  →  peak × 0.20 > $6.00  →  peak > $30
+  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 20% = $1.00
+  //   4 pertes    = $4.00  →  peak × 0.20 > $4.00  →  peak > $20
+  // (stopLossPctOfStake est passé de 30% à 20% le 2026-08-02, voir plus bas —
+  // trailingStopMinPeakUsd=30 reste donc plus conservateur que le minimum
+  // requis, pas un oubli de recalibrage.)
   maxConsecutiveLosses: 4,
   cooldownMinutes: 15,
   trailingStopPct: 0.20,
   trailingStopMinPeakUsd: 30,
-  // maxDailyLossUsd 50 (au lieu des 15 hérités de DEFAULT_CONFIG) : à $1.50
-  // de perte par trade, $15 = 10 trades perdants seulement, atteint en moins
-  // d'une heure en haute fréquence — puis pause jusqu'à minuit UTC. À $50 le
-  // bot encaisse 33 trades perdants. C'est le garde-fou de RISQUE RÉEL qui
-  // borne la journée (le trailing stop ci-dessus, lui, ne s'arme quasiment
-  // jamais avec un TP de $0.25 : il faudrait ~1000 trades pour un pic de $30).
-  // À revoir avant tout passage en mode live.
+  // maxDailyLossUsd 50 (au lieu des 15 hérités de DEFAULT_CONFIG) : à $1.00
+  // de perte par trade (SL 20%), $50 = 50 trades perdants, atteignable en
+  // haute fréquence avant la pause jusqu'à minuit UTC. C'est le garde-fou de
+  // RISQUE RÉEL qui borne la journée (le trailing stop ci-dessus, lui, ne
+  // s'arme quasiment jamais avec un TP de $0.50 : il faudrait des centaines
+  // de trades pour un pic de $30). À revoir avant tout passage en mode live.
   maxDailyLossUsd: 50,
   // hourlyEdgeFilter off : il bloque une heure UTC dès que 5 trades y ont un
   // P&L cumulé négatif (voir getBlockedHours dans signal-core.ts). Conçu pour
@@ -536,9 +538,13 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   minConfidence: 80,
   maxConfidence: 89,
   stakeUsd: 1,
-  // Scaled 5x down from BOOM_PRESET (stake $5→$1): a single SL30% loss is
-  // ~$0.30 here instead of ~$1.50, so every $-denominated guard below is
-  // BOOM_PRESET's value ÷ 5, not copied verbatim.
+  // Scaled down from BOOM_PRESET's $5 stake to this preset's $1 — not left at
+  // BOOM_PRESET's values verbatim. trailingStopMinPeakUsd follows the
+  // mechanical ÷5 (BOOM_PRESET's 30 → 6); maxDailyLossUsd is a deliberately
+  // stricter $5 (not the ÷5-implied $10) since this is still a tiny, unproven
+  // sample (see header comment) and Boom's own stopLossPctOfStake doesn't
+  // even apply here — Scalping sizes its stop structurally per-trade
+  // (computeStructuralStopUsd), not as a flat % of stake.
   maxDailyLossUsd: 5,
   maxConsecutiveLosses: 3,
   trailingStopMinPeakUsd: 6,

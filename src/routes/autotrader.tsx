@@ -22,7 +22,7 @@ import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MarketSessionsBar } from "@/components/market-sessions-bar";
-import { SYMBOLS, getOpenPositions, type OpenPosition } from "@/lib/deriv";
+import { SYMBOLS, getOpenPositions, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
 import {
   addToCumulativePnl,
   computeAdaptiveStake,
@@ -476,7 +476,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
     }
     setConfig(loaded);
-    setForceSymbol(loaded.symbols[0] ?? "frxEURUSD");
+    // "Automatique" and "Prise directe" are separate routes (not an in-page tab —
+    // tradingTab above is seeded once from defaultTab and never changes), so this
+    // mount effect re-runs from scratch on every switch between them. Defaulting
+    // to symbols[0] regardless of session meant that whenever it was closed, the
+    // auto-switch effect below would immediately fire + toast — every single
+    // time the user flipped between the two tabs. Starting from the first
+    // already-open symbol in the watchlist skips that avoidable switch+toast.
+    const openStart = loaded.symbols.find((s) => isInTradingSession(["sydney", "asia", "london", "newyork"], s));
+    setForceSymbol(openStart ?? loaded.symbols[0] ?? "frxEURUSD");
     setForceStake(loaded.stakeUsd);
     setCumulativePnl(loadCumulativePnl());
     // Update active sessions every minute
@@ -540,10 +548,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const combinedAutoOpenTrades = useMemo(() => {
     const list: TradeLog[] = [];
     for (const pos of liveDerivPositions) {
+      const direction = normalizeContractDirection(pos.contractType);
       list.push({
         id: `deriv-${pos.contractId}`,
         symbol: pos.symbol,
-        direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+        direction,
         stake: pos.buyPrice,
         status: "open",
         profit: pos.profit,
@@ -551,6 +560,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         time: pos.dateStart * 1000,
         timestamp: pos.dateStart * 1000,
         confidence: 0,
+        // Deriv's date_expiry only means something for binaries — Multiplier
+        // contracts close on TP/SL, not a clock, so it's left off those rows.
+        ...(direction === "CALL" || direction === "PUT" ? { expiry: pos.dateExpiry * 1000 } : {}),
       } as unknown as TradeLog);
     }
     for (const t of openTradeList) {
@@ -590,16 +602,24 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     return isInTradingSession(["sydney", "asia", "london", "newyork"], forceSymbol);
   }, [forceSymbol]);
 
-  // Auto-switch away from a closed market symbol (e.g. OTC_DJI when NY stock market is closed)
+  // Auto-switch away from a closed market symbol (e.g. OTC_DJI when NY stock market is closed).
+  // Candidates are restricted to the current preset's own watchlist (config.symbols) — picking
+  // a symbol outside it (e.g. a synthetic index) would immediately get reverted by the
+  // watchlist-sync effect below, ping-ponging forceSymbol back and forth and re-firing this
+  // toast forever. config.symbols is deliberately NOT in the deps array: its identity (and for
+  // some presets even its length) isn't stable across renders, which would re-run this on every
+  // render instead of only when forceSymbol actually changes — the effect still reads the latest
+  // config.symbols each time it does run.
   useEffect(() => {
     if (forceSymbol && !isInTradingSession(["sydney", "asia", "london", "newyork"], forceSymbol)) {
-      const activeOpen = SYMBOLS.find((s) => isInTradingSession(["sydney", "asia", "london", "newyork"], s.deriv))?.deriv;
-      if (activeOpen) {
+      const activeOpen = config.symbols.find((sym) => isInTradingSession(["sydney", "asia", "london", "newyork"], sym));
+      if (activeOpen && activeOpen !== forceSymbol) {
         setForceSymbol(activeOpen);
         const openLabel = SYMBOLS.find((s) => s.deriv === activeOpen)?.label ?? activeOpen;
         toast.info(`Marché fermé — bascule automatique sur le marché ouvert ${openLabel}`);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceSymbol]);
 
   const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && (
@@ -615,9 +635,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // The selected <option> can look valid even while forceSymbol is still an
   // empty string after a config refresh. Keep the actual value synchronized
   // with the current watchlist before enabling a manual trade.
+  //
+  // This runs on every mount (forceSymbol starts as "" — see useState above)
+  // BEFORE the mount effect that seeds forceSymbol from an open symbol has
+  // committed, so it used to unconditionally fall back to config.symbols[0]
+  // regardless of whether that market was open — overriding the open pick a
+  // moment later and handing a closed symbol to the auto-switch effect below,
+  // which then re-switched it and fired the "marché fermé" toast on every
+  // single mount (i.e. every time the user flipped between the Automatique
+  // and Prise directe tabs, since those are separate routes that remount this
+  // whole page). Falling back to the first OPEN symbol here too closes that gap.
   useEffect(() => {
     if (!forceSymbol || !config.symbols.includes(forceSymbol)) {
-      setForceSymbol(config.symbols[0] ?? "");
+      const openFallback = config.symbols.find((sym) => isInTradingSession(["sydney", "asia", "london", "newyork"], sym));
+      setForceSymbol(openFallback ?? config.symbols[0] ?? "");
     }
   }, [config.symbols, forceSymbol]);
 
@@ -1146,9 +1177,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
                       const isUp = d === "CALL" || d === "MULTUP";
                       const isSelected = forceDir === d;
+                      // manualOpportunity.direction is normalized upstream to the CALL/PUT
+                      // bias regardless of instrument (same convention as bot-engine.server.ts's
+                      // biasOf: "MULTUP is the same bias as CALL") — it's typed "CALL"|"PUT"|null
+                      // and never literally "MULTUP"/"MULTDOWN", so comparing against those was
+                      // dead code (TS2367) that happened to be harmless only because the CALL/PUT
+                      // half of each check already fully covered it.
                       const isAiRecommended = !!manualOpportunity?.direction && (
-                        (isUp && (manualOpportunity.direction === "CALL" || manualOpportunity.direction === "MULTUP")) ||
-                        (!isUp && (manualOpportunity.direction === "PUT" || manualOpportunity.direction === "MULTDOWN"))
+                        (isUp && manualOpportunity.direction === "CALL") ||
+                        (!isUp && manualOpportunity.direction === "PUT")
                       );
 
                       return (
@@ -1579,6 +1616,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               status: "open" | "pending" | "won" | "lost" | "error";
               pnl?: number;
               timestamp: number;
+              closedAt?: number;
               isLiveDeriv?: boolean;
             }> = [];
 
@@ -1588,7 +1626,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               allItems.push({
                 id: `deriv-${pos.contractId}`,
                 symbol: pos.symbol,
-                direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+                direction: normalizeContractDirection(pos.contractType),
                 stake: pos.buyPrice,
                 payout: pos.payout || pos.buyPrice * 1.85,
                 potentialProfit,
@@ -1599,8 +1637,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               });
             }
 
-            // 2. Logs locaux/serveur (en évitant les doublons)
-            for (const log of logs) {
+            // 2. Historique réel des trades (cloud si le bot serveur tourne, sinon logs
+            // locaux) — avant ce correctif cette mini-liste ne lisait QUE `logs` (les
+            // trades démo simulés localement), donc les vrais trades gagnés/perdus du
+            // bot serveur n'apparaissaient jamais ici, seulement les positions encore
+            // ouvertes. `journalTrades` est déjà la source cloud-aware utilisée par le
+            // journal principal (onglet Auto) — même trades, même heure de fermeture.
+            for (const log of journalTrades) {
               if (!allItems.some((item) => item.id === `deriv-${log.contractId}` || item.id === log.id)) {
                 const potentialProfit = log.stake * 0.85;
                 allItems.push({
@@ -1610,12 +1653,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   stake: log.stake,
                   payout: log.stake * 1.85,
                   potentialProfit,
-                  status: log.status,
-                  pnl: log.pnl,
-                  timestamp: log.timestamp,
+                  // TradeLog's real fields are `time`/`profit` — this used to read
+                  // `.timestamp`/`.pnl`, which don't exist on TradeLog, so every
+                  // real trade rendered here got `undefined` (blank date, blank P&L).
+                  status: log.status === "cooldown" || log.status === "risk-stop" ? "error" : log.status,
+                  pnl: log.profit,
+                  timestamp: log.time,
+                  closedAt: log.closedAt,
                 });
               }
             }
+
+            // Most recent activity first — closed trades use their close time so a
+            // just-settled loss surfaces above an older still-open position.
+            allItems.sort((a, b) => (b.closedAt ?? b.timestamp) - (a.closedAt ?? a.timestamp));
 
             if (allItems.length === 0) {
               return (
@@ -1664,6 +1715,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           </div>
                           <div className="mt-1 text-[11px] font-semibold text-muted-foreground/70">
                             Pris à {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            {trade.closedAt && (isWin || isLoss) && (
+                              <> · fermé à {new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1680,7 +1734,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         <div className="text-left sm:text-right">
                           <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Gain potentiel</div>
                           <div className="font-mono text-sm sm:text-base font-black text-emerald-300">
-                            +${trade.potentialProfit.toFixed(2)} USD <span className="text-[10px] font-semibold text-emerald-400/80">(+{((trade.potentialProfit / trade.stake) * 100).toFixed(0)}%)</span>
+                            +${trade.potentialProfit.toFixed(2)} USD
+                            {/* stake is 0 on "error" trades (contract never actually filled) — dividing by
+                                it produced a literal "(+NaN%)" badge instead of just omitting the ratio. */}
+                            {trade.stake > 0 && (
+                              <span className="text-[10px] font-semibold text-emerald-400/80"> (+{((trade.potentialProfit / trade.stake) * 100).toFixed(0)}%)</span>
+                            )}
                           </div>
                         </div>
 

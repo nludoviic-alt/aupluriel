@@ -19,7 +19,7 @@ interface StatsData {
     netPnl: number;
     avgWin: number;
     avgLoss: number;
-    profitFactor: number;
+    profitFactor: number | null; // null = wins with zero losses so far ("∞")
     expectancy: number;
   };
   equity: { t: number; pnl: number }[];
@@ -121,8 +121,8 @@ function StatsPage() {
         />
         <Stat
           label="Profit Factor"
-          value={s.profitFactor === Infinity ? "∞" : s.profitFactor.toFixed(2)}
-          tone={s.profitFactor >= 1.5 ? "bull" : s.profitFactor < 1 ? "bear" : "default"}
+          value={s.profitFactor === null ? "∞" : s.profitFactor.toFixed(2)}
+          tone={s.profitFactor === null || s.profitFactor >= 1.5 ? "bull" : s.profitFactor < 1 ? "bear" : "default"}
           sub="gains / pertes"
         />
       </div>

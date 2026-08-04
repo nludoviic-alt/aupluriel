@@ -219,7 +219,10 @@ export const Route = createFileRoute("/api/bot")({
             ...presetFieldsFor(preset),
             stakeUsd,
             maxDailyLossUsd,
-            mode: preset === "scalping" ? "demo" : mode, // never real money, see SCALPING_PRESET
+            // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET; the "start" and
+            // "update" actions and /api/admin/user-config's resetToCanonical all gate
+            // both presets the same way, this one had only checked scalping.
+            mode: preset === "scalping" || preset === "liquidity" ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,

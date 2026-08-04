@@ -669,6 +669,17 @@ export async function sellContractNow(contractId: number): Promise<number> {
   return Number(res.sell?.sold_for ?? 0);
 }
 
+/** Deriv's raw contract_type string, normalized to TradeLog's direction union.
+ * Multiplier contracts (MULTUP/MULTDOWN) have no fixed expiry — collapsing
+ * them into CALL/PUT here used to make every merged live position look like
+ * a binary option, which fed a wrong "fin ~" expiry estimate downstream.
+ * CALLE/PUTE (equal-barrier binaries) collapse to CALL/PUT — same bias, same
+ * expiry semantics, just a barrier detail nothing in this UI distinguishes. */
+export function normalizeContractDirection(contractType: string): "CALL" | "PUT" | "MULTUP" | "MULTDOWN" {
+  if (contractType === "MULTUP" || contractType === "MULTDOWN") return contractType;
+  return contractType === "PUT" || contractType === "PUTE" ? "PUT" : "CALL";
+}
+
 export interface OpenPosition {
   contractId: number;
   symbol: string;

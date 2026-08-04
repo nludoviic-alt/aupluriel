@@ -99,10 +99,12 @@ function engineKey(userId: number, preset: Preset): string {
 
 export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
 
-/** How many preset tabs the Auto-Trader shows on MOBILE. Four tabs squeezed
- * into a phone-width strip was unreadable, so the user picks which three to
- * see (2026-08-02). Desktop is unaffected and always renders all four. */
-export const MAX_VISIBLE_PRESETS = 3;
+/** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
+ * 3 (five tabs squeezed into a phone-width strip was unreadable), but that
+ * blocked users from running/viewing every preset on mobile at once — removed
+ * the artificial cap (2026-08-03), so it now just tracks the real preset
+ * count. Desktop is unaffected and always renders all of them. */
+export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
 /** Which presets a user sees on mobile before they've ever chosen. Scalping
  * is the one left out by default: it's the newest, demo-only experiment, so
@@ -439,6 +441,9 @@ class ServerBotEngine {
   private servedCooldownFor = new Map<string, string>();
   private contractUnsubs = new Map<number, () => void>();
   private fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
+  // Set by stopScanning() when a stop was requested while a position was still
+  // open — non-null means "finish tearing down as soon as nothing is open."
+  private pendingStopReason: string | null = null;
   private sessionPeakPnl = 0;
   lastScan: ScanResult | null = null;
   lastError: string | null = null;
@@ -502,6 +507,7 @@ class ServerBotEngine {
     if (this.logs.length > 60) this.logs.length = 60;
     upsertTrade(this.userId, this.preset, log, this.config.mode === "live" ? "live" : "demo");
     this.notify(log, prevStatus);
+    this.finalizeIfIdle();
   }
 
   /** Push the user only on winning trades — fire-and-forget so a push
@@ -902,6 +908,10 @@ class ServerBotEngine {
   stop() {
     this.stopped = true;
     if (this.interval) clearInterval(this.interval);
+    this.teardownConnections();
+  }
+
+  private teardownConnections() {
     for (const t of this.fallbackTimers) clearTimeout(t);
     this.fallbackTimers.clear();
     for (const unsub of this.contractUnsubs.values()) unsub();
@@ -910,6 +920,32 @@ class ServerBotEngine {
     this.krakenConn?.close();
     this.binanceConn?.close();
     this.oandaConn?.close();
+  }
+
+  /**
+   * Halts scanning (no new trades) WITHOUT tearing down contract subscriptions,
+   * timers, or the connection — unlike stop(), which orphans any position still
+   * open (no more live P&L updates, maxHoldMinutes force-close never fires; see
+   * hasOpenPositions' doc comment for the 2026-07-15 incident this class of bug
+   * caused). Used by stopBotForUser when the preset has an open position: the
+   * engine keeps tracking it to a normal close, then emit() below finalizes the
+   * teardown itself once nothing is left open.
+   */
+  stopScanning(reason: string) {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.interval) clearInterval(this.interval);
+    this.pendingStopReason = reason;
+  }
+
+  /** Completes a stopScanning() deferral once its last open position has just
+   * closed (called from emit() below, right after that close is persisted). */
+  private finalizeIfIdle() {
+    if (!this.stopped || !this.pendingStopReason) return;
+    if (hasOpenPositions(this.userId, this.preset)) return;
+    this.teardownConnections();
+    engines.delete(engineKey(this.userId, this.preset));
+    console.log(`[bot] Moteur serveur finalisé pour user ${this.userId} preset ${this.preset} — dernière position close (${this.pendingStopReason})`);
   }
 
   private nextUtcMidnight(): number {
@@ -1815,9 +1851,20 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
   getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(userId, preset);
   const engine = engines.get(engineKey(userId, preset));
   if (engine) {
-    engine.stop();
-    engines.delete(engineKey(userId, preset));
-    console.log(`[bot] Moteur serveur arrêté pour user ${userId} preset ${preset} (${reason})`);
+    // A full stop() tears down every contract subscription and timer —
+    // orphaning any position still open (no more live P&L updates, its
+    // maxHoldMinutes force-close never fires; see hasOpenPositions' doc
+    // comment for the 2026-07-15 incident). Scanning stops immediately
+    // either way; only the connection teardown is deferred until the last
+    // open position actually closes (engine.emit() finalizes it then).
+    if (hasOpenPositions(userId, preset)) {
+      engine.stopScanning(reason);
+      console.log(`[bot] Scan arrêté pour user ${userId} preset ${preset} (${reason}) — position(s) ouverte(s), moteur maintenu le temps qu'elles se clôturent`);
+    } else {
+      engine.stop();
+      engines.delete(engineKey(userId, preset));
+      console.log(`[bot] Moteur serveur arrêté pour user ${userId} preset ${preset} (${reason})`);
+    }
 
     void (async () => {
       try {

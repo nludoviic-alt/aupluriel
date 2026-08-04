@@ -162,9 +162,16 @@ export const Route = createFileRoute("/api/stats")({
         const totalPnl = rows.reduce((s, r) => s + r.profit, 0);
         const avgWin = rows.filter((r) => r.status === "won").reduce((s, r) => s + r.profit, 0) / Math.max(1, totalWins);
         const avgLoss = rows.filter((r) => r.status === "lost").reduce((s, r) => s + r.profit, 0) / Math.max(1, totalTrades - totalWins);
+        // null (not Infinity) when there are wins and no losses yet — JSON has
+        // no way to represent Infinity, so JSON.stringify silently turns it
+        // into `null` on the wire regardless; sending it explicitly makes that
+        // the documented contract instead of an accidental one the client has
+        // to reverse-engineer (this exact mismatch used to crash the page:
+        // the client only checked `=== Infinity`, which JSON.parse never
+        // produces, so it fell through to `null.toFixed()`).
         const profitFactor = Math.abs(avgLoss * (totalTrades - totalWins)) > 0
           ? Math.abs(avgWin * totalWins) / Math.abs(avgLoss * (totalTrades - totalWins))
-          : Infinity;
+          : totalWins > 0 ? null : 0;
 
         return json({
           summary: {

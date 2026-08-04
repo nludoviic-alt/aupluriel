@@ -214,9 +214,11 @@ const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping:
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
 const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity"];
-// Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts — the API rejects more
-// than this, so the UI must not let you select more either.
-const MAX_VISIBLE_PRESETS = 3;
+// Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts (can't import a
+// *.server.ts module from a client route) — the API rejects more than this,
+// so the UI must not let you select more either. No artificial cap anymore:
+// all presets can be shown on mobile.
+const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
 /** Static class strings only: Tailwind's JIT scanner can't see names built at
  * runtime like `border-${accent}-500/40`, which would silently emit no CSS in
@@ -924,10 +926,11 @@ function AdminPage() {
       )}
 
       {/* ── MOBILE PRESET TABS ──────────────────────────────────────────────
-          Four tabs didn't fit a phone-width strip, so the admin picks which
-          three to show. Display filter ONLY: a preset hidden here keeps
-          trading, keeps its P&L in the recap above, and desktop still shows
-          all four — which is why a running-but-hidden preset gets an explicit
+          Used to cap this at three of the four tabs to fit a phone-width
+          strip; the cap is gone (2026-08-03) so the admin can show every
+          preset. Display filter ONLY: a preset hidden here keeps trading,
+          keeps its P&L in the recap above, and desktop always shows all of
+          them — which is why a running-but-hidden preset gets an explicit
           warning below rather than being silently forgotten. ── */}
       <CollapsibleBlock
         className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
@@ -936,7 +939,7 @@ function AdminPage() {
           <div>
             <h2 className="text-base font-bold text-foreground">Onglets Auto-Trader (mobile)</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Choisis les {MAX_VISIBLE_PRESETS} presets affichés sur mobile. N'arrête aucun bot — sur ordinateur, les 4 restent visibles.
+              Choisis les presets affichés sur mobile — tous peuvent l'être. N'arrête aucun bot — sur ordinateur, ils restent tous visibles.
             </p>
           </div>
         }
