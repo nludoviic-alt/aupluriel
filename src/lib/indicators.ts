@@ -355,7 +355,7 @@ export interface VolumeProfileResult {
   bias: "bull" | "bear" | "neutral";
 }
 
-export function computeVolumeProfile(candles: Candle[], numBins = 30): VolumeProfileResult | null {
+export function computeVolumeProfile(candles: CandleLike[], numBins = 30): VolumeProfileResult | null {
   if (!candles || candles.length < 10) return null;
 
   let minLow = Infinity;
@@ -476,9 +476,10 @@ export interface Candle {
   high: number;
   low: number;
   close: number;
+  volume?: number;
 }
 
-type CandleLike = { open: number; high: number; low: number; close: number };
+export type CandleLike = { open: number; high: number; low: number; close: number; volume?: number };
 
 /**
  * Advanced multi-factor signal engine.
