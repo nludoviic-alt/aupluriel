@@ -185,6 +185,8 @@ interface BotTradeRow {
   multiplier: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  mode: "demo" | "live" | null;
+  preset: Preset | null;
 }
 
 function parseComponents(json: string | null): SignalComponent[] | undefined {
@@ -207,6 +209,8 @@ export function logFromRow(r: BotTradeRow): TradeLog {
     expiry: r.expiry ?? undefined,
     components: parseComponents(r.components),
     multiplier: r.multiplier ?? undefined, stopLossUsd: r.stop_loss ?? undefined, takeProfitUsd: r.take_profit ?? undefined,
+    preset: r.preset ?? undefined,
+    mode: r.mode ?? undefined,
   };
 }
 

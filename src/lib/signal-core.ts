@@ -665,6 +665,8 @@ export interface TradeLog {
   multiplier?: number;       // leverage level — Multiplier trades only
   stopLossUsd?: number;      // absolute loss level that auto-closes the position — Multiplier trades only
   takeProfitUsd?: number;    // absolute profit level that auto-closes the position — Multiplier trades only
+  preset?: "default" | "boom" | "crash" | "scalping" | "liquidity"; // preset engine tag
+  mode?: "demo" | "live";    // account execution mode
 }
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
