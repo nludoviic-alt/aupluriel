@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
   Clock,
+  Filter,
   Layers,
   PieChart,
   RefreshCw,
+  Search,
   Target,
   TrendingDown,
   TrendingUp,
@@ -218,6 +220,37 @@ export default function PortfolioPage() {
 
   const hasDerivOanda = !!(brokerBalances?.deriv || brokerBalances?.oanda);
   const derivOandaTotal = (brokerBalances?.deriv?.balance ?? 0) + (brokerBalances?.oanda?.balance ?? 0);
+
+  // ── History Filter States ──
+  const [historyPresetFilter, setHistoryPresetFilter] = useState<string>("all");
+  const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState<"all" | "won" | "lost">("all");
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
+
+  const filteredBotTrades = useMemo(() => {
+    return botTrades.filter((t) => {
+      // 1. Outcome filter
+      const isWin = t.status === "won" || t.profit > 0;
+      const isLoss = t.status === "lost" || t.profit < 0;
+      if (historyOutcomeFilter === "won" && !isWin) return false;
+      if (historyOutcomeFilter === "lost" && !isLoss) return false;
+
+      // 2. Preset filter
+      if (historyPresetFilter !== "all") {
+        const pKey = t.preset ?? "manual";
+        if (pKey !== historyPresetFilter) return false;
+      }
+
+      // 3. Search query
+      if (historySearchQuery.trim()) {
+        const q = historySearchQuery.toLowerCase().trim();
+        const label = symbolLabel(t.symbol).toLowerCase();
+        const sym = t.symbol.toLowerCase();
+        if (!label.includes(q) && !sym.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [botTrades, historyOutcomeFilter, historyPresetFilter, historySearchQuery]);
 
   // ── Compute Preset Breakdown ──
   const presetStats = (["default", "boom", "crash", "scalping", "manual"] as const).map((key) => {
@@ -578,24 +611,87 @@ export default function PortfolioPage() {
                   >
                     <X className="h-4 w-4" />
                   </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── SECTION 3: RECENT CLOSED TRADES WITH PRESET BADGES ── */}
-      <div className="glass-panel rounded-xl overflow-hidden border border-white/10">
-        <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
+             {/* ── SECTION 3: RECENT CLOSED TRADES WITH INTERACTIVE FILTERS ── */}
+      <div className="glass-panel rounded-xl overflow-hidden border border-white/10 space-y-0">
+        <div className="px-4 py-3 border-b border-border/40 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" />
-            <span>Historique des Trades Fermés</span>
-          </h2>
+            <h2 className="text-sm font-semibold">3. Historique des Trades & Filtres Interactifs</h2>
+          </div>
           <span className="text-xs font-mono text-muted-foreground">
-            {botTrades.length > 0 ? `${botTrades.length} enregistrés` : `${profits.length} récents`}
+            {filteredBotTrades.length} / {botTrades.length > 0 ? botTrades.length : profits.length} trades affichés
           </span>
         </div>
+
+        {/* Filter Toolbar */}
+        <div className="p-3 bg-black/40 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* Left: Search input */}
+          <div className="relative min-w-[200px] flex-1 sm:flex-none">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={historySearchQuery}
+              onChange={(e) => setHistorySearchQuery(e.target.value)}
+              placeholder="Chercher un marché (ex: BOOM, EURUSD)..."
+              className="h-8 w-full rounded-lg border border-white/10 bg-white/[0.04] pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
+            />
+          </div>
+
+          {/* Center: Outcome tabs (Tous / Won / Lost) */}
+          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1">
+            <button
+              onClick={() => setHistoryOutcomeFilter("all")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                historyOutcomeFilter === "all"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Tous ({botTrades.length})
+            </button>
+            <button
+              onClick={() => setHistoryOutcomeFilter("won")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                historyOutcomeFilter === "won"
+                  ? "bg-emerald-500 text-black shadow-sm"
+                  : "text-emerald-400/70 hover:text-emerald-400"
+              )}
+            >
+              🟢 Victoires ({botTrades.filter((t) => t.status === "won" || t.profit > 0).length})
+            </button>
+            <button
+              onClick={() => setHistoryOutcomeFilter("lost")}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                historyOutcomeFilter === "lost"
+                  ? "bg-rose-500 text-white shadow-sm"
+                  : "text-rose-400/70 hover:text-rose-400"
+              )}
+            >
+              🔴 Pertes ({botTrades.filter((t) => t.status === "lost" || t.profit < 0).length})
+            </button>
+          </div>
+
+          {/* Right: Preset filter select */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={historyPresetFilter}
+              onChange={(e) => setHistoryPresetFilter(e.target.value)}
+              className="h-8 rounded-lg border border-white/10 bg-black/60 px-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
+            >
+              <option value="all">Tous les Presets</option>
+              <option value="default">📊 Preset Multi</option>
+              <option value="boom">⚡ Preset Boom</option>
+              <option value="crash">📉 Preset Crash</option>
+              <option value="scalping">🎯 Preset Scalping</option>
+              <option value="manual">✋ Prise Directe Manuelle</option>
+            </select>
+          </div>
+        </div>
+
         <table className="w-full text-xs font-mono">
           <thead className="bg-muted/20 text-[10px] uppercase tracking-wider text-muted-foreground font-sans font-bold">
             <tr>
@@ -608,16 +704,16 @@ export default function PortfolioPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
-            {botTrades.length === 0 && profits.length === 0 && (
+            {filteredBotTrades.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-[11px] text-muted-foreground font-sans">
-                  {ready ? "Aucun trade récent enregistrer" : noToken ? "Token requis" : "Chargement…"}
+                <td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground font-sans">
+                  Aucun trade ne correspond aux filtres sélectionnés.
                 </td>
               </tr>
             )}
 
-            {/* Display rich botTrades from server database */}
-            {botTrades.slice(0, 30).map((t) => {
+            {/* Display filtered trades */}
+            {filteredBotTrades.slice(0, 50).map((t) => {
               const meta = getPresetMeta(t.preset);
               const isWin = t.status === "won" || t.profit > 0;
               return (
