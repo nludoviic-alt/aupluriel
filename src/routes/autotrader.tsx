@@ -21,7 +21,7 @@ import { playWinSound, playLossSound, playOpenSound } from "@/lib/sounds";
 import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { SYMBOLS } from "@/lib/deriv";
+import { SYMBOLS, getOpenPositions, type OpenPosition } from "@/lib/deriv";
 import {
   addToCumulativePnl,
   computeAdaptiveStake,
@@ -242,6 +242,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // can't surface bot controls on a page whose whole point is to bypass the bot.
   const advancedVisible = showAdvanced && tradingTab === "auto";
   const [preparedManualOpportunity, setPreparedManualOpportunity] = useState<OpportunityItem | null>(null);
+  const [liveDerivPositions, setLiveDerivPositions] = useState<OpenPosition[]>([]);
   const [showQuickCustomizer, setShowQuickCustomizer] = useState(false);
   const [quickSymbols, setQuickSymbols] = useState<string[]>(() => {
     try {
@@ -427,6 +428,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     }
     patchConfig("mode", mode);
   }
+
+  // Synchroniser les positions ouvertes en temps réel depuis le WebSocket Deriv (toutes les 5s)
+  useEffect(() => {
+    if (!derivSession.connected) return;
+    const fetchPositions = async () => {
+      try {
+        const pos = await getOpenPositions();
+        setLiveDerivPositions(pos);
+      } catch {}
+    };
+    fetchPositions();
+    const id = setInterval(fetchPositions, 5000);
+    return () => clearInterval(id);
+  }, [derivSession.connected]);
 
   // Réconcilie les positions réelles avec Deriv après chaque (re)connexion :
   // re-suit les contrats encore ouverts, règle ceux fermés pendant l'absence.
@@ -1492,72 +1507,131 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
           </div>
 
-          {logs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-xs text-muted-foreground space-y-1">
-              <p className="font-bold text-foreground">Aucune position enregistrée pour le moment</p>
-              <p className="text-[11px] opacity-75">Tes ordres manuels validés ci-dessus s'afficheront ici en direct avec leur statut.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/10 bg-black/20">
-              {logs.slice(0, 8).map((trade) => {
-                const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
-                const isUp = trade.direction === "CALL" || trade.direction === "MULTUP";
-                const isOpen = trade.status === "open" || trade.status === "pending";
-                const isWin = trade.status === "won";
-                const isLoss = trade.status === "lost";
+          {(() => {
+            // Unifier les positions en cours en direct (Deriv WS) + l'historique des logs
+            const allItems: Array<{
+              id: string;
+              symbol: string;
+              direction: string;
+              stake: number;
+              status: "open" | "pending" | "won" | "lost" | "error";
+              pnl?: number;
+              timestamp: number;
+              isLiveDeriv?: boolean;
+            }> = [];
 
-                return (
-                  <div key={trade.id} className="flex items-center justify-between gap-3 p-3.5 text-xs transition-colors hover:bg-white/[0.02]">
-                    <div className="flex items-center gap-3">
-                      <span className={cn(
-                        "grid h-8 w-8 shrink-0 place-items-center rounded-lg border font-mono text-xs font-black",
-                        isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                      )}>
-                        {isUp ? "▲" : "▼"}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-foreground">{symLabel}</span>
-                          <span className="text-[10px] font-semibold text-muted-foreground/75 font-mono">{trade.direction}</span>
+            // 1. Positions en direct du compte Deriv WebSocket
+            for (const pos of liveDerivPositions) {
+              allItems.push({
+                id: `deriv-${pos.contractId}`,
+                symbol: pos.symbol,
+                direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+                stake: pos.buyPrice,
+                status: "open",
+                pnl: pos.profit,
+                timestamp: pos.dateStart * 1000,
+                isLiveDeriv: true,
+              });
+            }
+
+            // 2. Logs locaux/serveur (en évitant les doublons)
+            for (const log of logs) {
+              if (!allItems.some((item) => item.id === `deriv-${log.contractId}` || item.id === log.id)) {
+                allItems.push({
+                  id: log.id,
+                  symbol: log.symbol,
+                  direction: log.direction,
+                  stake: log.stake,
+                  status: log.status,
+                  pnl: log.pnl,
+                  timestamp: log.timestamp,
+                });
+              }
+            }
+
+            if (allItems.length === 0) {
+              return (
+                <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-xs text-muted-foreground space-y-1">
+                  <p className="font-bold text-foreground">Aucune position ouverte sur votre compte</p>
+                  <p className="text-[11px] opacity-75">Dès qu'un ordre est passé ou en cours sur Deriv, il s'affiche automatiquement ici.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                {allItems.slice(0, 10).map((trade) => {
+                  const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
+                  const isUp = trade.direction === "CALL" || trade.direction === "MULTUP";
+                  const isOpen = trade.status === "open" || trade.status === "pending";
+                  const isWin = trade.status === "won";
+                  const isLoss = trade.status === "lost";
+
+                  return (
+                    <div key={trade.id} className="flex items-center justify-between gap-3 p-3.5 text-xs transition-colors hover:bg-white/[0.02]">
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          "grid h-8 w-8 shrink-0 place-items-center rounded-lg border font-mono text-xs font-black",
+                          isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                        )}>
+                          {isUp ? "▲" : "▼"}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-foreground">{symLabel}</span>
+                            <span className="text-[10px] font-semibold text-muted-foreground/75 font-mono">{trade.direction}</span>
+                            {trade.isLiveDeriv && (
+                              <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[8px] font-black text-emerald-300 uppercase">
+                                En Direct Deriv
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground/60">
+                            {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted-foreground/60">
-                          {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </div>
+
+                      <div className="flex items-center gap-5 text-right">
+                        <div>
+                          <div className="font-mono font-black text-foreground">${trade.stake.toFixed(2)}</div>
+                          <div className="text-[9px] font-bold text-muted-foreground/70 uppercase">Mise</div>
+                        </div>
+
+                        <div className="min-w-[110px]">
+                          {isOpen ? (
+                            <div className="flex flex-col items-end">
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300 animate-pulse">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                                En cours
+                              </span>
+                              {trade.pnl !== undefined && trade.pnl !== 0 && (
+                                <span className={cn("text-[10px] font-mono font-bold mt-0.5", trade.pnl > 0 ? "text-emerald-400" : "text-rose-400")}>
+                                  {trade.pnl > 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          ) : isWin ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? 0).toFixed(2)}
+                            </span>
+                          ) : isLoss ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-rose-300">
+                              -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                              {trade.status}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-5 text-right">
-                      <div>
-                        <div className="font-mono font-black text-foreground">${trade.stake.toFixed(2)}</div>
-                        <div className="text-[9px] font-bold text-muted-foreground/70 uppercase">Mise</div>
-                      </div>
-
-                      <div className="min-w-[110px]">
-                        {isOpen ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300 animate-pulse">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
-                            En cours
-                          </span>
-                        ) : isWin ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-300">
-                            <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? 0).toFixed(2)}
-                          </span>
-                        ) : isLoss ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-rose-300">
-                            -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
-                            {trade.status}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </section>
       </div>
