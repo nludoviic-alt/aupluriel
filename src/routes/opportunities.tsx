@@ -171,7 +171,7 @@ function OpportunitiesPage() {
           relayPush(
             `⚡ Signal Opportunité : ${top.label}`,
             `Signal prêt (${top.directionLabel}) · Confiance ${Math.round(top.confidence)}% · Preset ${top.presetLabel}`,
-            `/autotrader?symbol=${top.symbol}&direction=${top.direction}&preset=${top.preset}&take=1`
+            `/manual-trader?symbol=${top.symbol}&direction=${top.direction}&preset=${top.preset}&take=1`
           );
         }
       }
@@ -310,7 +310,7 @@ function OpportunitiesPage() {
 
             <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
               <Link
-                to="/autotrader"
+                to="/manual-trader"
                 search={{
                   symbol: topTake.symbol,
                   direction: topTake.direction || undefined,
@@ -499,7 +499,7 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
   return (
     <div className={cn("flex flex-wrap items-center gap-2 pt-2", className)}>
       <Link
-        to="/autotrader"
+        to="/manual-trader"
         search={{
           symbol: item.symbol,
           direction: item.direction || undefined,
@@ -514,7 +514,7 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
         )}
       >
         <Zap className="h-3.5 w-3.5 fill-current" />
-        {isTake ? "Prendre ce Trade" : "Ouvrir dans l'Auto-Trader"}
+        {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
       </Link>
 
       <Link
