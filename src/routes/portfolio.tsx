@@ -611,7 +611,14 @@ export default function PortfolioPage() {
                   >
                     <X className="h-4 w-4" />
                   </Button>
-             {/* ── SECTION 3: RECENT CLOSED TRADES WITH INTERACTIVE FILTERS ── */}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── SECTION 3: RECENT CLOSED TRADES WITH INTERACTIVE FILTERS ── */}
       <div className="glass-panel rounded-xl overflow-hidden border border-white/10 space-y-0">
         <div className="px-4 py-3 border-b border-border/40 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
