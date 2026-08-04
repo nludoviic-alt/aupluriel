@@ -50,7 +50,7 @@ const analysisItems = [
 
 const toolItems = [
   { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
-  { title: "Carnet de Notes",  url: "/carnet-de-notes", icon: NotebookPen,      color: "text-rose-400",   glow: "shadow-rose-500/30" },
+  { title: "Notes",            url: "/carnet-de-notes", icon: NotebookPen,      color: "text-rose-400",   glow: "shadow-rose-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
