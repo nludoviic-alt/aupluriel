@@ -346,13 +346,109 @@ export function detectCandlePatterns(candles: { open: number; high: number; low:
   return patterns;
 }
 
+export interface VolumeProfileResult {
+  pocPrice: number;
+  vahPrice: number;
+  valPrice: number;
+  bins: { price: number; volume: number }[];
+  priceVsPocPct: number;
+  bias: "bull" | "bear" | "neutral";
+}
+
+export function computeVolumeProfile(candles: Candle[], numBins = 30): VolumeProfileResult | null {
+  if (!candles || candles.length < 10) return null;
+
+  let minLow = Infinity;
+  let maxHigh = -Infinity;
+  let totalVolume = 0;
+
+  for (const c of candles) {
+    if (c.low < minLow) minLow = c.low;
+    if (c.high > maxHigh) maxHigh = c.high;
+    const vol = (c.volume && c.volume > 0) ? c.volume : Math.max(1, c.high - c.low);
+    totalVolume += vol;
+  }
+
+  if (maxHigh <= minLow || totalVolume <= 0) return null;
+
+  const binSize = (maxHigh - minLow) / numBins;
+  const binVolumes = new Array(numBins).fill(0);
+
+  for (const c of candles) {
+    const vol = (c.volume && c.volume > 0) ? c.volume : Math.max(1, c.high - c.low);
+    const startBin = Math.max(0, Math.min(numBins - 1, Math.floor((c.low - minLow) / binSize)));
+    const endBin = Math.max(0, Math.min(numBins - 1, Math.floor((c.high - minLow) / binSize)));
+
+    const count = endBin - startBin + 1;
+    const volPerBin = vol / count;
+    for (let b = startBin; b <= endBin; b++) {
+      binVolumes[b] += volPerBin;
+    }
+  }
+
+  let maxVol = -1;
+  let pocBinIndex = 0;
+  for (let b = 0; b < numBins; b++) {
+    if (binVolumes[b] > maxVol) {
+      maxVol = binVolumes[b];
+      pocBinIndex = b;
+    }
+  }
+
+  const pocPrice = minLow + (pocBinIndex + 0.5) * binSize;
+
+  const targetVaVolume = totalVolume * 0.7;
+  let currentVaVol = maxVol;
+  let lowBin = pocBinIndex;
+  let highBin = pocBinIndex;
+
+  while (currentVaVol < targetVaVolume && (lowBin > 0 || highBin < numBins - 1)) {
+    const nextLowVol = lowBin > 0 ? binVolumes[lowBin - 1] : 0;
+    const nextHighVol = highBin < numBins - 1 ? binVolumes[highBin + 1] : 0;
+
+    if (nextHighVol >= nextLowVol && highBin < numBins - 1) {
+      highBin++;
+      currentVaVol += nextHighVol;
+    } else if (lowBin > 0) {
+      lowBin--;
+      currentVaVol += nextLowVol;
+    } else {
+      break;
+    }
+  }
+
+  const valPrice = minLow + lowBin * binSize;
+  const vahPrice = minLow + (highBin + 1) * binSize;
+
+  const currentPrice = candles[candles.length - 1].close;
+  const priceVsPocPct = ((currentPrice - pocPrice) / pocPrice) * 100;
+
+  let bias: "bull" | "bear" | "neutral" = "neutral";
+  if (currentPrice > pocPrice && Math.abs(priceVsPocPct) < 1.5) {
+    bias = "bull";
+  } else if (currentPrice < pocPrice && Math.abs(priceVsPocPct) < 1.5) {
+    bias = "bear";
+  } else if (currentPrice > vahPrice) {
+    bias = "bull";
+  } else if (currentPrice < valPrice) {
+    bias = "bear";
+  }
+
+  const bins = binVolumes.map((v, i) => ({
+    price: minLow + (i + 0.5) * binSize,
+    volume: v,
+  }));
+
+  return { pocPrice, vahPrice, valPrice, bins, priceVsPocPct, bias };
+}
+
 export type SignalDirection = "BUY" | "SELL" | "HOLD";
 
 /** Named scoring components — used to attribute win/loss credit for adaptive weight learning (see indicator-weights.ts). */
 export type SignalComponentName =
   | "ADX" | "RSI" | "RSI_MOMENTUM" | "MACD" | "MACD_HIST"
   | "EMA_TREND" | "EMA_SLOPE" | "STOCH" | "STOCH_CROSS"
-  | "CANDLE_MOMENTUM" | "PATTERN" | "SR";
+  | "CANDLE_MOMENTUM" | "PATTERN" | "SR" | "VOLUME_PROFILE";
 
 export interface SignalComponent {
   name: SignalComponentName;
@@ -559,6 +655,21 @@ export function generateSignal(input: number[] | Candle[], options: GenerateSign
       } else {
         vote("SR", "bear", 2);
         triggers.push(`Résistance forte (${near.strength} touches)`);
+      }
+    }
+  }
+
+  // ── 10. Volume Profile & POC (Point of Control) ───────────────
+  if (isCandles && candles.length >= 20) {
+    const vp = computeVolumeProfile(candles);
+    if (vp && vp.bias !== "neutral") {
+      maxPoints += 2;
+      if (vp.bias === "bull") {
+        vote("VOLUME_PROFILE", "bull", 2);
+        triggers.push(`Volume Profile / POC haussier (Prix > POC ${vp.pocPrice.toFixed(2)})`);
+      } else {
+        vote("VOLUME_PROFILE", "bear", 2);
+        triggers.push(`Volume Profile / POC baissier (Prix < POC ${vp.pocPrice.toFixed(2)})`);
       }
     }
   }
