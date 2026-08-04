@@ -1514,6 +1514,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               symbol: string;
               direction: string;
               stake: number;
+              payout: number;
+              potentialProfit: number;
               status: "open" | "pending" | "won" | "lost" | "error";
               pnl?: number;
               timestamp: number;
@@ -1522,11 +1524,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
             // 1. Positions en direct du compte Deriv WebSocket
             for (const pos of liveDerivPositions) {
+              const potentialProfit = pos.payout > pos.buyPrice ? pos.payout - pos.buyPrice : pos.buyPrice * 0.85;
               allItems.push({
                 id: `deriv-${pos.contractId}`,
                 symbol: pos.symbol,
                 direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
                 stake: pos.buyPrice,
+                payout: pos.payout || pos.buyPrice * 1.85,
+                potentialProfit,
                 status: "open",
                 pnl: pos.profit,
                 timestamp: pos.dateStart * 1000,
@@ -1537,11 +1542,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             // 2. Logs locaux/serveur (en évitant les doublons)
             for (const log of logs) {
               if (!allItems.some((item) => item.id === `deriv-${log.contractId}` || item.id === log.id)) {
+                const potentialProfit = log.stake * 0.85;
                 allItems.push({
                   id: log.id,
                   symbol: log.symbol,
                   direction: log.direction,
                   stake: log.stake,
+                  payout: log.stake * 1.85,
+                  potentialProfit,
                   status: log.status,
                   pnl: log.pnl,
                   timestamp: log.timestamp,
@@ -1551,15 +1559,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
             if (allItems.length === 0) {
               return (
-                <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-xs text-muted-foreground space-y-1">
-                  <p className="font-bold text-foreground">Aucune position ouverte sur votre compte</p>
-                  <p className="text-[11px] opacity-75">Dès qu'un ordre est passé ou en cours sur Deriv, il s'affiche automatiquement ici.</p>
+                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-xs text-muted-foreground space-y-1.5">
+                  <p className="text-sm font-black text-foreground">Aucune position ouverte sur votre compte</p>
+                  <p className="text-xs opacity-75">Dès qu'un ordre est exécuté ou en cours sur Deriv, il s'affichera ici en grand format avec sa mise et son gain potentiel.</p>
                 </div>
               );
             }
 
             return (
-              <div className="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/10 bg-black/20">
+              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/10 bg-black/20 shadow-xl">
                 {allItems.slice(0, 10).map((trade) => {
                   const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
                   const isUp = trade.direction === "CALL" || trade.direction === "MULTUP";
@@ -1568,59 +1576,79 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   const isLoss = trade.status === "lost";
 
                   return (
-                    <div key={trade.id} className="flex items-center justify-between gap-3 p-3.5 text-xs transition-colors hover:bg-white/[0.02]">
-                      <div className="flex items-center gap-3">
+                    <div key={trade.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5 text-xs transition-all hover:bg-white/[0.03]">
+                      {/* Left: Direction + Symbol + Time */}
+                      <div className="flex items-center gap-3.5">
                         <span className={cn(
-                          "grid h-8 w-8 shrink-0 place-items-center rounded-lg border font-mono text-xs font-black",
-                          isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                          "grid h-11 w-11 shrink-0 place-items-center rounded-xl border font-mono text-base font-black shadow-md",
+                          isUp
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-emerald-500/10"
+                            : "border-rose-500/40 bg-rose-500/15 text-rose-300 shadow-rose-500/10"
                         )}>
                           {isUp ? "▲" : "▼"}
                         </span>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-foreground">{symLabel}</span>
-                            <span className="text-[10px] font-semibold text-muted-foreground/75 font-mono">{trade.direction}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-base font-black text-foreground">{symLabel}</span>
+                            <span className={cn(
+                              "rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider font-mono border",
+                              isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                            )}>
+                              {trade.direction === "CALL" || trade.direction === "MULTUP" ? "HAUSSE ▲" : "BAISSE ▼"}
+                            </span>
                             {trade.isLiveDeriv && (
-                              <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[8px] font-black text-emerald-300 uppercase">
-                                En Direct Deriv
+                              <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[9px] font-black text-emerald-300 uppercase tracking-wider animate-pulse">
+                                Direct Deriv
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-muted-foreground/60">
-                            {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          <div className="mt-1 text-[11px] font-semibold text-muted-foreground/70">
+                            Pris à {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-5 text-right">
-                        <div>
-                          <div className="font-mono font-black text-foreground">${trade.stake.toFixed(2)}</div>
-                          <div className="text-[9px] font-bold text-muted-foreground/70 uppercase">Mise</div>
+                      {/* Right: Metrics Grid (Mise, Gain Potentiel, Statut) */}
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 justify-between sm:justify-end border-t border-white/5 pt-3 sm:pt-0 sm:border-0">
+                        {/* Stake */}
+                        <div className="text-left sm:text-right">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Mise engagée</div>
+                          <div className="font-mono text-sm sm:text-base font-black text-foreground">${trade.stake.toFixed(2)} USD</div>
                         </div>
 
-                        <div className="min-w-[110px]">
+                        {/* Potential Gain */}
+                        <div className="text-left sm:text-right">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Gain potentiel</div>
+                          <div className="font-mono text-sm sm:text-base font-black text-emerald-300">
+                            +${trade.potentialProfit.toFixed(2)} USD <span className="text-[10px] font-semibold text-emerald-400/80">(+{((trade.potentialProfit / trade.stake) * 100).toFixed(0)}%)</span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="min-w-[120px] text-right">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">Statut du trade</div>
                           {isOpen ? (
                             <div className="flex flex-col items-end">
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300 animate-pulse">
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase text-amber-300 animate-pulse">
+                                <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
                                 En cours
                               </span>
                               {trade.pnl !== undefined && trade.pnl !== 0 && (
-                                <span className={cn("text-[10px] font-mono font-bold mt-0.5", trade.pnl > 0 ? "text-emerald-400" : "text-rose-400")}>
-                                  {trade.pnl > 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+                                <span className={cn("text-xs font-mono font-black mt-1", trade.pnl > 0 ? "text-emerald-400" : "text-rose-400")}>
+                                  {trade.pnl > 0 ? "+" : ""}${trade.pnl.toFixed(2)} USD
                                 </span>
                               )}
                             </div>
                           ) : isWin ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-300">
-                              <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? 0).toFixed(2)}
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-300 shadow-sm">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> +${(trade.pnl ?? trade.potentialProfit).toFixed(2)}
                             </span>
                           ) : isLoss ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-rose-300">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/15 px-3 py-1 text-xs font-black uppercase text-rose-300 shadow-sm">
                               -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
                             </span>
                           ) : (
-                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-muted-foreground">
                               {trade.status}
                             </span>
                           )}
