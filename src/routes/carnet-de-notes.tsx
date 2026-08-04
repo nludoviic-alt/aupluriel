@@ -14,6 +14,7 @@ import {
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/carnet-de-notes")({
   head: () => ({ meta: [{ title: "Carnet de Notes — Au Pluriel" }] }),
@@ -38,6 +39,7 @@ function NotesPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeNoteRef = useRef<Note | null>(null);
+  const { confirmState, confirm } = useConfirm();
 
   // Fetch all notes on mount
   useEffect(() => {
@@ -124,6 +126,17 @@ function NotesPage() {
 
   // Delete active note
   async function handleDeleteNote(id: string) {
+    const note = notes.find((n) => n.id === id);
+    const title = note?.title?.trim() || "Sans titre";
+
+    const ok = await confirm({
+      title: "Supprimer cette note ?",
+      description: `« ${title} » sera définitivement supprimée. Cette action est irréversible.`,
+      confirmLabel: "Supprimer",
+      danger: true,
+    });
+    if (!ok) return;
+
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -359,6 +372,7 @@ function NotesPage() {
           )}
         </div>
       </div>
+      <ConfirmDialog state={confirmState} />
     </div>
   );
 }
