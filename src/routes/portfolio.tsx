@@ -252,6 +252,17 @@ export default function PortfolioPage() {
     });
   }, [botTrades, historyOutcomeFilter, historyPresetFilter, historySearchQuery]);
 
+  const filteredSummary = useMemo(() => {
+    const closed = filteredBotTrades.filter((t) => t.status === "won" || t.status === "lost");
+    const wins = closed.filter((t) => t.status === "won" || t.profit > 0).length;
+    const losses = closed.filter((t) => t.status === "lost" || t.profit < 0).length;
+    const netPnl = closed.reduce((acc, t) => acc + t.profit, 0);
+    const totalWon = closed.filter((t) => t.profit > 0).reduce((acc, t) => acc + t.profit, 0);
+    const totalLost = Math.abs(closed.filter((t) => t.profit < 0).reduce((acc, t) => acc + t.profit, 0));
+    const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+    return { count: closed.length, wins, losses, winRate, netPnl, totalWon, totalLost };
+  }, [filteredBotTrades]);
+
   // ── Compute Preset Breakdown ──
   const presetStats = (["default", "boom", "crash", "scalping", "manual"] as const).map((key) => {
     const matching = botTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
@@ -285,6 +296,8 @@ export default function PortfolioPage() {
     tradesCount: number;
     wins: number;
     losses: number;
+    totalWon: number;
+    totalLost: number;
     netPnl: number;
   }>();
 
@@ -305,14 +318,21 @@ export default function PortfolioPage() {
         tradesCount: 0,
         wins: 0,
         losses: 0,
+        totalWon: 0,
+        totalLost: 0,
         netPnl: 0,
       };
       symbolMap.set(key, entry);
     }
 
     entry.tradesCount += 1;
-    if (t.status === "won" || t.profit > 0) entry.wins += 1;
-    else entry.losses += 1;
+    if (t.status === "won" || t.profit > 0) {
+      entry.wins += 1;
+      entry.totalWon += t.profit;
+    } else {
+      entry.losses += 1;
+      entry.totalLost += Math.abs(t.profit);
+    }
     entry.netPnl += t.profit;
     entry.presets.add(t.preset ?? "manual");
   }
@@ -453,13 +473,14 @@ export default function PortfolioPage() {
                 <th className="px-4 py-3 text-left">Preset(s) Utilisé(s)</th>
                 <th className="px-4 py-3 text-center">Trades (W / L)</th>
                 <th className="px-4 py-3 text-right">Taux de Victoire</th>
+                <th className="px-4 py-3 text-right">Gains / Pertes Bruts</th>
                 <th className="px-4 py-3 text-right">P&L Net Cumulé</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 font-mono">
               {symbolStats.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-xs text-muted-foreground font-sans">
+                  <td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground font-sans">
                     Aucune donnée de marché disponible pour le moment.
                   </td>
                 </tr>
@@ -492,6 +513,11 @@ export default function PortfolioPage() {
                       <span className={cn(wr >= 60 ? "text-emerald-400" : wr >= 50 ? "text-amber-400" : "text-rose-400")}>
                         {wr.toFixed(1)}%
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-[11px]">
+                      <span className="text-emerald-400 font-bold">+${sym.totalWon.toFixed(2)}</span>
+                      <span className="text-muted-foreground font-normal"> / </span>
+                      <span className="text-rose-400 font-bold">-${sym.totalLost.toFixed(2)}</span>
                     </td>
                     <td className={cn("px-4 py-3 text-right font-black text-sm", sym.netPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>
                       {sym.netPnl >= 0 ? `+$${sym.netPnl.toFixed(2)}` : `-$${Math.abs(sym.netPnl).toFixed(2)}`}
@@ -695,7 +721,32 @@ export default function PortfolioPage() {
               <option value="crash">📉 Preset Crash</option>
               <option value="scalping">🎯 Preset Scalping</option>
               <option value="manual">✋ Prise Directe Manuelle</option>
-            </select>
+          </div>
+        </div>
+
+        {/* Dynamic Filter Summary Strip */}
+        <div className="px-4 py-2 bg-white/[0.02] border-b border-white/5 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-muted-foreground font-sans text-[10px] font-semibold uppercase">Total Gagné Filtré : </span>
+              <span className="font-bold text-emerald-400">+${filteredSummary.totalWon.toFixed(2)}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground font-sans text-[10px] font-semibold uppercase">Total Perdu Filtré : </span>
+              <span className="font-bold text-rose-400">-${filteredSummary.totalLost.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-muted-foreground font-sans text-[10px] font-semibold uppercase">Win Rate : </span>
+              <span className="font-bold text-foreground">{filteredSummary.winRate.toFixed(1)}%</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground font-sans text-[10px] font-semibold uppercase">P&L Net Filtré : </span>
+              <span className={cn("font-black text-sm", filteredSummary.netPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                {filteredSummary.netPnl >= 0 ? `+$${filteredSummary.netPnl.toFixed(2)}` : `-$${Math.abs(filteredSummary.netPnl).toFixed(2)}`}
+              </span>
+            </div>
           </div>
         </div>
 
