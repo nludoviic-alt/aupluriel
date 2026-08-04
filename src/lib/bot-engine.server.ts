@@ -117,10 +117,8 @@ const PRESET_LABEL: Record<Preset, string> = {
  * count. Desktop is unaffected and always renders all of them. */
 export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
-/** Which presets a user sees on mobile before they've ever chosen. Scalping
- * is the one left out by default: it's the newest, demo-only experiment, so
- * it's the least costly to have to opt into. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash"];
+/** All 5 official production presets enabled and visible across mobile and desktop. */
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
