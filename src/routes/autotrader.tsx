@@ -225,7 +225,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // (nothing was "just executed" yet); set false right after any successful
   // manual execution, set true again by prepareManualSignal or the direction
   // buttons — the two ways to actually choose what to trade in this tab.
-  const [manualArmed, setManualArmed] = useState(true);
+  const [manualArmed, setManualArmed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get("take") === "1" || searchParams.get("action") === "take" || searchParams.has("pair") || searchParams.has("symbol");
+  });
   const [manualExecution, setManualExecution] = useState<{
     status: "pending" | "open";
     symbol: string;
@@ -1088,8 +1092,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     return (
                       <div
                         key={opp.symbol}
+                        onClick={() => {
+                          setForceSymbol(opp.symbol);
+                          if (opp.direction) setForceDir(opp.direction);
+                          setManualArmed(true);
+                        }}
                         className={cn(
-                          "flex min-h-[76px] flex-col items-start justify-between gap-2 rounded-xl border p-3 text-left transition-all duration-200",
+                          "flex min-h-[76px] flex-col items-start justify-between gap-2 rounded-xl border p-3 text-left transition-all duration-200 cursor-pointer",
                           cardStyle,
                           isSelected && "ring-1 ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
                         )}
@@ -1514,9 +1523,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {!manualArmed && (
-              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] leading-relaxed text-cyan-200">
-                <p className="font-black uppercase tracking-wider">Ordre précédent exécuté</p>
-                <p className="mt-1 text-cyan-100/70">Choisis à nouveau un marché ou une direction pour activer un nouvel ordre.</p>
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
+                <p className="font-black uppercase tracking-wider text-amber-300">⚠️ Ordre non armé</p>
+                <p className="mt-1 text-amber-100/70">Sélectionne un marché ou clique sur <strong>▲ HAUSSE</strong> / <strong>▼ BAISSE</strong> ci-dessus pour armer et valider un nouvel ordre.</p>
               </div>
             )}
 
