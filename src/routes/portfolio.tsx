@@ -721,6 +721,7 @@ export default function PortfolioPage() {
               <option value="crash">📉 Preset Crash</option>
               <option value="scalping">🎯 Preset Scalping</option>
               <option value="manual">✋ Prise Directe Manuelle</option>
+            </select>
           </div>
         </div>
 
