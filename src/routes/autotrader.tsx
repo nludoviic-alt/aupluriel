@@ -537,6 +537,30 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     ? computeAdaptiveStake(config.stakeUsd, journalTrades)
     : config.stakeUsd;
 
+  const combinedAutoOpenTrades = useMemo(() => {
+    const list: TradeLog[] = [];
+    for (const pos of liveDerivPositions) {
+      list.push({
+        id: `deriv-${pos.contractId}`,
+        symbol: pos.symbol,
+        direction: pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "CALL" : "PUT",
+        stake: pos.buyPrice,
+        status: "open",
+        profit: pos.profit,
+        pnl: pos.profit,
+        time: pos.dateStart * 1000,
+        timestamp: pos.dateStart * 1000,
+        confidence: 0,
+      } as unknown as TradeLog);
+    }
+    for (const t of openTradeList) {
+      if (!list.some((item) => item.id === t.id)) {
+        list.push(t);
+      }
+    }
+    return list;
+  }, [liveDerivPositions, openTradeList]);
+
   const selectedPresetOpportunities = useMemo(() => {
     return (opportunities?.opportunities ?? []).filter((o) => o.preset === selectedPreset);
   }, [opportunities?.opportunities, selectedPreset]);
@@ -883,7 +907,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       <div className={cn("grid items-start gap-5", tradingTab === "auto" ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
       <div className={cn("min-w-0 space-y-5", tradingTab !== "auto" && "hidden")}>
       <LivePositionsPanel
-        openTrades={openTradeList}
+        openTrades={combinedAutoOpenTrades}
         onDismiss={(t) => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }}
       />
       <OpportunityCommandCenter

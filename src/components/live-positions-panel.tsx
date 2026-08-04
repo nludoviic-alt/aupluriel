@@ -13,7 +13,32 @@ export function LivePositionsPanel({
   openTrades: TradeLog[];
   onDismiss?: (trade: TradeLog) => void;
 }) {
-  if (!openTrades.length) return null;
+  if (!openTrades.length) {
+    return (
+      <div className="glass-panel overflow-hidden rounded-2xl border border-emerald-500/30 bg-[#070B14]/90 p-4 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xl">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold uppercase tracking-wider text-foreground">Robot en surveillance active</span>
+              <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[9px] font-black text-emerald-300 uppercase">
+                En Ligne
+              </span>
+            </div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+              Aucune position ouverte actuellement. Le robot scanne le marché 24h/24 et exécutera automatiquement le prochain signal validé (75%+).
+            </p>
+          </div>
+        </div>
+        <span className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-mono font-bold text-muted-foreground self-start sm:self-auto shrink-0">
+          0 position active
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-panel overflow-hidden rounded-2xl border border-cyan/30 bg-[#070B14]/95 p-4 shadow-2xl">
