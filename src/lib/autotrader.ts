@@ -4,7 +4,6 @@
 // Only executes trades when strict signal quality thresholds are met.
 
 import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance } from "./deriv";
-import { relayPush } from "./notify-push";
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
@@ -179,11 +178,11 @@ export const CONSERVATIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 4,
   maxConsecutiveLosses: 2,
   maxVolatilityPct: 2,
-  // Paires forex majeures uniquement — pas d'indices synthétiques (R_*) : ce
-  // sont des séries générées par RNG chez Deriv, aucun edge réel possible,
-  // winrate long terme ~50% = perte structurelle face au payout (voir
-  // DEFAULT_CONFIG.symbols dans signal-core.ts).
-  symbols: ["frxEURUSD", "frxUSDCHF"],
+  // Paires du panier Multi validé (pas dans DEFAULT_CONFIG.excludedSymbols —
+  // un symbole présent dans les deux listes disparaît silencieusement du scan).
+  // Pas d'indices synthétiques (R_*) : séries RNG, aucun edge réel possible,
+  // winrate long terme ~50% = perte structurelle face au payout.
+  symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: true,
@@ -215,9 +214,10 @@ export const MODERATE_PRESET: PresetConfig = {
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  // Pas d'indices synthétiques (R_*) — mêmes raisons que le preset
-  // Conservateur. cryBTCUSD couvre les heures hors session forex (Multiplier).
-  symbols: ["frxEURUSD", "frxGBPUSD", "cryBTCUSD"],
+  // frxEURUSD et cryBTCUSD sont dans DEFAULT_CONFIG.excludedSymbols —
+  // utiliser frxEURGBP et frxUSDCAD (panier Multi validé) évite le piège du
+  // symbole présent dans symbols ET excludedSymbols (silencieusement droppé).
+  symbols: ["frxEURGBP", "frxGBPUSD", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -249,9 +249,10 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  // Pas d'indices synthétiques (R_*, 1HZ*) — mêmes raisons que les autres
-  // presets. Panier élargi forex + or + crypto pour le volume visé.
-  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxXAUUSD", "cryBTCUSD", "cryETHUSD"],
+  // frxEURUSD, frxUSDJPY, frxXAUUSD, cryBTCUSD, cryETHUSD sont tous dans
+  // DEFAULT_CONFIG.excludedSymbols. On garde frxGBPUSD (validé) + OTC indices
+  // + frxEURGBP/frxUSDCAD du panier Multi.
+  symbols: ["frxEURGBP", "frxGBPUSD", "frxUSDCAD", "OTC_NDX", "OTC_SPC"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -273,25 +274,26 @@ export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 /** The 3 Boom indices Deriv actually offers as Multiplier that are
  * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
  * Deriv Options/Multipliers at all; BOOM600 excluded after production
- * audit: 62.7% WR, -$46.95 over 150 trades). */
+ * audit: 62.7% WR, -$46.95 over 150 trades; BOOM1000 excluded after
+ * recalibrage TP 10%: EV -$0.02/trade, quasi break-even). */
 export const BOOM_SYMBOLS = ["BOOM500", "BOOM900"];
 
-/** Mirror of BOOM_SYMBOLS for Crash — same 4 numeric variants, NOT yet
- * confirmed live the way BOOM_SYMBOLS was. Treat as a starting guess until a
- * real proposal/contracts_for call against Deriv confirms these four order. */
+/** Mirror of BOOM_SYMBOLS for Crash — 2 variants retained after production
+ * audit (CRASH600 dominates, CRASH1000/900 near breakeven). NOT yet
+ * confirmed live the way BOOM_SYMBOLS was — treat as a starting guess. */
 export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
 
 /**
- * BOOM preset — scalping haute fréquence sur les 3 index Boom rentables.
+ * BOOM preset — scalping haute fréquence sur les 2 index Boom rentables.
  *
  * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
  * gain (même quelques centimes) plutôt que d'attendre un objectif ambitieux.
  * Trades/positions illimités (pas de plafond artificiel — seule limite
- * réelle : 1 position par symbole, donc 3 max avec 3 symboles), mais la
+ * réelle : 1 position par symbole, donc 2 max avec 2 symboles), mais la
  * protection anti-série-de-pertes reste active (maxConsecutiveLosses).
  *
  * Différences clés vs Default :
- * - 3 symboles (BOOM1000/500/900), pas de scan all-markets
+ * - 2 symboles (BOOM500/900), pas de scan all-markets
  * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
@@ -304,7 +306,7 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
  *   au bout de quelques trades. Détail dans les commentaires ci-dessous.
  * - maxSimultaneousTrades / maxOpenPositions / maxTradesPerDay / maxDailyProfitUsd :
  *   plafonds retirés (trades illimités, demandé) — bornés en pratique par
- *   1 position/symbole × 4 symboles
+ *   1 position/symbole × 2 symboles
  * - multiplierLevel 100 (au lieu du défaut générique 20) : mesuré par sweep
  *   réel — à 20x la distance de prix du TP/SL dépassait le mouvement typique
  *   de Boom en 60 min (93% des trades expiraient sans jamais toucher ni l'un
@@ -326,7 +328,8 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
  * - stakeMode fixed : mise constante, pas de Kelly
  */
 export const BOOM_PRESET: Partial<AutoTraderConfig> = {
-  // ── 3 symboles Boom (BOOM600 exclu — 62.7% WR, -$46.95 sur 150 trades) ──
+  // ── 2 symboles Boom (BOOM600 exclu — 62.7% WR, -$46.95 sur 150 trades ;
+  //    BOOM1000 exclu — EV -$0.02/trade après recalibrage TP 10%) ──
   symbolMode: "watchlist",
   symbols: BOOM_SYMBOLS,
   // Pas de excludedSymbols ici : c'est une curation indépendante (ex. BOOM600
@@ -567,7 +570,8 @@ export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
   symbols: ["frxXAUUSD", "OTC_NDX"],
-  excludedSymbols: [],
+  // Pas de excludedSymbols ici — même raison que BOOM_PRESET : un preset
+  // qui le fixe à [] l'efface silencieusement à chaque (ré)application.
   instrumentType: "binary",
   stakeUsd: 1,
   durationMinutes: 15,
@@ -660,20 +664,6 @@ export function updatePresetPerformance(
     presets[idx].performance = { ...stats, lastUsed: Date.now() };
     saveCustomPresets(presets);
   }
-}
-
-// ─── Risk notification ─────────────────────────────────────────────────────────
-
-export function notifyRiskStop(reasons: string[]) {
-  relayPush("Au Pluriel — Auto-trader arrêté (risque détecté)", reasons.join("\n"), "/autotrader");
-}
-
-export function notifyTradeTaken(symbol: string, direction: string, confidence: number) {
-  relayPush(
-    `Au Pluriel — Trade pris sur ${symbol}`,
-    `${direction} · Confiance ${confidence}% · Position favorable (PREMIUM)`,
-    "/autotrader"
-  );
 }
 
 // ─── Real Kelly-criterion stake ────────────────────────────────────────────────
@@ -874,6 +864,8 @@ export async function openPreviewTrade(
       const last = candles[candles.length - 1]?.close ?? entryPrice;
       const won = direction === "CALL" ? last > entryPrice : last < entryPrice;
       const profit = won ? stakeUsd * payoutRatio : -stakeUsd;
+      addToCumulativePnl(profit);
+      addToDailyPnl(profit);
       emit({ ...base, status: won ? "won" : "lost", profit, payout: won ? stakeUsd + profit : 0, closedAt: Date.now() });
     } catch {
       emit({ ...base, status: "error", profit: 0 });
@@ -1159,6 +1151,10 @@ export async function backtestMultiTf(
     testCandles = 150, // number of 15m entry points tested (~37.5h of opportunities)
     veto4h = "strong-only",
     vetoDaily = "strong-only",
+    confluenceMode = "weighted",
+    adxFilterMode = "block",
+    adxBlockThreshold = 20,
+    adxStrongThreshold = 25,
   }: {
     minConfidence?: number;
     minTfAgreement?: number;
@@ -1167,6 +1163,10 @@ export async function backtestMultiTf(
     testCandles?: number;
     veto4h?: Veto4hMode;
     vetoDaily?: Veto4hMode;
+    confluenceMode?: "vote" | "weighted";
+    adxFilterMode?: "off" | "penalize" | "block";
+    adxBlockThreshold?: number;
+    adxStrongThreshold?: number;
   } = {},
 ): Promise<MultiTfBacktestResult> {
   const LOOKBACK = 250; // same per-TF depth analyzeSymbol() fetches live
@@ -1203,7 +1203,12 @@ export async function backtestMultiTf(
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights: learnedWeights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily);
+    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily, {
+      confluenceMode,
+      adxFilterMode,
+      adxBlockThreshold,
+      adxStrongThreshold,
+    });
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;

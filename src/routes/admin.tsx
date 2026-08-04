@@ -2080,9 +2080,9 @@ function AdminPage() {
                         onToggle={(action) => toggleBot(profileUser.id, profilePreset, action)}
                       />
                     </div>
-                    {/* ── Preset tabs: which of the three independent engines this
+                    {/* ── Preset tabs: which of the five independent engines this
                         panel is viewing/editing — switching tabs never starts,
-                        stops, or resets anything by itself (2026-08-01: all three
+                        stops, or resets anything by itself (2026-08-01: all five
                         can run at once, so this is a view selector, not a switch). ── */}
                     <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset consulté</span>

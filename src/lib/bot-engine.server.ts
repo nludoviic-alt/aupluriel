@@ -99,6 +99,17 @@ function engineKey(userId: number, preset: Preset): string {
 
 export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
 
+// Display names for user-facing text (push notifications) — kept local rather
+// than imported from opportunities.server.ts's own copy of this map, which
+// imports FROM this file and would make it circular.
+const PRESET_LABEL: Record<Preset, string> = {
+  default: "Multi",
+  boom: "Boom",
+  crash: "Crash",
+  scalping: "Scalping",
+  liquidity: "Reversal liquidité",
+};
+
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
  * 3 (five tabs squeezed into a phone-width strip was unreadable), but that
  * blocked users from running/viewing every preset on mobile at once — removed
@@ -510,20 +521,37 @@ class ServerBotEngine {
     this.finalizeIfIdle();
   }
 
-  /** Push the user only on winning trades — fire-and-forget so a push
-   * provider hiccup never breaks trade resolution. */
+  /** Push on winning trades and risk pauses — fire-and-forget so a push
+   * provider hiccup never breaks trade resolution.
+   * Risk pauses are exactly the event a locked-phone user most needs to see
+   * (Réglages promises "pause risque envoyée même téléphone verrouillé"),
+   * but riskPause()'s emit() used to fall straight through this method's
+   * won-only check and notify nobody — the pause was only visible if the
+   * user happened to have the app open. Each risk-stop log has a unique id
+   * (see riskPause), so unlike "won" it needs no prevStatus transition guard
+   * — every risk-stop emit is a fresh pause, never a re-emit of the same one. */
   private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
-    const won = log.status === "won" && prevStatus !== "won";
-    if (!won) return;
-
-    void (async () => {
-      const { sendPushToUser } = await import("./push.server");
-      await sendPushToUser(this.userId, {
-        title: `Gagné +$${log.profit.toFixed(2)}`,
-        body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
-        url: "/autotrader",
-      });
-    })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
+    if (log.status === "won" && prevStatus !== "won") {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(this.userId, {
+          title: `Gagné +$${log.profit.toFixed(2)}`,
+          body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+        });
+      })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
+      return;
+    }
+    if (log.status === "risk-stop") {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(this.userId, {
+          title: `⏸ Bot en pause — ${PRESET_LABEL[this.preset]}`,
+          body: log.note ?? "Protection de risque déclenchée.",
+          url: "/autotrader",
+        });
+      })().catch((e) => console.error(`[bot] Notification push (pause risque) échouée pour user ${this.userId}:`, (e as Error).message));
+    }
   }
 
   /** Pause courte pour un déclencheur RÉVERSIBLE (perte flottante, trailing

@@ -1568,7 +1568,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               {forcingTrade ? (
                 <><Activity className="h-5 w-5 animate-pulse" /> Traitement de l'ordre…</>
               ) : (
-                <><Zap className="h-5 w-5" /> Exécuter l'Ordre Manuel (${forceStake.toFixed(2)})</>
+                <>Exécuter l'Ordre Manuel (${forceStake.toFixed(2)})</>
               )}
             </Button>
 
@@ -1668,6 +1668,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             // just-settled loss surfaces above an older still-open position.
             allItems.sort((a, b) => (b.closedAt ?? b.timestamp) - (a.closedAt ?? a.timestamp));
 
+            // ── KPI summary (same visual as TradeJournalSection) ──
+            const closedItems = allItems.filter((t) => t.status === "won" || t.status === "lost");
+            const kpiWins = closedItems.filter((t) => t.status === "won").length;
+            const kpiLosses = closedItems.filter((t) => t.status === "lost").length;
+            const kpiTotal = closedItems.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+            const kpiOpen = allItems.filter((t) => t.status === "open" || t.status === "pending").length;
+
             if (allItems.length === 0) {
               return (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-xs text-muted-foreground space-y-1.5">
@@ -1678,6 +1685,33 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             }
 
             return (
+              <div className="space-y-3">
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+                  <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Trades</div>
+                    <div className="mt-1 font-mono text-base font-black text-foreground">{allItems.length}</div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Wins / Losses</div>
+                    <div className="mt-1 font-mono text-base font-black">
+                      <span className="text-up">{kpiWins}</span>
+                      <span className="text-muted-foreground/50">/</span>
+                      <span className="text-down">{kpiLosses}</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">En cours</div>
+                    <div className="mt-1 font-mono text-base font-black text-amber-300">{kpiOpen}</div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Total P&L</div>
+                    <div className={cn("mt-1 font-mono text-base font-black", kpiTotal >= 0 ? "text-up" : "text-down")}>
+                      {kpiTotal >= 0 ? "+" : ""}${kpiTotal.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
               <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/10 bg-black/20 shadow-xl">
                 {allItems.slice(0, 10).map((trade) => {
                   const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
@@ -1776,6 +1810,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </div>
                   );
                 })}
+              </div>
               </div>
             );
           })()}

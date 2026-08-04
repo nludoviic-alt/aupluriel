@@ -115,7 +115,7 @@ export const Route = createFileRoute("/api/admin/stats")({
           });
         }
 
-        // Optional ?preset=default|boom|crash|scalping — scopes the whole
+        // Optional ?preset=default|boom|crash|scalping|liquidity — scopes the whole
         // recap (and the duplicate-signal check below) to one engine, using
         // the trade's own explicit `preset` column (not symbol inference —
         // Scalping and Boom can both trade BOOM500). Omitted = every preset
