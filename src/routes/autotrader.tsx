@@ -36,6 +36,7 @@ import {
   openPreviewTrade,
   getInstrumentForSymbol,
   isCallPutAvailable,
+  isInTradingSession,
   isSymbolTradeable,
   loadCumulativePnl,
   loadCustomPresets,
@@ -560,7 +561,24 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // An unconnected demo order is deliberately simulated. But once Deriv is
   // connected, the account type must match the screen mode: never let a
   // "Démo" label route a manual buy to a live connected account.
-  const manualTradeAllowed = manualInstrumentSupported && (
+  const isMarketOpenNow = useMemo(() => {
+    if (!forceSymbol) return true;
+    return isInTradingSession(["sydney", "asia", "london", "newyork"], forceSymbol);
+  }, [forceSymbol]);
+
+  // Auto-switch away from a closed market symbol (e.g. OTC_DJI when NY stock market is closed)
+  useEffect(() => {
+    if (forceSymbol && !isInTradingSession(["sydney", "asia", "london", "newyork"], forceSymbol)) {
+      const activeOpen = SYMBOLS.find((s) => isInTradingSession(["sydney", "asia", "london", "newyork"], s.deriv))?.deriv;
+      if (activeOpen) {
+        setForceSymbol(activeOpen);
+        const openLabel = SYMBOLS.find((s) => s.deriv === activeOpen)?.label ?? activeOpen;
+        toast.info(`Marché fermé — bascule automatique sur le marché ouvert ${openLabel}`);
+      }
+    }
+  }, [forceSymbol]);
+
+  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && (
     config.mode === "demo"
       ? (!derivSession.connected || manualAccountMatchesMode)
       : derivSession.connected && manualAccountMatchesMode
@@ -1336,6 +1354,19 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       {manualExecution.symbol} · {manualExecution.direction}
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Market Closed Warning */}
+            {!isMarketOpenNow && (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-500/15 p-3.5 text-xs flex items-center gap-3 text-rose-300 animate-fade-in shadow-lg">
+                <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
+                <div>
+                  <span className="font-extrabold uppercase tracking-wider">Marché actuellement fermé</span>
+                  <p className="mt-0.5 text-[11px] opacity-90">
+                    Ce marché ({manualSymbolLabel}) est fermé hors des heures d'ouverture. Sélectionne un marché actif (Forex ou Crypto).
+                  </p>
                 </div>
               </div>
             )}
