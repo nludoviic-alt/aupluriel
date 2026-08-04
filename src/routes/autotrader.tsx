@@ -217,6 +217,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [presetDesc, setPresetDesc] = useState("");
   const [cumulativePnl, setCumulativePnl] = useState(0);
   const [forcingTrade, setForcingTrade] = useState(false);
+  // Requires a fresh, deliberate market/direction choice before EXÉCUTER can
+  // fire again — without this, forceSymbol/forceDir/forceStake just sit at
+  // whatever they were after the last trade (the sync effect below actively
+  // keeps forceSymbol populated), so a second tap on EXÉCUTER silently placed
+  // another identical order with nothing newly selected. True on first mount
+  // (nothing was "just executed" yet); set false right after any successful
+  // manual execution, set true again by prepareManualSignal or the direction
+  // buttons — the two ways to actually choose what to trade in this tab.
+  const [manualArmed, setManualArmed] = useState(true);
   const [manualExecution, setManualExecution] = useState<{
     status: "pending" | "open";
     symbol: string;
@@ -754,6 +763,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     setForceDir(opportunity.direction);
     setForceStake(config.stakeUsd);
     setPreparedManualOpportunity(opportunity);
+    setManualArmed(true);
     window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   }
 
@@ -1196,6 +1206,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           onClick={() => {
                             setForceDir(d);
                             setPreparedManualOpportunity(null);
+                            setManualArmed(true);
                           }}
                           className={cn(
                             "relative flex min-h-[96px] flex-col items-center justify-center gap-1.5 rounded-xl border p-3 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer",
@@ -1486,6 +1497,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               </div>
             </div>
 
+            {!manualArmed && (
+              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] leading-relaxed text-cyan-200">
+                <p className="font-black uppercase tracking-wider">Ordre précédent exécuté</p>
+                <p className="mt-1 text-cyan-100/70">Choisis à nouveau un marché ou une direction pour activer un nouvel ordre.</p>
+              </div>
+            )}
+
             {!manualDirectionMatchesSignal && manualOpportunity?.direction && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
                 <p className="font-black uppercase tracking-wider">Décision contraire au signal</p>
@@ -1503,7 +1521,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
             {/* Hero CTA Button */}
             <Button
-              disabled={!manualTradeAllowed || forcingTrade}
+              disabled={!manualTradeAllowed || forcingTrade || !manualArmed}
               onClick={async () => {
                 if (!forceSymbol) return;
                 const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
@@ -1551,6 +1569,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       }
                     );
                   }
+                  // Require a fresh, deliberate market/direction pick before the
+                  // button re-enables — prevents an accidental second tap from
+                  // silently placing another order with nothing newly chosen.
+                  setManualArmed(false);
+                  setPreparedManualOpportunity(null);
                 } catch (e) {
                   toast.error(`Échec: ${(e as Error).message}`);
                 } finally {
