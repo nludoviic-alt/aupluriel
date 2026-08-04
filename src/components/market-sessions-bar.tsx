@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Flame, Globe } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, utcHourToMontreal } from "@/lib/utils";
 import { SESSION_HOURS, type TradingSession } from "@/lib/signal-core";
 
 const SESSIONS_ORDER: TradingSession[] = ["asia", "london", "newyork", "sydney"];
@@ -75,32 +75,37 @@ export function MarketSessionsBar({ className }: { className?: string }) {
 
       {/* Right: 4 Compact Simple Pills (VERT = OUVERT, ROUGE = FERMÉ) */}
       <div className="grid grid-cols-2 gap-1.5 sm:flex sm:items-center sm:gap-2">
-        {sessionStatuses.map(({ session, meta, isActive, minsToOpen, minsToClose }) => (
+        {sessionStatuses.map(({ session, meta, hours, isActive, minsToOpen, minsToClose }) => (
           <div
             key={session}
             className={cn(
-              "flex items-center justify-between gap-2.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all",
+              "flex flex-col justify-center gap-0.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all",
               isActive
                 ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                 : "border-rose-500/40 bg-rose-500/10 text-rose-300/80"
             )}
           >
-            <div className="flex items-center gap-1.5">
-              <span>{meta.flag}</span>
-              <span className="font-extrabold">{meta.name}</span>
-            </div>
+            <div className="flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-1.5">
+                <span>{meta.flag}</span>
+                <span className="font-extrabold">{meta.name}</span>
+              </div>
 
-            <div className="flex items-center gap-1 font-mono text-[10px]">
-              {isActive ? (
-                <span className="inline-flex items-center gap-1 font-black text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  OUVERT ({formatMins(minsToClose)})
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-rose-400 font-medium">
-                  FERMÉ ({formatMins(minsToOpen)})
-                </span>
-              )}
+              <div className="flex items-center gap-1 font-mono text-[10px]">
+                {isActive ? (
+                  <span className="inline-flex items-center gap-1 font-black text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    OUVERT ({formatMins(minsToClose)})
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-rose-400 font-medium">
+                    FERMÉ ({formatMins(minsToOpen)})
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="font-mono text-[9px] font-medium opacity-60">
+              {utcHourToMontreal(hours.open)}–{utcHourToMontreal(hours.close)} (Montréal)
             </div>
           </div>
         ))}

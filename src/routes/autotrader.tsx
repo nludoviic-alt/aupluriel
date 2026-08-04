@@ -62,7 +62,7 @@ import {
 import { api } from "@/lib/api";
 import { relayPush } from "@/lib/notify-push";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
-import { cn } from "@/lib/utils";
+import { cn, utcHourToMontreal } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
@@ -2638,7 +2638,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             className={cn("rounded-xl border px-4 py-2 text-xs font-medium transition-colors text-left",
                               active ? "border-[color:var(--brand-cyan)]/40 bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)]" : "border-border text-muted-foreground hover:text-foreground")}>
                             <div className="font-semibold">{SESSION_HOURS[s].label} {isOpen ? "●" : ""}</div>
-                            <div className="text-[10px] opacity-60">{SESSION_HOURS[s].open}h–{SESSION_HOURS[s].close}h UTC</div>
+                            <div className="text-[10px] opacity-60">{utcHourToMontreal(SESSION_HOURS[s].open)}–{utcHourToMontreal(SESSION_HOURS[s].close)} (Montréal)</div>
                           </button>
                         );
                       })}
