@@ -1465,6 +1465,100 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </p>
           </aside>
         </div>
+
+        {/* ── Mini Journal des Contrats en Cours & Récents ── */}
+        <div className="mt-6 glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-7 w-7 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
+                <Activity className="h-4 w-4 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
+                  Suivi des Contrats & Positions
+                </h3>
+                <p className="text-[10px] text-muted-foreground">
+                  Historique en temps réel de tes positions ouvertes et contrats récemment fermés.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider",
+                openTradeList.length > 0 ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 animate-pulse" : "border-white/10 bg-white/[0.04] text-muted-foreground"
+              )}>
+                {openTradeList.length} position{openTradeList.length > 1 ? "s" : ""} en cours
+              </span>
+            </div>
+          </div>
+
+          {logs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-xs text-muted-foreground space-y-1">
+              <p className="font-bold text-foreground">Aucune position enregistrée pour le moment</p>
+              <p className="text-[11px] opacity-75">Tes ordres manuels validés ci-dessus s'afficheront ici en direct avec leur statut.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/10 bg-black/20">
+              {logs.slice(0, 8).map((trade) => {
+                const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
+                const isUp = trade.direction === "CALL" || trade.direction === "MULTUP";
+                const isOpen = trade.status === "open" || trade.status === "pending";
+                const isWin = trade.status === "won";
+                const isLoss = trade.status === "lost";
+
+                return (
+                  <div key={trade.id} className="flex items-center justify-between gap-3 p-3.5 text-xs transition-colors hover:bg-white/[0.02]">
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-lg border font-mono text-xs font-black",
+                        isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                      )}>
+                        {isUp ? "▲" : "▼"}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-foreground">{symLabel}</span>
+                          <span className="text-[10px] font-semibold text-muted-foreground/75 font-mono">{trade.direction}</span>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground/60">
+                          {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-5 text-right">
+                      <div>
+                        <div className="font-mono font-black text-foreground">${trade.stake.toFixed(2)}</div>
+                        <div className="text-[9px] font-bold text-muted-foreground/70 uppercase">Mise</div>
+                      </div>
+
+                      <div className="min-w-[110px]">
+                        {isOpen ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300 animate-pulse">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                            En cours
+                          </span>
+                        ) : isWin ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-300">
+                            <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? 0).toFixed(2)}
+                          </span>
+                        ) : isLoss ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-rose-300">
+                            -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                            {trade.status}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
       </div>
 
