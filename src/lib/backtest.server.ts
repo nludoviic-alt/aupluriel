@@ -15,7 +15,22 @@ import { getLearnedWeightsServer } from "./indicator-weights.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
 
 const GRAN_MINUTES: Record<string, number> = { "5m": 5, "15m": 15, "1H": 60, "4H": 240 };
-const LOOKBACK = 250;
+// Deriv's public ticks_history (unauthenticated — this file only ever runs
+// server-side, unattended, with no per-user session) silently caps how much
+// candle history it returns regardless of the requested `count` — verified
+// empirically (isolated, spaced-out single requests, so not a rate-limit
+// artifact) at ~197-218 candles for 15m/1H/4H on a major forex pair; less
+// liquid symbols may return even fewer. The live engine's analyzeSymbolCore
+// also requests 250 (matching what this LOOKBACK used to be) but is
+// unaffected by that ceiling — it does one point-in-time signal calc on
+// whatever comes back. This function is different: LOOKBACK also sets the
+// walk-forward loop's minimum start index (`Math.max(LOOKBACK, ...)`), so a
+// value the API can never actually satisfy makes `start > end` and the loop
+// silently never executes — every combo in a sweep reports exactly 0 trades,
+// which used to read as "no edge here" when it was really "this never ran."
+// 180 sits comfortably under the observed ceiling for the tightest
+// timeframe (4H) with margin for thinner-history symbols.
+const LOOKBACK = 180;
 const FALLBACK_PAYOUT_PCT = 0.85;
 
 /** Binary search: the trailing `lookback` candles that were already closed as of `epoch`. */
