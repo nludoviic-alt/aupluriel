@@ -3,43 +3,25 @@
 // server engine (bot-engine.server.ts) so the two can never drift apart.
 // Only executes trades when strict signal quality thresholds are met.
 
-import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance, SYMBOLS } from "./deriv";
+import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance } from "./deriv";
 import { relayPush } from "./notify-push";
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
-import { mapWithConcurrency } from "./utils";
 import {
   DEFAULT_CONFIG,
   TIMEFRAMES,
   aggregateTfSignals,
   analyzeSymbolCore,
-  computeAdaptiveStake,
   computeKellyFraction,
-  countConsecutiveLosses,
-  is24x7Symbol,
-  isCallPutAvailable,
-  isCorrelatedWithActive,
-  isHighRiskWindow,
-  isInTradingSession,
   isSymbolTradeable,
-  isHourBlocked,
-  getInstrumentForSymbol,
   minContractMinutes,
-  symbolRollingStats,
-  computeProgressiveStake,
-  computeDynamicMinConfidence,
   todayPnl,
-  todayTradeCount,
   type AutoTraderConfig,
-  type RiskStopHandler,
-  type ScanResultHandler,
-  type ScanSymbolResult,
   type SymbolAnalysis,
   type TfSignalMap,
   type TradeEventHandler,
   type TradeLog,
-  type TradingSession,
   type Veto4hMode,
 } from "./signal-core";
 
@@ -491,7 +473,11 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
-  takeProfitPctOfStake: 10,
+  // Revalidation Deriv récente (300 bougies, 330 trades candidats, levier
+  // 100x) : TP 5% / SL 20% a produit +$17.59, 82.4% de réussite contre
+  // 80% requis, avec seulement 14 sorties au temps. TP 10% / SL 20% était
+  // plus faible sur la même fenêtre (+$12.58) et davantage dépendant du timeout.
+  takeProfitPctOfStake: 5,
   stopLossPctOfStake: 20,
   // Noyau prod retenu le 2026-08-02 : CRASH1000/900 avec accord TF 3+.
   // La confiance reste large (70-100) car ce preset manque encore de marge ;
@@ -562,6 +548,32 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   // api/bot.ts) regardless of what's requested — this preset never trades
   // real money, by design, until the comparison in step 10 of the plan says
   // otherwise and a human explicitly decides to graduate it.
+  mode: "demo",
+};
+
+/**
+ * Demo-only experiment for XAU/USD and US Tech 100: an M15 sweep of a recent
+ * liquidity extreme, followed by a close back into the range and RSI turn.
+ * It is intentionally a separate preset so it cannot alter Multi's validated
+ * market list or risk behaviour.
+ */
+export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
+  ...DEFAULT_CONFIG,
+  symbolMode: "watchlist",
+  symbols: ["frxXAUUSD", "OTC_NDX"],
+  excludedSymbols: [],
+  instrumentType: "binary",
+  stakeUsd: 1,
+  durationMinutes: 15,
+  minConfidence: 80,
+  maxConfidence: 95,
+  minTfAgreement: 4,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 2,
+  maxConsecutiveLosses: 2,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  tradingSessions: ["london", "newyork"],
   mode: "demo",
 };
 
@@ -1226,508 +1238,4 @@ export function dismissTrade(id: string): TradeLog[] {
     logsCache = logs;
   }
   return logs;
-}
-
-// ─── Main engine ──────────────────────────────────────────────────────────────
-
-export function startAutoTrader(
-  config: AutoTraderConfig,
-  onEvent: TradeEventHandler,
-  onRiskStop?: RiskStopHandler,
-  onScanResult?: ScanResultHandler,
-  balanceUsd?: number | (() => number | undefined),
-): () => void {
-  let stopped = false;
-  const logs = loadTradeLog();
-  const activeSymbols = new Map<string, "CALL" | "PUT">();
-  let interval: ReturnType<typeof setInterval> | undefined;
-  // Per-symbol cooldown (epoch ms) — a losing streak on ONE instrument no longer
-  // has to pause every other symbol too (see countConsecutiveLosses(logs, symbol)).
-  const symbolCooldowns = new Map<string, number>();
-  let sessionPeakPnl = 0; // highest daily P&L seen since engine start
-  // Risk events PAUSE the engine (with automatic resume) instead of killing it:
-  // the previous hard-stop never re-armed, so a limit hit at 10am left the bot
-  // dead until someone manually restarted it (audit fix #1).
-  let pausedUntil = 0;
-
-  function emit(log: TradeLog, meta?: { cooldownUntil?: number }) {
-    const idx = logs.findIndex((l) => l.id === log.id);
-    const prev = idx >= 0 ? logs[idx] : null;
-    if (idx >= 0) logs[idx] = log;
-    else logs.unshift(log);
-    saveTradeLog(logs);
-    // Update cumulative P&L only when trade first reaches a terminal state
-    if ((log.status === "won" || log.status === "lost") &&
-        prev && prev.status !== "won" && prev.status !== "lost") {
-      addToCumulativePnl(log.profit);
-      addToDailyPnl(log.profit); // rollup du jour — insensible à la troncature du journal
-      // Feed the outcome back into the adaptive indicator weights for this symbol —
-      // the actual "learns from its mistakes" mechanism, not just a stake haircut.
-      recordComponentOutcomes(log.symbol, log.components, log.status === "won");
-    }
-    onEvent(log, meta);
-  }
-
-  /** Next local midnight — daily limits re-arm when todayPnl naturally resets. */
-  function nextMidnight(): number {
-    const d = new Date();
-    d.setHours(24, 0, 0, 0);
-    return d.getTime();
-  }
-
-  /** Pause the engine until `untilTs`, log the reasons, notify — auto-resumes. */
-  function riskPause(reasons: string[], untilTs: number) {
-    if (stopped || Date.now() < pausedUntil) return;
-    pausedUntil = untilTs;
-    sessionPeakPnl = 0; // re-arm the trailing stop for the next trading window
-    const resumeLabel = new Date(untilTs).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    const stopLog: TradeLog = {
-      id: `risk_${Date.now()}`,
-      time: Date.now(),
-      symbol: "—",
-      direction: "CALL",
-      stake: 0,
-      payout: 0,
-      status: "risk-stop",
-      profit: 0,
-      confidence: 0,
-      tfAgreement: 0,
-      note: `${reasons.join(" · ")} — reprise auto à ${resumeLabel}`,
-    };
-    emit(stopLog);
-    notifyRiskStop(reasons);
-    onRiskStop?.(reasons, untilTs);
-  }
-
-  async function tick() {
-    if (stopped) return;
-    if (Date.now() < pausedUntil) return; // risk pause in effect — auto-resumes
-
-    // Rollup persisté plutôt que somme du journal tronqué — les gains du début
-    // de journée sortaient de la fenêtre et les limites de risque dérivaient.
-    const pnl = loadDailyPnl().pnl;
-    const count = todayTradeCount(logs);
-    const scanResults: ScanSymbolResult[] = [];
-
-    // ── TRAILING STOP (session peak drawdown) ──────────────────
-    if (pnl > sessionPeakPnl) sessionPeakPnl = pnl;
-    if (config.trailingStopUsd > 0 && sessionPeakPnl > 0 && pnl < sessionPeakPnl - config.trailingStopUsd) {
-      riskPause([
-        `Trailing stop déclenché — pic: +$${sessionPeakPnl.toFixed(2)}, maintenant: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
-        `Drawdown de $${(sessionPeakPnl - pnl).toFixed(2)} > seuil $${config.trailingStopUsd}`,
-      ], nextMidnight());
-      return;
-    }
-
-    // ── RISK CHECKS ────────────────────────────────────────────
-    // Daily loss limit — always enforced. Floating LOSSES on open positions
-    // count too (realized-only pnl let the bot keep stacking positions while
-    // already underwater on open ones); floating gains don't — they can
-    // evaporate and must not mask realized losses.
-    const floatingLoss = Math.min(0, logs
-      .filter((l) => l.status === "open")
-      .reduce((sum, l) => sum + l.profit, 0));
-    if (pnl + floatingLoss <= -Math.abs(config.maxDailyLossUsd)) {
-      if (config.stopOnRisk) {
-        const detail = floatingLoss < 0
-          ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
-          : `$${Math.abs(pnl).toFixed(2)}`;
-        riskPause([`Perte journalière atteinte : ${detail} / $${config.maxDailyLossUsd}`], nextMidnight());
-      } else {
-        onScanResult?.({ time: Date.now(), results: config.symbols.map((s) => ({ symbol: s, action: "daily-limit" as const })) });
-      }
-      return;
-    }
-
-    // Daily profit target
-    if (config.maxDailyProfitUsd > 0 && pnl >= config.maxDailyProfitUsd) {
-      if (config.stopOnRisk) {
-        riskPause([`Objectif journalier atteint : +$${pnl.toFixed(2)} / $${config.maxDailyProfitUsd} — bien joué !`], nextMidnight());
-      }
-      return;
-    }
-
-    if (count >= config.maxTradesPerDay) {
-      for (const symbol of config.symbols) {
-        scanResults.push({ symbol, action: "daily-limit" });
-      }
-      onScanResult?.({ time: Date.now(), results: scanResults });
-      return;
-    }
-
-    // Global cap on TOTAL open positions — maxSimultaneousTrades only limits
-    // NEW trades per tick, so successive ticks stacked positions without bound.
-    if (activeSymbols.size >= config.maxOpenPositions) {
-      for (const symbol of config.symbols) {
-        if (!activeSymbols.has(symbol)) scanResults.push({ symbol, action: "daily-limit", note: `${activeSymbols.size} positions ouvertes — plafond ${config.maxOpenPositions}` });
-      }
-      onScanResult?.({ time: Date.now(), results: scanResults });
-      return;
-    }
-
-    // Base stake: fixed USD, % of current balance, or (if a Kelly stake can't be
-    // resolved for a given symbol later) this same fixed/percent fallback.
-    const currentBalance = typeof balanceUsd === "function" ? balanceUsd() : balanceUsd;
-    const baseStake = config.stakeMode === "percent" && currentBalance && currentBalance > 0
-      ? Math.max(1, (currentBalance * config.stakePercent) / 100)
-      : config.stakeUsd;
-
-    // Adaptive stake (win-rate-tiered haircut on recent trades)
-    const effectiveStake = config.adaptiveStake
-      ? computeAdaptiveStake(baseStake, logs)
-      : baseStake;
-
-    // ── Candidate symbols: the manual watchlist, or every CALL/PUT-eligible market ──
-    // Synthetic indices excluded even here: RNG-generated by Deriv, no real edge,
-    // structural ~50% long-term winrate (see DEFAULT_CONFIG.symbols comment).
-    const candidateSymbols = config.symbolMode === "all-markets"
-      ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config))).map((s) => s.deriv)
-      : config.symbols;
-
-    // ── Cheap pre-filter (no network) — trims the list before spending
-    // analyzeSymbol's 4-timeframe fetches on symbols that can't trade anyway ──
-    const toAnalyze: string[] = [];
-    for (const symbol of candidateSymbols) {
-      const symInstrument = getInstrumentForSymbol(symbol, config);
-      if (!isSymbolTradeable(symbol, symInstrument)) {
-        scanResults.push({ symbol, action: "not-tradeable", note: "Indisponible pour ce type d'instrument (crypto = Multiplier only, indices boursiers = CALL/PUT only)" });
-        continue;
-      }
-      if (activeSymbols.has(symbol)) {
-        scanResults.push({ symbol, action: "open-trade" });
-        continue;
-      }
-      if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
-        scanResults.push({ symbol, action: "session-closed" });
-        continue;
-      }
-      // Skip high-risk news/session-open windows for session-bound markets
-      // (24/7 synthetics unaffected). Opt-out via config.newsFilter for users
-      // who explicitly want to trade the volatile session opens.
-      if (!is24x7Symbol(symbol) && config.newsFilter !== false) {
-        const riskCheck = isHighRiskWindow();
-        if (riskCheck.blocked) {
-          scanResults.push({ symbol, action: "news-block", note: riskCheck.reason });
-          continue;
-        }
-      }
-
-      const symbolCooldownUntil = symbolCooldowns.get(symbol) ?? 0;
-      if (Date.now() < symbolCooldownUntil) {
-        scanResults.push({ symbol, action: "cooldown" });
-        continue;
-      }
-      if (symbolCooldownUntil > 0) symbolCooldowns.delete(symbol); // expired
-
-      // Consecutive losses on THIS symbol → pause THIS symbol only. Killing the
-      // whole engine for one instrument's streak (old stopOnRisk behavior) left
-      // every other market untraded until a manual restart (audit fix #1).
-      const consecutive = countConsecutiveLosses(logs, symbol);
-      if (consecutive >= config.maxConsecutiveLosses) {
-        symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
-        emit({
-          id: `cd_${Date.now()}_${symbol}`,
-          time: Date.now(),
-          symbol,
-          direction: "CALL",
-          stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
-          status: "cooldown",
-          note: `${consecutive} pertes consécutives sur ${symbol} — pause ${config.cooldownMinutes} min`,
-        });
-        scanResults.push({ symbol, action: "cooldown" });
-        continue;
-      }
-
-      // A streak counter resets on any single win — a symbol alternating
-      // W-L-W-L never trips it even though it's a coin flip against a payout
-      // that needs >50% to break even. Catches that slow bleed directly.
-      if (config.minSymbolWinRate > 0) {
-        const rolling = symbolRollingStats(logs, symbol, config.symbolWinRateLookback);
-        if (rolling.trades >= 5 && rolling.winRate < config.minSymbolWinRate) {
-          symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
-          emit({
-            id: `cd_${Date.now()}_${symbol}`,
-            time: Date.now(),
-            symbol,
-            direction: "CALL",
-            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
-            status: "cooldown",
-            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades (${symbol}) — pause ${config.cooldownMinutes} min`,
-          });
-          scanResults.push({ symbol, action: "cooldown" });
-          continue;
-        }
-      }
-
-      toAnalyze.push(symbol);
-    }
-
-    if (!toAnalyze.length) {
-      onScanResult?.({ time: Date.now(), results: scanResults });
-      return;
-    }
-
-    // ── Parallel analysis (concurrency-capped) ──────────────────
-    // Sequentially awaiting analyzeSymbol per symbol made a large watchlist (or
-    // an all-markets scan) take minutes; this caps concurrency instead.
-    const analyzed = await mapWithConcurrency(toAnalyze, 6, async (symbol) => ({
-      symbol,
-      analysis: await analyzeSymbol(symbol, config.veto4h ?? "strong-only", config.vetoDaily ?? "off", {
-        confluenceMode: config.confluenceMode ?? "vote",
-        adxFilterMode: config.adxFilterMode ?? "off",
-        adxBlockThreshold: config.adxBlockThreshold,
-        adxStrongThreshold: config.adxStrongThreshold,
-      }),
-    }));
-
-    // All-markets mode: best opportunities get first crack at the trade slots
-    // this tick allows. Watchlist mode keeps the user's configured order.
-    const ordered = config.symbolMode === "all-markets"
-      ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
-      : analyzed;
-
-    let newTradesThisTick = 0;
-
-    for (const { symbol, analysis } of ordered) {
-      if (stopped) break;
-
-      if (newTradesThisTick >= config.maxSimultaneousTrades) {
-        scanResults.push({ symbol, action: "daily-limit", note: `Limite de ${config.maxSimultaneousTrades} trades/cycle atteinte` });
-        continue;
-      }
-
-      // ── Time-of-day edge filter ──
-      if (config.hourlyEdgeFilter && isHourBlocked(logs, config.hourlyEdgeLookback)) {
-        scanResults.push({ symbol, action: "no-signal", note: "Creneau horaire bloque (P&L negatif)" });
-        continue;
-      }
-
-      // ── Extreme volatility → skip THIS symbol (one wild market shouldn't
-      // shut down trading on every calm one — audit fix) ──────────
-      if (analysis.volatilityPct > config.maxVolatilityPct) {
-        scanResults.push({ symbol, action: "volatility", note: `ATR ${analysis.volatilityPct.toFixed(2)}% > max ${config.maxVolatilityPct}% — paire ignorée` });
-        continue;
-      }
-
-      // ── Abnormal volatility for THIS symbol specifically ──────
-      // A flat ATR% cutoff either over-restricts calm pairs (EUR/USD) or
-      // under-restricts violent ones (Volatility 100). On top of the absolute
-      // gate above, skip this symbol only when its current ATR% is a multiple
-      // of ITS OWN recent norm — catches an abnormal spike a global % would miss.
-      if (analysis.volatilityRatio > 3) {
-        scanResults.push({ symbol, action: "volatility", note: `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale de ce marché — signal ignoré` });
-        continue;
-      }
-
-      // ── FAVORABLE-ONLY FILTERS ────────────────────────────────
-      if (!analysis.direction) {
-        scanResults.push({ symbol, action: "no-signal", confidence: analysis.confidence });
-        continue;
-      }
-      // Correlation can change mid-tick as earlier candidates open trades —
-      // must be rechecked here, not just in the pre-filter pass above. Direction-
-      // aware: only the SAME direction on a correlated pair doubles the bet.
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, activeSymbols)) {
-        scanResults.push({ symbol, action: "correlated" });
-        continue;
-      }
-      if (analysis.confidence < config.minConfidence) {
-        scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
-        continue;
-      }
-      if (config.maxConfidence < 100 && analysis.confidence > config.maxConfidence) {
-        scanResults.push({ symbol, action: "too-confident", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
-        continue;
-      }
-      if (analysis.agreement < config.minTfAgreement) {
-        scanResults.push({ symbol, action: "low-agreement", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
-        continue;
-      }
-      if (config.premiumOnly && analysis.premiumCount < 1) {
-        scanResults.push({ symbol, action: "not-premium", direction: analysis.direction, confidence: analysis.confidence });
-        continue;
-      }
-
-      // Clamp to the symbol's minimum allowed duration (forex CALL/PUT starts at 15m)
-      let tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
-      // ── Dynamic duration based on ATR ──
-      if (config.dynamicDuration) {
-        const atrFactor = analysis.volatilityPct > 2 ? 0.7 : analysis.volatilityPct < 0.3 ? 1.5 : 1.0;
-        tradeDuration = Math.round(tradeDuration * atrFactor);
-        tradeDuration = Math.max(minContractMinutes(symbol), Math.min(60, tradeDuration));
-      }
-
-      // Confidence alone doesn't guard against a thin payout — Deriv's actual
-      // payout varies by instrument/duration/volatility, and a low one raises
-      // the win rate needed just to break even.
-      try {
-        const proposal = await proposalContract({
-          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: tradeDuration,
-        });
-        const payoutRatio = (proposal.payout - proposal.askPrice) / proposal.askPrice;
-        if (payoutRatio > 0 && payoutRatio < 5 && payoutRatio < config.minPayoutRatio) {
-          scanResults.push({
-            symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
-            note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
-          });
-          continue;
-        }
-      } catch { /* quote unavailable — don't block the trade on it */ }
-
-      // Signal qualifies — will trade
-      scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement });
-      onScanResult?.({ time: Date.now(), results: scanResults });
-      newTradesThisTick++;
-
-      // Stake for THIS trade: Kelly (per-symbol measured edge) when enabled and
-      // enough backtest data exists for this symbol, otherwise the fixed/percent
-      // fallback already computed above.
-      let stakeForTrade = effectiveStake;
-      let kellyNote = "";
-      if (config.stakeMode === "kelly") {
-        const kellyStake = computeKellyStake(symbol, currentBalance ?? config.initialCapital, config.kellyFraction);
-        if (kellyStake !== null) {
-          stakeForTrade = config.adaptiveStake ? computeAdaptiveStake(kellyStake, logs) : kellyStake;
-          kellyNote = `Kelly $${kellyStake.toFixed(2)}`;
-        } else {
-          kellyNote = "Kelly indisponible (backtest requis) — mise de secours";
-        }
-      }
-
-      // ── Progressive stake reduction after consecutive losses ──
-      if (config.progressiveStakeReduction) {
-        const consecLosses = countConsecutiveLosses(logs, symbol);
-        if (consecLosses > 0) {
-          stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
-        }
-      }
-
-      const stakeLabel = stakeForTrade < config.stakeUsd ? `réduite: $${stakeForTrade.toFixed(2)}` : "";
-      const tasLabel = `TAS ${analysis.trendAlignmentScore}/4`;
-      const patLabel = analysis.patternBonus > 0 ? ` · pattern +${analysis.patternBonus}` : "";
-      const noteStr = [kellyNote, stakeLabel, tasLabel + patLabel].filter(Boolean).join(" · ");
-
-      // Capture entry price at open for the live visual
-      let entryPrice = 0;
-      try {
-        const entryCandles = await fetchCandles(symbol, GRANULARITY["1m"], 1);
-        entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
-      } catch { /* ignore */ }
-
-      const logId = `t_${Date.now()}_${symbol}`;
-      const pendingLog: TradeLog = {
-        id: logId,
-        time: Date.now(),
-        symbol,
-        direction: analysis.direction,
-        stake: stakeForTrade,
-        payout: 0,
-        status: "pending",
-        profit: 0,
-        confidence: Math.round(analysis.confidence),
-        tfAgreement: analysis.agreement,
-        note: noteStr || undefined,
-        entryPrice: entryPrice || undefined,
-        durationMinutes: tradeDuration,
-        expiry: Date.now() + tradeDuration * 60_000,
-        components: analysis.components,
-      };
-      emit(pendingLog);
-      notifyTradeTaken(
-        symbol,
-        analysis.direction,
-        Math.round(analysis.confidence),
-      );
-
-      // Real Deriv account (demo or live): verify connection first
-      const connected = await checkDerivConnection();
-      if (!connected) {
-        emit({ ...pendingLog, status: "error", profit: 0, note: "Connexion Deriv non disponible" });
-        continue;
-      }
-
-      try {
-        activeSymbols.set(symbol, analysis.direction);
-        // Fresh proposal per attempt — Deriv proposal IDs expire in seconds
-        const bought = await proposeAndBuy({
-          symbol,
-          amount: stakeForTrade,
-          contractType: analysis.direction,
-          durationMinutes: tradeDuration,
-        });
-
-        const openLog: TradeLog = {
-          ...pendingLog,
-          status: "open",
-          payout: bought.payout,
-          contractId: bought.contractId,
-        };
-        emit(openLog);
-
-        let contractResolved = false;
-        const resolveContract = (won: boolean, profit: number) => {
-          if (contractResolved) return;
-          contractResolved = true;
-          clearTimeout(fallbackTimeout);
-          unsub();
-          activeSymbols.delete(symbol);
-          emit({
-            ...openLog,
-            status: won ? "won" : "lost",
-            // REAL Deriv profit — negative on loss, includes partial payouts
-            profit,
-            closedAt: Date.now(),
-          } as TradeLog);
-        };
-
-        const unsub = subscribeContract(bought.contractId, (update) => {
-          if (update.status === "open") return;
-          resolveContract(update.status === "won", update.profit);
-        });
-
-        // Fallback: if contract never resolves via subscription, poll profit table
-        const fallbackTimeout = setTimeout(async () => {
-          if (contractResolved) return;
-          try {
-            const records = await getProfitTable(20);
-            const match = records.find((r) => r.contractId === bought!.contractId);
-            if (match) {
-              resolveContract(match.profit > 0, match.profit);
-            } else {
-              // Still unknown — mark error but don't leave it open forever
-              if (!contractResolved) {
-                contractResolved = true;
-                unsub();
-                activeSymbols.delete(symbol);
-                emit({ ...openLog, status: "error", profit: 0, note: "Résolution non reçue — vérifie ton compte Deriv" });
-              }
-            }
-          } catch {
-            if (!contractResolved) {
-              contractResolved = true;
-              unsub();
-              activeSymbols.delete(symbol);
-              emit({ ...openLog, status: "error", profit: 0, note: "Timeout résolution contrat" });
-            }
-          }
-        }, (tradeDuration + 2) * 60_000);
-      } catch (e) {
-        emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
-        activeSymbols.delete(symbol);
-        // Un achat qui échoue échouera probablement pareil au tick suivant (erreur de
-        // validation API) — cooldown court pour ne pas marteler la même commande chaque minute.
-        symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
-      }
-    }
-
-    onScanResult?.({ time: Date.now(), results: scanResults });
-  }
-
-  tick();
-  interval = setInterval(tick, 60_000); // Scan every 60s
-
-  return () => {
-    stopped = true;
-    if (interval) clearInterval(interval);
-  };
 }

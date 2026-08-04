@@ -23,7 +23,7 @@ export const Route = createFileRoute("/opportunities")({
 });
 
 type Decision = "take" | "wait" | "avoid";
-type Preset = "default" | "boom" | "crash" | "scalping";
+type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity";
 
 interface OpportunityItem {
   id: string;
@@ -102,6 +102,7 @@ const PRESET_STYLE: Record<Preset, string> = {
   boom: "border-orange-500/30 bg-orange-500/10 text-orange-300",
   crash: "border-amber-500/30 bg-amber-500/10 text-amber-300",
   scalping: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+  liquidity: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300",
 };
 
 function money(v: number) {
@@ -117,6 +118,7 @@ function OpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Decision>("all");
+  const [now, setNow] = useState(Date.now());
 
   async function load() {
     setLoading(true);
@@ -132,7 +134,15 @@ function OpportunitiesPage() {
 
   useEffect(() => {
     void load();
+    const refreshId = window.setInterval(() => void load(), 30_000);
+    const clockId = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => {
+      window.clearInterval(refreshId);
+      window.clearInterval(clockId);
+    };
   }, []);
+
+  const scanAgeSeconds = data ? Math.max(0, Math.floor((now - data.generatedAt) / 1_000)) : null;
 
   const visible = useMemo(() => {
     const rows = data?.opportunities ?? [];
@@ -163,6 +173,11 @@ function OpportunitiesPage() {
             <p className="text-xs font-semibold text-muted-foreground/80 mt-0.5">
               Analyse algorithmique continue · Détection de signaux optimaux & analyse de risques multi-marchés.
             </p>
+            {scanAgeSeconds !== null && (
+              <p className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/60">
+                <Clock3 className="h-3 w-3" /> Analyse mise à jour il y a {scanAgeSeconds}s · actualisation auto toutes les 30s
+              </p>
+            )}
           </div>
         </div>
 

@@ -28,13 +28,18 @@ export async function getFullUserFromRequest(request: Request): Promise<FullUser
   const auth = await getUserFromRequest(request);
   if (!auth) return null;
   const db = getDb();
-  return (
+  const user = (
     (db
       .prepare(
         "SELECT id, email, username, avatar, online_status, email_verified, status, is_admin, chat_enabled, created_at FROM users WHERE id = ?",
       )
-      .get(auth.userId) as FullUser | undefined) ?? null
+    .get(auth.userId) as FullUser | undefined) ?? null
   );
+  // A JWT is deliberately long-lived. Account status is therefore checked on
+  // every authenticated request, not only at login: a revoked account must
+  // lose access immediately even if its browser still holds a valid token.
+  if (user && !user.is_admin && user.status !== "approved") return null;
+  return user;
 }
 
 /** Returns the admin user for the request, or null if not authenticated as an approved admin. */

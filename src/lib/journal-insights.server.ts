@@ -5,6 +5,7 @@
 // symbol is noise, not a verdict, and a recommendation built on noise can
 // make a live account worse instead of better.
 import { getDb } from "./db.server";
+import type { Preset } from "./bot-engine.server";
 
 const MIN_SAMPLE = 15;
 
@@ -46,20 +47,22 @@ function toRows(rows: { key: string; trades: number; wins: number; net_pnl: numb
   }));
 }
 
-export function getUserInsights(userId: number, mode: "demo" | "live" = "demo"): UserInsights {
+export function getUserInsights(userId: number, mode: "demo" | "live" = "demo", preset?: Preset): UserInsights {
   const db = getDb();
   const modeFilter = mode === "demo" ? "(mode = 'demo' OR mode IS NULL)" : "mode = 'live'";
+  const presetFilter = preset ? " AND preset = ?" : "";
+  const params = preset ? [userId, preset] : [userId];
 
   const bySymbolRows = db
     .prepare(
       `SELECT symbol AS key, COUNT(*) AS trades, COUNT(*) FILTER (WHERE status = 'won') AS wins,
               COALESCE(SUM(profit), 0) AS net_pnl
        FROM bot_trades
-       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}
+       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}${presetFilter}
        GROUP BY symbol
        ORDER BY trades DESC`,
     )
-    .all(userId) as { key: string; trades: number; wins: number; net_pnl: number }[];
+    .all(...params) as { key: string; trades: number; wins: number; net_pnl: number }[];
 
   const byConfidenceRows = db
     .prepare(
@@ -74,10 +77,10 @@ export function getUserInsights(userId: number, mode: "demo" | "live" = "demo"):
          COUNT(*) AS trades, COUNT(*) FILTER (WHERE status = 'won') AS wins,
          COALESCE(SUM(profit), 0) AS net_pnl
        FROM bot_trades
-       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}
+       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}${presetFilter}
        GROUP BY key`,
     )
-    .all(userId) as { key: string; trades: number; wins: number; net_pnl: number }[];
+    .all(...params) as { key: string; trades: number; wins: number; net_pnl: number }[];
 
   const bySessionRows = db
     .prepare(
@@ -86,11 +89,11 @@ export function getUserInsights(userId: number, mode: "demo" | "live" = "demo"):
          COUNT(*) AS trades, COUNT(*) FILTER (WHERE status = 'won') AS wins,
          COALESCE(SUM(profit), 0) AS net_pnl
        FROM bot_trades
-       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}
+       WHERE user_id = ? AND status IN ('won','lost') AND ${modeFilter}${presetFilter}
        GROUP BY hour
        ORDER BY hour`,
     )
-    .all(userId) as { hour: string; trades: number; wins: number; net_pnl: number }[];
+    .all(...params) as { hour: string; trades: number; wins: number; net_pnl: number }[];
 
   const bySymbol = toRows(bySymbolRows);
   const byConfidence = toRows(byConfidenceRows);

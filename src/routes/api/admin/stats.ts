@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { getComponentBreakdownServer } from "@/lib/indicator-weights.server";
 import { getUserInsights } from "@/lib/journal-insights.server";
-import type { Preset } from "@/lib/bot-engine.server";
+import { ALL_PRESETS, type Preset } from "@/lib/bot-engine.server";
 import { BOOM_SYMBOLS } from "@/lib/autotrader";
 
 // How close two different users' trades on the same symbol+direction need to
@@ -89,17 +89,18 @@ export const Route = createFileRoute("/api/admin/stats")({
         if (userIdParam) {
           const userId = Number(userIdParam);
           if (!Number.isFinite(userId)) return json({ error: "userId invalide." }, 400);
+          const presetParam = url.searchParams.get("preset") ?? "default";
+          if (!ALL_PRESETS.includes(presetParam as Preset)) return json({ error: "Preset inconnu." }, 400);
+          const preset = presetParam as Preset;
           const trades = db
             .prepare(
               `SELECT id, time, symbol, direction, stake, payout, status, profit, confidence,
                       tf_agreement, closed_at, note
-               FROM bot_trades WHERE user_id = ? ORDER BY time DESC LIMIT 200`,
+               FROM bot_trades WHERE user_id = ? AND preset = ? ORDER BY time DESC LIMIT 200`,
             )
-            .all(userId);
+            .all(userId, preset);
 
-          // A user can have up to three bot_state rows now (default/boom/crash,
-          // 2026-08-01) — ?preset= picks which one, defaulting to "default".
-          const preset = url.searchParams.get("preset") ?? "default";
+          // ?preset picks the strategy row to inspect, defaulting to "default".
           const configRow = db
             .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
             .get(userId, preset) as { config: string } | undefined;
@@ -108,8 +109,8 @@ export const Route = createFileRoute("/api/admin/stats")({
             trades,
             config: configRow ? JSON.parse(configRow.config) : null,
             insights: {
-              demo: getUserInsights(userId, "demo"),
-              live: getUserInsights(userId, "live"),
+              demo: getUserInsights(userId, "demo", preset),
+              live: getUserInsights(userId, "live", preset),
             },
           });
         }
@@ -120,8 +121,7 @@ export const Route = createFileRoute("/api/admin/stats")({
         // Scalping and Boom can both trade BOOM500). Omitted = every preset
         // combined, the original behavior.
         const presetParam = url.searchParams.get("preset");
-        const preset: Preset | null =
-          presetParam === "default" || presetParam === "boom" || presetParam === "crash" || presetParam === "scalping" ? presetParam : null;
+        const preset: Preset | null = presetParam && ALL_PRESETS.includes(presetParam as Preset) ? presetParam as Preset : null;
         const presetClause = preset ? ` AND preset = ?` : "";
         const presetParams = preset ? [preset] : [];
 

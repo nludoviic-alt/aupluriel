@@ -205,6 +205,17 @@ function migrate(db: Database.Database) {
       checked_at          INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
+    -- Independent verdict for the demo-only liquidity reversal experiment.
+    -- Keeping this separate prevents a favorable Multi replay from ever
+    -- starting the experimental XAU/USD/Nasdaq engine (or the reverse).
+    CREATE TABLE IF NOT EXISTS auto_liquidity_backtest_state (
+      id                  INTEGER PRIMARY KEY CHECK (id = 1),
+      favorable           INTEGER NOT NULL DEFAULT 0,
+      win_rate            REAL,
+      break_even_win_rate REAL,
+      checked_at          INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     -- Web Push subscriptions — one row per browser/device a user opted in
     -- from (a phone and a laptop are two rows). endpoint is the push
     -- service's unique URL for that subscription, so it doubles as the

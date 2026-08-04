@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin, generateAuthToken, hashPassword } from "@/lib/auth.server";
 import { sendEmail, resetEmail, welcomeEmail, getAppUrl } from "@/lib/email.server";
+import { ALL_PRESETS, hasOpenPositions, stopBotForUser, suspendBotsForUser } from "@/lib/bot-engine.server";
 
 const RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
@@ -117,12 +118,21 @@ export const Route = createFileRoute("/api/admin/users")({
             break;
           case "reject":
             db.prepare("UPDATE users SET status = 'rejected' WHERE id = ?").run(userId);
+            suspendBotsForUser(userId, "Compte rejeté par l'administrateur");
             break;
           case "revoke":
             db.prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(userId);
+            suspendBotsForUser(userId, "Accès révoqué par l'administrateur");
             break;
           case "delete":
-            // user_settings / auth_tokens cascade via ON DELETE CASCADE.
+            // Never tear down an engine while it is tracking money: the
+            // subscriptions keep P&L/expiry handling alive. The admin can
+            // retry deletion after the account has no open/pending contract.
+            if (ALL_PRESETS.some((preset) => hasOpenPositions(userId, preset))) {
+              return json({ error: "Impossible de supprimer ce compte tant qu'une position est ouverte ou pending." }, 409);
+            }
+            for (const preset of ALL_PRESETS) stopBotForUser(userId, preset, "Compte supprimé par l'administrateur");
+            // user_settings / auth_tokens / bot_state cascade via ON DELETE CASCADE.
             db.prepare("DELETE FROM users WHERE id = ?").run(userId);
             break;
           case "reset-password": {

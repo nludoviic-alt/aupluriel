@@ -13,8 +13,6 @@ import {
   Settings2,
   ShieldAlert,
   Trash2,
-  TrendingDown,
-  TrendingUp,
   Zap,
 } from "lucide-react";
 
@@ -36,7 +34,6 @@ import {
   openPreviewTrade,
   getInstrumentForSymbol,
   isCallPutAvailable,
-  isInTradingSession,
   isSymbolTradeable,
   loadCumulativePnl,
   loadCustomPresets,
@@ -45,14 +42,13 @@ import {
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
-  SCALPING_PRESET,
+  LIQUIDITY_PRESET, SCALPING_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
   SESSION_HOURS,
   type AutoTraderConfig,
   type CustomPreset,
-  type PresetConfig,
   type RiskProfile,
   type ScanResult,
   type TradingMode,
@@ -67,9 +63,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
-import { LiveTradeCard } from "@/components/live-trade-card";
 import { BotDashboard, LiveSignals } from "@/components/bot-dashboard";
 import { AutoBacktestStatus } from "@/components/auto-backtest-status";
+import { AutoTraderStatusBar } from "@/components/autotrader-status-bar";
+import { TradeJournalSection } from "@/components/trade-journal-section";
+import { LivePositionsPanel } from "@/components/live-positions-panel";
+import { QuickMarketsEditor } from "@/components/quick-markets-editor";
 import { useDerivSession, refreshDerivBalance, reinitDerivSession } from "@/hooks/use-deriv-session";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -86,9 +85,9 @@ export const Route = createFileRoute("/autotrader")({
 const CONFIG_KEY = "lio23.autotrader_config";
 const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}`;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping";
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
@@ -97,6 +96,7 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   boom: { market: "Indices Boom", description: "Boom 500 · Boom 900" },
   crash: { market: "Indices Crash", description: "Crash 1000 · Crash 900" },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
+  liquidity: { market: "Or · Nasdaq", description: "M15 · balayage + RSI", experimental: true },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -109,12 +109,12 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "crash", "scalping"] as const;
+const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
   id: string;
-  preset: "default" | "boom" | "crash" | "scalping";
+  preset: "default" | "boom" | "crash" | "scalping" | "liquidity";
   presetLabel: string;
   symbol: string;
   label: string;
@@ -206,7 +206,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // in a module-level store so it survives navigating to another page — see
   // use-autotrader-engine.ts for why.
   const { logs, lastScan, riskStopReasons, pausedUntil } = useAutoTraderEngine();
-  const [showLogs, setShowLogs] = useState(true);
   const [activeSessions, setActiveSessions] = useState<TradingSession[]>([]);
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>([]);
   const [showSavePreset, setShowSavePreset] = useState(false);
@@ -215,6 +214,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [presetDesc, setPresetDesc] = useState("");
   const [cumulativePnl, setCumulativePnl] = useState(0);
   const [forcingTrade, setForcingTrade] = useState(false);
+  const [manualExecution, setManualExecution] = useState<{
+    status: "pending" | "open";
+    symbol: string;
+    direction: TradeLog["direction"];
+  } | null>(null);
   const [forceSymbol, setForceSymbol] = useState("");
   const [forceDir, setForceDir] = useState<"CALL" | "PUT" | "MULTUP" | "MULTDOWN">("CALL");
   const [forceStake, setForceStake] = useState(DEFAULT_CONFIG.stakeUsd);
@@ -222,6 +226,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [showConfig, setShowConfig] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tradingTab] = useState<"auto" | "manual">(defaultTab);
+  // The whole "Avancé" panel (bot config, dashboard, journal) only makes sense
+  // for the Automatique tab — Prise Directe is a one-off manual trade, not bot
+  // configuration. Gate every showAdvanced render on tradingTab too, so it
+  // can't surface bot controls on a page whose whole point is to bypass the bot.
+  const advancedVisible = showAdvanced && tradingTab === "auto";
   const [preparedManualOpportunity, setPreparedManualOpportunity] = useState<OpportunityItem | null>(null);
   const [showQuickCustomizer, setShowQuickCustomizer] = useState(false);
   const [quickSymbols, setQuickSymbols] = useState<string[]>(() => {
@@ -247,7 +256,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
   const [mobileTab, setMobileTab] = useState<"control" | "dashboard" | "config" | "journal" | "data">("control");
-  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk">("profiles");
+  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "multiplier">("profiles");
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
   // Drives the preset-tab filter below. Same 768px breakpoint as Tailwind's
@@ -267,7 +276,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false });
 
   // Mobile shows at most 3 of the 4 preset tabs (admin choice) — four didn't
   // fit a phone-width strip. Desktop is never filtered. Falls back to all four
@@ -501,18 +510,30 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   }, [opportunities?.opportunities, selectedPreset]);
   const selectedOpportunity = selectedPresetOpportunities[0] ?? null;
   const actionableOpportunity = selectedPresetOpportunities.find((o) => o.decision === "take") ?? null;
+  // The manual screen exposes the same complete scan as Auto-Trader. Unlike
+  // automatic mode, "wait" and "avoid" remain visible so the trader can make
+  // an informed discretionary decision without the system placing the order.
+  const manualScanOpportunities = selectedPresetOpportunities;
+  const manualActionableOpportunities = manualScanOpportunities.filter(
+    (opportunity) => opportunity.direction && (opportunity.decision === "take" || opportunity.decision === "wait"),
+  );
   const manualOpportunity = selectedPresetOpportunities.find((o) => o.symbol === forceSymbol) ?? null;
   const manualInstrument = forceSymbol ? getInstrumentForSymbol(forceSymbol, config) : "binary";
   const manualDirectionBias = forceDir === "CALL" || forceDir === "MULTUP" ? "CALL" : "PUT";
-  const manualSignalAligned = !!manualOpportunity
-    && manualOpportunity.decision === "take"
+  const manualDirectionMatchesSignal = !!manualOpportunity?.direction
     && manualOpportunity.direction === manualDirectionBias;
   const manualInstrumentSupported = !!forceSymbol && isSymbolTradeable(forceSymbol, manualInstrument);
   const manualAccountMatchesMode = config.mode === "demo"
     ? (!derivSession.accountType || derivSession.accountType === "demo")
     : derivSession.accountType === "live";
-  const manualTradeAllowed = manualInstrumentSupported && (config.mode === "demo" || (derivSession.connected && manualAccountMatchesMode));
-  const manualReady = manualTradeAllowed && manualSignalAligned;
+  // An unconnected demo order is deliberately simulated. But once Deriv is
+  // connected, the account type must match the screen mode: never let a
+  // "Démo" label route a manual buy to a live connected account.
+  const manualTradeAllowed = manualInstrumentSupported && (
+    config.mode === "demo"
+      ? (!derivSession.connected || manualAccountMatchesMode)
+      : derivSession.connected && manualAccountMatchesMode
+  );
   const manualSymbolLabel = (SYMBOLS.find((symbol) => symbol.deriv === forceSymbol)?.label ?? forceSymbol) || "Choisir un marché";
   const manualDurationMinutes = preparedManualOpportunity?.symbol === forceSymbol
     ? preparedManualOpportunity.durationMinutes
@@ -552,17 +573,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
    * as a starting point if the user edits it) so the CONFIG tab shows
    * sensible values instead of whatever the previous selection left behind.
    */
-  function selectPresetView(target: "boom" | "crash" | "default" | "scalping") {
+  function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
     const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
     const next: AutoTraderConfig = hasSavedOverride
       ? saved
-      : target === "scalping"
+      : target === "scalping" || target === "liquidity"
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {
             ...DEFAULT_CONFIG, ...presetFields,
@@ -617,10 +638,18 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       toast.error("Aucun signal « à prendre » n’est disponible pour le moment.");
       return;
     }
-    setForceSymbol(actionableOpportunity.symbol);
-    setForceDir(actionableOpportunity.direction);
+    prepareManualSignal(actionableOpportunity);
+  }
+
+  function prepareManualSignal(opportunity: OpportunityItem) {
+    if (!opportunity.direction) {
+      toast.info("Ce marché est en observation : aucune direction n'est proposée.");
+      return;
+    }
+    setForceSymbol(opportunity.symbol);
+    setForceDir(opportunity.direction);
     setForceStake(config.stakeUsd);
-    setPreparedManualOpportunity(actionableOpportunity);
+    setPreparedManualOpportunity(opportunity);
     window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   }
 
@@ -697,17 +726,19 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </Link>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className={cn(
-              "h-9 px-3 gap-2 text-xs font-bold rounded-xl transition-all",
-              showAdvanced ? "border-primary/40 bg-primary/10 text-primary" : "border-border/70 text-muted-foreground"
-            )}
-          >
-            <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">{showAdvanced ? "Masquer" : "Avancé"}</span>
-          </Button>
+          {tradingTab === "auto" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className={cn(
+                "h-9 px-3 gap-2 text-xs font-bold rounded-xl transition-all",
+                showAdvanced ? "border-primary/40 bg-primary/10 text-primary" : "border-border/70 text-muted-foreground"
+              )}
+            >
+              <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">{showAdvanced ? "Fermer" : "Réglages"}</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -728,13 +759,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         onModeChange={changeTradingMode}
       />
 
-      {/* ── Strategy Selector (Auto Mode Only) ── */}
-      {tradingTab === "auto" && (
-        <section aria-label="Choisir une stratégie" className="space-y-2.5">
+      {/* ── Strategy Selector — shared by Auto and Manual modes ── */}
+      <section aria-label="Choisir une stratégie" className="scroll-mt-[220px] space-y-2.5 lg:scroll-mt-[90px]">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Moteur & Stratégie active</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Sélectionne le profil de marché à consulter. Chaque stratégie tourne indépendamment.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {tradingTab === "manual"
+                  ? "Choisis le preset à analyser : tu gardes ensuite la main sur l'ordre et la mise."
+                  : "Sélectionne le profil de marché à consulter. Chaque stratégie tourne indépendamment."}
+              </p>
             </div>
             <span className="hidden text-xs font-bold text-muted-foreground sm:block font-mono">P&L du jour</span>
           </div>
@@ -753,6 +787,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]" },
                 crash: { active: "border-amber-500/50 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]" },
                 scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]" },
+                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]" },
               } as const;
               return (
                 <button
@@ -782,7 +817,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </div>
                   <span className="text-xs font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
                   <span className="text-[11px] text-muted-foreground/75 truncate w-full" title={configuredMarkets}>
-                    {p === "default" || p === "scalping" ? PRESET_PRESENTATION[p].description : configuredMarkets}
+                    {p === "default" || p === "scalping" || p === "liquidity" ? PRESET_PRESENTATION[p].description : configuredMarkets}
                   </span>
                   <span className={cn("mt-1.5 text-sm font-black font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
                     {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
@@ -791,12 +826,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               );
             })}
           </div>
-        </section>
-      )}
+      </section>
 
       <div className={cn("grid items-start gap-5", tradingTab === "auto" ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
       <div className={cn("min-w-0 space-y-5", tradingTab !== "auto" && "hidden")}>
-      <PositionsBridgePanel openTrades={openTradeList} />
+      <LivePositionsPanel
+        openTrades={openTradeList}
+        onDismiss={(t) => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }}
+      />
       <OpportunityCommandCenter
         presetLabel={presetLabels[selectedPreset]}
         opportunity={selectedOpportunity}
@@ -813,15 +850,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       />
       <TradeJournalSection
         journalTrades={journalTrades}
-        wins={wins}
-        losses={losses}
         cloudActive={cloudActive}
         selectedPreset={selectedPreset}
         presetLabels={presetLabels}
         logFilter={logFilter}
         setLogFilter={setLogFilter}
-        showLogs={showLogs}
-        setShowLogs={setShowLogs}
         confirm={confirm}
         setEngineLogs={setEngineLogs}
         durationMinutes={config.durationMinutes}
@@ -837,19 +870,24 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         )}
         aria-label="Prise directe manuelle"
       >
-        {/* Banner Title */}
-        <div className="glass-panel overflow-hidden rounded-2xl border border-border/60 p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-sm">
-                <Zap className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-lg font-extrabold tracking-tight text-foreground">Prise directe manuelle</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Exécution immédiate hors-bot sous ta responsabilité.
-                </p>
-              </div>
+        {/* Manual order overview: clarifies the irreversible flow before controls. */}
+        <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-r from-white/[0.045] via-card/40 to-transparent p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Ordre manuel</p>
+              <h2 className="mt-1 text-lg font-black tracking-tight text-foreground">Prépare, vérifie, puis exécute.</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Aucune décision automatique ne sera prise à ta place.</p>
+              {manualActionableOpportunities.length > 0 && (
+                <div role="status" className="mt-3 inline-flex items-center gap-2 rounded-lg border border-up/25 bg-up/10 px-2.5 py-1.5 text-[11px] font-bold text-up">
+                  <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse" />
+                  {manualActionableOpportunities.length} signal{manualActionableOpportunities.length > 1 ? "x" : ""} à examiner
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-wider sm:min-w-[410px]">
+              <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-primary">1 · Marché</div>
+              <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">2 · Position</div>
+              <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">3 · Validation</div>
             </div>
           </div>
         </div>
@@ -859,7 +897,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           {/* LEFT: Order Form */}
           <div className="space-y-4">
             {/* Card 1: Symbol & Signal Context */}
-            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4">
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-5">
               <div className="flex items-center justify-between border-b border-border/50 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
@@ -877,106 +915,86 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 )}
               </div>
 
-              {/* ── Quick Market Selector Bar (Prise Rapide) ── */}
-              <div className="rounded-2xl border border-border/50 bg-black/30 p-3.5 space-y-2.5">
+              {/* ── AI-qualified market selector ── */}
+              <div className="rounded-2xl border border-white/[0.08] bg-black/25 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-primary" />
+                    <Zap className="h-4 w-4 text-up" />
                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
-                      Prise Rapide · Marchés Rentables
+                      Analyse Auto‑Trader · Choix manuel
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickCustomizer((v) => !v)}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                    {showQuickCustomizer ? "Masquer" : "⚙️ Raccourcis"}
-                  </button>
+                  <span className="rounded-full border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                    {manualScanOpportunities.length} analysé{manualScanOpportunities.length > 1 ? "s" : ""}
+                  </span>
                 </div>
 
-                {/* Quick Symbol Buttons Grid */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-                  {quickSymbols.map((sDeriv) => {
-                    const symObj = SYMBOLS.find((s) => s.deriv === sDeriv);
-                    const label = symObj?.label ?? sDeriv;
-                    const isSelected = forceSymbol === sDeriv;
-                    const opp = selectedPresetOpportunities.find((o) => o.symbol === sDeriv);
-                    const isTake = opp?.decision === "take";
-                    const isAvoid = opp?.decision === "avoid";
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Les signaux forts sont mis en avant. Les signaux faibles et à éviter restent accessibles : tu gardes toujours la décision et la mise.
+                </p>
+
+                {manualScanOpportunities.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                    {manualScanOpportunities.map((opp) => {
+                    const symObj = SYMBOLS.find((s) => s.deriv === opp.symbol);
+                    const label = symObj?.label ?? opp.symbol;
+                    const isSelected = forceSymbol === opp.symbol;
+                    const decisionStyle = opp.decision === "take"
+                      ? "border-up/30 bg-up/10 text-up"
+                      : opp.decision === "wait"
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        : "border-down/30 bg-down/10 text-down";
+                    const cardStyle = opp.decision === "take"
+                      ? "border-up/45 bg-up/[0.10] text-up hover:bg-up/[0.16]"
+                      : opp.decision === "wait"
+                        ? "border-amber-500/45 bg-amber-500/[0.12] text-amber-100 hover:bg-amber-500/[0.18]"
+                        : "border-down/45 bg-down/[0.10] text-down hover:bg-down/[0.16]";
+                    const decisionLabel = opp.decision === "take" ? "Fort" : opp.decision === "wait" ? "Faible" : "À éviter";
 
                     return (
-                      <button
-                        key={sDeriv}
-                        type="button"
-                        disabled={forcingTrade}
-                        onClick={() => {
-                          setForceSymbol(sDeriv);
-                          setPreparedManualOpportunity(opp || null);
-                        }}
+                      <div
+                        key={opp.symbol}
                         className={cn(
-                          "flex flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition-all duration-200",
-                          isSelected
-                            ? "border-primary/50 bg-primary/20 text-primary shadow-primary/10 ring-1 ring-primary/40"
-                            : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
+                          "flex min-h-[76px] flex-col items-start justify-between gap-2 rounded-xl border p-3 text-left transition-all duration-200",
+                          cardStyle,
+                          isSelected && "ring-1 ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
                         )}
                       >
                         <div className="flex w-full items-center justify-between gap-1">
                           <span className="font-bold text-xs truncate">{label}</span>
-                          {isTake ? (
-                            <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1 py-0.2 rounded shrink-0">
-                              {opp.direction === "CALL" ? "▲" : "▼"} {Math.round(opp.confidence)}%
-                            </span>
-                          ) : isAvoid ? (
-                            <span className="text-[9px] font-bold text-red-400 opacity-80 shrink-0">Éviter</span>
-                          ) : null}
+                          <span className={cn("text-[9px] font-black border px-1.5 py-0.5 rounded shrink-0", decisionStyle)}>
+                            {decisionLabel}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono text-muted-foreground/70">
-                          {symObj?.market || "Marché"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Quick Customizer Panel if opened directly inside Prise Rapide */}
-                {showQuickCustomizer && (
-                  <div className="mt-3 rounded-xl border border-border/50 bg-black/30 p-3.5 space-y-2 animate-fade-in">
-                    <div className="text-xs font-bold text-foreground">
-                      Coche tes 4 à 6 marchés favoris pour la Prise Rapide :
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {SYMBOLS.map((s) => {
-                        const isChecked = quickSymbols.includes(s.deriv);
-                        return (
+                        <div className="flex w-full items-center justify-between gap-1 text-[10px] font-mono text-muted-foreground/70">
+                          <span>{opp.direction ? `${opp.direction === "CALL" ? "▲" : "▼"} ${Math.round(opp.confidence)}%` : "Neutre"}</span>
+                          <span>{symObj?.market || "Marché"}</span>
+                        </div>
+                        {opp.direction && opp.decision !== "avoid" ? (
                           <button
-                            key={s.deriv}
                             type="button"
-                            onClick={() => {
-                              let updated: string[];
-                              if (isChecked) {
-                                if (quickSymbols.length <= 1) return;
-                                updated = quickSymbols.filter((x) => x !== s.deriv);
-                              } else {
-                                if (quickSymbols.length >= 6) return;
-                                updated = [...quickSymbols, s.deriv];
-                              }
-                              saveQuickSymbols(updated);
-                            }}
+                            disabled={forcingTrade}
+                            onClick={() => prepareManualSignal(opp)}
                             className={cn(
-                              "rounded-lg border px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5",
-                              isChecked
-                                ? "border-primary/50 bg-primary/20 text-primary"
-                                : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
+                              "w-full rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors disabled:opacity-40",
+                              opp.decision === "take"
+                                ? "border-up/35 bg-up/10 text-up hover:bg-up/20"
+                                : "border-amber-500/35 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20",
                             )}
                           >
-                            <span>{isChecked ? "✓" : "+"}</span>
-                            <span>{s.label}</span>
+                            Prendre ce signal
                           </button>
-                        );
-                      })}
-                    </div>
+                        ) : (
+                          <span className="w-full text-center text-[10px] font-bold text-muted-foreground/60">Observation</span>
+                        )}
+                      </div>
+                    );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-white/[0.12] bg-white/[0.02] px-4 py-5 text-center">
+                    <p className="text-xs font-bold text-foreground">Analyse indisponible pour le moment</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">L'Auto‑Trader réévalue les marchés automatiquement toutes les 30 secondes.</p>
                   </div>
                 )}
               </div>
@@ -984,7 +1002,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               {/* Signal badge preview if available for selected symbol */}
               {manualOpportunity && (
                 <div className={cn(
-                  "rounded-xl border p-3.5 flex items-center justify-between text-xs",
+                  "rounded-xl border p-4 flex items-center justify-between gap-4 text-xs",
                   manualOpportunity.decision === "take"
                     ? "border-up/30 bg-up/10 text-up"
                     : manualOpportunity.decision === "avoid"
@@ -992,11 +1010,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                 )}>
                   <div className="space-y-0.5">
-                    <div className="font-black uppercase tracking-wider">Signal IA : {manualOpportunity.directionLabel}</div>
-                    <div className="text-[11px] opacity-80">{manualOpportunity.reasons[0] || "Analyse technique disponible"}</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Signal IA</div>
+                    <div className="mt-1 font-black uppercase tracking-wider">{manualOpportunity.directionLabel}</div>
+                    <div className="mt-1 text-[11px] opacity-80">{manualOpportunity.reasons[0] || "Analyse technique disponible"}</div>
                   </div>
-                  <div className="font-mono text-base font-black">
-                    {Math.round(manualOpportunity.confidence)}%
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-xl font-black">{Math.round(manualOpportunity.confidence)}%</div>
+                    <div className="text-[9px] font-black uppercase tracking-wider opacity-70">Confiance</div>
                   </div>
                 </div>
               )}
@@ -1016,10 +1036,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </span>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-5 md:grid-cols-2">
                 {/* LEFT: Direction */}
-                <div className="space-y-3">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Orientation du marché</label>
+                <div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4 space-y-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">1 · Ta direction</p>
+                    <p className="mt-1 text-xs font-semibold text-foreground">Choisis le sens que tu veux prendre.</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
                       const isUp = d === "CALL" || d === "MULTUP";
@@ -1034,16 +1057,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             setPreparedManualOpportunity(null);
                           }}
                           className={cn(
-                            "flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
+                          "flex min-h-[132px] flex-col items-center justify-center gap-2 rounded-2xl border p-4 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
                             isSelected
                               ? isUp
-                                ? "border-up/60 bg-up/20 text-up shadow-up/20 ring-1 ring-up/40"
-                                : "border-down/60 bg-down/20 text-down shadow-down/20 ring-1 ring-down/40"
-                              : "border-border/60 bg-card/30 text-muted-foreground hover:bg-card/60 hover:text-foreground"
+                                ? "border-up/70 bg-up/20 text-up shadow-[0_0_24px_rgba(74,222,128,0.20)] ring-1 ring-up/40"
+                                : "border-down/70 bg-down/20 text-down shadow-[0_0_24px_rgba(251,113,133,0.20)] ring-1 ring-down/40"
+                              : "border-white/[0.10] bg-white/[0.025] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
                           )}
                         >
-                          <span className="text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
-                          <span className="text-[10px] font-black uppercase tracking-widest">{isUp ? "Hausse" : "Baisse"}</span>
+                          <span className="text-3xl leading-none">{isUp ? "▲" : "▼"}</span>
+                          <span className="text-xs font-black uppercase tracking-widest">{isUp ? "Hausse" : "Baisse"}</span>
+                          <span className="text-[10px] font-medium opacity-70">{isUp ? "Je vise la montée" : "Je vise la baisse"}</span>
                         </button>
                       );
                     })}
@@ -1051,28 +1075,35 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </div>
 
                 {/* RIGHT: Quick Amount Selection */}
-                <div className="space-y-3">
+                <div className="rounded-2xl border border-white/[0.07] bg-black/15 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Intensité du Risque</label>
-                    <span className="text-[10px] font-mono font-bold text-primary">
-                      {forceStake <= 10 ? "🟢 BAS" : forceStake <= 30 ? "🟡 MODÉRÉ" : "🔥 ÉLEVÉ"}
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">2 · Ta mise</p>
+                      <p className="mt-1 text-xs font-semibold text-foreground">Choisis ton exposition.</p>
+                    </div>
+                    <span className={cn(
+                      "rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider",
+                      forceStake <= 10 ? "border-up/25 bg-up/10 text-up" : forceStake <= 30 ? "border-amber-500/25 bg-amber-500/10 text-amber-300" : "border-down/25 bg-down/10 text-down"
+                    )}>
+                      {forceStake <= 10 ? "faible" : forceStake <= 30 ? "modéré" : "élevé"}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    {[5, 20, 50].map((s) => (
+                    {[[5, "Prudent"], [20, "Équilibré"], [50, "Fort"]].map(([s, level]) => (
                       <button
-                        key={s}
+                        key={String(s)}
                         type="button"
                         disabled={forcingTrade}
-                        onClick={() => setForceStake(s)}
+                        onClick={() => setForceStake(Number(s))}
                         className={cn(
-                          "flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 transition-all",
-                          forceStake === s
-                            ? s <= 10 ? "border-up/60 bg-up/15 text-up shadow-up/10" : s <= 30 ? "border-amber-500/60 bg-amber-500/15 text-amber-300 shadow-amber/10" : "border-down/70 bg-down/20 text-down shadow-down/15 ring-1 ring-down/50"
-                            : "border-border/60 bg-card/30 text-muted-foreground hover:text-foreground"
+                          "flex min-h-[74px] flex-col items-center justify-center gap-1 rounded-xl border p-2 transition-all",
+                          forceStake === Number(s)
+                            ? Number(s) <= 10 ? "border-up/60 bg-up/15 text-up shadow-up/10" : Number(s) <= 30 ? "border-amber-500/60 bg-amber-500/15 text-amber-300 shadow-amber/10" : "border-down/70 bg-down/20 text-down shadow-down/15 ring-1 ring-down/50"
+                            : "border-white/[0.10] bg-white/[0.025] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
                         )}
                       >
-                        <span className="text-[11px] font-bold">${s}</span>
+                        <span className="text-xs font-black">${s}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">{level}</span>
                       </button>
                     ))}
                   </div>
@@ -1116,13 +1147,44 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           </div>
 
           {/* RIGHT: Order Summary & Hero CTA */}
-          <aside className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4 lg:sticky lg:top-24">
+          <aside className="glass-panel rounded-2xl border border-border/60 bg-card/50 p-5 space-y-4 lg:sticky lg:top-24">
             <div className="flex items-center gap-2 border-b border-border/50 pb-3">
               <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
                 3
               </span>
-              <span className="text-xs font-black uppercase tracking-wider text-foreground">Résumé Tactique & Validation</span>
+              <span className="text-xs font-black uppercase tracking-wider text-foreground">Revue & Validation</span>
             </div>
+
+            {manualExecution && (
+              <div className={cn(
+                "relative overflow-hidden rounded-xl border p-4",
+                manualExecution.status === "pending"
+                  ? "border-amber-400/70 bg-amber-400/15 text-amber-100 shadow-[0_0_28px_rgba(251,191,36,0.28)]"
+                  : "border-up/70 bg-up/15 text-emerald-100 shadow-[0_0_32px_rgba(74,222,128,0.30)]",
+              )}>
+                <div className={cn(
+                  "pointer-events-none absolute inset-0 opacity-60",
+                  manualExecution.status === "pending" ? "animate-pulse bg-amber-300/10" : "animate-pulse bg-emerald-300/10",
+                )} />
+                <div className="relative flex items-center gap-3">
+                  <span className={cn(
+                    "relative flex h-3 w-3 shrink-0",
+                    manualExecution.status === "pending" ? "text-amber-300" : "text-up",
+                  )}>
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-current" />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em]">
+                      {manualExecution.status === "pending" ? "Ordre en attente de Deriv" : "Contrat ouvert · suivi en direct"}
+                    </p>
+                    <p className="mt-1 text-xs font-bold opacity-90">
+                      {manualExecution.symbol} · {manualExecution.direction}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Checklist */}
             <div className="space-y-2.5 rounded-xl border border-border/50 bg-black/30 p-4 shadow-inner">
@@ -1165,6 +1227,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               </div>
             </div>
 
+            {!manualDirectionMatchesSignal && manualOpportunity?.direction && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
+                <p className="font-black uppercase tracking-wider">Décision contraire au signal</p>
+                <p className="mt-1 text-amber-100/70">Tu peux continuer, mais la direction choisie ne correspond pas à la recommandation IA.</p>
+              </div>
+            )}
+
             {/* Exposition Warning */}
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-[11px] leading-relaxed">
               <p className="font-bold text-amber-300 uppercase tracking-wider">Responsabilité</p>
@@ -1181,7 +1250,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
                 const isLive = config.mode === "live";
                 const confirmed = await confirm({
-                  title: isLive ? "⚠️ CONFIRMER LE TRADE (RÉEL) ?" : "Confirmer le trade (démo) ?",
+                  title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
                   description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
                   confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
                   danger: isLive,
@@ -1198,6 +1267,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       manualDurationMinutes,
                       (log) => {
                         handleEvent(log);
+                        if (log.status === "pending" || log.status === "open") {
+                          setManualExecution({ status: log.status, symbol: label, direction: forceDir });
+                        } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                          setManualExecution(null);
+                        }
                         if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                       },
                       config
@@ -1209,6 +1283,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       forceStake,
                       (log) => {
                         handleEvent(log);
+                        if (log.status === "open") {
+                          setManualExecution({ status: "open", symbol: label, direction: forceDir });
+                        } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                          setManualExecution(null);
+                        }
                         if (log.status === "open") toast.success(`Position démo simulée — ${label} ${forceDir}`);
                       }
                     );
@@ -1235,7 +1314,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </Button>
 
             <p className="text-center text-[11px] font-semibold text-muted-foreground">
-              Exécution instantanée · Aucune prise auto
+              Exécution instantanée · Vérification finale demandée
             </p>
           </aside>
         </div>
@@ -1269,7 +1348,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           "Avancé" button controls — one source of truth, two entry points,
           instead of mobile always showing this content regardless of the
           flag desktop gates it behind. ── */}
-      {showAdvanced && (
+      {advancedVisible && (
       <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
         {([
           { id: "control", label: "Exécution", icon: Power },
@@ -1299,49 +1378,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       )}
 
       {/* ── Main 2-col layout ── */}
-      {showAdvanced && (
+      {advancedVisible && (
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
 
         {/* ── LEFT: Control panel ── */}
         <div className={cn(mobileTab === "control" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-4")}>
 
-          {/* Bloc contrôle principal */}
+          {/* Bloc contrôle principal — le sélecteur Démo/Live vit dans le HUD
+              (toujours visible), pas ici, pour ne pas avoir deux contrôles
+              pour le même réglage. */}
           <div className="glass-panel rounded-2xl overflow-hidden">
-
-            {/* Mode selector — 2 colonnes égales */}
-            <div className="grid grid-cols-2 border-b border-border/40">
-              {(["demo", "live"] as TradingMode[]).map((m) => {
-                const isSelected = config.mode === m;
-                return (
-                  <button key={m} onClick={async () => {
-                    if (m === "live") {
-                      const ok = await confirm({
-                        title: "Passer en mode LIVE ?",
-                        description: "Le mode LIVE engage de l'argent réel sur les transactions Deriv. Es-tu sûr de vouloir passer en mode LIVE ?",
-                        confirmLabel: "Passer en LIVE",
-                        danger: true,
-                      });
-                      if (!ok) return;
-                    }
-                    patchConfig("mode", m);
-                  }}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 py-4 text-center transition-all duration-200 border-r last:border-r-0 border-border/40",
-                      isSelected
-                        ? m === "live" ? "bg-down/10 text-down" : "bg-up/10 text-up"
-                        : "text-muted-foreground hover:bg-muted/10 hover:text-foreground",
-                    )}>
-                    <span className="text-xl leading-none">{m === "demo" ? "🎮" : "⚡"}</span>
-                    <span className="text-xs font-bold uppercase tracking-wider leading-none">
-                      {m === "demo" ? "Démo" : "Live"}
-                    </span>
-                    {isSelected && (
-                      <span className={cn("h-0.5 w-8 rounded-full", m === "live" ? "bg-down" : "bg-up")} />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
 
             {/* Execution status */}
             <div className="p-5 space-y-4">
@@ -1437,22 +1483,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               lossUsedUsd={lossUsedUsd}
             />
 
-          {/* Positions en direct + scanner — always rendered together */}
+          {/* Scan status + scanner detail — positions themselves are already
+              always visible above in the cockpit (LivePositionsPanel), so
+              this only fills the "nothing open yet" gap instead of repeating
+              the same cards here too. */}
           <div className="space-y-5 animate-fade-in">
-            {openTradeList.length > 0 ? (
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="h-2 w-2 rounded-full bg-up animate-pulse shadow-[0_0_8px_var(--up)]" />
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-200">Positions en direct ({openTradeList.length})</h2>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {openTradeList.map((t) => (
-                    <LiveTradeCard key={t.id} trade={t}
-                      onDismiss={() => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }} />
-                  ))}
-                </div>
-              </div>
-            ) : (
+            {openTradeList.length === 0 && (
               <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-neutral-950/40 p-8 flex flex-col items-center justify-center gap-5 text-center min-h-[210px] backdrop-blur-sm before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.01),transparent_70%)]">
                 <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-up/20 bg-up/5">
                   <span className="absolute inline-flex h-full w-full rounded-full border border-up/25 animate-ping opacity-30" style={{ animationDuration: "2.5s" }} />
@@ -1487,7 +1523,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
       {/* ── Config: grouped under the mobile "Données" tab, same showAdvanced
           flag desktop's "Avancé" button drives — one source of truth. ── */}
-      <div className={cn(showAdvanced && (mobileTab === "config" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden", "space-y-6")}>
+      <div className={cn(advancedVisible && (mobileTab === "config" || mobileTab === "data") ? "block" : "hidden", advancedVisible ? "md:block" : "md:hidden", "space-y-6")}>
 
       {/* ── Config panel (collapsible + tabbed) ── */}
       <div className="glass-panel rounded-2xl overflow-hidden">
@@ -1509,7 +1545,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <div className="border-b border-border/40">
               <div className="max-w-6xl mx-auto flex flex-col gap-4 px-6 pt-4 pb-4 sm:flex-row sm:items-center sm:gap-3 sm:pt-3 sm:pb-0">
                 <div className="flex overflow-x-auto scrollbar-none gap-1.5 -mb-px">
-                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"]] as const).map(([t, label]) => (
+                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["multiplier","Moteur Multiplicateur"]] as const).map(([t, label]) => (
                     <button key={t} onClick={() => setConfigTab(t)}
                       className={cn("px-5 py-3.5 text-sm font-black uppercase tracking-wider rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2.5",
                         configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
@@ -1688,38 +1724,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     <p className="text-xs text-muted-foreground">
                       Sélectionne ici les 4 à 6 marchés à afficher sous forme de boutons d'accès rapide 1-clic dans la Prise directe.
                     </p>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {SYMBOLS.map((s) => {
-                        const isChecked = quickSymbols.includes(s.deriv);
-                        return (
-                          <button
-                            key={s.deriv}
-                            type="button"
-                            onClick={() => {
-                              let updated: string[];
-                              if (isChecked) {
-                                if (quickSymbols.length <= 1) return;
-                                updated = quickSymbols.filter((x) => x !== s.deriv);
-                              } else {
-                                if (quickSymbols.length >= 6) return;
-                                updated = [...quickSymbols, s.deriv];
-                              }
-                              saveQuickSymbols(updated);
-                            }}
-                            className={cn(
-                              "rounded-xl border px-3 py-1.5 text-xs font-bold transition-all flex items-center gap-2",
-                              isChecked
-                                ? "border-cyan/50 bg-cyan/20 text-cyan shadow-sm"
-                                : "border-white/10 bg-black/40 text-muted-foreground hover:text-foreground hover:bg-black/60"
-                            )}
-                          >
-                            <span className="font-extrabold">{isChecked ? "✓" : "+"}</span>
-                            <span>{s.label}</span>
-                            <span className="text-[10px] opacity-60 font-normal">({s.market})</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <QuickMarketsEditor quickSymbols={quickSymbols} onSave={saveQuickSymbols} />
                   </div>
 
                   {/* Capital */}
@@ -1816,6 +1821,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       <input type="range" min={55} max={95} step={5} value={config.minConfidence}                        onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
                     </Field>
+                    <Field label={`Confiance max (${config.maxConfidence}%)`}>
+                      <input type="range" min={config.minConfidence} max={100} step={1} value={config.maxConfidence}                        onChange={(e) => patchConfig("maxConfidence", Number(e.target.value))} className="w-full accent-primary" />
+                      <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>{config.minConfidence}%</span><span>100%</span></div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">Certains marchés se comportent mal au-dessus d'un seuil — plafond de sécurité contre les faux signaux « trop parfaits ».</p>
+                    </Field>
                     <Field label={`Accord TF min (${config.minTfAgreement}/4)`}>
                       <input type="range" min={1} max={4} step={1} value={config.minTfAgreement}                        onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
@@ -1859,7 +1869,139 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         })}
                       </div>
                     </div>
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Marchés exclus</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SYMBOLS.map((s) => {
+                          const excluded = config.excludedSymbols.includes(s.deriv);
+                          const conflicting = excluded && config.symbols.includes(s.deriv);
+                          return (
+                            <button key={s.deriv}
+                              onClick={() => { const next = excluded ? config.excludedSymbols.filter((x) => x !== s.deriv) : [...config.excludedSymbols, s.deriv]; patchConfig("excludedSymbols", next); }}
+                              className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                                conflicting ? "border-down/60 bg-down/15 text-down" : excluded ? "border-down/40 bg-down/10 text-down/90" : "border-border text-muted-foreground hover:text-foreground")}>
+                              {s.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-muted-foreground">
+                        Jamais tradé, même en mode « tous les marchés ».
+                        {config.excludedSymbols.some((sym) => config.symbols.includes(sym)) && (
+                          <span className="ml-1 font-semibold text-down">
+                            Un symbole à la fois surveillé et exclu est silencieusement ignoré à chaque scan — retire-le d&apos;une des deux listes.
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Régime & Confluence */}
+                  <details className="group rounded-2xl border border-border/60 bg-card/20">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                      <span>Régime &amp; Confluence</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Filtre ADX (force de tendance)</label>
+                        <div className="flex rounded-xl border border-border overflow-hidden w-fit">
+                          {(["off", "penalize", "block"] as const).map((m) => (
+                            <button key={m} onClick={() => patchConfig("adxFilterMode", m)}
+                              className={cn("px-4 py-2 text-xs font-semibold transition-colors",
+                                config.adxFilterMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground")}>
+                              {m === "off" ? "Désactivé" : m === "penalize" ? "Pénalité" : "Blocage strict"}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5">
+                          « Blocage strict » rejette le trade si l&apos;ADX est sous le seuil (marché sans tendance) ; « Pénalité » réduit juste la confiance.
+                        </p>
+                      </div>
+                      <Field label={`Seuil ADX faible (${config.adxBlockThreshold})`}>
+                        <input type="range" min={5} max={40} step={1} value={config.adxBlockThreshold}
+                          disabled={config.adxFilterMode === "off"}
+                          onChange={(e) => patchConfig("adxBlockThreshold", Number(e.target.value))} className="w-full accent-primary disabled:opacity-40" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">ADX en dessous = marché sans tendance (range).</p>
+                      </Field>
+                      <Field label={`Seuil ADX fort (${config.adxStrongThreshold})`}>
+                        <input type="range" min={config.adxBlockThreshold + 1} max={50} step={1} value={config.adxStrongThreshold}
+                          disabled={config.adxFilterMode === "off"}
+                          onChange={(e) => patchConfig("adxStrongThreshold", Number(e.target.value))} className="w-full accent-primary disabled:opacity-40" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">ADX au-dessus = tendance forte, bonus de confiance.</p>
+                      </Field>
+                      <div>
+                        <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Mode de confluence</label>
+                        <div className="flex rounded-xl border border-border overflow-hidden w-fit">
+                          {(["vote", "weighted"] as const).map((m) => (
+                            <button key={m} onClick={() => patchConfig("confluenceMode", m)}
+                              className={cn("px-4 py-2 text-xs font-semibold transition-colors",
+                                config.confluenceMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground")}>
+                              {m === "vote" ? "Majorité" : "Pondéré"}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5">
+                          « Pondéré » tient compte de la qualité de chaque timeframe, pas juste du nombre qui vote pour/contre.
+                        </p>
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Filtres avancés */}
+                  <details className="group rounded-2xl border border-border/60 bg-card/20">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                      <span>Filtres avancés</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <Field label="Confiance min dynamique">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{config.dynamicMinConfidence ? "Activé" : "Désactivé"}</span>
+                          <Switch checked={config.dynamicMinConfidence} onCheckedChange={(v) => patchConfig("dynamicMinConfidence", v)} />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Ajuste le seuil de confiance selon le payout en direct. Désactivé par défaut — une tentative précédente a dégradé les résultats.</p>
+                      </Field>
+                      <Field label={`Marge de sécurité (${config.dynamicConfidenceMargin})`}>
+                        <input type="range" min={0} max={20} step={1} value={config.dynamicConfidenceMargin}
+                          disabled={!config.dynamicMinConfidence}
+                          onChange={(e) => patchConfig("dynamicConfidenceMargin", Number(e.target.value))} className="w-full accent-primary disabled:opacity-40" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Marge au-dessus du win rate d&apos;équilibre.</p>
+                      </Field>
+                      <div />
+                      <Field label="Filtre edge horaire">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{config.hourlyEdgeFilter ? "Activé" : "Désactivé"}</span>
+                          <Switch checked={config.hourlyEdgeFilter} onCheckedChange={(v) => patchConfig("hourlyEdgeFilter", v)} />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Désactive automatiquement les heures UTC à P&amp;L négatif récent.</p>
+                      </Field>
+                      <Field label={`Trades avant activation (${config.hourlyEdgeLookback})`}>
+                        <AmountInput value={config.hourlyEdgeLookback} min={3} max={20} step={1}
+                          disabled={!config.hourlyEdgeFilter}
+                          onCommit={(v) => { patchConfig("hourlyEdgeLookback", v); return true; }} />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Par heure, avant que le filtre agisse.</p>
+                      </Field>
+                      <div />
+                      <Field label={`Payout min (${Math.round(config.minPayoutRatio * 100)}%)`}>
+                        <input type="range" min={0.5} max={0.95} step={0.01} value={config.minPayoutRatio}
+                          onChange={(e) => patchConfig("minPayoutRatio", Number(e.target.value))} className="w-full accent-primary" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          Seuil de rentabilité à ce payout : {Math.round((1 / (1 + config.minPayoutRatio)) * 100)}% de win rate minimum.
+                        </p>
+                      </Field>
+                      <Field label={`Win rate min par symbole (${config.minSymbolWinRate === 0 ? "désactivé" : `${Math.round(config.minSymbolWinRate * 100)}%`})`}>
+                        <input type="range" min={0} max={0.8} step={0.05} value={config.minSymbolWinRate}
+                          onChange={(e) => patchConfig("minSymbolWinRate", Number(e.target.value))} className="w-full accent-primary" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Met en pause un symbole si son win rate glissant tombe en dessous. 0 = désactivé.</p>
+                      </Field>
+                      <Field label={`Fenêtre de calcul (${config.symbolWinRateLookback} trades)`}>
+                        <AmountInput value={config.symbolWinRateLookback} min={5} max={50} step={1}
+                          disabled={config.minSymbolWinRate === 0}
+                          onCommit={(v) => { patchConfig("symbolWinRateLookback", v); return true; }} />
+                      </Field>
+                    </div>
+                  </details>
 
                 </div>
               )}
@@ -1874,7 +2016,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         if (ok) { patchConfig("maxDailyLossUsd", v); toast.success(`Limite: $${v}`); }
                         return ok;
                       }} />
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">Modifiable même bot actif</p>
                   </Field>
                   <Field label={`Gain cible / jour ($${config.maxDailyProfitUsd === 0 ? " — off" : config.maxDailyProfitUsd})`}>
                     <AmountInput value={config.maxDailyProfitUsd} min={0} max={1000} step={5}
@@ -1912,6 +2053,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       <option value="off">Désactivé</option>
                     </select>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">Un 4H opposé annule le trade. « Fort uniquement » ignore les 4H hésitants — plus de trades.</p>
+                  </Field>
+                  <Field label="Veto journalier (contre-tendance)">
+                    <select value={config.vetoDaily} onChange={(e) => patchConfig("vetoDaily", e.target.value as Veto4hMode)} className="cfg-input">
+                      <option value="off">Désactivé — recommandé</option>
+                      <option value="strong-only">Signal journalier fort uniquement</option>
+                      <option value="always">Toujours (strict)</option>
+                    </select>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Même logique que le veto 4H, sur la tendance journalière (plus rare et plus stricte).</p>
                   </Field>
                   <Field label={`Trailing stop — drawdown ($${config.trailingStopUsd === 0 ? " off" : config.trailingStopUsd})`}>
                     <AmountInput value={config.trailingStopUsd} min={0} max={500} step={5}
@@ -1951,6 +2100,224 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </div>
                     <p className="mt-1.5 text-[10px] text-muted-foreground">Les indices Volatility (R_100…) ignorent ce filtre — ouverts 24h/24, 7j/7.</p>
                   </div>
+
+                  <div className="sm:col-span-2 lg:col-span-3 space-y-4">
+                    {/* Trailing & rollback */}
+                    <details className="group rounded-2xl border border-border/60 bg-card/20">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                        <span>Trailing &amp; Rollback</span>
+                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <Field label={`Trailing stop % du pic (${config.trailingStopPct === 0 ? "désactivé" : `${Math.round(config.trailingStopPct * 100)}%`})`}>
+                          <input type="range" min={0} max={0.5} step={0.05} value={config.trailingStopPct}
+                            onChange={(e) => patchConfig("trailingStopPct", Number(e.target.value))} className="w-full accent-primary" />
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Protège ce % du pic de gain journalier. 0 = désactivé.</p>
+                        </Field>
+                        <Field label={`Pic minimum avant protection ($${config.trailingStopMinPeakUsd})`}>
+                          <AmountInput value={config.trailingStopMinPeakUsd} min={0} max={200} step={5}
+                            disabled={config.trailingStopPct === 0}
+                            onCommit={(v) => { patchConfig("trailingStopMinPeakUsd", v); return true; }} />
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Évite qu&apos;un tout petit gain déclenche le trailing.</p>
+                        </Field>
+                        <Field label="Rollback automatique">
+                          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                            <span className="text-xs text-muted-foreground">{config.autoRollbackEnabled ? "Activé" : "Désactivé"}</span>
+                            <Switch checked={config.autoRollbackEnabled} onCheckedChange={async (v) => {
+                              if (v) {
+                                const ok = await confirm({ title: "Activer le rollback automatique ?", description: "Le moteur pourra annuler automatiquement un de tes réglages récents s'il détecte une dégradation de performance. Une automatisation de plus, pas juste un seuil.", confirmLabel: "Activer", danger: true });
+                                if (!ok) return;
+                              }
+                              patchConfig("autoRollbackEnabled", v);
+                            }} />
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Revient sur un réglage récent si la performance se dégrade après le changement.</p>
+                        </Field>
+                      </div>
+                    </details>
+
+                    {/* Positions & marchés */}
+                    <details className="group rounded-2xl border border-border/60 bg-card/20">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                        <span>Positions &amp; Marchés</span>
+                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <Field label={`Positions ouvertes max (${config.maxOpenPositions})`}>
+                          <AmountInput value={config.maxOpenPositions} min={1} max={15} step={1}
+                            onCommit={async (v) => {
+                              if (v > config.maxOpenPositions) {
+                                const ok = await confirm({ title: "Augmenter les positions simultanées max ?", description: `${config.maxOpenPositions} → ${v}. Plus de positions ouvertes en même temps = plus d'exposition simultanée.`, confirmLabel: "Confirmer", danger: true });
+                                if (!ok) return false;
+                              }
+                              patchConfig("maxOpenPositions", v);
+                              return true;
+                            }} />
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Plafond total, tous cycles de scan confondus.</p>
+                        </Field>
+                        <Field label={`Spread max (${config.maxSpreadPct === 0 ? "désactivé" : `${config.maxSpreadPct.toFixed(2)}%`})`}>
+                          <input type="range" min={0.05} max={1} step={0.05} value={config.maxSpreadPct}
+                            onChange={(e) => patchConfig("maxSpreadPct", Number(e.target.value))} className="w-full accent-primary" />
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Ignore le trade si le spread bid/ask dépasse ce % du prix.</p>
+                        </Field>
+                        <Field label={`Cooldown après perte (${config.cooldownMinutes} min)`}>
+                          <AmountInput value={config.cooldownMinutes} min={5} max={240} step={5}
+                            onCommit={(v) => { patchConfig("cooldownMinutes", v); return true; }} />
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Pause par symbole après une série de pertes.</p>
+                        </Field>
+                        <Field label="Réduction progressive de la mise">
+                          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                            <span className="text-xs text-muted-foreground">{config.progressiveStakeReduction ? "Activé" : "Désactivé"}</span>
+                            <Switch checked={config.progressiveStakeReduction} onCheckedChange={(v) => patchConfig("progressiveStakeReduction", v)} />
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">Réduit la mise graduellement après chaque perte, pas seulement après 3.</p>
+                        </Field>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: Moteur Multiplicateur */}
+              {configTab === "multiplier" && (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground leading-relaxed">
+                      Les indices Boom/Crash et les cryptos tradent toujours en Multiplicateur (position ouverte, sans échéance fixe) — les autres marchés tradent en binaire (CALL/PUT, échéance fixe) sauf override ci-dessous. Ces réglages n&apos;ont d&apos;effet que sur les symboles en mode Multiplicateur.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Type d&apos;instrument par défaut</label>
+                    <div className="flex rounded-xl border border-border overflow-hidden w-fit">
+                      {(["binary", "multiplier"] as const).map((m) => (
+                        <button key={m} onClick={() => patchConfig("instrumentType", m)}
+                          className={cn("px-4 py-2 text-xs font-semibold transition-colors",
+                            config.instrumentType === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground")}>
+                          {m === "binary" ? "Binaire (CALL/PUT)" : "Multiplicateur"}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs font-semibold text-muted-foreground/90 mt-1.5">
+                      Binaire : échéance fixe, perte plafonnée à la mise. Multiplicateur : position ouverte avec effet de levier, fermée par stop-loss/take-profit.
+                    </p>
+                  </div>
+
+                  {config.symbols.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-extrabold uppercase tracking-widest text-neutral-200 mb-1.5">Override par symbole</label>
+                      <div className="space-y-1.5">
+                        {config.symbols.map((sym) => {
+                          const label = SYMBOLS.find((s) => s.deriv === sym)?.label ?? sym;
+                          const override = config.symbolInstrumentOverrides?.[sym] ?? "";
+                          return (
+                            <div key={sym} className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                              <span className="text-xs font-semibold text-foreground">{label}</span>
+                              <select
+                                value={override}
+                                onChange={(e) => {
+                                  const v = e.target.value as "" | "binary" | "multiplier";
+                                  const next = { ...(config.symbolInstrumentOverrides ?? {}) };
+                                  if (v === "") delete next[sym]; else next[sym] = v;
+                                  patchConfig("symbolInstrumentOverrides", next);
+                                }}
+                                className="cfg-input w-auto"
+                              >
+                                <option value="">Global ({config.instrumentType === "binary" ? "Binaire" : "Multiplicateur"})</option>
+                                <option value="binary">Binaire</option>
+                                <option value="multiplier">Multiplicateur</option>
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <details className="group rounded-2xl border border-border/60 bg-card/20" open>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                      <span>Levier &amp; Stop/Take-profit</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <Field label={`Levier (x${config.multiplierLevel})`}>
+                        <AmountInput value={config.multiplierLevel} min={5} max={100} step={5}
+                          onCommit={async (v) => {
+                            const ok = await confirm({ title: "Modifier le levier ?", description: `x${config.multiplierLevel} → x${v}. Un levier plus élevé amplifie gains ET pertes pour un même mouvement de prix.`, confirmLabel: "Confirmer", danger: true });
+                            if (ok) patchConfig("multiplierLevel", v);
+                            return ok;
+                          }} />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Le levier max réellement disponible dépend du symbole côté Deriv (souvent plus bas sur crypto).</p>
+                      </Field>
+                      <Field label="Stop/take-profit dynamique (ATR)">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{config.atrStopMode ? "Activé" : "Désactivé"}</span>
+                          <Switch checked={config.atrStopMode} onCheckedChange={(v) => patchConfig("atrStopMode", v)} />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Backtester avant d&apos;activer en live. Désactivé = distances fixes en % de la mise ci-dessous.</p>
+                      </Field>
+                      <div />
+                      <Field label={`Multiple ATR (×${config.atrStopMultiple.toFixed(1)})`}>
+                        <input type="range" min={1} max={6} step={0.5} value={config.atrStopMultiple}
+                          disabled={!config.atrStopMode}
+                          onChange={(e) => patchConfig("atrStopMultiple", Number(e.target.value))} className="w-full accent-primary disabled:opacity-40" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Distance du stop = ce multiple de l&apos;ATR 15m.</p>
+                      </Field>
+                      <Field label={`Ratio risque/récompense (${config.riskRewardRatio.toFixed(1)})`}>
+                        <input type="range" min={0.5} max={3} step={0.1} value={config.riskRewardRatio}
+                          disabled={!config.atrStopMode}
+                          onChange={(e) => patchConfig("riskRewardRatio", Number(e.target.value))} className="w-full accent-primary disabled:opacity-40" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Distance du take-profit = distance du stop × ce ratio.</p>
+                      </Field>
+                      <div />
+                      <Field label={`Stop-loss fixe (${config.stopLossPctOfStake}% de la mise)`}>
+                        <AmountInput value={config.stopLossPctOfStake} min={10} max={100} step={5}
+                          disabled={config.atrStopMode}
+                          onCommit={(v) => { patchConfig("stopLossPctOfStake", v); return true; }} />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">100% = perte plafonnée à la mise, comme en binaire.</p>
+                      </Field>
+                      <Field label={`Take-profit fixe (${config.takeProfitPctOfStake}% de la mise)`}>
+                        <AmountInput value={config.takeProfitPctOfStake} min={10} max={300} step={5}
+                          disabled={config.atrStopMode}
+                          onCommit={(v) => { patchConfig("takeProfitPctOfStake", v); return true; }} />
+                      </Field>
+                    </div>
+                  </details>
+
+                  <details className="group rounded-2xl border border-border/60 bg-card/20">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
+                      <span>Gestion de position</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="grid gap-4 border-t border-border/40 p-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <Field label={`Durée max de la position (${config.maxHoldMinutes} min)`}>
+                        <AmountInput value={config.maxHoldMinutes} min={15} max={1440} step={15}
+                          onCommit={(v) => { patchConfig("maxHoldMinutes", v); return true; }} />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Fermeture forcée si ni le stop ni le take-profit ne se sont déclenchés.</p>
+                      </Field>
+                      <Field label={`Prise de profit partielle (${config.partialTakeProfitPct === 0 ? "désactivée" : `${config.partialTakeProfitPct}%`})`}>
+                        <input type="range" min={0} max={100} step={10} value={config.partialTakeProfitPct}
+                          onChange={(e) => patchConfig("partialTakeProfitPct", Number(e.target.value))} className="w-full accent-primary" />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Ferme ce % de la position à 50% du take-profit.</p>
+                      </Field>
+                      <Field label="Stop à breakeven après TP partiel">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{config.moveSlToBreakeven ? "Activé" : "Désactivé"}</span>
+                          <Switch checked={config.moveSlToBreakeven}
+                            disabled={config.partialTakeProfitPct === 0}
+                            onCheckedChange={(v) => patchConfig("moveSlToBreakeven", v)} />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-amber-400">Après la prise partielle, doit ramener le stop au prix d&apos;entrée — pas encore implémenté côté moteur, ce réglage n&apos;a aucun effet pour l&apos;instant.</p>
+                      </Field>
+                      <Field label="Durée dynamique (ATR)">
+                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{config.dynamicDuration ? "Activé" : "Désactivé"}</span>
+                          <Switch checked={config.dynamicDuration} onCheckedChange={(v) => patchConfig("dynamicDuration", v)} />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Ajuste la durée du contrat selon la volatilité du symbole.</p>
+                      </Field>
+                    </div>
+                  </details>
                 </div>
               )}
 
@@ -1962,122 +2329,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
       </div>
 
-      {/* ── Trade Journal — its own mobile tab ── */}
-      <div className={cn(showAdvanced && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
-      <div className="glass-panel rounded-2xl overflow-hidden">
-        <button className="flex w-full items-center justify-between px-5 py-4 hover:bg-muted/10 transition-colors"
-          onClick={() => setShowLogs((v) => !v)}>
-          <div className="flex items-center gap-2.5">
-            <Clock className="h-5 w-5 text-muted-foreground" />
-            <span className="text-base font-black uppercase tracking-wider text-neutral-200">Journal</span>
-            <span className="text-[10px] bg-muted/40 text-muted-foreground rounded-md px-2 py-0.5">{journalTrades.length} trades</span>
-            {wins > 0 && <span className="text-[10px] bg-up/15 text-up rounded-md px-2 py-0.5">{wins} gagnés</span>}
-            {losses > 0 && <span className="text-[10px] bg-down/15 text-down rounded-md px-2 py-0.5">{losses} perdus</span>}
-            {cloudActive && (
-              <span className="text-[10px] bg-[color:var(--brand-cyan)]/15 text-[color:var(--brand-cyan)] rounded-md px-2 py-0.5">
-                serveur · {presetLabels[selectedPreset]}
-              </span>
-            )}
-          </div>
-          {showLogs ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-        </button>
-
-        {showLogs && (
-          <div className="border-t border-border/40">
-            {journalTrades.length > 0 && (
-              <div className="flex gap-1 px-5 pt-3 pb-1 flex-wrap">
-                {(["all","won","lost","open","error"] as const).map((f) => {
-                  const count = f === "all" ? journalTrades.length : journalTrades.filter((l) => l.status === f).length;
-                  return (
-                    <button key={f} onClick={() => setLogFilter(f)}
-                      className={cn("rounded-lg px-3 py-1 text-[10px] font-semibold transition-colors",
-                        logFilter === f
-                          ? f === "won" ? "bg-up/20 text-up" : f === "lost" ? "bg-down/20 text-down"
-                            : f === "open" ? "bg-[color:var(--brand-cyan)]/20 text-[color:var(--brand-cyan)]" : "bg-muted/50 text-foreground"
-                          : "text-muted-foreground hover:text-foreground")}>
-                      {f === "all" ? "Tous" : f === "won" ? "Gagnés" : f === "lost" ? "Perdus" : f === "open" ? "Ouverts" : "Erreurs"} ({count})
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {(() => {
-              const fl = logFilter === "all" ? journalTrades : journalTrades.filter((l) => l.status === logFilter);
-              return fl.length === 0 ? (
-                <div className="px-5 py-10 text-center text-xs text-muted-foreground">
-                  {logFilter === "all" ? "Aucun trade — démarre le bot." : `Aucun trade "${logFilter}".`}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/15 text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-5 py-2.5 text-left">Heure</th>
-                        <th className="px-5 py-2.5 text-left">Paire</th>
-                        <th className="px-4 py-2.5 text-center">Dir.</th>
-                        <th className="px-4 py-2.5 text-right">Mise</th>
-                        <th className="px-4 py-2.5 text-right">Conf.</th>
-                        <th className="px-4 py-2.5 text-right">P&L</th>
-                        <th className="px-4 py-2.5 text-center">Statut</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fl.map((t) => (
-                        <tr key={t.id} className={cn("border-t border-border/30 hover:bg-muted/5 transition-colors",
-                          t.status === "won" && "bg-up/3", t.status === "lost" && "bg-down/3")}>
-                          <td className="px-5 py-2.5 text-muted-foreground whitespace-nowrap">{new Date(t.time).toLocaleTimeString()}</td>
-                          <td className="px-5 py-2.5 max-w-[160px]">
-                            {t.status === "cooldown" || t.status === "risk-stop"
-                              ? <span className="text-muted-foreground italic text-[10px]">{t.note}</span>
-                              : <span className={cn("font-medium", t.status === "error" && "text-down")}>
-                                  {SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol}
-                                  {t.note && <span className="block text-[10px] text-muted-foreground truncate" title={t.note}>{t.note}</span>}
-                                </span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-center">
-                            {t.status !== "cooldown" && t.status !== "risk-stop" && (
-                              <span className={cn("inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold",
-                                t.direction === "CALL" ? "bg-up/10 text-up" : "bg-down/10 text-down")}>
-                                {t.direction === "CALL" ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
-                                {t.direction}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-muted-foreground">{t.stake > 0 ? `$${t.stake.toFixed(2)}` : "—"}</td>
-                          <td className="px-4 py-2.5 text-right text-muted-foreground">{t.confidence > 0 ? `${t.confidence}%` : "—"}</td>
-                          <td className={cn("px-4 py-2.5 text-right font-bold",
-                            t.profit > 0 ? "text-up" : t.profit < 0 ? "text-down" : "text-muted-foreground")}>
-                            {t.status === "won" && `+$${t.profit.toFixed(2)}`}
-                            {t.status === "lost" && `-$${Math.abs(t.profit).toFixed(2)}`}
-                            {t.status !== "won" && t.status !== "lost" && "—"}
-                          </td>
-                          <td className="px-4 py-2.5 text-center"><StatusBadge status={t.status} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {!cloudActive && (
-                    <div className="flex justify-end px-5 py-2.5 border-t border-border/30">
-                      <button onClick={async () => {
-                        const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
-                        if (!ok) return;
-                        localStorage.removeItem("lio23.autotrader_log");
-                        setEngineLogs([]);
-                      }} className="text-[10px] text-muted-foreground hover:text-down transition-colors">
-                        Effacer le journal
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
-      </div>
-
       {/* ── Live server scanner — below the trade journal for better visibility ── */}
-      <div className={cn(showAdvanced && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden", showAdvanced ? "md:block" : "md:hidden")}>
+      <div className={cn(advancedVisible && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden", advancedVisible ? "md:block" : "md:hidden")}>
         {cloudSelected?.enabled && cloudSelected.lastScan && (
           <CloudScanPanel lastScan={cloudSelected.lastScan} />
         )}
@@ -2243,147 +2496,11 @@ function OpportunityCommandCenter({
   );
 }
 
-function AutoTraderStatusBar({
-  mode,
-  presetLabel,
-  autoEnabled,
-  autoRunning,
-  cloudBusy,
-  pnl,
-  lossUsedUsd,
-  maxDailyLossUsd,
-  openTrades,
-  balance,
-  winRate,
-  onAuto,
-  onModeChange,
-}: {
-  mode: TradingMode;
-  presetLabel: string;
-  autoEnabled: boolean;
-  autoRunning: boolean;
-  cloudBusy: boolean;
-  pnl: number;
-  lossUsedUsd: number;
-  maxDailyLossUsd: number;
-  openTrades: number;
-  balance: string;
-  winRate: string;
-  onAuto: () => void;
-  onModeChange: (mode: TradingMode) => void;
-}) {
-  const remainingLoss = Math.max(0, maxDailyLossUsd - lossUsedUsd);
-  const limitPct = maxDailyLossUsd > 0 ? Math.min(100, Math.round((lossUsedUsd / maxDailyLossUsd) * 100)) : 0;
-  const statusLabel = autoEnabled
-    ? autoRunning
-      ? "Auto actif"
-      : "Auto en démarrage"
-    : "Scan seul";
-  const statusTone = autoEnabled && autoRunning ? "text-up" : autoEnabled ? "text-amber-300" : "text-muted-foreground";
-
-  return (
-    <div className="sticky top-3 z-30 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="grid grid-cols-2 rounded-xl border border-border/60 bg-muted/10 p-1">
-            {(["demo", "live"] as TradingMode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => onModeChange(m)}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-colors",
-                  mode === m
-                    ? m === "live"
-                      ? "bg-down/15 text-down"
-                      : "bg-up/15 text-up"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m === "live" ? "Live" : "Démo"}
-              </button>
-            ))}
-          </div>
-          <span className={cn("inline-flex items-center gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2 text-xs font-black uppercase tracking-wider", statusTone)}>
-            <span className={cn("h-2 w-2 rounded-full", autoEnabled && autoRunning ? "animate-pulse bg-up" : autoEnabled ? "animate-pulse bg-amber-300" : "bg-muted-foreground")} />
-            {statusLabel}
-          </span>
-          <span className="truncate rounded-xl border border-border/60 bg-muted/10 px-3 py-2 text-xs font-bold text-muted-foreground">
-            {presetLabel}
-          </span>
-        </div>
-
-        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5 lg:flex lg:items-center">
-          <StatusMetric label="Solde" value={balance} tone="text-foreground" />
-          <StatusMetric
-            label="P&L jour"
-            value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
-            tone={pnl >= 0 ? "text-up" : "text-down"}
-          />
-          <StatusMetric
-            label="Perte restante"
-            value={`$${remainingLoss.toFixed(2)}`}
-            tone={limitPct >= 70 ? "text-down" : limitPct >= 40 ? "text-amber-300" : "text-foreground"}
-          />
-          <StatusMetric label="Win" value={winRate} tone={winRate === "—" ? "text-muted-foreground" : "text-foreground"} />
-          <StatusMetric label="Ouverts" value={`${openTrades}`} tone={openTrades > 0 ? "text-cyan" : "text-muted-foreground"} />
-        </div>
-
-        <Button
-          onClick={onAuto}
-          disabled={cloudBusy}
-          className={cn(
-            "h-11 w-full shrink-0 gap-2 font-black lg:w-auto",
-            autoEnabled
-              ? "border border-down/30 bg-down/15 text-down hover:bg-down/25"
-              : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25",
-          )}
-        >
-          {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />}
-          {autoEnabled ? "Pause auto" : "Activer auto"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function StatusMetric({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 font-mono-tabular text-sm font-black", tone)}>{value}</div>
-    </div>
-  );
-}
-
 function DecisionMetric({ label, value, className }: { label: string; value: string; className: string }) {
   return (
     <div className={cn("rounded-lg border px-3 py-2.5", className)}>
       <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-base font-black text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function ManualCheck({ label, detail, tone }: { label: string; detail: string; tone: "ok" | "warn" | "bad" }) {
-  const colors = {
-    ok: "border-up/25 bg-up/10 text-up",
-    warn: "border-amber-500/25 bg-amber-500/10 text-amber-300",
-    bad: "border-down/25 bg-down/10 text-down",
-  } as const;
-  return (
-    <div className={cn("rounded-lg border px-3 py-2", colors[tone])}>
-      <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider"><span className="h-1.5 w-1.5 rounded-full bg-current" />{label}</div>
-      <div className="mt-1 text-base font-bold text-foreground">{detail}</div>
-    </div>
-  );
-}
-
-function ManualOrderItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card/30 px-3 py-2.5 shadow-inner">
-      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate text-sm font-black text-foreground" title={value}>{value}</div>
     </div>
   );
 }
@@ -2398,29 +2515,6 @@ function ChecklistItem({ label, value, tone }: { label: string; value: string; t
     <div className="flex items-center justify-between">
       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
       <span className={cn("text-xs font-black uppercase tracking-widest", tones[tone])}>{value}</span>
-    </div>
-  );
-}
-
-function ManualStep({ number, label, detail, active = false }: { number: string; label: string; detail: string; active?: boolean }) {
-  return (
-    <div className={cn("relative flex items-center gap-3", active ? "text-primary" : "text-muted-foreground")}>
-      <span className={cn("grid h-9 w-9 place-items-center rounded-full border text-lg font-black", active ? "border-primary bg-primary/10" : "border-border")}>
-        {number}
-      </span>
-      <span>
-        <span className="block font-black">{label}</span>
-        <span className="block text-xs font-medium">{detail}</span>
-      </span>
-    </div>
-  );
-}
-
-function ManualSummary({ label, value, tone = "text-foreground" }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className={cn("font-mono-tabular text-sm font-black", tone)}>{value}</span>
     </div>
   );
 }
@@ -2522,24 +2616,6 @@ function riskLabel(risk: OpportunityItem["risk"]) {
   if (risk === "faible") return "faible";
   if (risk === "modere") return "modéré";
   return "élevé";
-}
-
-function StatusBadge({ status }: { status: TradeLog["status"] }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    pending:  { label: "En attente", cls: "bg-muted/40 text-muted-foreground" },
-    open:     { label: "Ouvert",     cls: "bg-[color:var(--brand-cyan)]/10 text-[color:var(--brand-cyan)] animate-pulse" },
-    won:      { label: "Gagné ✓",   cls: "bg-[color:var(--bull)]/10 text-[color:var(--bull)]" },
-    lost:     { label: "Perdu ✗",   cls: "bg-[color:var(--bear)]/10 text-[color:var(--bear)]" },
-    error:    { label: "Erreur",     cls: "bg-muted/40 text-muted-foreground" },
-    cooldown: { label: "⏸ Cooldown", cls: "bg-amber-500/10 text-amber-400" },
-    "risk-stop": { label: "🛑 Arrêt risque", cls: "bg-[color:var(--bear)]/15 text-[color:var(--bear)]" },
-  };
-  const { label, cls } = map[status] ?? map.pending;
-  return (
-    <span className={cn("inline-flex rounded-md px-2 py-0.5 text-xs font-medium", cls)}>
-      {label}
-    </span>
-  );
 }
 
 function ScannerSection({ cloudActive, cloudSelected, lastScan, config }: {
@@ -2674,384 +2750,6 @@ function CloudScanPanel({ lastScan }: { lastScan: ScanResult }) {
         {total === 0 && (
           <p className="text-sm text-muted-foreground/50 text-center py-3">Aucun symbole — hors session ou en pause</p>
         )}
-      </div>
-    </div>
-  );
-}
-
-function TradeJournalSection({
-  journalTrades,
-  wins: globalWins,
-  losses: globalLosses,
-  cloudActive,
-  selectedPreset,
-  presetLabels,
-  logFilter,
-  setLogFilter,
-  showLogs,
-  setShowLogs,
-  confirm,
-  setEngineLogs,
-  durationMinutes = 15,
-}: {
-  journalTrades: TradeLog[];
-  wins: number;
-  losses: number;
-  cloudActive: boolean;
-  selectedPreset: PresetKey;
-  presetLabels: Record<PresetKey, string>;
-  logFilter: "all" | "won" | "lost" | "open" | "error";
-  setLogFilter: (f: "all" | "won" | "lost" | "open" | "error") => void;
-  showLogs: boolean;
-  setShowLogs: (v: boolean | ((prev: boolean) => boolean)) => void;
-  confirm: (opts: any) => Promise<boolean>;
-  setEngineLogs: (logs: TradeLog[] | ((prev: TradeLog[]) => TradeLog[])) => void;
-  durationMinutes?: number;
-}) {
-  const [timeWindow, setTimeWindow] = useState<"5m" | "15m" | "1h" | "24h" | "all">("15m");
-  const [filterSmall, setFilterSmall] = useState<boolean>(false);
-  const [pageSize, setPageSize] = useState<number>(50);
-
-  // Compute time window cutoff
-  const now = Date.now();
-  const windowCutoff = useMemo(() => {
-    if (timeWindow === "5m") return now - 5 * 60 * 1000;
-    if (timeWindow === "15m") return now - 15 * 60 * 1000;
-    if (timeWindow === "1h") return now - 60 * 60 * 1000;
-    if (timeWindow === "24h") return now - 24 * 60 * 60 * 1000;
-    return 0;
-  }, [timeWindow, now]);
-
-  // Filter trades by time window and small stake/profit filter
-  const windowTrades = useMemo(() => {
-    return journalTrades.filter((t) => {
-      if (windowCutoff > 0 && t.time < windowCutoff) return false;
-      if (filterSmall && Math.abs(t.profit) < 5 && t.stake < 5) return false;
-      return true;
-    });
-  }, [journalTrades, windowCutoff, filterSmall]);
-
-  // Period stats
-  const periodTradesCount = windowTrades.length;
-  const periodWins = windowTrades.filter((t) => t.status === "won").length;
-  const periodLosses = windowTrades.filter((t) => t.status === "lost").length;
-  const periodTotalProfit = windowTrades
-    .filter((t) => t.status === "won" || t.status === "lost")
-    .reduce((sum, t) => sum + (t.profit || 0), 0);
-
-  // Filtered by status tab
-  const displayTrades = useMemo(() => {
-    const statusFiltered = logFilter === "all" ? windowTrades : windowTrades.filter((l) => l.status === logFilter);
-    return statusFiltered.slice(0, pageSize);
-  }, [windowTrades, logFilter, pageSize]);
-
-  return (
-    <div className="glass-panel overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F19]/90 shadow-2xl">
-      {/* ── Top Bar Controls (Matching Screenshot Header) ── */}
-      <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-black uppercase tracking-widest text-muted-foreground/90">Trades Récents</span>
-          <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">
-            {journalTrades.length} au total
-          </span>
-          {cloudActive && (
-            <span className="rounded-md border border-cyan/30 bg-cyan/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan">
-              {presetLabels[selectedPreset]}
-            </span>
-          )}
-        </div>
-
-        {/* Filter controls matching screenshot */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Small filter toggle */}
-          <button
-            onClick={() => setFilterSmall((v) => !v)}
-            className={cn(
-              "rounded-lg border px-2.5 py-1 text-xs font-bold transition-all",
-              filterSmall
-                ? "border-primary/50 bg-primary/20 text-primary"
-                : "border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Filtre &lt; 5$ {filterSmall ? "ON" : "OFF"}
-          </button>
-
-          {/* Timeframe pills */}
-          <div className="inline-flex rounded-lg border border-white/10 bg-black/40 p-0.5">
-            {(["5m", "15m", "1h", "24h", "all"] as const).map((tw) => (
-              <button
-                key={tw}
-                onClick={() => setTimeWindow(tw)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-bold transition-all",
-                  timeWindow === tw
-                    ? "bg-blue-600/30 text-blue-400 border border-blue-500/40 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tw === "all" ? "Tout" : tw}
-              </button>
-            ))}
-          </div>
-
-          {/* Page size dropdown */}
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="h-8 rounded-lg border border-white/10 bg-black/40 px-2.5 text-xs font-bold text-muted-foreground hover:text-foreground focus:outline-none"
-          >
-            <option value={20}>20/page</option>
-            <option value={50}>50/page</option>
-            <option value={100}>100/page</option>
-          </select>
-        </div>
-      </div>
-
-      {/* ── Summary KPI Bar Cards (Matching Screenshot 4 Cards) ── */}
-      <div className="grid grid-cols-2 gap-2 border-b border-white/10 p-3 sm:grid-cols-4 sm:gap-3">
-        {/* Card 1: Période */}
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Période</div>
-          <div className="mt-1 font-mono text-base font-black text-foreground">{timeWindow === "all" ? "Tout" : timeWindow}</div>
-        </div>
-
-        {/* Card 2: Trades */}
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Trades</div>
-          <div className="mt-1 font-mono text-base font-black text-foreground">{periodTradesCount}</div>
-        </div>
-
-        {/* Card 3: Wins/Losses */}
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Wins / Losses</div>
-          <div className="mt-1 font-mono text-base font-black">
-            <span className="text-up">{periodWins}</span>
-            <span className="text-muted-foreground/50">/</span>
-            <span className="text-down">{periodLosses}</span>
-          </div>
-        </div>
-
-        {/* Card 4: Total P&L */}
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Total</div>
-          <div className={cn("mt-1 font-mono text-base font-black", periodTotalProfit >= 0 ? "text-up" : "text-down")}>
-            {periodTotalProfit >= 0 ? "+" : ""}${periodTotalProfit.toFixed(4)}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Status Tab Filter Bar ── */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-black/20 px-4 py-2">
-        <div className="flex items-center gap-1">
-          {(["all", "won", "lost", "open", "error"] as const).map((f) => {
-            const count = f === "all" ? windowTrades.length : windowTrades.filter((l) => l.status === f).length;
-            return (
-              <button
-                key={f}
-                onClick={() => setLogFilter(f)}
-                className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-bold transition-all",
-                  logFilter === f
-                    ? f === "won"
-                      ? "bg-up/20 text-up border border-up/30"
-                      : f === "lost"
-                      ? "bg-down/20 text-down border border-down/30"
-                      : f === "open"
-                      ? "bg-cyan/20 text-cyan border border-cyan/30"
-                      : "bg-white/15 text-foreground border border-white/20"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {f === "all" ? "Tous" : f === "won" ? "Gagnés" : f === "lost" ? "Perdus" : f === "open" ? "Ouverts" : "Erreurs"} ({count})
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Table Content (Styled like screenshot) ── */}
-      {displayTrades.length === 0 ? (
-        <div className="p-12 text-center text-xs font-medium text-muted-foreground">
-          Aucun trade enregistré pour la période sélectionnée.
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-white/10 bg-black/40 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Origine / Paire</th>
-                <th className="px-4 py-3 text-right">Lot / Mise</th>
-                <th className="px-4 py-3 text-center">Conf. / Heure</th>
-                <th className="px-4 py-3 text-center">Fin</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-right">Profit</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/[0.05]">
-              {displayTrades.map((t) => {
-                const isBuy = t.direction === "CALL" || t.direction === "MULTUP";
-                const isWon = t.status === "won";
-                const isLost = t.status === "lost";
-                const symbolLabel = SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol;
-
-                return (
-                  <tr key={t.id} className="hover:bg-white/[0.02] transition-colors">
-                    {/* TYPE */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                          isBuy ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
-                        )}
-                      >
-                        {isBuy ? "BUY" : "SELL"}
-                      </span>
-                    </td>
-
-                    {/* SYMBOLE */}
-                    <td className="px-4 py-3 font-bold text-foreground max-w-[160px] truncate" title={symbolLabel}>
-                      {symbolLabel}
-                    </td>
-
-                    {/* LOT / MISE */}
-                    <td className="px-4 py-3 text-right font-mono-tabular font-bold text-muted-foreground">
-                      {t.stake > 0 ? `$${t.stake.toFixed(2)}` : "0.02"}
-                    </td>
-
-                    {/* CONF / HEURE */}
-                    <td className="px-4 py-3 text-center font-mono text-muted-foreground">
-                      {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                      {t.confidence > 0 && <span className="ml-1 text-[10px] text-cyan">({t.confidence}%)</span>}
-                    </td>
-
-                    {/* FIN */}
-                    <td className="px-4 py-3 text-center font-mono text-muted-foreground">
-                      {new Date(t.time + (durationMinutes || 15) * 60 * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                    </td>
-
-                    {/* STATUS */}
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={cn(
-                          "inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                          t.status === "open"
-                            ? "bg-cyan/15 text-cyan border border-cyan/30 animate-pulse"
-                            : isWon
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : isLost
-                            ? "bg-red-500/10 text-red-400"
-                            : "bg-white/10 text-muted-foreground"
-                        )}
-                      >
-                        {t.status === "open" ? "OPEN" : isWon ? "CLOSED" : isLost ? "CLOSED" : t.status.toUpperCase()}
-                      </span>
-                    </td>
-
-                    {/* PROFIT */}
-                    <td
-                      className={cn(
-                        "px-4 py-3 text-right font-mono-tabular font-black text-sm whitespace-nowrap",
-                        isWon ? "text-emerald-400" : isLost ? "text-red-400" : "text-muted-foreground"
-                      )}
-                    >
-                      {isWon && `+$${t.profit.toFixed(4)}`}
-                      {isLost && `-$${Math.abs(t.profit).toFixed(4)}`}
-                      {!isWon && !isLost && "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {!cloudActive && (
-            <div className="flex justify-end px-4 py-2.5 border-t border-white/10 bg-black/40">
-              <button
-                onClick={async () => {
-                  const ok = await confirm({ title: "Effacer le journal ?", description: "Tout l'historique sera supprimé.", confirmLabel: "Effacer", danger: true });
-                  if (!ok) return;
-                  localStorage.removeItem("lio23.autotrader_log");
-                  setEngineLogs([]);
-                }}
-                className="text-xs text-muted-foreground hover:text-red-400 transition-colors font-semibold underline decoration-dashed"
-              >
-                Effacer le journal
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PositionsBridgePanel({ openTrades }: { openTrades: TradeLog[] }) {
-  if (!openTrades.length) return null;
-
-  return (
-    <div className="glass-panel overflow-hidden rounded-2xl border border-cyan/30 bg-[#070B14]/95 p-4 shadow-2xl">
-      <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
-        <div className="flex items-center gap-2.5">
-          <Activity className="h-4 w-4 text-cyan animate-pulse" />
-          <span className="text-xs font-black uppercase tracking-widest text-neutral-200">
-            Positions MT5 Bridge · En Direct
-          </span>
-        </div>
-        <span className="font-mono text-xs font-bold text-muted-foreground bg-white/[0.04] px-2.5 py-0.5 rounded-full border border-white/10">
-          {openTrades.length} position{openTrades.length > 1 ? "s" : ""} active{openTrades.length > 1 ? "s" : ""}
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        {openTrades.map((t, idx) => {
-          const isBuy = t.direction === "CALL" || t.direction === "MULTUP";
-          const profit = t.profit || 0;
-          const symbolLabel = SYMBOLS.find((s) => s.deriv === t.symbol)?.label ?? t.symbol;
-
-          return (
-            <div
-              key={t.id || idx}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/60 px-4 py-3 shadow-inner"
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-black uppercase tracking-wider",
-                    isBuy
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-red-500/20 text-red-400 border border-red-500/30"
-                  )}
-                >
-                  {isBuy ? "BUY" : "SELL"}
-                </span>
-                <span className="font-bold text-foreground text-sm">{symbolLabel}</span>
-                {t.entryPrice ? (
-                  <span className="font-mono text-xs text-muted-foreground">
-                    @ {t.entryPrice.toFixed(2)}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="flex items-center gap-4">
-                <span
-                  className={cn(
-                    "font-mono text-sm font-black tracking-wider",
-                    profit >= 0 ? "text-emerald-400" : "text-red-400"
-                  )}
-                >
-                  ${profit >= 0 ? "+" : ""}{profit.toFixed(4)}
-                </span>
-                <span className="font-mono text-xs text-muted-foreground/80 bg-white/[0.04] px-2 py-0.5 rounded border border-white/5">
-                  lot {(t.stake ? (t.stake / 100).toFixed(2) : "0.02")}
-                </span>
-                <span className="font-mono text-[10px] font-bold text-muted-foreground/60">
-                  {idx + 1}/{openTrades.length}
-                </span>
-              </div>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

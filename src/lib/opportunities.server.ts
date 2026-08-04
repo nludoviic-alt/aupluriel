@@ -1,10 +1,11 @@
-import { BOOM_PRESET, CRASH_PRESET, SCALPING_PRESET } from "./autotrader";
+import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
+import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -78,12 +79,13 @@ export interface OpportunitiesResponse {
   };
 }
 
-const PRESETS: Preset[] = ["boom", "crash", "default", "scalping"];
+const PRESETS: Preset[] = ["boom", "crash", "default", "scalping", "liquidity"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
   crash: "Crash",
   scalping: "Scalping",
+  liquidity: "Reversal liquidité",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
@@ -91,6 +93,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   boom: BOOM_PRESET,
   crash: CRASH_PRESET,
   scalping: SCALPING_PRESET,
+  liquidity: LIQUIDITY_PRESET,
 };
 
 const SYMBOL_LABELS = new Map(SYMBOLS.map((s) => [s.deriv, s]));
@@ -208,6 +211,63 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
       takeProfitUsd: config.takeProfitPctOfStake ? config.stakeUsd * (config.takeProfitPctOfStake / 100) : null,
       stopLossUsd: config.stopLossPctOfStake ? config.stakeUsd * (config.stopLossPctOfStake / 100) : null,
       reasons: explainOpportunity(decision, analysis, thresholds, stats),
+      blockers: analysis.blockers,
+      stats,
+      updatedAt: now,
+    };
+  }
+
+  if (preset === "liquidity") {
+    const m15 = await fetchCandlesServer(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
+    const signal = generateLiquidityReversalSignal(m15);
+    const analysis: SymbolAnalysis = signal
+      ? {
+          direction: signal.direction,
+          confidence: signal.confidence,
+          agreement: 4,
+          premiumCount: 0,
+          volatilityPct: signal.volatilityPct,
+          volatilityRatio: 1,
+          blockers: [],
+          dominantTf: "15m",
+          suggestedDuration: 15,
+          trendAlignmentScore: 4,
+          patternBonus: 0,
+        }
+      : {
+          direction: null,
+          confidence: 0,
+          agreement: 0,
+          premiumCount: 0,
+          volatilityPct: 0,
+          volatilityRatio: 1,
+          blockers: ["Pas de balayage/réintégration M15 confirmé par RSI"],
+          dominantTf: "15m",
+          suggestedDuration: 15,
+          trendAlignmentScore: 0,
+          patternBonus: 0,
+        };
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
+    return {
+      id: `${preset}:${symbol}`,
+      preset,
+      presetLabel: PRESET_LABEL[preset],
+      symbol,
+      label: meta?.label ?? symbol,
+      market: meta?.market ?? "unknown",
+      decision,
+      direction: analysis.direction,
+      directionLabel: directionLabel(analysis.direction, instrument),
+      confidence: analysis.confidence,
+      agreement: analysis.agreement,
+      risk: riskLevelFor(analysis, stats),
+      mode: "manual",
+      instrument,
+      durationMinutes: 15,
+      takeProfitUsd: null,
+      stopLossUsd: null,
+      reasons: signal ? [signal.reason] : ["Aucun setup de reversal de liquidité confirmé."],
       blockers: analysis.blockers,
       stats,
       updatedAt: now,

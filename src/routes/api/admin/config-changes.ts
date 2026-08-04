@@ -5,7 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
-import type { Preset } from "@/lib/bot-engine.server";
+import { ALL_PRESETS, type Preset } from "@/lib/bot-engine.server";
 import { summarize, type Summary } from "@/lib/analytics";
 import type { TradeLog } from "@/lib/autotrader";
 
@@ -40,8 +40,8 @@ export const Route = createFileRoute("/api/admin/config-changes")({
         const presetParam = url.searchParams.get("preset");
         const windowSize = Math.min(200, Math.max(5, Number(url.searchParams.get("window")) || DEFAULT_WINDOW));
         if (!Number.isFinite(userId)) return json({ error: "userId requis." }, 400);
-        if (presetParam !== "default" && presetParam !== "boom" && presetParam !== "crash" && presetParam !== "scalping") {
-          return json({ error: "preset doit être 'default', 'boom', 'crash' ou 'scalping'." }, 400);
+        if (!presetParam || !ALL_PRESETS.includes(presetParam as Preset)) {
+          return json({ error: "Preset inconnu." }, 400);
         }
         const preset = presetParam as Preset;
 

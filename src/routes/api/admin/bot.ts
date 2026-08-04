@@ -1,13 +1,21 @@
 // Admin control endpoint for the SERVER auto-trader (bot-engine.server.ts) —
 // lets an admin activate/deactivate a user's bot(s) and see who's actually
-// live. A user can have up to three independent bot_state rows now
-// (default/boom/crash, 2026-08-01) — this returns one status entry per row
+// live. A user can have one independent bot_state row per preset — this returns one status entry per row
 // that actually exists, not one per user.
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
-import { getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
+import { ALL_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
+import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+
+function canonicalConfig(preset: Preset) {
+  if (preset === "boom") return { ...DEFAULT_CONFIG, ...BOOM_PRESET };
+  if (preset === "crash") return { ...DEFAULT_CONFIG, ...CRASH_PRESET };
+  if (preset === "scalping") return { ...DEFAULT_CONFIG, ...SCALPING_PRESET, mode: "demo" as const };
+  if (preset === "liquidity") return { ...DEFAULT_CONFIG, ...LIQUIDITY_PRESET, mode: "demo" as const };
+  return DEFAULT_CONFIG;
+}
 
 export const Route = createFileRoute("/api/admin/bot")({
   server: {
@@ -70,10 +78,8 @@ export const Route = createFileRoute("/api/admin/bot")({
 
         const db = getDb();
 
-        if (action === "start" || action === "stop") {
-          if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default") {
-            return json({ error: "preset doit être 'boom', 'crash' ou 'default'." }, 400);
-          }
+        if ((action === "start" || action === "stop") && (!body.preset || !ALL_PRESETS.includes(body.preset))) {
+          return json({ error: "Preset inconnu." }, 400);
         }
         const preset = body.preset as Preset;
 
@@ -82,7 +88,8 @@ export const Route = createFileRoute("/api/admin/bot")({
           // défaut, la config canonique du preset (mode "demo") pour ne
           // jamais activer du live sans que l'utilisateur l'ait lui-même
           // déjà choisi une fois.
-          const config = loadBotConfig(userId, preset) ?? DEFAULT_CONFIG;
+          const saved = loadBotConfig(userId, preset);
+          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "scalping" || preset === "liquidity" ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
           try {
             await startBotForUser(userId, preset, config);
           } catch (e) {

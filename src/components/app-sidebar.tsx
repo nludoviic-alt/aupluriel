@@ -1,17 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  Radar,
   FlaskConical,
   CandlestickChart,
-  Workflow,
   Zap,
   Settings,
   BriefcaseBusiness,
   BarChart3,
   PieChart,
   ShieldCheck,
-  Activity,
   LogOut,
   ChevronRight,
   Cpu,
@@ -39,21 +36,18 @@ const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
   { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
-  { title: "Signaux",          url: "/signals",         icon: Radar,            color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
-  { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
 ];
 
 const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
-  { title: "Stratégies",       url: "/strategies",      icon: Workflow,         color: "text-mint",        glow: "shadow-mint/30" },
   { title: "Skills",           url: "/skills",          icon: Wrench,           color: "text-sky-400",    glow: "shadow-sky-500/30" },
-  { title: "Surveillance",     url: "/surveillance",    icon: Activity,         color: "text-emerald-400", glow: "shadow-emerald-500/30" },
 ];
 
 const toolItems = [
+  { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 

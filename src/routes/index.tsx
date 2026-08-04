@@ -3,16 +3,15 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity, ArrowUpRight, Bot, BriefcaseBusiness,
-  Radar, Wallet, Zap, TrendingUp, TrendingDown,
+  Wallet, Zap, TrendingUp, TrendingDown,
   BarChart2, Sparkles, Trophy, ChevronRight, Power, Settings2,
+  CheckCircle2, Clock3, ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PriceChart } from "@/components/price-chart";
-import { SignalCard, type SignalItem } from "@/components/signal-card";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
-import { useDerivCandles, useDerivTicks } from "@/hooks/use-deriv";
-import { generateSignal } from "@/lib/indicators";
-import { getProfitTable, GRANULARITY, SYMBOLS } from "@/lib/deriv";
+import { useDerivTicks } from "@/hooks/use-deriv";
+import { getProfitTable, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -70,19 +69,58 @@ function useRealStats() {
   return { winRate, todayPnl, tradeCount };
 }
 
+type OpportunityDecision = "take" | "wait" | "avoid";
+
+interface DashboardOpportunity {
+  id: string;
+  presetLabel: string;
+  label: string;
+  decision: OpportunityDecision;
+  directionLabel: string;
+  confidence: number;
+  agreement: number;
+  risk: "faible" | "modere" | "eleve";
+  reasons: string[];
+}
+
+interface DashboardOpportunitiesResponse {
+  generatedAt: number;
+  opportunities: DashboardOpportunity[];
+  summary: Record<OpportunityDecision, number>;
+}
+
+/** The same server-side selection and thresholds used by Auto-Trader. */
+function useDashboardOpportunities() {
+  const [data, setData] = useState<DashboardOpportunitiesResponse | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => {
+      api.get<DashboardOpportunitiesResponse>("/api/opportunities")
+        .then((next) => { if (mounted) setData(next); })
+        .catch(() => { /* Keep the last usable scan rather than showing stale local signals. */ });
+    };
+    refresh();
+    const id = window.setInterval(refresh, 30_000);
+    return () => { mounted = false; window.clearInterval(id); };
+  }, []);
+
+  return data;
+}
+
 function Dashboard() {
   const [chartSymbol, setChartSymbol] = useState(SYMBOLS[0]);
   const [marketFilter, setMarketFilter] = useState<"all" | "crypto" | "forex">("all");
   const { series, last, status } = useDerivTicks(chartSymbol.deriv, 180);
 
   const visibleSymbols = SYMBOLS.filter((s) =>
-    marketFilter === "all" ? true : marketFilter === "crypto" ? s.market === "crypto" : s.market !== "crypto",
+    marketFilter === "all" ? true : s.market === marketFilter,
   );
 
   function selectMarket(f: "all" | "crypto" | "forex") {
     setMarketFilter(f);
     const list = SYMBOLS.filter((s) =>
-      f === "all" ? true : f === "crypto" ? s.market === "crypto" : s.market !== "crypto",
+      f === "all" ? true : s.market === f,
     );
     if (list.length && !list.some((s) => s.deriv === chartSymbol.deriv)) {
       setChartSymbol(list[0]);
@@ -93,7 +131,7 @@ function Dashboard() {
   const brokerBalances = useBrokerBalances();
   const { winRate, todayPnl, tradeCount } = useRealStats();
   const { user } = useAuth();
-  const liveSignals = useLiveSignals();
+  const opportunityScan = useDashboardOpportunities();
   const isForex = chartSymbol.market === "forex";
 
   const priceChange = useMemo(() => {
@@ -106,9 +144,6 @@ function Dashboard() {
   const balanceDisplay = derivBalance
     ? derivBalance.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : null;
-  const hasDerivOanda = !!(brokerBalances?.deriv || brokerBalances?.oanda);
-  const derivOandaTotal = (brokerBalances?.deriv?.balance ?? 0) + (brokerBalances?.oanda?.balance ?? 0);
-
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonne nuit";
@@ -163,11 +198,11 @@ function Dashboard() {
               <span className="xs:hidden">Bot</span>
             </Link>
             <Link
-              to="/signals"
+              to="/opportunities"
               className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-white/[0.08] sm:py-2.5"
             >
-              <Radar className="h-4 w-4 text-orange-400" />
-              Signaux
+              <Sparkles className="h-4 w-4 text-orange-400" />
+              Opportunités
             </Link>
             <Link
               to="/portfolio"
@@ -184,21 +219,14 @@ function Dashboard() {
       <BotStatusCard />
 
       {/* ── BROKER BALANCES ── */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {(() => {
-          const bb = brokerBalances;
-          const total = (bb?.deriv?.balance ?? 0) + (bb?.kraken?.balance ?? 0) + (bb?.binance?.balance ?? 0) + (bb?.oanda?.balance ?? 0);
-          const hasAny = bb && (bb.deriv || bb.kraken || bb.binance || bb.oanda);
-          return (
-            <KpiCard
-              label="Fonds disponibles"
-              value={hasAny ? `$${total.toFixed(2)}` : balanceDisplay ? `${derivBalance?.currency} ${balanceDisplay}` : "—"}
-              delta={hasAny ? "Tous brokers" : derivBalance ? "Compte Deriv connecté" : "Mode simulation"}
-              icon={<Wallet className="h-5 w-5" />}
-              tone="amber"
-            />
-          );
-        })()}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+        <KpiCard
+          label="Comptes connectés"
+          value={brokerBalances ? Object.values(brokerBalances).filter(Boolean).length : derivBalance ? 1 : 0}
+          delta="Soldes séparés par devise"
+          icon={<Wallet className="h-5 w-5" />}
+          tone="amber"
+        />
         {(() => {
           const b = brokerBalances?.deriv;
           return (
@@ -218,6 +246,17 @@ function Dashboard() {
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "USD"}
               tone="kraken"
+            />
+          );
+        })()}
+        {(() => {
+          const b = brokerBalances?.binance;
+          return (
+            <KpiCard
+              label="Binance"
+              value={b ? b.balance.toFixed(2) : "0.00"}
+              delta={b ? b.currency : "USDT"}
+              tone="binance"
             />
           );
         })()}
@@ -242,24 +281,24 @@ function Dashboard() {
           orphaned 3rd column. 3 even columns from lg: up where there's room. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <KpiCard
-          label="Win Rate"
+          label="Win Rate Deriv"
           value={winRate !== null ? `${winRate.toFixed(1)}%` : "—"}
-          delta={tradeCount !== null ? `Sur ${tradeCount} trades` : "Pas encore de données"}
+          delta={tradeCount !== null ? `${tradeCount} derniers contrats Deriv` : "Deriv non connecté"}
           icon={<Trophy className="h-5 w-5" />}
           tone={winRate !== null ? (winRate >= 54.1 ? "bull" : "bear") : "default"}
         />
         <KpiCard
-          label="P&L Aujourd'hui"
-          value={todayPnl !== null ? `${todayPnl >= 0 ? "+" : ""}$${todayPnl.toFixed(2)}` : "—"}
-          delta={todayPnl !== null ? (todayPnl >= 0 ? "Journée positive" : "Journée négative") : "Aucun trade aujourd'hui"}
+          label="P&L Deriv aujourd'hui"
+          value={todayPnl !== null ? `${todayPnl >= 0 ? "+" : "-"}$${Math.abs(todayPnl).toFixed(2)}` : "—"}
+          delta={todayPnl !== null ? (todayPnl >= 0 ? "Contrats Deriv clôturés" : "Contrats Deriv clôturés") : "Deriv non connecté"}
           icon={todayPnl !== null && todayPnl >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
           tone={todayPnl !== null ? (todayPnl >= 0 ? "bull" : "bear") : "default"}
         />
         <KpiCard
           className="col-span-2 lg:col-span-1"
-          label="Signaux actifs"
-          value={liveSignals.filter(s => s.direction !== "HOLD").length || "—"}
-          delta="BTC · ETH · EUR/USD"
+          label="Opportunités prêtes"
+          value={opportunityScan?.summary.take ?? "—"}
+          delta={opportunityScan ? `${opportunityScan.summary.wait} à surveiller · moteur serveur` : "Analyse serveur en cours"}
           icon={<BarChart2 className="h-5 w-5" />}
           tone="cyan"
         />
@@ -271,7 +310,7 @@ function Dashboard() {
         {/* Chart — the full interactive chart, market filters and symbol picker
             duplicate the dedicated Marchés page and eat a lot of vertical space,
             so mobile only gets the price itself; the rest is desktop-only. */}
-        <div className="glass-panel rounded-2xl overflow-hidden">
+        <div className="hidden md:block glass-panel rounded-2xl overflow-hidden">
           <div className="flex flex-col gap-3 p-4 pb-4 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-3 md:p-5 md:pb-0">
             <div className="flex items-center gap-3">
               <div>
@@ -321,7 +360,7 @@ function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="hidden md:block h-72 px-2 pb-2 pt-4">
+          <div className="h-72 px-2 pb-2 pt-4">
             {series.length > 1 ? (
               <PriceChart data={series} />
             ) : (
@@ -337,26 +376,6 @@ function Dashboard() {
 
         {/* Right panel */}
         <div className="flex flex-col gap-3">
-
-          {/* Balance card */}
-          <div className="glass-panel-amber rounded-2xl p-5 relative overflow-hidden group">
-            <div className="pointer-events-none absolute -top-8 -right-8 h-32 w-32 rounded-full bg-orange-500/20 blur-2xl group-hover:scale-110 transition-transform" />
-            <div className="relative">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/50">Mon compte</span>
-                <Wallet className="h-4 w-4 text-orange-400" />
-              </div>
-              <div className="text-xs text-white/50 uppercase tracking-wider mb-1">
-                {hasDerivOanda ? "Deriv + OANDA" : derivBalance ? `${derivBalance.currency} · Deriv` : "Simulation"}
-              </div>
-              <div className="font-mono-tabular text-3xl font-black text-white text-glow-orange leading-none">
-                {hasDerivOanda ? `$${derivOandaTotal.toFixed(2)}` : balanceDisplay ?? "—"}
-              </div>
-              {tradeCount !== null && (
-                <div className="mt-2 text-xs text-white/40">{tradeCount} trades historiques</div>
-              )}
-            </div>
-          </div>
 
           {/* Sessions marchés — desktop only, secondary info that ate mobile
               scroll space without being actionable there. */}
@@ -398,7 +417,7 @@ function Dashboard() {
             {[
               { to: "/autotrader", icon: <Zap />, label: "Bot",      color: "violet" },
               { to: "/portfolio",  icon: <BriefcaseBusiness />, label: "Portfolio", color: "cyan" },
-              { to: "/signals",    icon: <Radar />,  label: "Signaux",  color: "up" },
+              { to: "/opportunities", icon: <Sparkles />, label: "Opportunités", color: "up" },
               { to: "/settings",   icon: <Wallet />, label: "Compte",   color: "amber" },
             ].map(({ to, icon, label, color }) => (
               <Link
@@ -423,26 +442,29 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* ── LIVE SIGNALS ── */}
+      {/* ── SERVER-SELECTED OPPORTUNITIES ── */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/15">
               <Sparkles className="h-4 w-4 text-orange-400" />
             </div>
-            <h2 className="text-base font-bold text-foreground sm:text-sm">Signaux en direct</h2>
-            {liveSignals.length > 0 && (
+            <h2 className="text-base font-bold text-foreground sm:text-sm">Opportunités sélectionnées</h2>
+            {opportunityScan && (
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[color:var(--up)] animate-pulse" />
             )}
           </div>
-          <Link to="/signals" className="flex items-center gap-1 text-xs text-orange-500 hover:text-amber-400 transition-colors font-semibold">
+          <Link to="/opportunities" className="flex items-center gap-1 text-xs text-orange-500 hover:text-amber-400 transition-colors font-semibold">
             Voir tout <ArrowUpRight className="h-3 w-3" />
           </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          {liveSignals.length === 0
+          {!opportunityScan
             ? [0, 1, 2].map((i) => <div key={i} className="glass-panel rounded-2xl h-52 animate-pulse" />)
-            : liveSignals.slice(0, 3).map((s) => <SignalCard key={s.pair} signal={s} />)}
+            : opportunityScan.opportunities
+              .filter((item) => item.decision !== "avoid")
+              .slice(0, 3)
+              .map((item) => <DashboardOpportunityCard key={item.id} item={item} />)}
         </div>
       </div>
 
@@ -648,35 +670,39 @@ function KpiCard({ label, value, delta, tone = "default", icon, className }: {
   );
 }
 
-function useLiveSignals() {
-  const { candles: btc } = useDerivCandles("cryBTCUSD", GRANULARITY["15m"], 250);
-  const { candles: eur } = useDerivCandles("frxEURUSD", GRANULARITY["15m"], 250);
-  const { candles: eth } = useDerivCandles("cryETHUSD", GRANULARITY["15m"], 250);
+function DashboardOpportunityCard({ item }: { item: DashboardOpportunity }) {
+  const isTake = item.decision === "take";
+  const isWait = item.decision === "wait";
+  const Icon = isTake ? CheckCircle2 : isWait ? Clock3 : ShieldAlert;
+  const tone = isTake
+    ? "border-[color:var(--up)]/30 bg-[color:var(--up)]/10"
+    : isWait
+      ? "border-amber-500/30 bg-amber-500/10"
+      : "border-[color:var(--down)]/30 bg-[color:var(--down)]/10";
+  const text = isTake ? "text-[color:var(--up)]" : isWait ? "text-amber-300" : "text-[color:var(--down)]";
+  const label = isTake ? "Prendre" : isWait ? "Surveiller" : "Éviter";
 
-  return useMemo(() => {
-    const defs = [
-      { def: SYMBOLS.find((s) => s.deriv === "cryBTCUSD")!, candles: btc },
-      { def: SYMBOLS.find((s) => s.deriv === "frxEURUSD")!, candles: eur },
-      { def: SYMBOLS.find((s) => s.deriv === "cryETHUSD")!, candles: eth },
-    ];
-    const out: SignalItem[] = defs.map(({ def, candles }) => {
-      const sig = generateSignal(candles);
-      return {
-        pair: def.label,
-        market: def.market,
-        direction: sig.direction,
-        confidence: sig.confidence,
-        triggers: sig.triggers,
-        quality: sig.quality,
-        blockers: sig.blockers,
-        time: candles[candles.length - 1]?.epoch ? candles[candles.length - 1].epoch * 1000 : undefined,
-      };
-    });
-    const ready = out.every((s) => s.triggers.length > 0 && s.triggers[0] !== "insufficient-data");
-    return ready ? out : [];
-  }, [
-    btc.length, btc[btc.length - 1]?.epoch,
-    eur.length, eur[eur.length - 1]?.epoch,
-    eth.length, eth[eth.length - 1]?.epoch,
-  ]);
+  return (
+    <article className={cn("rounded-2xl border p-5", tone)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className={cn("flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider", text)}>
+            <Icon className="h-3.5 w-3.5" /> {label} · {item.presetLabel}
+          </div>
+          <h3 className="mt-2 text-lg font-black tracking-tight text-foreground">{item.label}</h3>
+          <p className={cn("mt-0.5 text-xs font-bold", text)}>{item.directionLabel}</p>
+        </div>
+        <div className="text-right">
+          <div className={cn("font-mono-tabular text-xl font-black", text)}>{Math.round(item.confidence)}%</div>
+          <div className="text-[10px] text-muted-foreground">confiance</div>
+        </div>
+      </div>
+      <p className="mt-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        {item.reasons[0] ?? `${item.agreement}/4 unités de temps alignées · risque ${item.risk}`}
+      </p>
+      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
+        {isTake ? "Préparer l'ordre manuel" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
+      </Link>
+    </article>
+  );
 }

@@ -26,6 +26,7 @@ import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
+import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -91,12 +92,12 @@ const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping";
+export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity";
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Four tabs squeezed
  * into a phone-width strip was unreadable, so the user picks which three to
@@ -1190,6 +1191,25 @@ class ServerBotEngine {
           };
           return { symbol, analysis };
         })
+      : this.preset === "liquidity"
+      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const m15 = await candleFetcher(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
+          const sig = m15.length >= MIN_LIQUIDITY_CANDLES ? generateLiquidityReversalSignal(m15) : null;
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0,
+            premiumCount: 0,
+            volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
+            dominantTf: "15m",
+            suggestedDuration: 15,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: 0,
+          };
+          return { symbol, analysis };
+        })
       : await mapWithConcurrency(toAnalyze, 4, async (symbol) => ({
           symbol,
           analysis: (await analyzeSymbolCore(symbol, candleFetcher, buildAnalyzeOptsServer(symbol, config))).analysis,
@@ -1718,6 +1738,11 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
   // is a runtime-only guard against old bot_state/localStorage rows.
   if ((config.mode as string) === "simulation") throw new Error("Mode simulation obsolète — repasse en Démo ou Live.");
 
+  const account = getDb().prepare("SELECT status, is_admin FROM users WHERE id = ?").get(userId) as { status: string; is_admin: number } | undefined;
+  if (!account || (!account.is_admin && account.status !== "approved")) {
+    throw new Error("Ce compte n'est pas approuvé : démarrage du bot refusé.");
+  }
+
   const settings = getDb()
     .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")
     .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string; binance_api_key?: string; binance_api_secret?: string; oanda_api_key?: string; oanda_account_id?: string; oanda_is_practice?: number } | undefined;
@@ -1763,8 +1788,8 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
   }
 
   getDb().prepare(`
-    INSERT INTO bot_state (user_id, preset, enabled, config, updated_at) VALUES (?, ?, 1, ?, unixepoch())
-    ON CONFLICT(user_id, preset) DO UPDATE SET enabled = 1, config = excluded.config, updated_at = unixepoch()
+    INSERT INTO bot_state (user_id, preset, enabled, config, paused_until, updated_at) VALUES (?, ?, 1, ?, NULL, unixepoch())
+    ON CONFLICT(user_id, preset) DO UPDATE SET enabled = 1, config = excluded.config, paused_until = NULL, updated_at = unixepoch()
   `).run(userId, preset, JSON.stringify(config));
 
   const engine = new ServerBotEngine(userId, preset, config, derivToken ?? "", krakenConn, binanceConn, oandaConn);
@@ -1828,6 +1853,15 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
   }
 }
 
+/** Disable future scans for every preset while keeping existing contract
+ * subscriptions alive until their positions settle. This is the safe action
+ * for an account revocation: stopping outright would orphan open positions. */
+export function suspendBotsForUser(userId: number, reason = "Compte suspendu"): void {
+  const until = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
+  getDb().prepare("UPDATE bot_state SET enabled = 0, paused_until = ?, updated_at = unixepoch() WHERE user_id = ?").run(until, userId);
+  console.log(`[bot] Tous les scans suspendus pour user ${userId} (${reason})`);
+}
+
 /**
  * Process shutdown (SIGTERM at deploy/restart): stop every engine and close
  * its Deriv socket WITHOUT touching bot_state.enabled — unlike stopBotForUser,
@@ -1849,7 +1883,9 @@ export function shutdownAllEngines(): void {
 /** Called once at server boot: resume every (user, preset) bot that was
  * enabled before the restart — up to three per user now. */
 export async function restoreBots(): Promise<void> {
-  const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
+  const rows = getDb().prepare(
+    "SELECT bs.user_id, bs.preset FROM bot_state bs JOIN users u ON u.id = bs.user_id WHERE bs.enabled = 1 AND (u.is_admin = 1 OR u.status = 'approved')",
+  ).all() as { user_id: number; preset: Preset }[];
   for (const { user_id, preset } of rows) {
     try {
       const config = loadBotConfig(user_id, preset);

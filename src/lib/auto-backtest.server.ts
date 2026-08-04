@@ -4,8 +4,9 @@
 // to start/stop the demo-mode bot of each user who opted in via the
 // "Backtest automatique" setting — never touches a "live" mode bot.
 import { getDb } from "./db.server";
-import { backtestMultiTfServer } from "./backtest.server";
+import { backtestLiquidityReversalServer, backtestMultiTfServer } from "./backtest.server";
 import { DEFAULT_CONFIG } from "./signal-core";
+import { LIQUIDITY_PRESET } from "./autotrader";
 import { mapWithConcurrency } from "./utils";
 import { hasOpenPositions, isBotRunning, loadBotConfig, startBotForUser, stopBotForUser } from "./bot-engine.server";
 
@@ -36,6 +37,26 @@ function loadVerdict(): AutoBacktestVerdict | null {
 function saveVerdict(v: Omit<AutoBacktestVerdict, "checkedAt">) {
   getDb().prepare(`
     INSERT INTO auto_backtest_state (id, favorable, win_rate, break_even_win_rate, checked_at)
+    VALUES (1, ?, ?, ?, unixepoch())
+    ON CONFLICT (id) DO UPDATE SET
+      favorable = excluded.favorable,
+      win_rate = excluded.win_rate,
+      break_even_win_rate = excluded.break_even_win_rate,
+      checked_at = excluded.checked_at
+  `).run(v.favorable ? 1 : 0, v.winRate, v.breakEvenWinRate);
+}
+
+function loadLiquidityVerdict(): AutoBacktestVerdict | null {
+  const row = getDb()
+    .prepare("SELECT favorable, win_rate, break_even_win_rate, checked_at FROM auto_liquidity_backtest_state WHERE id = 1")
+    .get() as { favorable: number; win_rate: number; break_even_win_rate: number; checked_at: number } | undefined;
+  if (!row) return null;
+  return { favorable: !!row.favorable, winRate: row.win_rate, breakEvenWinRate: row.break_even_win_rate, checkedAt: row.checked_at * 1000 };
+}
+
+function saveLiquidityVerdict(v: Omit<AutoBacktestVerdict, "checkedAt">) {
+  getDb().prepare(`
+    INSERT INTO auto_liquidity_backtest_state (id, favorable, win_rate, break_even_win_rate, checked_at)
     VALUES (1, ?, ?, ?, unixepoch())
     ON CONFLICT (id) DO UPDATE SET
       favorable = excluded.favorable,
@@ -84,6 +105,28 @@ async function recomputeVerdict(): Promise<void> {
   }
 }
 
+/** Dedicated replay for the experimental XAU/USD + Nasdaq reversal engine. */
+async function recomputeLiquidityVerdict(): Promise<void> {
+  try {
+    const symbols = LIQUIDITY_PRESET.symbols ?? [];
+    const results = await mapWithConcurrency(symbols, 2, (symbol) =>
+      backtestLiquidityReversalServer(symbol, { durationMinutes: 15, testCandles: BACKTEST_CANDLES * 2 }).catch(() => null),
+    );
+    const usable = results.filter((r): r is NonNullable<typeof r> => r !== null);
+    const totalTrades = usable.reduce((sum, result) => sum + result.trades, 0);
+    const totalWins = usable.reduce((sum, result) => sum + result.wins, 0);
+    const winRate = totalTrades ? totalWins / totalTrades : 0;
+    const breakEvenWinRate = usable[0]?.breakEvenWinRate ?? 0.541;
+    // This is an experiment: no verdict on a thin sample, and no automatic
+    // trading unless the measured edge is above the binary payout threshold.
+    const favorable = totalTrades >= 20 && winRate >= breakEvenWinRate;
+    saveLiquidityVerdict({ favorable, winRate, breakEvenWinRate });
+    console.log(`[auto-backtest] liquidity verdict: ${favorable ? "FAVORABLE" : "défavorable"} — ${(winRate * 100).toFixed(1)}%, ${totalTrades} trades`);
+  } catch (e) {
+    console.error("[auto-backtest] liquidity recompute échoué:", (e as Error).message);
+  }
+}
+
 async function notifyVerdictChange(favorable: boolean, winRate: number, breakEvenWinRate: number): Promise<void> {
   try {
     const admins = getDb().prepare("SELECT id FROM users WHERE is_admin = 1").all() as { id: number }[];
@@ -103,7 +146,7 @@ async function notifyVerdictChange(favorable: boolean, winRate: number, breakEve
 /** Starts/stops each opted-in user's demo bot according to the cached verdict. */
 async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
   const rows = getDb()
-    .prepare("SELECT user_id FROM user_settings WHERE auto_backtest_enabled = 1 AND deriv_token IS NOT NULL")
+    .prepare("SELECT us.user_id FROM user_settings us JOIN users u ON u.id = us.user_id WHERE us.auto_backtest_enabled = 1 AND us.deriv_token IS NOT NULL AND u.status = 'approved'")
     .all() as { user_id: number }[];
 
   // This whole subsystem replays and gates DEFAULT_CONFIG specifically (the
@@ -151,6 +194,32 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
   }
 }
 
+/** The experimental engine is opt-in twice: global auto-backtest enabled AND
+ * a saved liquidity preset config for that user. It is always demo-only. */
+async function sweepLiquidityUsers(verdict: AutoBacktestVerdict): Promise<void> {
+  const rows = getDb()
+    .prepare("SELECT us.user_id FROM user_settings us JOIN users u ON u.id = us.user_id WHERE us.auto_backtest_enabled = 1 AND us.deriv_token IS NOT NULL AND u.status = 'approved'")
+    .all() as { user_id: number }[];
+
+  for (const { user_id } of rows) {
+    try {
+      const saved = loadBotConfig(user_id, "liquidity");
+      if (!saved) continue;
+      const running = isBotRunning(user_id, "liquidity");
+      if (verdict.favorable && !running) {
+        await startBotForUser(user_id, "liquidity", { ...LIQUIDITY_PRESET, ...saved, mode: "demo" } as Parameters<typeof startBotForUser>[2]);
+        console.log(`[auto-backtest] liquidity démo démarré pour user ${user_id} (verdict favorable)`);
+      } else if (!verdict.favorable && running) {
+        if (hasOpenPositions(user_id, "liquidity")) continue;
+        stopBotForUser(user_id, "liquidity", "Verdict de backtest Reversal liquidité défavorable");
+        console.log(`[auto-backtest] liquidity arrêté pour user ${user_id} (verdict défavorable)`);
+      }
+    } catch (e) {
+      console.error(`[auto-backtest] liquidity sweep échoué pour user ${user_id}:`, (e as Error).message);
+    }
+  }
+}
+
 async function tick(): Promise<void> {
   let verdict = loadVerdict();
   if (!verdict || Date.now() - verdict.checkedAt >= BACKTEST_INTERVAL_MS) {
@@ -158,6 +227,13 @@ async function tick(): Promise<void> {
     verdict = loadVerdict();
   }
   if (verdict) await sweepUsers(verdict);
+
+  let liquidityVerdict = loadLiquidityVerdict();
+  if (!liquidityVerdict || Date.now() - liquidityVerdict.checkedAt >= BACKTEST_INTERVAL_MS) {
+    await recomputeLiquidityVerdict();
+    liquidityVerdict = loadLiquidityVerdict();
+  }
+  if (liquidityVerdict) await sweepLiquidityUsers(liquidityVerdict);
 }
 
 export function startAutoBacktestScheduler(): void {

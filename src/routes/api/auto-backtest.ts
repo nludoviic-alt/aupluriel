@@ -18,12 +18,23 @@ export const Route = createFileRoute("/api/auto-backtest")({
 
         if (!row) return json({ checked: false });
 
+        const liquidity = getDb()
+          .prepare("SELECT favorable, win_rate, break_even_win_rate, checked_at FROM auto_liquidity_backtest_state WHERE id = 1")
+          .get() as { favorable: number; win_rate: number; break_even_win_rate: number; checked_at: number } | undefined;
+
         return json({
           checked: true,
           favorable: !!row.favorable,
           winRate: row.win_rate,
           breakEvenWinRate: row.break_even_win_rate,
           checkedAt: row.checked_at * 1000, // stored as unixepoch seconds
+          liquidity: liquidity ? {
+            checked: true,
+            favorable: !!liquidity.favorable,
+            winRate: liquidity.win_rate,
+            breakEvenWinRate: liquidity.break_even_win_rate,
+            checkedAt: liquidity.checked_at * 1000,
+          } : { checked: false },
         });
       },
     },
