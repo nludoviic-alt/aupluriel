@@ -2923,6 +2923,14 @@ function OpportunityCommandCenter({
 }) {
   const decision = opportunity?.decision ?? "wait";
   const style = decisionTone(decision);
+  const isMobile = useIsMobile();
+  // The full metrics grid + reasons + "à prendre maintenant" list is a lot of
+  // reading before a mobile user even sees a position or the journal below —
+  // collapsed by default there, with a compact summary + the pause/activate
+  // action (the one thing worth always reaching without an extra tap) always
+  // visible. Desktop always shows everything, unaffected by this state.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const showDetails = !isMobile || detailsOpen;
 
   return (
     <section className="glass-panel overflow-hidden rounded-xl border border-border/60">
@@ -2939,14 +2947,42 @@ function OpportunityCommandCenter({
         </button>
       </div>
 
+      {isMobile && (
+        <div className="space-y-3 border-b border-border/50 p-4">
+          <div>
+            <h2 className="break-words text-base font-black tracking-tight">
+              {opportunity ? `${opportunity.label} · ${opportunity.directionLabel}` : "Aucun signal exploitable"}
+            </h2>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniDecision label="Prendre" value={takeCount} className="text-up" />
+            <MiniDecision label="Attendre" value={waitCount} className="text-amber-300" />
+            <MiniDecision label="Éviter" value={avoidCount} className="text-down" />
+          </div>
+          <Button onClick={onAuto} disabled={cloudBusy} className={cn("h-11 w-full gap-2 font-black", autoEnabled ? "border border-down/30 bg-down/15 text-down hover:bg-down/25" : "border border-primary/30 bg-primary/15 text-primary hover:bg-primary/25")}>
+            {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />} {autoEnabled ? "Mettre en pause" : "Activer l'auto"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-bold text-muted-foreground"
+          >
+            {detailsOpen ? "Réduire" : "Détail du signal"} <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", detailsOpen && "rotate-180")} />
+          </button>
+        </div>
+      )}
+
+      {showDetails && (
       <div className="grid items-stretch gap-3 p-4 xl:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]">
         <div className={cn("h-full rounded-xl border p-4", style.card)}>
+          {!isMobile && (
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 className="break-words text-xl font-black tracking-tight md:text-2xl">
               {opportunity ? `${opportunity.label} · ${opportunity.directionLabel}` : "Aucun signal exploitable pour l'instant"}
             </h2>
             {opportunity && <span className={cn("text-sm font-black", style.text)}>{style.label}</span>}
           </div>
+          )}
           <p className="mt-2 text-sm text-muted-foreground">
             {opportunity ? "Lecture du signal : vérifie les mesures et seuils avant toute exécution." : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
           </p>
@@ -2971,6 +3007,7 @@ function OpportunityCommandCenter({
             </div>
           )}
         </div>
+        {!isMobile && (
         <aside className="flex h-full flex-col rounded-xl border border-border/60 bg-black/10 p-4">
           <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-foreground"><Power className="h-4 w-4 text-primary" /> Exécuter</div>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">L’auto ne prend que les signaux conformes aux seuils affichés.</p>
@@ -2986,10 +3023,12 @@ function OpportunityCommandCenter({
             {cloudBusy ? <Activity className="h-4 w-4 animate-pulse" /> : <Power className="h-4 w-4" />} {autoEnabled ? "Mettre en pause" : "Activer l’auto"}
           </Button>
         </aside>
+        )}
       </div>
+      )}
 
       {/* ── Marchés surveillés (fusionné depuis OpportunityBoard) ── */}
-      {(() => {
+      {showDetails && (() => {
         const takeItems = opportunities.filter((item) => item.decision === "take").slice(0, 3);
         const waitItems = opportunities.filter((item) => item.decision === "wait").slice(0, 3);
         const avoidItems = opportunities.filter((item) => item.decision === "avoid").slice(0, 3);
