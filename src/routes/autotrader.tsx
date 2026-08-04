@@ -21,6 +21,7 @@ import { playWinSound, playLossSound, playOpenSound } from "@/lib/sounds";
 import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { MarketSessionsBar } from "@/components/market-sessions-bar";
 import { SYMBOLS, getOpenPositions, type OpenPosition } from "@/lib/deriv";
 import {
   addToCumulativePnl,
@@ -771,6 +772,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           )}
         </div>
       </div>
+
+      {/* ── Visual Market Sessions Tracker & 24h Timeline ── */}
+      <MarketSessionsBar />
 
       {/* ── Sticky HUD Status Bar ── */}
       <AutoTraderStatusBar
