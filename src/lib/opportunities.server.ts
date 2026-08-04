@@ -311,68 +311,91 @@ function sortOpportunities(a: OpportunityItem, b: OpportunityItem): number {
   return (b.stats.expectancy ?? -999) - (a.stats.expectancy ?? -999);
 }
 
+let opportunitiesCache: { timestamp: number; userId: number; result: OpportunitiesResponse } | null = null;
+let pendingBuildPromise: Promise<OpportunitiesResponse> | null = null;
+
 export async function buildOpportunities(userId: number): Promise<OpportunitiesResponse> {
-  const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
-  const jobs = PRESETS.flatMap((preset) => {
-    const config = configs.get(preset)!;
-    return (config.symbols ?? []).map((symbol) => ({ preset, symbol, config }));
-  });
+  const now = Date.now();
+  if (opportunitiesCache && opportunitiesCache.userId === userId && now - opportunitiesCache.timestamp < 15_000) {
+    return opportunitiesCache.result;
+  }
 
-  const opportunities = (await mapWithConcurrency(jobs, 4, ({ preset, symbol, config }) =>
-    analyzePresetSymbol(preset, symbol, config).catch((e) => {
-      const meta = SYMBOL_LABELS.get(symbol);
-      const stats = statsFor(preset, symbol);
-      return {
-        id: `${preset}:${symbol}`,
-        preset,
-        presetLabel: PRESET_LABEL[preset],
-        symbol,
-        label: meta?.label ?? symbol,
-        market: meta?.market ?? "unknown",
-        decision: "wait" as const,
-        direction: null,
-        directionLabel: "Aucune",
-        confidence: 0,
-        agreement: 0,
-        risk: "modere" as const,
-        mode: "manual" as const,
-        instrument: getInstrumentForSymbol(symbol, config),
-        durationMinutes: config.durationMinutes,
-        takeProfitUsd: null,
-        stopLossUsd: null,
-        reasons: ["Analyse indisponible pour le moment."],
-        blockers: [(e as Error).message],
-        stats,
-        updatedAt: Date.now(),
+  if (pendingBuildPromise) {
+    return pendingBuildPromise;
+  }
+
+  pendingBuildPromise = (async () => {
+    try {
+      const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
+      const jobs = PRESETS.flatMap((preset) => {
+        const config = configs.get(preset)!;
+        return (config.symbols ?? []).map((symbol) => ({ preset, symbol, config }));
+      });
+
+      const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>
+        analyzePresetSymbol(preset, symbol, config).catch((e) => {
+          const meta = SYMBOL_LABELS.get(symbol);
+          const stats = statsFor(preset, symbol);
+          return {
+            id: `${preset}:${symbol}`,
+            preset,
+            presetLabel: PRESET_LABEL[preset],
+            symbol,
+            label: meta?.label ?? symbol,
+            market: meta?.market ?? "unknown",
+            decision: "wait" as const,
+            direction: null,
+            directionLabel: "Aucune",
+            confidence: 0,
+            agreement: 0,
+            risk: "modere" as const,
+            mode: "manual" as const,
+            instrument: getInstrumentForSymbol(symbol, config),
+            durationMinutes: config.durationMinutes,
+            takeProfitUsd: null,
+            stopLossUsd: null,
+            reasons: ["Analyse indisponible pour le moment."],
+            blockers: [(e as Error).message],
+            stats,
+            updatedAt: Date.now(),
+          };
+        }),
+      )).sort(sortOpportunities);
+
+      const avoidList: AvoidItem[] = PRESETS.flatMap((preset) => {
+        const config = configs.get(preset)!;
+        return (config.excludedSymbols ?? []).map((symbol) => {
+          const meta = SYMBOL_LABELS.get(symbol);
+          const stats = statsFor(preset, symbol);
+          return {
+            preset,
+            presetLabel: PRESET_LABEL[preset],
+            symbol,
+            label: meta?.label ?? symbol,
+            reason: isBadStats(stats) ? "Historique defavorable" : "Exclu de la strategie actuelle",
+            stats,
+          };
+        });
+      });
+
+      const res: OpportunitiesResponse = {
+        generatedAt: Date.now(),
+        opportunities,
+        avoidList,
+        summary: {
+          take: opportunities.filter((o) => o.decision === "take").length,
+          wait: opportunities.filter((o) => o.decision === "wait").length,
+          avoid: opportunities.filter((o) => o.decision === "avoid").length + avoidList.length,
+          presets: PRESETS.length,
+        },
       };
-    }),
-  )).sort(sortOpportunities);
 
-  const avoidList: AvoidItem[] = PRESETS.flatMap((preset) => {
-    const config = configs.get(preset)!;
-    return (config.excludedSymbols ?? []).map((symbol) => {
-      const meta = SYMBOL_LABELS.get(symbol);
-      const stats = statsFor(preset, symbol);
-      return {
-        preset,
-        presetLabel: PRESET_LABEL[preset],
-        symbol,
-        label: meta?.label ?? symbol,
-        reason: isBadStats(stats) ? "Historique defavorable" : "Exclu de la strategie actuelle",
-        stats,
-      };
-    });
-  });
+      opportunitiesCache = { timestamp: Date.now(), userId, result: res };
+      return res;
+    } finally {
+      pendingBuildPromise = null;
+    }
+  })();
 
-  return {
-    generatedAt: Date.now(),
-    opportunities,
-    avoidList,
-    summary: {
-      take: opportunities.filter((o) => o.decision === "take").length,
-      wait: opportunities.filter((o) => o.decision === "wait").length,
-      avoid: opportunities.filter((o) => o.decision === "avoid").length + avoidList.length,
-      presets: PRESETS.length,
-    },
-  };
+  return pendingBuildPromise;
 }
