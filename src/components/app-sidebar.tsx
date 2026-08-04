@@ -37,6 +37,7 @@ const tradingItems = [
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
   { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
+  { title: "Stratégies",       url: "/strategies",      icon: Cpu,              color: "text-teal-400",   glow: "shadow-teal-500/30" },
 ];
 
 const analysisItems = [

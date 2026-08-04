@@ -476,24 +476,40 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     setCustomPresets(loadCustomPresets());
 
     const loaded = loadConfig();
-    // Pre-select a pair when arriving from the market coach (?pair=…)
-    const pair = new URLSearchParams(window.location.search).get("pair");
-    if (pair && SYMBOLS.some((s) => s.deriv === pair) && !loaded.symbols.includes(pair)) {
-      loaded.symbols = [...loaded.symbols, pair];
-      saveConfig(loaded, selectedPreset);
-      const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
-      toast.success(`${label} ajoutée aux paires surveillées — prêt à trader`);
+    // Pre-select a pair/direction/preset when arriving from Opportunités (?symbol=...&direction=...&preset=...&take=1)
+    const searchParams = new URLSearchParams(window.location.search);
+    const pair = searchParams.get("pair") || searchParams.get("symbol");
+    const direction = searchParams.get("direction");
+    const presetParam = searchParams.get("preset") as PresetKey | null;
+    const isTakeAction = searchParams.get("take") === "1" || searchParams.get("action") === "take";
+
+    if (presetParam && PRESET_ORDER.includes(presetParam)) {
+      setSelectedPreset(presetParam);
     }
+
+    if (pair && SYMBOLS.some((s) => s.deriv === pair)) {
+      if (!loaded.symbols.includes(pair)) {
+        loaded.symbols = [...loaded.symbols, pair];
+        saveConfig(loaded, presetParam || selectedPreset);
+      }
+      setForceSymbol(pair);
+      if (direction === "CALL" || direction === "PUT" || direction === "MULTUP" || direction === "MULTDOWN") {
+        setForceDir(direction as "CALL" | "PUT" | "MULTUP" | "MULTDOWN");
+      }
+      setManualArmed(true);
+      setMobileTab("control");
+      const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
+      if (isTakeAction) {
+        toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt ! Ajustez votre mise et validez.`);
+      } else {
+        toast.success(`${label} sélectionné — prêt à trader`);
+      }
+    } else {
+      const openStart = loaded.symbols.find((s) => isInTradingSession(["sydney", "asia", "london", "newyork"], s));
+      setForceSymbol(openStart ?? loaded.symbols[0] ?? "frxEURUSD");
+    }
+
     setConfig(loaded);
-    // "Automatique" and "Prise directe" are separate routes (not an in-page tab —
-    // tradingTab above is seeded once from defaultTab and never changes), so this
-    // mount effect re-runs from scratch on every switch between them. Defaulting
-    // to symbols[0] regardless of session meant that whenever it was closed, the
-    // auto-switch effect below would immediately fire + toast — every single
-    // time the user flipped between the two tabs. Starting from the first
-    // already-open symbol in the watchlist skips that avoidable switch+toast.
-    const openStart = loaded.symbols.find((s) => isInTradingSession(["sydney", "asia", "london", "newyork"], s));
-    setForceSymbol(openStart ?? loaded.symbols[0] ?? "frxEURUSD");
     setForceStake(loaded.stakeUsd);
     setCumulativePnl(loadCumulativePnl());
     // Update active sessions every minute

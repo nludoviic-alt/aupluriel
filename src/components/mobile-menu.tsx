@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import {
   LayoutDashboard, Zap, BriefcaseBusiness, FlaskConical,
   BarChart3, PieChart, CandlestickChart, Settings,
-  ShieldCheck, LogOut, X, Wrench, Target,
+  ShieldCheck, LogOut, X, Wrench, Target, Cpu,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,6 +17,7 @@ const NAV_PRIMARY = [
   { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness, hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Opportunités", url: "/opportunities", icon: Target,        hover: "hover:bg-emerald-500/[0.04] hover:text-emerald-300" },
   { title: "Auto-Trader", url: "/autotrader", icon: Zap,               hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
+  { title: "Stratégies",  url: "/strategies", icon: Cpu,               hover: "hover:bg-teal-500/[0.04] hover:text-teal-300" },
 ];
 
 const NAV_MORE = [

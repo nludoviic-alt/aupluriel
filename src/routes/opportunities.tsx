@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Bell,
   Bot,
   CheckCircle2,
   Clock3,
@@ -14,8 +15,17 @@ import {
   Target,
   Zap,
 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { relayPush } from "@/lib/notify-push";
+import {
+  getExistingPushSubscription,
+  isIosNonSafari,
+  isIosNonStandalone,
+  isPushSupported,
+  subscribeToPush,
+} from "@/lib/push";
 
 export const Route = createFileRoute("/opportunities")({
   head: () => ({ meta: [{ title: "Opportunités — Au Pluriel" }] }),
@@ -119,12 +129,52 @@ function OpportunitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Decision>("all");
   const [now, setNow] = useState(Date.now());
+  const [hasPushSub, setHasPushSub] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    getExistingPushSubscription().then((sub) => setHasPushSub(!!sub)).catch(() => {});
+  }, []);
+
+  async function handleSubscribePush() {
+    setPushLoading(true);
+    try {
+      if (isIosNonSafari()) {
+        toast.error("Sur iOS, veuillez utiliser Safari pour activer les notifications Push.");
+        return;
+      }
+      if (isIosNonStandalone()) {
+        toast.info("Sur iPhone/iPad: Touchez Partager ➔ 'Sur l'écran d'accueil' pour recevoir les notifications Push réelles avec l'écran verrouillé.", { duration: 8000 });
+      }
+      await subscribeToPush();
+      setHasPushSub(true);
+      toast.success("🔔 Notifications Push Mobile activées avec succès !");
+      relayPush("⚡ Radar d'Opportunités Actif", "Vous recevrez désormais les signaux d'opportunités en direct sur votre téléphone.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur activation push");
+    } finally {
+      setPushLoading(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setData(await api.get<OpportunitiesResponse>("/api/opportunities"));
+      const res = await api.get<OpportunitiesResponse>("/api/opportunities");
+      setData(res);
+
+      // Trigger real OS mobile push notification when a high confidence trade is ready
+      if (res.summary.take > 0 && res.opportunities.length > 0) {
+        const top = res.opportunities.find((o) => o.decision === "take");
+        if (top) {
+          relayPush(
+            `⚡ Signal Opportunité : ${top.label}`,
+            `Signal prêt (${top.directionLabel}) · Confiance ${Math.round(top.confidence)}% · Preset ${top.presetLabel}`,
+            `/autotrader?symbol=${top.symbol}&direction=${top.direction}&preset=${top.preset}&take=1`
+          );
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur de chargement");
     } finally {
@@ -181,14 +231,30 @@ function OpportunitiesPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => void load()}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground disabled:opacity-60 self-start sm:self-auto"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <RefreshCw className="h-4 w-4 text-primary" />}
-          <span>Actualiser le Radar</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleSubscribePush}
+            disabled={pushLoading}
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all shadow-sm",
+              hasPushSub
+                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+            )}
+          >
+            <Bell className={cn("h-4 w-4", hasPushSub ? "text-emerald-400" : "text-amber-400 animate-bounce")} />
+            <span>{hasPushSub ? "Push Mobile Actif" : "Notifications Mobile"}</span>
+          </button>
+
+          <button
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <RefreshCw className="h-4 w-4 text-primary" />}
+            <span>Actualiser le Radar</span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -245,9 +311,15 @@ function OpportunitiesPage() {
             <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
               <Link
                 to="/autotrader"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-up px-5 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                search={{
+                  symbol: topTake.symbol,
+                  direction: topTake.direction || undefined,
+                  preset: topTake.preset,
+                  take: "1",
+                }}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-up px-6 text-xs font-black uppercase tracking-wider text-black hover:bg-emerald-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]"
               >
-                <Zap className="h-4 w-4" /> Trader en 1-Clic
+                <Zap className="h-4 w-4 fill-current" /> Prendre ce Trade Direct
               </Link>
               <ActionStrip item={topTake} />
             </div>
@@ -422,42 +494,35 @@ function riskLabel(risk: OpportunityItem["risk"]) {
 }
 
 function ActionStrip({ item, className }: { item: OpportunityItem; className?: string }) {
+  const isTake = item.decision === "take";
+
   return (
-    <div className={cn("flex flex-wrap gap-2 pt-2", className)}>
+    <div className={cn("flex flex-wrap items-center gap-2 pt-2", className)}>
+      <Link
+        to="/autotrader"
+        search={{
+          symbol: item.symbol,
+          direction: item.direction || undefined,
+          preset: item.preset,
+          take: "1",
+        }}
+        className={cn(
+          "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-all shadow-md",
+          isTake
+            ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
+        )}
+      >
+        <Zap className="h-3.5 w-3.5 fill-current" />
+        {isTake ? "Prendre ce Trade" : "Ouvrir dans l'Auto-Trader"}
+      </Link>
+
       <Link
         to="/signals"
         className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
       >
         <Eye className="h-3.5 w-3.5 text-primary" />
         Observer
-      </Link>
-      <a
-        href="https://mt5-demo-web.deriv.com/terminal"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
-      >
-        <ArrowUpRight className="h-3.5 w-3.5" />
-        Manuel
-      </a>
-      <Link
-        to="/autotrader"
-        className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-black uppercase tracking-wider transition-all",
-          item.decision === "take"
-            ? "border-up/40 bg-up/20 text-up hover:bg-up/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-            : "border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08]",
-        )}
-      >
-        <Bot className="h-3.5 w-3.5" />
-        Auto
-      </Link>
-      <Link
-        to="/autotrader"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
-        title="Réglages du preset"
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5" />
       </Link>
     </div>
   );
