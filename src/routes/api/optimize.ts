@@ -1,6 +1,13 @@
-import { createFileRoute, json } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { getUserFromRequest } from "@/lib/auth.server";
 import { syncHistoricalCandles, getStoredHistoricalCandles } from "@/lib/deriv-bigdata.server";
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 export const Route = createFileRoute("/api/optimize")({
   server: {

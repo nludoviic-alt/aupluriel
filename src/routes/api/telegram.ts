@@ -1,4 +1,4 @@
-import { createFileRoute, json } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { getUserFromRequest } from "@/lib/auth.server";
 import {
   getUserTelegramConfig,
@@ -6,6 +6,13 @@ import {
   sendTelegramNotification,
   type TelegramConfig,
 } from "@/lib/telegram.server";
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 export const Route = createFileRoute("/api/telegram")({
   server: {
@@ -37,7 +44,7 @@ export const Route = createFileRoute("/api/telegram")({
         };
 
         if (body.action === "test" && body.config) {
-          const testMsg = `<b>🔔 Au Pluriel Quant Engine</b>\n\n✅ <b>Connexion Telegram Réussie !</b>\nVotre bot est prêt à vous envoyer les alerte de trade, Spike Hunter et limites de risque.`;
+          const testMsg = `<b>🔔 Au Pluriel Quant Engine</b>\n\n✅ <b>Connexion Telegram Réussie !</b>\nVotre bot est prêt à vous envoyer les alertes de trade, Spike Hunter et limites de risque.`;
           const result = await sendTelegramNotification(
             body.config.botToken,
             body.config.chatId,
