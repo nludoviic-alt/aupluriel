@@ -253,6 +253,7 @@ function Dashboard() {
           const b = brokerBalances?.binance;
           return (
             <KpiCard
+              className="hidden sm:flex"
               label="Binance"
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "USDT"}

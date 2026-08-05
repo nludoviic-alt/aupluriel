@@ -5,7 +5,7 @@
 // Market data: legacy v3 public WS (no auth) — still serves the same symbols.
 
 export const DERIV_APP_ID = 1089;
-export const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+export const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 
 let derivSessionUrl: string | null = null;
 let sessionUrlConsumed = false; // OTP URLs are single-use — never reconnect with one
@@ -200,8 +200,9 @@ function getPublicSocket(): Promise<WebSocket> {
   if (pubConnecting) return pubConnecting;
   pubConnecting = new Promise((resolve, reject) => {
     const ws = new WebSocket(DERIV_WS_URL);
-    ws.onerror = (e) => { pubConnecting = null; reject(e); };
-    ws.onclose = () => {
+    ws.onerror = (e) => { console.error("[Deriv] pubSocket error", e); pubConnecting = null; reject(e); };
+    ws.onclose = (ev) => {
+      console.warn("[Deriv] pubSocket closed", ev.code, ev.reason);
       pubSocket = null;
       pubConnecting = null;
       if (pubHeartbeat) { clearInterval(pubHeartbeat); pubHeartbeat = null; }
@@ -217,6 +218,7 @@ function getPublicSocket(): Promise<WebSocket> {
       } catch { /* ignore */ }
     };
     ws.onopen = () => {
+      console.log("[Deriv] pubSocket connected");
       pubSocket = ws;
       pubConnecting = null;
       pubHeartbeat = setInterval(() => {
@@ -238,7 +240,13 @@ async function pubRequest<T = Record<string, unknown>>(payload: Record<string, u
       if (msg.req_id === id) {
         pubListeners.delete(l);
         pendingPubReqs.delete(id);
-        if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
+        if (msg.error) {
+          const errMsg = (msg.error as { message?: string; code?: string }).message
+            ?? (msg.error as { code?: string }).code
+            ?? JSON.stringify(msg.error);
+          console.error(`[Deriv] pubRequest error for payload ${JSON.stringify(payload)}:`, errMsg, msg.error);
+          reject(new Error(errMsg));
+        }
         else resolve(msg as T);
       }
     };
@@ -423,7 +431,9 @@ export function subscribeTicks(
     };
     tickSharedListeners.set(symbol, l);
     pubListeners.add(l);
-    pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => { /* ignore */ });
+    pubRequest({ ticks: symbol, subscribe: 1 }).then(() => {
+      console.log(`[Deriv] subscribed to ticks: ${symbol}`);
+    }).catch((e) => { console.error(`[Deriv] tick subscription failed for ${symbol}:`, e instanceof Error ? e.message : e); });
   }
   listeners.add(onTick);
 

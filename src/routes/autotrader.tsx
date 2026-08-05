@@ -804,10 +804,73 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
 
   return (
-    <div className="w-full space-y-5 px-4 py-4 sm:px-6 lg:px-8">
+    <div className="w-full space-y-3 px-2 py-3 sm:px-6 sm:py-4 lg:px-8 lg:space-y-5">
 
       {/* ── Header & Navigation ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Mobile: clean modern header */}
+      <div className="md:hidden space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-lg">
+              <Zap className="h-5 w-5 text-primary animate-pulse" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black tracking-tight text-foreground">
+                {tradingTab === "manual" ? "Prise Directe" : "Auto-Trader"}
+              </h1>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Au Pluriel • Live</span>
+              </div>
+            </div>
+          </div>
+          {tradingTab === "auto" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className={cn(
+                "h-9 w-9 p-0 rounded-xl transition-all border-border/70",
+                showAdvanced && "border-primary/40 bg-primary/10 text-primary"
+              )}
+            >
+              <Settings2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/5 bg-white/[0.03] p-1.5" role="tablist" aria-label="Espace de trading">
+          <Link
+            to="/autotrader"
+            role="tab"
+            aria-selected={tradingTab === "auto"}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-black transition-all",
+              tradingTab === "auto"
+                ? "bg-primary text-black shadow-lg shadow-primary/20"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Power className="h-3.5 w-3.5" /> Automatique
+          </Link>
+          <Link
+            to="/manual-trader"
+            role="tab"
+            aria-selected={tradingTab === "manual"}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-black transition-all",
+              tradingTab === "manual"
+                ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Zap className="h-3.5 w-3.5" /> Prise Directe
+          </Link>
+        </div>
+      </div>
+
+      {/* Desktop: original header */}
+      <div className="hidden md:flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3.5">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-sm">
             <Zap className="h-6 w-6 text-primary" />
@@ -830,7 +893,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         </div>
 
         {/* Tab switch & Advanced toggle */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start lg:self-auto">
           <div className="inline-flex rounded-xl border border-border/70 bg-card/40 p-1 shadow-sm" role="tablist" aria-label="Espace de trading">
             <Link
               to="/autotrader"
@@ -877,7 +940,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       </div>
 
       {/* ── Visual Market Sessions Tracker & 24h Timeline ── */}
-      <MarketSessionsBar />
+      <div className="hidden md:block">
+        <MarketSessionsBar />
+      </div>
 
       {/* ── Sticky HUD Status Bar ── */}
       <AutoTraderStatusBar
@@ -901,7 +966,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Moteur & Stratégie active</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="hidden mt-0.5 text-xs text-muted-foreground sm:block">
                 {tradingTab === "manual"
                   ? "Choisis le preset à analyser : tu gardes ensuite la main sur l'ordre et la mise."
                   : "Sélectionne le profil de marché à consulter. Chaque stratégie tourne indépendamment."}
@@ -910,8 +975,55 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <span className="hidden text-xs font-bold text-muted-foreground sm:block font-mono">P&L du jour</span>
           </div>
 
+          {/* Mobile: horizontal scroll cards */}
+          <div className="md:hidden -mx-4 flex gap-2 overflow-x-auto scrollbar-none px-4 pb-1">
+            {shownPresets.map((p) => {
+              const st = cloud?.presets?.[p];
+              const pnlVal = st?.todayPnl ?? 0;
+              const isOnline = !!st?.enabled && !!st?.running;
+              const styles = {
+                default: { active: "border-purple-500/50 bg-purple-500/10" },
+                boom: { active: "border-orange-500/50 bg-orange-500/10" },
+                crash: { active: "border-amber-500/50 bg-amber-500/10" },
+                scalping: { active: "border-cyan-500/50 bg-cyan-500/10" },
+                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10" },
+              } as const;
+              return (
+                <button
+                  key={p}
+                  onClick={() => selectPresetView(p)}
+                  className={cn(
+                    "flex shrink-0 flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all duration-200 w-[140px]",
+                    selectedPreset === p
+                      ? styles[p].active
+                      : pnlVal > 0
+                        ? "border-up/30 bg-up/5"
+                        : pnlVal < 0
+                          ? "border-down/30 bg-down/5"
+                          : "border-white/10 bg-card/30"
+                  )}
+                >
+                  <div className="flex w-full items-center justify-between gap-1.5">
+                    <span className="flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-foreground">
+                      {presetLabels[p]}
+                      <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-up animate-pulse" : "bg-muted-foreground/40")} />
+                    </span>
+                    {PRESET_PRESENTATION[p].experimental && (
+                      <span className="text-[8px] font-black uppercase text-cyan-300">Test</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
+                  <span className={cn("text-sm font-black font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
+                    {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Desktop: original grid */}
           <div className={cn(
-            "grid gap-2.5 grid-cols-2",
+            "hidden md:grid gap-2.5 grid-cols-2",
             shownPresets.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
           )}>
             {shownPresets.map((p) => {
@@ -1003,135 +1115,135 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       <section
         ref={manualTradeRef}
         className={cn(
-          "order-2 w-full space-y-5",
+          "order-2 w-full space-y-3 lg:space-y-5",
           tradingTab === "manual" ? "xl:col-span-2 xl:col-start-1" : "hidden"
         )}
         aria-label="Prise directe manuelle"
       >
-        {/* Manual order overview: clarifies the irreversible flow before controls. */}
-        <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-r from-white/[0.045] via-card/40 to-transparent p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Ordre manuel</p>
-              <h2 className="mt-1 text-lg font-black tracking-tight text-foreground">Prépare, vérifie, puis exécute.</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Aucune décision automatique ne sera prise à ta place.</p>
-              {manualActionableOpportunities.length > 0 && (
-                <div role="status" className="mt-3 inline-flex items-center gap-2 rounded-lg border border-up/25 bg-up/10 px-2.5 py-1.5 text-[11px] font-bold text-up">
-                  <span className="h-1.5 w-1.5 rounded-full bg-up animate-pulse" />
-                  {manualActionableOpportunities.length} signal{manualActionableOpportunities.length > 1 ? "x" : ""} à examiner
-                </div>
-              )}
+        {/* Manual order overview — mobile: ultra-compact, desktop: original */}
+        <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-r from-white/[0.045] via-card/40 to-transparent p-3 lg:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-primary lg:text-[10px]">Ordre manuel</p>
+              <h2 className="mt-0.5 text-sm font-black tracking-tight text-foreground lg:text-lg truncate">Prépare & Exécute</h2>
+              <p className="hidden mt-1 text-xs text-muted-foreground lg:block">Aucune décision automatique ne sera prise à ta place.</p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-wider sm:min-w-[410px]">
-              <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-primary">1 · Marché</div>
-              <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">2 · Position</div>
-              <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">3 · Validation</div>
-            </div>
+            {manualActionableOpportunities.length > 0 && (
+              <div role="status" className="inline-flex items-center gap-1.5 rounded-lg border border-up/25 bg-up/10 px-2 py-1 lg:px-2.5 lg:py-1.5 text-[10px] lg:text-[11px] font-bold text-up shrink-0">
+                <span className="h-1 w-1 lg:h-1.5 lg:w-1.5 rounded-full bg-up animate-pulse" />
+                {manualActionableOpportunities.length} signal{manualActionableOpportunities.length > 1 ? "x" : ""}
+              </div>
+            )}
+          </div>
+          {/* Desktop: original step cards */}
+          <div className="hidden lg:flex mt-4 grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-wider sm:min-w-[410px]">
+            <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-primary">1 · Marché</div>
+            <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">2 · Position</div>
+            <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">3 · Validation</div>
           </div>
         </div>
 
-        {/* 2-Column Tactical Layout */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_360px] items-start">
+        {/* 2-Column Tactical Layout — mobile: single column, desktop: 2 cols */}
+        <div className="grid gap-4 lg:gap-5 lg:grid-cols-[minmax(0,1.2fr)_360px] items-start">
           {/* LEFT: Order Form */}
-          <div className="space-y-4">
+          <div className="space-y-3 lg:space-y-4">
             {/* Card 1: Symbol & Signal Context */}
-            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-5">
-              <div className="flex items-center justify-between border-b border-border/50 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-3 space-y-3 lg:p-5 lg:space-y-5">
+              <div className="flex items-center justify-between border-b border-border/50 pb-2.5 lg:pb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary shrink-0">
                     1
                   </span>
-                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Marché & Signal</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-foreground truncate">Marché & Signal</span>
                 </div>
                 {actionableOpportunity?.direction && (
                   <button
                     onClick={prepareManualOpportunity}
-                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-up hover:text-up/80 transition-all px-2 py-1 rounded-lg border border-up/30 bg-up/5"
+                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-up hover:text-up/80 transition-all px-2 py-1 rounded-lg border border-up/30 bg-up/5 shrink-0 active:scale-95 touch-manipulation"
                   >
-                    <Zap className="h-3 w-3" /> Charger le signal : {actionableOpportunity.symbol}
+                    <Zap className="h-3 w-3" /> {actionableOpportunity.symbol}
                   </button>
                 )}
               </div>
 
               {/* ── AI-qualified market selector ── */}
-              <div className="rounded-2xl border border-white/[0.08] bg-black/25 p-4 space-y-3">
+              <div className="rounded-xl lg:rounded-2xl border border-white/[0.08] bg-black/25 p-2.5 space-y-2 lg:p-4 lg:space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-up" />
-                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
-                      Analyse Auto‑Trader · Choix manuel
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Zap className="h-3.5 w-3.5 text-up shrink-0" />
+                    <span className="text-[11px] lg:text-xs font-black uppercase tracking-wider text-foreground truncate">
+                      Marchés analysés
                     </span>
                   </div>
-                  <span className="rounded-full border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                    {manualScanOpportunities.length} analysé{manualScanOpportunities.length > 1 ? "s" : ""}
+                  <span className="rounded-full border border-white/[0.12] bg-white/[0.04] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground shrink-0">
+                    {manualScanOpportunities.length}
                   </span>
                 </div>
 
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                <p className="hidden text-[11px] leading-relaxed text-muted-foreground lg:block">
                   Les signaux forts sont mis en avant. Les signaux faibles et à éviter restent accessibles : tu gardes toujours la décision et la mise.
                 </p>
 
                 {manualScanOpportunities.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid lg:grid-cols-3 lg:gap-2 lg:overflow-visible xl:grid-cols-5">
                     {manualScanOpportunities.map((opp) => {
-                    const symObj = SYMBOLS.find((s) => s.deriv === opp.symbol);
-                    const label = symObj?.label ?? opp.symbol;
-                    const isSelected = forceSymbol === opp.symbol;
-                    const decisionStyle = opp.decision === "take"
-                      ? "border-up/30 bg-up/10 text-up"
-                      : opp.decision === "wait"
-                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                        : "border-down/30 bg-down/10 text-down";
-                    const cardStyle = opp.decision === "take"
-                      ? "border-up/45 bg-up/[0.10] text-up hover:bg-up/[0.16]"
-                      : opp.decision === "wait"
-                        ? "border-amber-500/45 bg-amber-500/[0.12] text-amber-100 hover:bg-amber-500/[0.18]"
-                        : "border-down/45 bg-down/[0.10] text-down hover:bg-down/[0.16]";
-                    const decisionLabel = opp.decision === "take" ? "Fort" : opp.decision === "wait" ? "Faible" : "À éviter";
+                      const symObj = SYMBOLS.find((s) => s.deriv === opp.symbol);
+                      const label = symObj?.label ?? opp.symbol;
+                      const isSelected = forceSymbol === opp.symbol;
+                      const decisionStyle = opp.decision === "take"
+                        ? "border-up/30 bg-up/10 text-up"
+                        : opp.decision === "wait"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                          : "border-down/30 bg-down/10 text-down";
+                      const cardStyle = opp.decision === "take"
+                        ? "border-up/40 bg-up/[0.08] text-up"
+                        : opp.decision === "wait"
+                          ? "border-amber-500/40 bg-amber-500/[0.1] text-amber-100"
+                          : "border-down/40 bg-down/[0.08] text-down";
+                      const decisionLabel = opp.decision === "take" ? "Fort" : opp.decision === "wait" ? "Faible" : "Éviter";
 
-                    return (
-                      <div
-                        key={opp.symbol}
-                        onClick={() => {
-                          setForceSymbol(opp.symbol);
-                          if (opp.direction) setForceDir(opp.direction);
-                          setManualArmed(true);
-                        }}
-                        className={cn(
-                          "flex min-h-[76px] flex-col items-start justify-between gap-2 rounded-xl border p-3 text-left transition-all duration-200 cursor-pointer",
-                          cardStyle,
-                          isSelected && "ring-1 ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
-                        )}
-                      >
-                        <div className="flex w-full items-center justify-between gap-1">
-                          <span className="font-bold text-xs truncate">{label}</span>
-                          <span className={cn("text-[9px] font-black border px-1.5 py-0.5 rounded shrink-0", decisionStyle)}>
-                            {decisionLabel}
-                          </span>
+                      return (
+                        <div
+                          key={opp.symbol}
+                          onClick={() => {
+                            setForceSymbol(opp.symbol);
+                            if (opp.direction) setForceDir(opp.direction);
+                            setManualArmed(true);
+                          }}
+                          className={cn(
+                            "flex min-h-[72px] flex-col items-start justify-between gap-1.5 rounded-xl border p-2.5 text-left transition-all duration-200 cursor-pointer w-full touch-manipulation active:scale-[0.98] lg:w-auto lg:shrink lg:min-h-[76px] lg:p-3",
+                            cardStyle,
+                            isSelected && "ring-2 ring-primary/60 shadow-lg bg-card/80 lg:ring-1 lg:ring-white/40"
+                          )}
+                        >
+                          <div className="flex w-full items-center justify-between gap-1">
+                            <span className="font-bold text-[11px] lg:text-xs truncate">{label}</span>
+                            <span className={cn("text-[8px] lg:text-[9px] font-black border px-1 py-0.5 rounded shrink-0", decisionStyle)}>
+                              {decisionLabel}
+                            </span>
+                          </div>
+                          <div className="flex w-full items-center justify-between gap-1 text-[9px] lg:text-[10px] font-mono text-muted-foreground/70">
+                            <span className="font-bold">{opp.direction ? `${opp.direction === "CALL" ? "▲" : "▼"} ${Math.round(opp.confidence)}%` : "Neutre"}</span>
+                          </div>
+                          {opp.direction && opp.decision !== "avoid" ? (
+                            <button
+                              type="button"
+                              disabled={forcingTrade}
+                              onClick={() => prepareManualSignal(opp)}
+                              className={cn(
+                                "w-full rounded-lg border py-1 text-[9px] font-black uppercase tracking-wider transition-colors disabled:opacity-40 active:scale-95 touch-manipulation",
+                                opp.decision === "take"
+                                  ? "border-up/35 bg-up/10 text-up"
+                                  : "border-amber-500/35 bg-amber-500/10 text-amber-200",
+                              )}
+                            >
+                              Signal
+                            </button>
+                          ) : (
+                            <span className="w-full text-center text-[9px] font-bold text-muted-foreground/50">Observation</span>
+                          )}
                         </div>
-                        <div className="flex w-full items-center justify-between gap-1 text-[10px] font-mono text-muted-foreground/70">
-                          <span>{opp.direction ? `${opp.direction === "CALL" ? "▲" : "▼"} ${Math.round(opp.confidence)}%` : "Neutre"}</span>
-                          <span>{symObj?.market || "Marché"}</span>
-                        </div>
-                        {opp.direction && opp.decision !== "avoid" ? (
-                          <button
-                            type="button"
-                            disabled={forcingTrade}
-                            onClick={() => prepareManualSignal(opp)}
-                            className={cn(
-                              "w-full rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors disabled:opacity-40",
-                              opp.decision === "take"
-                                ? "border-up/35 bg-up/10 text-up hover:bg-up/20"
-                                : "border-amber-500/35 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20",
-                            )}
-                          >
-                            Prendre ce signal
-                          </button>
-                        ) : (
-                          <span className="w-full text-center text-[10px] font-bold text-muted-foreground/60">Observation</span>
-                        )}
-                      </div>
-                    );
+                      );
                     })}
                   </div>
                 ) : (
@@ -1142,44 +1254,60 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 )}
               </div>
 
-              {/* Live Candle Timer & AI Signal & Direction Selection */}
-              <div className="grid gap-4 lg:grid-cols-2">
-                {/* Left: Candle Timer & AI Signal Badge */}
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-white/10 bg-black/30 p-3.5 flex items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div className="grid h-8 w-8 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
-                        <Clock className="h-4 w-4 animate-pulse" />
+              {/* ── Direction & Signal — mobile: unified compact, desktop: 2 cols ── */}
+              <div className="grid gap-3 lg:gap-4 lg:grid-cols-2">
+                <div className="flex flex-col gap-3">
+                  {/* Timer & IA Context Row (Mobile) */}
+                  <div className="flex items-center gap-2 lg:hidden">
+                    <div className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 text-primary animate-pulse" />
+                        <span className="font-mono text-xs font-black text-foreground">{candleSeconds}s</span>
                       </div>
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Chrono Bougie M1</div>
-                        <div className="font-mono text-sm font-black text-foreground">{candleSeconds}s restantes</div>
+                      <span className={cn(
+                        "rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                        candleSeconds >= 45 || candleSeconds <= 15 ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/5 bg-white/[0.02] text-muted-foreground"
+                      )}>
+                        {candleSeconds >= 45 || candleSeconds <= 15 ? "Idéal" : "Attente"}
+                      </span>
+                    </div>
+                    {manualOpportunity && (
+                      <div className={cn(
+                        "flex-[1.2] rounded-xl border px-3 py-2 flex items-center justify-between gap-2",
+                        manualOpportunity.decision === "take" ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300" : "border-amber-500/30 bg-amber-500/5 text-amber-300"
+                      )}>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Sparkles className="h-3 w-3 shrink-0" />
+                          <span className="text-[10px] font-black truncate uppercase">{manualOpportunity.directionLabel}</span>
+                        </div>
+                        <span className="font-mono text-xs font-black">{Math.round(manualOpportunity.confidence)}%</span>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Desktop Timer (Original) */}
+                  <div className="hidden lg:flex rounded-xl border border-white/10 bg-black/30 p-3.5 items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary animate-pulse" />
+                      <span className="font-mono text-sm font-black text-foreground">{candleSeconds}s</span>
                     </div>
                     <span className={cn(
-                      "rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider",
-                      candleSeconds >= 45 || candleSeconds <= 15
-                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 animate-pulse"
-                        : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                      "rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+                      candleSeconds >= 45 || candleSeconds <= 15 ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 animate-pulse" : "border-white/10 bg-white/[0.04] text-muted-foreground"
                     )}>
-                      {candleSeconds >= 45 || candleSeconds <= 15 ? "🔥 Entrée Idéale" : "⏳ Attente"}
+                      {candleSeconds >= 45 || candleSeconds <= 15 ? "🔥 Idéal" : "⏳ Attente"}
                     </span>
                   </div>
 
+                  {/* Desktop Signal Card (Original) */}
                   {manualOpportunity ? (
                     <div className={cn(
-                      "rounded-xl border p-3.5 flex items-center justify-between gap-4 text-xs",
-                      manualOpportunity.decision === "take"
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                        : manualOpportunity.decision === "avoid"
-                        ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                      "hidden lg:flex rounded-xl border p-3.5 items-center justify-between gap-4 text-xs",
+                      manualOpportunity.decision === "take" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : manualOpportunity.decision === "avoid" ? "border-rose-500/40 bg-rose-500/10 text-rose-300" : "border-amber-500/40 bg-amber-500/10 text-amber-300"
                     )}>
                       <div className="space-y-0.5">
                         <div className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Signal IA · {manualOpportunity.symbol}</div>
-                        <div className="font-black uppercase tracking-wider flex items-center gap-1.5">
-                          <Sparkles className="h-3.5 w-3.5" /> {manualOpportunity.directionLabel}
-                        </div>
+                        <div className="font-black uppercase tracking-wider flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> {manualOpportunity.directionLabel}</div>
                         <div className="text-[10px] opacity-80">24h Win-Rate : 78% de réussite</div>
                       </div>
                       <div className="shrink-0 text-right">
@@ -1188,67 +1316,43 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-3.5 flex items-center justify-center text-xs text-muted-foreground">
-                      Sélectionne une paire pour voir le signal IA
-                    </div>
+                    <div className="hidden lg:flex rounded-xl border border-white/10 bg-black/30 p-3.5 items-center justify-center text-xs text-muted-foreground">Sélectionne une paire pour voir le signal IA</div>
                   )}
                 </div>
 
-                {/* Right: Direction Selector (Sens du marché) */}
-                <div className="rounded-2xl border border-white/[0.08] bg-black/25 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground/80">Orientation de l'ordre</p>
-                      <p className="mt-0.5 text-xs font-bold text-foreground">Sens du marché visé</p>
-                    </div>
-                    {manualOpportunity?.direction && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[9px] font-bold text-primary">
-                        <Sparkles className="h-2.5 w-2.5" /> Rec. IA: {manualOpportunity.direction}
-                      </span>
-                    )}
+                {/* Direction Selector */}
+                <div className="rounded-xl lg:rounded-2xl border border-white/[0.08] bg-black/25 p-2.5 space-y-2 lg:p-4 lg:space-y-3">
+                  <div className="flex items-center justify-between lg:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground/60">Choisir direction</span>
                   </div>
+                  <div className="hidden lg:block text-[10px] font-black uppercase tracking-wider text-muted-foreground">Direction</div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 lg:gap-3">
                     {(manualInstrument === "multiplier" ? (["MULTUP", "MULTDOWN"] as const) : (["CALL", "PUT"] as const)).map((d) => {
                       const isUp = d === "CALL" || d === "MULTUP";
                       const isSelected = forceDir === d;
-                      // manualOpportunity.direction is normalized upstream to the CALL/PUT
-                      // bias regardless of instrument (same convention as bot-engine.server.ts's
-                      // biasOf: "MULTUP is the same bias as CALL") — it's typed "CALL"|"PUT"|null
-                      // and never literally "MULTUP"/"MULTDOWN", so comparing against those was
-                      // dead code (TS2367) that happened to be harmless only because the CALL/PUT
-                      // half of each check already fully covered it.
-                      const isAiRecommended = !!manualOpportunity?.direction && (
-                        (isUp && manualOpportunity.direction === "CALL") ||
-                        (!isUp && manualOpportunity.direction === "PUT")
-                      );
+                      const isAiRecommended = !!manualOpportunity?.direction && ((isUp && manualOpportunity.direction === "CALL") || (!isUp && manualOpportunity.direction === "PUT"));
 
                       return (
                         <button
                           key={d}
                           type="button"
                           disabled={forcingTrade}
-                          onClick={() => {
-                            setForceDir(d);
-                            setPreparedManualOpportunity(null);
-                            setManualArmed(true);
-                          }}
+                          onClick={() => { setForceDir(d); setPreparedManualOpportunity(null); setManualArmed(true); }}
                           className={cn(
-                            "relative flex min-h-[96px] flex-col items-center justify-center gap-1.5 rounded-xl border p-3 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer",
+                            "relative flex min-h-[64px] lg:min-h-[96px] flex-col items-center justify-center gap-1 rounded-xl border p-2 lg:p-3 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer",
                             isSelected
                               ? isUp
                                 ? "border-emerald-500/70 bg-emerald-500/20 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.20)] ring-1 ring-emerald-500/40"
                                 : "border-rose-500/70 bg-rose-500/20 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.20)] ring-1 ring-rose-500/40"
-                              : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
+                              : "border-white/[0.08] bg-white/[0.02] text-muted-foreground hover:bg-white/[0.06]"
                           )}
                         >
                           {isAiRecommended && (
-                            <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full border border-primary/40 bg-black px-2 py-0.2 text-[8px] font-black uppercase text-primary">
-                              Conseillé
-                            </span>
+                            <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full border border-primary/40 bg-black px-1.5 py-0.2 text-[8px] font-black uppercase text-primary">IA</span>
                           )}
-                          <span className="text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
-                          <span className="text-xs font-black uppercase tracking-wider">{isUp ? "HAUSSE" : "BAISSE"}</span>
+                          <span className="text-xl lg:text-2xl leading-none">{isUp ? "▲" : "▼"}</span>
+                          <span className="text-[11px] lg:text-xs font-black uppercase tracking-wider">{isUp ? "HAUSSE" : "BAISSE"}</span>
                         </button>
                       );
                     })}
@@ -1257,28 +1361,86 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               </div>
             </div>
 
-            {/* Card 2: Réglage de la Mise & Protections (100% Dédié) */}
-            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-6">
-              <div className="flex items-center justify-between border-b border-border/50 pb-3">
+            {/* Card 2: Mise & Protections — mobile: compact single column */}
+            <div className="glass-panel rounded-2xl border border-border/60 bg-card/30 p-3 space-y-4 lg:p-5 lg:space-y-6">
+              <div className="flex items-center justify-between border-b border-border/50 pb-2.5 lg:pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
-                    2
-                  </span>
-                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Réglage de la Mise & Protections</span>
+                  <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">2</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-foreground">Mise & Protections</span>
                 </div>
-                <span className={cn("rounded-lg border px-2.5 py-0.5 text-xs font-black uppercase", config.mode === "live" ? "border-rose-500/30 bg-rose-500/10 text-rose-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300")}>
-                  {config.mode === "live" ? "Compte RÉEL" : "Compte DÉMO"}
+                <span className={cn("rounded-lg border px-2 py-0.5 text-[10px] lg:text-xs font-black uppercase", config.mode === "live" ? "border-rose-500/30 bg-rose-500/10 text-rose-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300")}>
+                  {config.mode === "live" ? "RÉEL" : "DÉMO"}
                 </span>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* Left Column: Stake Presets & Quick Increments */}
+              {/* Mobile: ultra-compact stake row */}
+              <div className="lg:hidden space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <AmountInput
+                      value={forceStake}
+                      min={1}
+                      max={100}
+                      step={1}
+                      disabled={forcingTrade}
+                      onCommit={async (v) => {
+                        if (config.mode === "live") {
+                          const ok = await confirm({ title: "Confirmer la mise ?", description: `Trade manuel à $${v} (argent réel).`, confirmLabel: "Confirmer", danger: true });
+                          if (!ok) return false;
+                        }
+                        setForceStake(v);
+                        return true;
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[5, 10, 25].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setForceStake(s)}
+                        className={cn(
+                          "h-10 w-10 rounded-xl border text-[11px] font-black transition-all",
+                          forceStake === s ? "border-primary bg-primary/20 text-primary" : "border-white/5 bg-white/[0.02] text-muted-foreground"
+                        )}
+                      >
+                        ${s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className={cn(
+                    "flex items-center justify-between rounded-xl border px-3 py-2 text-[10px] font-black uppercase transition-all",
+                    autoTpEnabled ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-white/5 bg-white/[0.01] text-muted-foreground/60"
+                  )}>
+                    <span>TP +50%</span>
+                    <Switch checked={autoTpEnabled} onCheckedChange={setAutoTpEnabled} className="scale-[0.6]" />
+                  </div>
+                  <div className={cn(
+                    "flex items-center justify-between rounded-xl border px-3 py-2 text-[10px] font-black uppercase transition-all",
+                    autoSlEnabled ? "border-rose-500/40 bg-rose-500/10 text-rose-300" : "border-white/5 bg-white/[0.01] text-muted-foreground/60"
+                  )}>
+                    <span>SL -30%</span>
+                    <Switch checked={autoSlEnabled} onCheckedChange={setAutoSlEnabled} className="scale-[0.6]" />
+                  </div>
+                </div>
+
+                {forceStake > 30 && (
+                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-400/80 flex items-center gap-2">
+                    <AlertTriangle className="h-3 w-3" /> Risque élevé (${forceStake})
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop Stake Layout (Original) */}
+              <div className="hidden lg:grid gap-6 md:grid-cols-2">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">Mise rapide</span>
                     <span className="text-[10px] font-bold text-muted-foreground/70">Choix direct</span>
                   </div>
-
                   <div className="grid grid-cols-4 gap-2">
                     {[5, 10, 25, 50].map((s) => (
                       <button
@@ -1297,8 +1459,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       </button>
                     ))}
                   </div>
-
-                  {/* Quick Increments (+5, +10, +25) */}
                   <div className="flex items-center gap-2 pt-1">
                     <span className="text-[10px] font-bold uppercase text-muted-foreground/60 shrink-0">Ajouter :</span>
                     {[5, 10, 25].map((inc) => (
@@ -1313,8 +1473,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       </button>
                     ))}
                   </div>
-
-                  {/* AmountInput Stepper */}
                   <div className="pt-2">
                     <AmountInput
                       value={forceStake}
@@ -1338,8 +1496,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     />
                   </div>
                 </div>
-
-                {/* Right Column: Capital Risk Meter & Protections */}
                 <div className="space-y-4">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between text-xs">
@@ -1351,8 +1507,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         ${forceStake} ({(forceStake / (config.initialCapital || 100) * 100).toFixed(1)}%)
                       </span>
                     </div>
-
-                    {/* Exposure Meter Bar */}
                     <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                       <div
                         className={cn(
@@ -1363,37 +1517,24 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       />
                     </div>
                   </div>
-
-                  {/* Auto Protection Toggles */}
                   <div className="pt-1 space-y-2.5">
                     <div className="text-xs font-black uppercase tracking-wider text-muted-foreground">Protections du trade</div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div
-                        className={cn(
-                          "flex items-center justify-between rounded-xl border p-3 text-xs font-bold transition-all cursor-pointer",
-                          autoTpEnabled
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                            : "border-white/10 bg-white/[0.02] text-muted-foreground"
-                        )}
-                      >
+                      <div className={cn(
+                        "flex items-center justify-between rounded-xl border p-3 text-xs font-bold transition-all cursor-pointer",
+                        autoTpEnabled ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/[0.02] text-muted-foreground"
+                      )}>
                         <span className="flex items-center gap-1.5 text-xs">
-                          <ShieldAlert className="h-4 w-4 text-emerald-400" />
-                          Auto TP (+50%)
+                          <ShieldAlert className="h-4 w-4 text-emerald-400" /> Auto TP (+50%)
                         </span>
                         <Switch checked={autoTpEnabled} onCheckedChange={setAutoTpEnabled} className="scale-75" />
                       </div>
-
-                      <div
-                        className={cn(
-                          "flex items-center justify-between rounded-xl border p-3 text-xs font-bold transition-all cursor-pointer",
-                          autoSlEnabled
-                            ? "border-rose-500/40 bg-rose-500/15 text-rose-300"
-                            : "border-white/10 bg-white/[0.02] text-muted-foreground"
-                        )}
-                      >
+                      <div className={cn(
+                        "flex items-center justify-between rounded-xl border p-3 text-xs font-bold transition-all cursor-pointer",
+                        autoSlEnabled ? "border-rose-500/40 bg-rose-500/15 text-rose-300" : "border-white/10 bg-white/[0.02] text-muted-foreground"
+                      )}>
                         <span className="flex items-center gap-1.5 text-xs">
-                          <ShieldAlert className="h-4 w-4 text-rose-400" />
-                          Auto SL (-30%)
+                          <ShieldAlert className="h-4 w-4 text-rose-400" /> Auto SL (-30%)
                         </span>
                         <Switch checked={autoSlEnabled} onCheckedChange={setAutoSlEnabled} className="scale-75" />
                       </div>
@@ -1402,9 +1543,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </div>
               </div>
 
-              {/* High Risk Alert Banner */}
               {forceStake > 30 && (
-                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs flex items-center gap-3 text-rose-300 animate-fade-in shadow-lg">
+                <div className="hidden lg:flex rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs items-center gap-3 text-rose-300 animate-fade-in shadow-lg">
                   <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
                   <div>
                     <span className="font-extrabold uppercase tracking-wider">Attention : Risque élevé ($50+)</span>
@@ -1415,18 +1555,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
           </div>
 
-          {/* RIGHT: Order Summary & Hero CTA */}
-          <aside className="glass-panel rounded-2xl border border-border/60 bg-card/50 p-5 space-y-4 lg:sticky lg:top-24">
-            <div className="flex items-center gap-2 border-b border-border/50 pb-3">
-              <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">
-                3
-              </span>
+          {/* RIGHT: Order Summary & Hero CTA — mobile: compact summary, sticky CTA */}
+          <aside className="space-y-3 lg:space-y-4 lg:glass-panel lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card/50 lg:p-5 lg:sticky lg:top-24">
+            <div className="hidden lg:flex items-center gap-2 border-b border-border/50 pb-3">
+              <span className="grid h-6 w-6 place-items-center rounded-full border border-primary/30 bg-primary/10 font-mono text-xs font-black text-primary">3</span>
               <span className="text-xs font-black uppercase tracking-wider text-foreground">Revue & Validation</span>
             </div>
 
             {manualExecution && (
               <div className={cn(
-                "relative overflow-hidden rounded-xl border p-4",
+                "relative overflow-hidden rounded-xl border p-3 lg:p-4",
                 manualExecution.status === "pending"
                   ? "border-amber-400/70 bg-amber-400/15 text-amber-100 shadow-[0_0_28px_rgba(251,191,36,0.28)]"
                   : "border-up/70 bg-up/15 text-emerald-100 shadow-[0_0_32px_rgba(74,222,128,0.30)]",
@@ -1435,7 +1573,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   "pointer-events-none absolute inset-0 opacity-60",
                   manualExecution.status === "pending" ? "animate-pulse bg-amber-300/10" : "animate-pulse bg-emerald-300/10",
                 )} />
-                <div className="relative flex items-center gap-3">
+                <div className="relative flex items-center gap-2.5">
                   <span className={cn(
                     "relative flex h-3 w-3 shrink-0",
                     manualExecution.status === "pending" ? "text-amber-300" : "text-up",
@@ -1445,9 +1583,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </span>
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.16em]">
-                      {manualExecution.status === "pending" ? "Ordre en attente de Deriv" : "Contrat ouvert · suivi en direct"}
+                      {manualExecution.status === "pending" ? "Ordre en attente" : "Contrat ouvert"}
                     </p>
-                    <p className="mt-1 text-xs font-bold opacity-90">
+                    <p className="mt-0.5 text-xs font-bold opacity-90">
                       {manualExecution.symbol} · {manualExecution.direction}
                     </p>
                   </div>
@@ -1455,33 +1593,137 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               </div>
             )}
 
-            {/* Market Closed Warning */}
+            {/* Market Closed Warning — mobile: compact */}
             {!isMarketOpenNow && (
-              <div className="rounded-xl border border-rose-500/40 bg-rose-500/15 p-3.5 text-xs flex items-center gap-3 text-rose-300 animate-fade-in shadow-lg">
-                <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0" />
-                <div>
-                  <span className="font-extrabold uppercase tracking-wider">Marché actuellement fermé</span>
-                  <p className="mt-0.5 text-[11px] opacity-90">
-                    Ce marché ({manualSymbolLabel}) est fermé hors des heures d'ouverture. Sélectionne un marché actif (Forex ou Crypto).
-                  </p>
-                </div>
+              <div className="rounded-lg lg:rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2 lg:p-3.5 text-xs flex items-center gap-2 lg:gap-3 text-rose-300 animate-fade-in shadow-lg">
+                <AlertTriangle className="h-4 w-4 lg:h-5 lg:w-5 text-rose-400 shrink-0" />
+                <span className="font-bold">Marché fermé — sélectionne un marché actif</span>
               </div>
             )}
 
-            {/* Checklist */}
-            <div className="space-y-2.5 rounded-xl border border-border/50 bg-black/30 p-4 shadow-inner">
+            {/* Checklist — mobile: inline pills */}
+            <div className="hidden lg:block space-y-2.5 rounded-xl border border-border/50 bg-black/30 p-4 shadow-inner">
               <ChecklistItem label="Connexion" value={derivSession.connected ? "Active" : "Simulée"} tone={derivSession.connected ? "up" : "amber"} />
               <ChecklistItem label="Compte" value={derivSession.accountType || (config.mode === "demo" ? "DÉMO" : "LIVE")} tone={manualAccountMatchesMode ? "up" : "amber"} />
               <ChecklistItem label="Symbole" value={manualInstrumentSupported ? "OK" : "Indisponible"} tone={manualInstrumentSupported ? "up" : "down"} />
             </div>
 
-            {/* Parameter Summary */}
-            <div className="space-y-4 rounded-xl border border-border/50 bg-card/40 p-5 shadow-xl ring-1 ring-white/5">
+            {/* Mobile: compact summary card */}
+            <div className="lg:hidden rounded-xl border border-border/50 bg-card/40 p-3 space-y-2.5 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Marché</span>
+                <span className="text-sm font-black text-foreground">{manualSymbolLabel}</span>
+              </div>
+              <div className="flex items-center justify-between border-y border-border/40 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Direction</span>
+                  <span className={cn("text-[11px] font-black uppercase px-2 py-0.5 rounded-md", forceDir === "CALL" || forceDir === "MULTUP" ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300")}>
+                    {forceDir === "CALL" || forceDir === "MULTUP" ? "▲ HAUSSE" : "▼ BAISSE"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mise</span>
+                  <span className="text-sm font-black font-mono-tabular text-foreground">${forceStake.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Profit estimé</span>
+                  <span className="text-sm font-black text-emerald-300 font-mono">+${(forceStake * 0.85).toFixed(2)}</span>
+                </div>
+                <span className="rounded-md border border-emerald-500/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black text-emerald-300">+85% ROI</span>
+              </div>
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{manualInstrument === "multiplier" ? "Protection" : "Échéance"}</span>
+                <span className="text-[11px] font-bold text-foreground/80">{manualInstrument === "multiplier" ? "Auto TP/SL" : `${manualDurationMinutes}min`}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Exécution</span>
+                <span className={cn("text-[11px] font-black uppercase tracking-widest", config.mode === "live" ? "text-rose-400" : "text-emerald-400")}>
+                  {config.mode === "live" ? "RÉEL" : "DÉMO"}
+                </span>
+              </div>
+
+              {/* Mobile in-card CTA button */}
+              <Button
+                disabled={!manualTradeAllowed || forcingTrade || !manualArmed}
+                onClick={async () => {
+                  if (!forceSymbol) return;
+                  const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
+                  const isLive = config.mode === "live";
+                  const confirmed = await confirm({
+                    title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
+                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
+                    confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                    danger: isLive,
+                  });
+                  if (!confirmed) return;
+                  setForcingTrade(true);
+                  toast.info(`Trade en cours — ${label} ${forceDir}…`);
+                  try {
+                    if (derivSession.connected) {
+                      await forceDemoTrade(
+                        forceSymbol,
+                        forceDir,
+                        forceStake,
+                        manualDurationMinutes,
+                        (log) => {
+                          handleEvent(log);
+                          if (log.status === "pending" || log.status === "open") {
+                            setManualExecution({ status: log.status, symbol: label, direction: forceDir });
+                          } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                            setManualExecution(null);
+                          }
+                          if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
+                        },
+                        config
+                      );
+                    } else {
+                      await openPreviewTrade(
+                        forceSymbol,
+                        manualDurationMinutes,
+                        forceStake,
+                        (log) => {
+                          handleEvent(log);
+                          if (log.status === "open") {
+                            setManualExecution({ status: "open", symbol: label, direction: forceDir });
+                          } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                            setManualExecution(null);
+                          }
+                          if (log.status === "open") toast.success(`Position démo simulée — ${label} ${forceDir}`);
+                        }
+                      );
+                    }
+                    setManualArmed(false);
+                    setPreparedManualOpportunity(null);
+                  } catch (e) {
+                    toast.error(`Échec: ${(e as Error).message}`);
+                  } finally {
+                    setForcingTrade(false);
+                  }
+                }}
+                className={cn(
+                  "mt-2.5 h-12 w-full shrink-0 gap-2 text-sm font-extrabold rounded-xl transition-all shadow-lg active:scale-[0.98] touch-manipulation",
+                  forceDir === "CALL" || forceDir === "MULTUP"
+                    ? "bg-up text-black hover:bg-up/90 shadow-up/25"
+                    : "bg-down text-white hover:bg-down/90 shadow-down/25",
+                  "disabled:bg-muted/20 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed"
+                )}
+              >
+                {forcingTrade ? (
+                  <><Activity className="h-4 w-4 animate-pulse" /> Traitement de l'ordre…</>
+                ) : (
+                  <>Exécuter l'Ordre Manuel (${forceStake.toFixed(2)})</>
+                )}
+              </Button>
+            </div>
+
+            {/* Desktop: original parameter summary */}
+            <div className="hidden lg:block space-y-4 rounded-xl border border-border/50 bg-card/40 p-5 shadow-xl ring-1 ring-white/5">
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Marché sélectionné</span>
                 <span className="text-sm font-black text-foreground">{manualSymbolLabel}</span>
               </div>
-
               <div className="grid grid-cols-2 gap-4 border-y border-border/40 py-4">
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Direction</span>
@@ -1494,20 +1736,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   <span className="text-sm font-black font-mono-tabular text-foreground">${forceStake.toFixed(2)}</span>
                 </div>
               </div>
-
-              {/* Payout & ROI Simulator */}
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 flex items-center justify-between text-xs">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Profit estimé (+85%)</div>
                   <div className="text-base font-black text-emerald-300 font-mono">+${(forceStake * 0.85).toFixed(2)} USD</div>
                 </div>
                 <div className="text-right">
-                  <span className="rounded-md border border-emerald-500/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black text-emerald-300">
-                    +85.0% ROI
-                  </span>
+                  <span className="rounded-md border border-emerald-500/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black text-emerald-300">+85.0% ROI</span>
                 </div>
               </div>
-
               <div className="flex items-center justify-between pt-1">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{manualInstrument === "multiplier" ? "Protection" : "Échéance"}</span>
@@ -1523,28 +1760,29 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             </div>
 
             {!manualArmed && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
+              <div className="rounded-lg lg:rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 lg:p-3 text-[11px] leading-relaxed text-amber-200">
                 <p className="font-black uppercase tracking-wider text-amber-300">⚠️ Ordre non armé</p>
-                <p className="mt-1 text-amber-100/70">Sélectionne un marché ou clique sur <strong>▲ HAUSSE</strong> / <strong>▼ BAISSE</strong> ci-dessus pour armer et valider un nouvel ordre.</p>
+                <p className="mt-1 text-amber-100/70 hidden lg:block">Sélectionne un marché ou clique sur <strong>▲ HAUSSE</strong> / <strong>▼ BAISSE</strong> ci-dessus pour armer et valider un nouvel ordre.</p>
+                <p className="mt-0.5 lg:hidden">Choisis un marché + direction pour armer.</p>
               </div>
             )}
 
             {!manualDirectionMatchesSignal && manualOpportunity?.direction && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
+              <div className="hidden lg:block rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] leading-relaxed text-amber-200">
                 <p className="font-black uppercase tracking-wider">Décision contraire au signal</p>
                 <p className="mt-1 text-amber-100/70">Tu peux continuer, mais la direction choisie ne correspond pas à la recommandation IA.</p>
               </div>
             )}
 
-            {/* Exposition Warning */}
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-[11px] leading-relaxed">
+            {/* Exposition Warning — desktop only */}
+            <div className="hidden lg:block rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 text-[11px] leading-relaxed">
               <p className="font-bold text-amber-300 uppercase tracking-wider">Responsabilité</p>
               <p className="mt-1 text-muted-foreground">
                 Cette position est exécutée immédiatement sur votre compte. Elle est 100% manuelle.
               </p>
             </div>
 
-            {/* Hero CTA Button */}
+            {/* Desktop: original CTA button */}
             <Button
               disabled={!manualTradeAllowed || forcingTrade || !manualArmed}
               onClick={async () => {
@@ -1606,7 +1844,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 }
               }}
               className={cn(
-                "h-13 w-full shrink-0 gap-2 text-sm font-extrabold rounded-xl transition-all shadow-xl",
+                "hidden lg:flex h-13 w-full shrink-0 gap-2 text-sm font-extrabold rounded-xl transition-all shadow-xl",
                 forceDir === "CALL" || forceDir === "MULTUP"
                   ? "bg-up text-black hover:bg-up/90 shadow-up/25"
                   : "bg-down text-white hover:bg-down/90 shadow-down/25",
@@ -1620,14 +1858,103 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               )}
             </Button>
 
-            <p className="text-center text-[11px] font-semibold text-muted-foreground">
+            <p className="hidden lg:block text-center text-[11px] font-semibold text-muted-foreground">
               Exécution instantanée · Vérification finale demandée
             </p>
           </aside>
         </div>
 
+        {/* Mobile: sticky bottom CTA bar */}
+        <div className="fixed bottom-[calc(54px+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 lg:hidden">
+          <div className="mx-3 mb-2 rounded-xl border border-border/60 bg-card/95 backdrop-blur-lg shadow-2xl p-2.5">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground">
+                  <span className="truncate">{manualSymbolLabel}</span>
+                  <span className={cn("shrink-0 px-1.5 py-0.5 rounded text-[9px] font-black uppercase", forceDir === "CALL" || forceDir === "MULTUP" ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300")}>
+                    {forceDir === "CALL" || forceDir === "MULTUP" ? "▲" : "▼"}
+                  </span>
+                  <span className="shrink-0 font-mono font-black text-foreground">${forceStake.toFixed(2)}</span>
+                </div>
+                <div className="text-[10px] text-emerald-400 font-bold">+${(forceStake * 0.85).toFixed(2)} profit</div>
+              </div>
+              <Button
+                disabled={!manualTradeAllowed || forcingTrade || !manualArmed}
+                onClick={async () => {
+                  if (!forceSymbol) return;
+                  const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
+                  const isLive = config.mode === "live";
+                  const confirmed = await confirm({
+                    title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
+                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
+                    confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                    danger: isLive,
+                  });
+                  if (!confirmed) return;
+                  setForcingTrade(true);
+                  toast.info(`Trade en cours — ${label} ${forceDir}…`);
+                  try {
+                    if (derivSession.connected) {
+                      await forceDemoTrade(
+                        forceSymbol,
+                        forceDir,
+                        forceStake,
+                        manualDurationMinutes,
+                        (log) => {
+                          handleEvent(log);
+                          if (log.status === "pending" || log.status === "open") {
+                            setManualExecution({ status: log.status, symbol: label, direction: forceDir });
+                          } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                            setManualExecution(null);
+                          }
+                          if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
+                        },
+                        config
+                      );
+                    } else {
+                      await openPreviewTrade(
+                        forceSymbol,
+                        manualDurationMinutes,
+                        forceStake,
+                        (log) => {
+                          handleEvent(log);
+                          if (log.status === "open") {
+                            setManualExecution({ status: "open", symbol: label, direction: forceDir });
+                          } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
+                            setManualExecution(null);
+                          }
+                          if (log.status === "open") toast.success(`Position démo simulée — ${label} ${forceDir}`);
+                        }
+                      );
+                    }
+                    setManualArmed(false);
+                    setPreparedManualOpportunity(null);
+                  } catch (e) {
+                    toast.error(`Échec: ${(e as Error).message}`);
+                  } finally {
+                    setForcingTrade(false);
+                  }
+                }}
+                className={cn(
+                  "h-11 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-extrabold transition-all shadow-lg active:scale-95 touch-manipulation",
+                  forceDir === "CALL" || forceDir === "MULTUP"
+                    ? "bg-up text-black hover:bg-up/90 shadow-up/25"
+                    : "bg-down text-white hover:bg-down/90 shadow-down/25",
+                  "disabled:bg-muted/20 disabled:text-muted-foreground disabled:border-border disabled:cursor-not-allowed"
+                )}
+              >
+                {forcingTrade ? (
+                  <><Activity className="h-4 w-4 animate-pulse" /> …</>
+                ) : (
+                  <>Exécuter</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+
         {/* ── Mini Journal des Contrats en Cours & Récents ── */}
-        <div className="mt-6 glass-panel rounded-2xl border border-border/60 bg-card/30 p-5 space-y-4">
+        <div className="mt-6 glass-panel rounded-2xl border border-border/60 bg-card/30 p-3.5 space-y-4 md:p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-3">
             <div className="flex items-center gap-2.5">
               <div className="grid h-7 w-7 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
@@ -1760,96 +2087,129 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </div>
                 </div>
 
-              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/10 bg-black/20 shadow-xl">
+              <div className="flex flex-col gap-2.5 p-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20 shadow-xl">
                 {allItems.slice(0, 10).map((trade) => {
                   const symLabel = SYMBOLS.find((s) => s.deriv === trade.symbol)?.label ?? trade.symbol;
                   const isUp = trade.direction === "CALL" || trade.direction === "MULTUP";
                   const isOpen = trade.status === "open" || trade.status === "pending";
                   const isWin = trade.status === "won";
                   const isLoss = trade.status === "lost";
+                  const isError = trade.status === "error";
 
                   return (
-                    <div key={trade.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5 text-xs transition-all hover:bg-white/[0.03]">
-                      {/* Left: Direction + Symbol + Time */}
-                      <div className="flex items-center gap-3.5">
-                        <span className={cn(
-                          "grid h-11 w-11 shrink-0 place-items-center rounded-xl border font-mono text-base font-black shadow-md",
-                          isUp
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-emerald-500/10"
-                            : "border-rose-500/40 bg-rose-500/15 text-rose-300 shadow-rose-500/10"
-                        )}>
+                    <div
+                      key={trade.id}
+                      className="relative overflow-hidden rounded-2xl border border-white/10 bg-card/40 p-3.5 sm:p-4 space-y-2.5 sm:space-y-0 transition-all duration-200 shadow-md hover:bg-white/[0.03] sm:flex sm:items-center sm:justify-between sm:gap-4"
+                    >
+                      {/* Left vertical accent indicator bar */}
+                      <div
+                        className={cn(
+                          "absolute left-0 top-0 bottom-0 w-1 rounded-l-full",
+                          isWin
+                            ? "bg-emerald-500"
+                            : isLoss
+                              ? "bg-rose-500"
+                              : isError
+                                ? "bg-yellow-400 animate-pulse"
+                                : isOpen
+                                  ? "bg-amber-400 animate-pulse"
+                                  : "bg-white/20"
+                        )}
+                      />
+
+                      {/* Header/Left Block: Symbol + Direction Badge + Timestamps */}
+                      <div className="flex items-center gap-3 pl-1.5 min-w-0">
+                        <span
+                          className={cn(
+                            "grid h-8 w-8 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border font-mono text-xs sm:text-base font-black shadow-sm",
+                            isUp
+                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                              : "border-rose-500/40 bg-rose-500/15 text-rose-300"
+                          )}
+                        >
                           {isUp ? "▲" : "▼"}
                         </span>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-base font-black text-foreground">{symLabel}</span>
-                            <span className={cn(
-                              "rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider font-mono border",
-                              isUp ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                            )}>
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm sm:text-base font-black text-foreground truncate">{symLabel}</span>
+                            <span
+                              className={cn(
+                                "rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider border shrink-0",
+                                isUp
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                  : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                              )}
+                            >
                               {trade.direction === "CALL" || trade.direction === "MULTUP" ? "HAUSSE ▲" : "BAISSE ▼"}
                             </span>
                             {trade.isLiveDeriv && (
-                              <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[9px] font-black text-emerald-300 uppercase tracking-wider animate-pulse">
+                              <span className="hidden sm:inline-flex rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
                                 Direct Deriv
                               </span>
                             )}
                           </div>
-                          <div className="mt-1 text-[11px] font-semibold text-muted-foreground/70">
-                            Pris à {new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+
+                          {/* Timestamps */}
+                          <div className="flex items-center gap-2 text-[10px] sm:text-xs font-semibold text-muted-foreground/80">
+                            <span>
+                              Pris à <strong className="font-mono text-foreground/90">{new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                            </span>
                             {trade.closedAt && (isWin || isLoss) && (
-                              <> · fermé à {new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>
+                              <>
+                                <span className="text-white/20">·</span>
+                                <span>
+                                  fermé à <strong className="font-mono text-foreground/90">{new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                                </span>
+                              </>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Right: Metrics Grid (Mise, Gain Potentiel, Statut) */}
-                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 justify-between sm:justify-end border-t border-white/5 pt-3 sm:pt-0 sm:border-0">
-                        {/* Stake */}
+                      {/* Right Block (Desktop): Stake, P&L & Status Badge */}
+                      <div className="flex items-center gap-4 sm:gap-6 justify-between sm:justify-end shrink-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-0">
                         <div className="text-left sm:text-right">
-                          <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Mise engagée</div>
-                          <div className="font-mono text-sm sm:text-base font-black text-foreground">${trade.stake.toFixed(2)} USD</div>
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise</div>
+                          <div className="font-mono text-xs sm:text-sm font-black text-foreground">${trade.stake.toFixed(2)}</div>
                         </div>
 
-                        {/* Potential Gain */}
-                        <div className="text-left sm:text-right">
-                          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Gain potentiel</div>
-                          <div className="font-mono text-sm sm:text-base font-black text-emerald-300">
-                            +${trade.potentialProfit.toFixed(2)} USD
-                            {/* stake is 0 on "error" trades (contract never actually filled) — dividing by
-                                it produced a literal "(+NaN%)" badge instead of just omitting the ratio. */}
-                            {trade.stake > 0 && (
-                              <span className="text-[10px] font-semibold text-emerald-400/80"> (+{((trade.potentialProfit / trade.stake) * 100).toFixed(0)}%)</span>
+                        <div className="text-right">
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Gain / P&L</div>
+                          <div
+                            className={cn(
+                              "font-mono text-xs sm:text-sm font-black",
+                              isWin ? "text-emerald-300" : isLoss ? "text-rose-400" : isOpen ? "text-amber-300" : "text-foreground"
                             )}
+                          >
+                            {isWin
+                              ? `+$${(trade.pnl ?? trade.potentialProfit).toFixed(2)}`
+                              : isLoss
+                                ? `-$${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}`
+                                : isOpen
+                                  ? trade.pnl !== undefined && trade.pnl !== 0
+                                    ? `${trade.pnl > 0 ? "+" : ""}$${trade.pnl.toFixed(2)}`
+                                    : "En cours"
+                                  : "—"}
                           </div>
                         </div>
 
                         {/* Status Badge */}
-                        <div className="min-w-[120px] text-right">
-                          <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">Statut du trade</div>
+                        <div className="shrink-0">
                           {isOpen ? (
-                            <div className="flex flex-col items-end">
-                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase text-amber-300 animate-pulse">
-                                <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
-                                En cours
-                              </span>
-                              {trade.pnl !== undefined && trade.pnl !== 0 && (
-                                <span className={cn("text-xs font-mono font-black mt-1", trade.pnl > 0 ? "text-emerald-400" : "text-rose-400")}>
-                                  {trade.pnl > 0 ? "+" : ""}${trade.pnl.toFixed(2)} USD
-                                </span>
-                              )}
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-amber-300 animate-pulse">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                              En cours
+                            </span>
                           ) : isWin ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 text-xs font-black uppercase text-emerald-300 shadow-sm">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> +${(trade.pnl ?? trade.potentialProfit).toFixed(2)}
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-emerald-300 shadow-sm">
+                              <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? trade.potentialProfit).toFixed(2)}
                             </span>
                           ) : isLoss ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/15 px-3 py-1 text-xs font-black uppercase text-rose-300 shadow-sm">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-rose-300 shadow-sm">
                               -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
                             </span>
                           ) : (
-                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-muted-foreground">
+                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] sm:text-xs font-bold text-muted-foreground">
                               {trade.status}
                             </span>
                           )}
@@ -1886,39 +2246,36 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
 
 
-      {/* ── Mobile section switcher — 3 focused tabs instead of 4. Config
-          and Journal are merged into "Données" since both are read-only
-          views when the bot is running. Desktop ignores this entirely.
-          Tapping "Données" also flips the same `showAdvanced` flag desktop's
-          "Avancé" button controls — one source of truth, two entry points,
-          instead of mobile always showing this content regardless of the
-          flag desktop gates it behind. ── */}
+      {/* ── Mobile section switcher — sticky bottom bar with pill tabs.
+          Desktop ignores this entirely. ── */}
       {advancedVisible && (
-      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/10 p-1.5 md:hidden">
-        {([
-          { id: "control", label: "Exécution", icon: Power },
-          { id: "dashboard", label: "Scanner", icon: Activity },
-          { id: "data", label: "Données", icon: Settings2 },
-        ] as const).map((t) => {
-          const Icon = t.icon;
-          const active = mobileTab === t.id || (t.id === "data" && (mobileTab === "config" || mobileTab === "journal"));
-          return (
-            <button
-              key={t.id}
-              onClick={() => {
-                setMobileTab(t.id as typeof mobileTab);
-                if (t.id === "data") setShowAdvanced(true);
-              }}
-              className={cn(
-                "flex flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold uppercase tracking-wide transition-all",
-                active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 md:hidden">
+        <div className="flex items-center gap-1 rounded-full border border-border/60 bg-card/90 p-1 shadow-2xl backdrop-blur-lg">
+          {([
+            { id: "control", label: "Exéc", icon: Power },
+            { id: "dashboard", label: "Scan", icon: Activity },
+            { id: "data", label: "Données", icon: Settings2 },
+          ] as const).map((t) => {
+            const Icon = t.icon;
+            const active = mobileTab === t.id || (t.id === "data" && (mobileTab === "config" || mobileTab === "journal"));
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setMobileTab(t.id as typeof mobileTab);
+                  if (t.id === "data") setShowAdvanced(true);
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-bold transition-all",
+                  active ? "bg-primary/20 text-primary" : "text-muted-foreground"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       )}
 

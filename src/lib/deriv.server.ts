@@ -9,7 +9,7 @@
 // Requires Node ≥ 22 (global WebSocket).
 
 const DERIV_APP_ID = 1089;
-const PUBLIC_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+const PUBLIC_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
 const DERIV_REST_APP_ID = "33zECGFcSA3ZubKPdQJqm";
 
