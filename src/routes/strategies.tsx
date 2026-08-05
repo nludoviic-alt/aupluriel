@@ -243,14 +243,15 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Multi — Volumique",
     category: "Multi",
     targetPreset: "default",
-    targetMarkets: "Dow Jones · S&P 500 · DAX · EUR/GBP · GBP/USD · USD/CAD",
-    tagline: "Capte les opportunités dès 75% de confiance avec 3/4 TF. Idéal pour capter du volume.",
+    targetMarkets: "Dow Jones · Nasdaq · EUR/GBP · EUR/USD · BTC/USD · GBP/USD · USD/CAD",
+    tagline: "Même watchlist validée que Conservateur, mais accord 3/4 TF (au lieu de 4/4) pour plus de volume. Confiance 85-89% conservée — 75-84% reste la zone catastrophe de l'audit.",
     badge: "Fréquence Élevée",
     riskProfile: "Volumique",
     color: "from-emerald-500/20 via-teal-500/10 to-transparent",
     borderGlow: "border-emerald-500/30",
+    verified: true,
     params: {
-      minConfidence: 75,
+      minConfidence: 85,
       maxConfidence: 89,
       minTfAgreement: 3,
       durationMinutes: 15,
@@ -259,13 +260,17 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       symbolsCount: 7,
     },
     configOverride: {
-      minConfidence: 75,
+      // Seul minConfidence change vs Multi-Conservateur (75 -> 85 : 75-84%
+      // est la tranche "CATASTROPHE" -$232.83 de l'audit VPS 2026-08-05,
+      // pas un seuil qu'on peut assouplir pour plus de volume). Le reste
+      // (symboles, TF3) est déjà ce que le compte tourne réellement.
+      minConfidence: 85,
       maxConfidence: 89,
       minTfAgreement: 3,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbols: ["OTC_DJI", "OTC_NDX", "OTC_SPC", "OTC_GDAXI", "frxEURGBP", "frxGBPUSD", "frxUSDCAD"],
+      symbols: ["OTC_DJI", "OTC_NDX", "frxEURGBP", "frxEURUSD", "cryBTCUSD", "frxGBPUSD", "frxUSDCAD"],
     },
   },
   {
@@ -273,28 +278,33 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Boom — Spikes Scalper",
     category: "Boom",
     targetPreset: "boom",
-    targetMarkets: "BOOM 1000 · BOOM 500 · BOOM 600 · BOOM 900",
-    tagline: "Spécialisé sur les paires BOOM (1000/500/600/900) pour capturer les pics d'impulsion.",
+    targetMarkets: "BOOM 500 · BOOM 1000",
+    tagline: "Spécialisé sur les 2 symboles Boom validés (BOOM600 et BOOM900 exclus après audit VPS) pour capturer les pics d'impulsion.",
     badge: "Indices Boom",
     riskProfile: "Spikes",
     color: "from-rose-500/20 via-red-500/10 to-transparent",
     borderGlow: "border-rose-500/30",
+    verified: true,
     params: {
-      minConfidence: 75,
-      maxConfidence: 95,
+      minConfidence: 85,
+      maxConfidence: 89,
       minTfAgreement: 3,
       durationMinutes: 5,
       stakeUsd: 5,
       maxDailyLossUsd: 25,
-      symbolsCount: 4,
+      symbolsCount: 2,
     },
     configOverride: {
-      minConfidence: 75,
-      maxConfidence: 95,
+      // BOOM_SYMBOLS actuel (src/lib/autotrader.ts) : BOOM600 exclu de longue
+      // date (-$46.95/150 trades), BOOM900 exclu depuis l'audit VPS
+      // 2026-08-05 (2e pire symbole, -$60.96/358 trades). minConfidence
+      // relevé 75->85 pour la même raison catastrophe-band que les Multi.
+      minConfidence: 85,
+      maxConfidence: 89,
       minTfAgreement: 3,
       stakeUsd: 5,
       maxDailyLossUsd: 25,
-      symbols: ["BOOM1000", "BOOM500", "BOOM600", "BOOM900"],
+      symbols: ["BOOM500", "BOOM1000"],
     },
   },
   {
@@ -302,31 +312,58 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Crash — Reversal Hunter",
     category: "Crash",
     targetPreset: "crash",
-    targetMarkets: "CRASH 1000 · CRASH 500 · CRASH 600 · CRASH 900",
-    tagline: "Spécialisé sur les paires CRASH (1000/500/600/900) pour capturer les retournements.",
+    targetMarkets: "CRASH 1000 · CRASH 900",
+    tagline: "Spécialisé sur les 2 symboles Crash validés (CRASH500 et CRASH600 exclus — amélioration confirmée par config-change-impact) pour capturer les retournements.",
     badge: "Indices Crash",
     riskProfile: "Spikes",
     color: "from-purple-500/20 via-fuchsia-500/10 to-transparent",
     borderGlow: "border-purple-500/30",
+    verified: true,
     params: {
-      minConfidence: 75,
-      maxConfidence: 95,
+      minConfidence: 85,
+      maxConfidence: 100,
       minTfAgreement: 3,
       durationMinutes: 5,
       stakeUsd: 5,
       maxDailyLossUsd: 25,
-      symbolsCount: 4,
+      symbolsCount: 2,
     },
     configOverride: {
-      minConfidence: 75,
-      maxConfidence: 95,
+      // CRASH_SYMBOLS actuel : CRASH500/CRASH600 exclus (config_changes
+      // 2026-08-02, vérifié "amélioration" par config-change-impact).
+      // maxConfidence laissé à 100 (pas 89) : contrairement à Boom/Default,
+      // la config Crash réellement en prod pour les deux comptes utilise
+      // 100 — rien dans les audits ne prouve que 90-100% soit mauvais
+      // spécifiquement pour Crash.
+      minConfidence: 85,
+      maxConfidence: 100,
       minTfAgreement: 3,
       stakeUsd: 5,
       maxDailyLossUsd: 25,
-      symbols: ["CRASH1000", "CRASH500", "CRASH600", "CRASH900"],
+      symbols: ["CRASH1000", "CRASH900"],
     },
   },
 ];
+
+type LivePresetConfigs = Partial<Record<PresetStrategyDef["targetPreset"], AutoTraderConfig | null>>;
+
+/** True only when every field this template actually overrides matches what
+ * the server is presently running for that preset. This is the source of
+ * truth for the "Active sur Bot" badge — a local id remembered from the last
+ * click is not: the server config can drift away from any given template
+ * (an admin edit, another device, a direct fix) without that memory ever
+ * noticing, so it can keep claiming a template is active long after it
+ * stopped being true. */
+function matchesLiveConfig(strat: PresetStrategyDef, live: AutoTraderConfig | null | undefined): boolean {
+  if (!live) return false;
+  return Object.entries(strat.configOverride).every(([key, expected]) => {
+    const actual = (live as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(expected)) {
+      return Array.isArray(actual) && JSON.stringify([...expected].sort()) === JSON.stringify([...actual].sort());
+    }
+    return actual === expected;
+  });
+}
 
 const DEFAULTS: Strategy[] = [
   { id: "s1", name: "RSI Mean Reversion", pair: "BTC/USD", indicator: "RSI", buyThreshold: 30, sellThreshold: 70, stopLoss: 2, takeProfit: 4, enabled: true },
@@ -337,20 +374,36 @@ function StrategiesPage() {
   const [items, setItems] = useState<Strategy[]>([]);
   const [editing, setEditing] = useState<Strategy | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
-  const [activeStrategyId, setActiveStrategyId] = useState<string>("multi-balanced");
+  const [liveConfigs, setLiveConfigs] = useState<LivePresetConfigs>({});
+  const [liveConfigsLoaded, setLiveConfigsLoaded] = useState(false);
   const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "Multi" | "Boom" | "Crash" | "Scalping" | "custom">("all");
   const { confirmState, confirm } = useConfirm();
+
+  const refreshLiveConfigs = async () => {
+    try {
+      const data = await api.get<{ presets: Record<string, { savedConfig: AutoTraderConfig | null }> }>("/api/bot");
+      const next: LivePresetConfigs = {};
+      for (const [preset, status] of Object.entries(data.presets ?? {})) {
+        next[preset as PresetStrategyDef["targetPreset"]] = status.savedConfig;
+      }
+      setLiveConfigs(next);
+    } catch {
+      // Signed out or server unreachable — badges just fall back to "not
+      // active" rather than trusting a stale guess.
+    } finally {
+      setLiveConfigsLoaded(true);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       setItems(raw ? JSON.parse(raw) : DEFAULTS);
-      const savedActive = window.localStorage.getItem("lio23.active_strategy_id");
-      if (savedActive) setActiveStrategyId(savedActive);
     } catch {
       setItems(DEFAULTS);
     }
+    refreshLiveConfigs();
   }, []);
 
   const activeCount = items.filter((s) => s.enabled).length;
@@ -401,7 +454,6 @@ function StrategiesPage() {
       if (presetKey === "default") {
         localStorage.setItem("lio23.autotrader_config", JSON.stringify(next));
       }
-      localStorage.setItem("lio23.active_strategy_id", strat.id);
 
       // Call API to update server bot state
       const res = await api.post<{ ok?: boolean; error?: string }>("/api/bot", {
@@ -415,11 +467,13 @@ function StrategiesPage() {
       } else {
         toast.success(`Stratégie "${strat.name}" appliquée au preset Auto-Trader !`);
       }
-      setActiveStrategyId(strat.id);
     } catch {
-      toast.success(`Stratégie "${strat.name}" sauvegardée localement.`);
-      setActiveStrategyId(strat.id);
+      // The server is the only source of truth for "Active sur Bot" now —
+      // a local-only save that silently reported success used to leave the
+      // badge lying about whether the bot actually picked up the change.
+      toast.error(`Échec — le bot n'a pas reçu le changement (brouillon local conservé).`);
     } finally {
+      await refreshLiveConfigs();
       setApplyingId(null);
     }
   }
@@ -519,7 +573,7 @@ function StrategiesPage() {
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredPresetStrategies.map((s) => {
-              const isActive = activeStrategyId === s.id;
+              const isActive = liveConfigsLoaded && matchesLiveConfig(s, liveConfigs[s.targetPreset]);
               const isApplying = applyingId === s.id;
 
               return (
