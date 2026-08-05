@@ -39,6 +39,20 @@ function presetOf(symbol) {
   return "default";
 }
 
+// A handful of rows in config_changes have `fields` written as a bare JS
+// object literal (unquoted keys) instead of real JSON, with ids that don't
+// match logConfigChange's own id scheme (cfg_<ts>_<random6>) — they were
+// inserted by hand directly against the DB, not logged by the app. Tolerate
+// the format so the report still runs, but flag these ids as synthetic.
+function parseFields(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const quoted = raw.replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)\s*:/g, '$1"$2":');
+    return JSON.parse(quoted);
+  }
+}
+
 function summarize(trades) {
   const closed = trades.filter((t) => t.status === "won" || t.status === "lost");
   const wins = closed.filter((t) => t.status === "won");
@@ -119,7 +133,8 @@ const results = changeRows.map((c) => {
     changedAt: new Date(c.changed_at).toISOString(),
     changedBy: c.source === "auto-rollback" ? "rollback automatique" : c.changed_by !== null ? (usersById.get(c.changed_by) ?? `user#${c.changed_by}`) : "compte lui-même",
     source: c.source,
-    fields: JSON.parse(c.fields),
+    fields: parseFields(c.fields),
+    synthetic: !/^cfg_\d+_[a-z0-9]{6}$/.test(c.id),
     before: beforeSummary,
     beforeSampleSize: before.length,
     after: afterSummary,
@@ -137,7 +152,7 @@ if (jsonOutput) {
 } else {
   console.log(`# Impact des changements de config — fenêtre ${windowSize} trades, échantillon min ${minSample}`);
   for (const r of results) {
-    console.log(`\n## ${r.username} / ${r.preset} — ${r.changedAt} (par ${r.changedBy})`);
+    console.log(`\n## ${r.username} / ${r.preset} — ${r.changedAt} (par ${r.changedBy})${r.synthetic ? "  ⚠️ id non conforme à logConfigChange — probablement inséré à la main, pas un vrai changement journalisé" : ""}`);
     for (const [field, { from, to }] of Object.entries(r.fields)) {
       console.log(`- ${field}: ${JSON.stringify(from)} → ${JSON.stringify(to)}`);
     }
