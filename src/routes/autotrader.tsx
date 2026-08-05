@@ -2811,7 +2811,27 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       />
                     </Field>
                     <Field label={`Confiance min (${config.minConfidence}%)`}>
-                      <input type="range" min={55} max={95} step={5} value={config.minConfidence}                        onChange={(e) => patchConfig("minConfidence", Number(e.target.value))} className="w-full accent-primary" />
+                      <input
+                        type="range"
+                        min={55}
+                        max={95}
+                        step={5}
+                        value={config.minConfidence}
+                        onChange={async (e) => {
+                          const val = Number(e.target.value);
+                          if (val < 82) {
+                            const ok = await confirm({
+                              title: "Diminuer l'exigence de confiance ?",
+                              description: `Dérouler la confiance sous 82% (${val}%) augmente la fréquence mais réduit la protection du modèle 'Multi — Conservateur'. Confirmer ce changement ?`,
+                              confirmLabel: "Réduire le filtre",
+                              danger: true,
+                            });
+                            if (!ok) return;
+                          }
+                          patchConfig("minConfidence", val);
+                        }}
+                        className="w-full accent-primary"
+                      />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>55%</span><span>95%</span></div>
                     </Field>
                     <Field label={`Confiance max (${config.maxConfidence}%)`}>
@@ -2820,7 +2840,27 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       <p className="mt-0.5 text-[10px] text-muted-foreground">Certains marchés se comportent mal au-dessus d'un seuil — plafond de sécurité contre les faux signaux « trop parfaits ».</p>
                     </Field>
                     <Field label={`Accord TF min (${config.minTfAgreement}/4)`}>
-                      <input type="range" min={1} max={4} step={1} value={config.minTfAgreement}                        onChange={(e) => patchConfig("minTfAgreement", Number(e.target.value))} className="w-full accent-primary" />
+                      <input
+                        type="range"
+                        min={1}
+                        max={4}
+                        step={1}
+                        value={config.minTfAgreement}
+                        onChange={async (e) => {
+                          const val = Number(e.target.value);
+                          if (val < 4) {
+                            const ok = await confirm({
+                              title: "Passer sous l'accord 4/4 TF ?",
+                              description: `Le modèle 'Multi — Conservateur' exige 4/4 Timeframes d'accord. Réduire à ${val}/4 TF réouvre des trades avec moins d'alignement. Confirmer ce changement ?`,
+                              confirmLabel: "Réduire le filtrage TF",
+                              danger: true,
+                            });
+                            if (!ok) return;
+                          }
+                          patchConfig("minTfAgreement", val);
+                        }}
+                        className="w-full accent-primary"
+                      />
                       <div className="flex justify-between text-xs font-semibold text-muted-foreground mt-0.5"><span>1 TF</span><span>4 TF</span></div>
                     </Field>
                     <div className="sm:col-span-2 lg:col-span-3">

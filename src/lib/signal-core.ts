@@ -373,18 +373,11 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  // Audit production 2026-08-02 : le noyau Multi rentable est le panier filtré
-  // ci-dessous avec confiance 80-89. Le bucket 90-100 a rendu plus de gains
-  // qu'il n'en a produit, donc maxConfidence reste volontairement à 89.
-  minConfidence: 80,
-  // Champ ajustable par compte (voir
-  // /api/admin/user-config), pas une propriété de preset — voir le
-  // commentaire sur le champ dans l'interface AutoTraderConfig plus haut.
+  // Multi Conservateur par défaut : confiance 82% min et accord 4/4 TF obligatoire
+  // pour éliminer les faux signaux et protéger le capital sur le preset Multi.
+  minConfidence: 82,
   maxConfidence: 89,
-  // Le panier courant était positif avec TF 3+ ; TF 4 reste meilleur mais trop
-  // rare pour porter seul le preset. TF 3+ garde le volume sans rouvrir les
-  // symboles qui ont causé les drawdowns.
-  minTfAgreement: 3,
+  minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
   // 200 (était 50, avant ça 12) : le vrai frein sur le volume de trades n'a
