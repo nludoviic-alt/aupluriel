@@ -44,6 +44,36 @@ export interface PresetStrategyDef {
 
 const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
   {
+    id: "smc-liquidity-avg",
+    name: "SMC — Liquidité Externe & AVG 50-60%",
+    category: "Multi",
+    targetPreset: "liquidity",
+    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC) · EUR/USD · Boom 1000 · Germany 40",
+    tagline: "Biais institutionnel H1 sur zone d'équilibre 50-60% (OTE/AVG). Entrée M5/M15 dans le FVG interne avec TP sur la liquidité externe.",
+    badge: "Institutionnel SMC",
+    riskProfile: "Équilibré",
+    color: "from-purple-500/20 via-violet-500/10 to-transparent",
+    borderGlow: "border-purple-500/30",
+    params: {
+      minConfidence: 78,
+      maxConfidence: 95,
+      minTfAgreement: 3,
+      durationMinutes: 15,
+      stakeUsd: 5,
+      maxDailyLossUsd: 20,
+      symbolsCount: 5,
+    },
+    configOverride: {
+      minConfidence: 78,
+      maxConfidence: 95,
+      minTfAgreement: 3,
+      durationMinutes: 15,
+      stakeUsd: 5,
+      maxDailyLossUsd: 20,
+      symbols: ["frxXAUUSD", "cryBTCUSD", "frxEURUSD", "BOOM1000", "OTC_GDAXI"],
+    },
+  },
+  {
     id: "multi-balanced",
     name: "Multi — Équilibré",
     category: "Multi",
