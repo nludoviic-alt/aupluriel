@@ -5,7 +5,7 @@ import {
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
   BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
   Mail, Ban, Copy, Send, Lightbulb, AlertTriangle, Pencil, StickyNote,
-  Lock,
+  Lock, ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -1179,11 +1179,11 @@ function AdminPage() {
           </table>
         </div>
 
-        {/* Mobile View Cards */}
+        {/* Mobile View Cards - High-End User-Friendly Design */}
         <div className="md:hidden space-y-3">
           {loading ? (
             <div className="text-center py-8">
-              <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+              <Loader2 className="mx-auto h-6 w-6 animate-spin text-orange-500" />
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground font-semibold">
@@ -1193,55 +1193,98 @@ function AdminPage() {
             filteredUsers.map((u) => {
               const initials = u.username.slice(0, 2).toUpperCase();
               const isAdmin = u.is_admin === 1;
+              const registrationDate = new Date(u.created_at * 1000).toLocaleDateString("fr-FR", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              });
+
               return (
                 <div
                   key={u.id}
                   onClick={() => openProfile(u)}
-                  className="border border-white/[0.06] rounded-xl p-4 bg-white/[0.01] space-y-3 cursor-pointer active:bg-white/[0.03] transition-colors"
+                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.03] to-black/40 p-4 space-y-3.5 shadow-lg active:scale-[0.985] transition-all duration-200 cursor-pointer"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-[10px] font-bold border border-cyan-500/20">
+                  {/* Top Bar: Avatar + Username + Role Badges + Status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Avatar Badge */}
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500/25 via-indigo-500/20 to-purple-500/25 text-cyan-300 font-mono text-sm font-black border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
                         {initials}
                       </div>
-                      <span className="font-bold text-foreground text-sm">{u.username}</span>
-                      {isAdmin && (
-                        <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[8px] text-cyan-400 font-bold uppercase tracking-wider">
-                          admin
-                        </span>
-                      )}
-                      {boomUserIds.has(u.id) && (
-                        <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 text-[8px] text-orange-400 font-bold uppercase tracking-wider">
-                          🚀
-                        </span>
-                      )}
-                    </div>
-                    <StatusBadge status={u.status} />
-                  </div>
-                  <div className="space-y-1 text-xs border-t border-white/[0.04] pt-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Email</span>
-                      <span className="text-foreground font-mono truncate max-w-[170px]">{u.email}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Inscrit</span>
-                      <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Brokers</span>
-                      <div className="flex items-center gap-1.5">
-                        <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
-                        <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
-                        <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
-                        <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
+
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-black text-foreground text-base truncate">{u.username}</span>
+                          {isAdmin ? (
+                            <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[9px] font-black uppercase text-cyan-300 tracking-wider shadow-sm">
+                              ADMIN
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-white/[0.06] border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase text-muted-foreground tracking-wider">
+                              TRADER
+                            </span>
+                          )}
+                          {boomUserIds.has(u.id) && (
+                            <span className="rounded-full bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 text-[9px] font-black uppercase text-orange-400 tracking-wider">
+                              🚀 BOOM
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground/80 font-mono truncate">{u.email}</div>
                       </div>
                     </div>
+
+                    {/* Status Pill Badge */}
+                    <div className="shrink-0">
+                      <StatusBadge status={u.status} />
+                    </div>
                   </div>
+
+                  {/* Middle Info Bar: Registration date & Verification Status */}
+                  <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-2.5 text-xs text-muted-foreground font-semibold">
+                    <div className="flex items-center gap-1">
+                      <span>Inscrit le</span>
+                      <span className="font-mono text-foreground/90 font-bold">{registrationDate}</span>
+                    </div>
+                    <div>
+                      {u.email_verified ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          Email vérifié
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/80 font-bold">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          Email non vérifié
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Inset Box: Connected Brokers */}
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-xs">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                      Brokers connectés
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
+                      <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
+                      <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                      <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
+                    </div>
+                  </div>
+
+                  {/* Full-width CTA Button */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); openProfile(u); }}
-                    className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] py-2 text-xs font-bold text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openProfile(u);
+                    }}
+                    className="w-full h-10 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] text-xs font-black text-foreground hover:bg-white/[0.08] active:scale-[0.98] transition-all shadow-sm"
                   >
-                    Voir le profil
+                    <span>Gérer le profil utilisateur</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </button>
                 </div>
               );
