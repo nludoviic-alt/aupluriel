@@ -49,6 +49,7 @@ export const Route = createFileRoute("/api/settings")({
           enableKraken?: boolean;
           enableBinance?: boolean;
           enableOanda?: boolean;
+          maxDailyLossUsd?: number;
         };
 
         const db = getDb();
@@ -108,7 +109,8 @@ export const Route = createFileRoute("/api/settings")({
           enableOanda: body.enableOanda,
         };
         const hasToggle = Object.values(brokerToggles).some((v) => v !== undefined);
-        if (hasToggle) {
+        const hasMaxDailyLoss = body.maxDailyLossUsd !== undefined && !isNaN(body.maxDailyLossUsd);
+        if (hasToggle || hasMaxDailyLoss) {
           // Broker on/off is account-level, not per-preset — a toggle here
           // applies to EVERY preset row this user has (up to three since
           // 2026-08-01), so Default/Boom/Crash never disagree about which
@@ -128,6 +130,7 @@ export const Route = createFileRoute("/api/settings")({
             if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
             if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
             if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
+            if (hasMaxDailyLoss) config.maxDailyLossUsd = Math.min(500, Math.max(1, body.maxDailyLossUsd!));
             // Hot-swaps if that preset's bot is running.
             updateConfigForUser(auth.userId, botState.preset as Preset, config as any);
           }

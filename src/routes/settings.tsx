@@ -65,6 +65,8 @@ function SettingsPage() {
   const [enableKraken, setEnableKraken] = useState(true);
   const [enableBinance, setEnableBinance] = useState(true);
   const [enableOanda, setEnableOanda] = useState(true);
+  const [maxDailyLoss, setMaxDailyLoss] = useState(15);
+  const [maxDailyLossSaving, setMaxDailyLossSaving] = useState(false);
   const { confirmState, confirm } = useConfirm();
 
   useEffect(() => {
@@ -99,6 +101,7 @@ function SettingsPage() {
           if (cfg.enableKraken !== undefined) setEnableKraken(cfg.enableKraken);
           if (cfg.enableBinance !== undefined) setEnableBinance(cfg.enableBinance);
           if (cfg.enableOanda !== undefined) setEnableOanda(cfg.enableOanda);
+          if (cfg.maxDailyLossUsd !== undefined) setMaxDailyLoss(cfg.maxDailyLossUsd);
         } catch { /* ignore */ }
       }
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
@@ -244,12 +247,18 @@ function SettingsPage() {
     localStorage.setItem(KEYS.riskPerTrade, String(risk));
     localStorage.setItem(KEYS.maxDrawdown, String(maxDd));
     saveDefaultStake(stake);
-    await api.put("/api/settings", {
-      deriv_token: token || null,
-      account_type: account,
-      risk_per_trade: risk,
-      max_drawdown: maxDd,
-    }).catch(() => {});
+    setMaxDailyLossSaving(true);
+    try {
+      await api.put("/api/settings", {
+        deriv_token: token || null,
+        account_type: account,
+        risk_per_trade: risk,
+        max_drawdown: maxDd,
+        maxDailyLossUsd: maxDailyLoss,
+      });
+    } finally {
+      setMaxDailyLossSaving(false);
+    }
     toast.success("Paramètres enregistrés");
   }
 
@@ -730,6 +739,25 @@ function SettingsPage() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs md:text-sm">%</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Perte max journalière ($)
+                </span>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs md:text-sm">$</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={1}
+                    value={maxDailyLoss}
+                    onChange={(e) => setMaxDailyLoss(Number(e.target.value))}
+                    className="w-full rounded-xl border border-border bg-background pl-7 pr-3 py-2.5 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-cyan-500/50 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-muted-foreground/60">Le bot met en pause automatiquement quand cette limite est atteinte.</span>
               </div>
 
               {risk > 2 && (
