@@ -329,7 +329,8 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
       const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
       const jobs = PRESETS.flatMap((preset) => {
         const config = configs.get(preset)!;
-        return (config.symbols ?? []).map((symbol) => ({ preset, symbol, config }));
+        const symbols = Array.isArray(config.symbols) ? config.symbols : [];
+        return symbols.map((symbol) => ({ preset, symbol, config }));
       });
 
       const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>

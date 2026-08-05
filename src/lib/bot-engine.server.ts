@@ -417,7 +417,7 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
   // faire basculer un compte en réel.
   try {
     const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
-    return {
+    const merged: AutoTraderConfig = {
       ...DEFAULT_CONFIG,
       ...saved,
       stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
@@ -425,6 +425,12 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
       // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
     };
+    // Guard: a corrupted config in DB could have symbols/excludedSymbols as
+    // non-array (e.g. a string from a bad SQL UPDATE). Force them back to
+    // arrays to prevent .map crashes downstream.
+    if (!Array.isArray(merged.symbols)) merged.symbols = DEFAULT_CONFIG.symbols;
+    if (!Array.isArray(merged.excludedSymbols)) merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;
+    return merged;
   } catch {
     return { ...DEFAULT_CONFIG };
   }
