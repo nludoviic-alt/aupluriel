@@ -2242,11 +2242,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             </span>
                           ) : isWin ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-emerald-300 shadow-sm">
-                              <CheckCircle2 className="h-3 w-3" /> +${(trade.pnl ?? trade.potentialProfit).toFixed(2)}
+                              Gagné
                             </span>
                           ) : isLoss ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-rose-300 shadow-sm">
-                              -${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}
+                              Perdu
                             </span>
                           ) : (
                             <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] sm:text-xs font-bold text-muted-foreground">

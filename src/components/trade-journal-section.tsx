@@ -370,7 +370,7 @@ export function TradeJournalSection({
                         {isBuy ? "▲" : "▼"}
                       </span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-sm font-black text-foreground truncate">{symbolLabel}</span>
                           <span
                             className={cn(
@@ -398,41 +398,42 @@ export function TradeJournalSection({
                               : "border border-white/10 bg-white/[0.04] text-muted-foreground"
                       )}
                     >
-                      {isOpen ? "En cours" : isWon ? `+$${t.profit.toFixed(2)}` : isLost ? `-$${Math.abs(t.profit).toFixed(2)}` : t.status.toUpperCase()}
+                      {isOpen ? "En cours" : isWon ? "Gagné" : isLost ? "Perdu" : isError ? "Erreur" : t.status.toUpperCase()}
                     </span>
                   </div>
 
                   {/* Timestamps Row: Pris à ... · fermé à ... */}
-                  <div className="flex flex-wrap items-center gap-2 pl-1.5 text-[10px] font-semibold text-muted-foreground/80 border-t border-white/5 pt-2">
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-between gap-2 pl-1.5 text-[10px] font-semibold text-muted-foreground/80 border-t border-white/5 pt-2">
+                    <div className="flex items-center gap-1 flex-wrap">
                       <span className="text-muted-foreground/60">Pris à</span>
                       <span className="font-mono font-bold text-foreground/90">
                         {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </span>
+                      {closedTime && (isWon || isLost) && (
+                        <>
+                          <span className="text-white/20 mx-0.5">·</span>
+                          <span className="text-muted-foreground/60">fermé à</span>
+                          <span className="font-mono font-bold text-foreground/90">
+                            {new Date(closedTime).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                        </>
+                      )}
                     </div>
-                    {closedTime && (isWon || isLost) && (
-                      <div className="flex items-center gap-1 border-l border-white/10 pl-2">
-                        <span className="text-muted-foreground/60">fermé à</span>
-                        <span className="font-mono font-bold text-foreground/90">
-                          {new Date(closedTime).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                        </span>
-                      </div>
-                    )}
                     {t.isLiveDeriv && (
-                      <span className="ml-auto rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
+                      <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
                         Direct Deriv
                       </span>
                     )}
                   </div>
 
                   {/* Inset Metrics Bar */}
-                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-black/40 p-2 pl-2.5 text-xs">
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-black/40 p-2.5 pl-3 text-xs">
                     <div>
                       <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise</div>
                       <div className="font-mono text-xs font-black text-foreground">${stakeVal.toFixed(2)}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Résultat P&L</div>
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Gain / P&L</div>
                       <div
                         className={cn(
                           "font-mono text-xs font-black",
