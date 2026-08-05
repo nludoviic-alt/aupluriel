@@ -59,6 +59,15 @@ const ACTIVE_SKILLS = [
     capabilities: ["Confiance et accord TF", "Moteur binaire CALL/PUT", "Détail par symbole", "Comparaison au seuil de rentabilité"],
   },
   {
+    name: "tune-scalping-preset",
+    title: "Optimisation Scalping",
+    description: "Sweep de paramètres dédié au mode Scalping à fréquence élevée sur bougies rapides Deriv.",
+    prompt: "Utilise $tune-scalping-preset pour optimiser les réglages du mode Scalping.",
+    icon: Rocket,
+    tone: "amber",
+    capabilities: ["TP et SL serrés", "Fréquence d'exécution", "Confiance et filtres", "Calcul d'espérance rapide"],
+  },
+  {
     name: "verify-trading-code",
     title: "Vérification du moteur",
     description: "Contrôle en lecture seule : configs réellement utilisées, dérive frontend/API/serveur, régressions de preset, calculs P&L/PF/espérance, cohérence entre Dashboard/Admin/Surveillance/Auto-Trader.",
