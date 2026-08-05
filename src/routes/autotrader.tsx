@@ -2087,10 +2087,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         {/* Live Health & Guard Monitor */}
         <div className="mt-6">
           <HealthPanel
-            currentPnl={kpis.totalProfit}
+            currentPnl={pnl}
             maxDailyLoss={config.maxDailyLossUsd}
             activePreset={selectedPreset}
-            winRate={kpis.winRate}
+            winRate={winRate}
             openPositionsCount={liveDerivPositions.length}
           />
         </div>
