@@ -143,6 +143,23 @@ function migrate(db: Database.Database) {
       changed_at  INTEGER NOT NULL,   -- epoch ms
       changed_by  INTEGER,            -- admin user_id, NULL if the user (or the auto-rollback guardian) changed it
       fields      TEXT    NOT NULL,   -- JSON: { fieldName: { from, to } }
+      trades_before INTEGER,
+      win_rate_before REAL,
+      pnl_before    REAL
+    );
+
+    -- Big Data historical candles store for backtesting & machine learning sweeps
+    CREATE TABLE IF NOT EXISTS historical_candles (
+      symbol      TEXT    NOT NULL,
+      granularity INTEGER NOT NULL,
+      epoch       INTEGER NOT NULL,
+      open        REAL    NOT NULL,
+      high        REAL    NOT NULL,
+      low         REAL    NOT NULL,
+      close       REAL    NOT NULL,
+      PRIMARY KEY (symbol, granularity, epoch)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hist_candles_lookup ON historical_candles(symbol, granularity, epoch DESC);
       source      TEXT    NOT NULL DEFAULT 'user', -- 'user' | 'admin' | 'auto-rollback'
       resolved_at INTEGER             -- set once config-rollback-guardian.server.ts has judged this change (reverted or confirmed fine)
     );

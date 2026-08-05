@@ -27,6 +27,7 @@ import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
+import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -1276,10 +1277,33 @@ class ServerBotEngine {
           };
           return { symbol, analysis };
         })
-      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => ({
-          symbol,
-          analysis: (await analyzeSymbolCore(symbol, candleFetcher, buildAnalyzeOptsServer(symbol, config))).analysis,
-        }));
+      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const core = await analyzeSymbolCore(symbol, candleFetcher, buildAnalyzeOptsServer(symbol, config));
+          let analysis = core.analysis;
+
+          // ── Spike Hunter Layer for Boom & Crash ──
+          if ((symbol.includes("BOOM") || symbol.includes("CRASH")) && (!analysis.direction || analysis.confidence < 75)) {
+            const m1 = await candleFetcher(symbol, 60, 60).catch(() => []);
+            const m5 = await candleFetcher(symbol, 300, 30).catch(() => []);
+            const spikeSig = generateSpikeHunterSignal(symbol, m1, m5);
+            if (spikeSig && spikeSig.confidence >= config.minConfidence) {
+              analysis = {
+                direction: spikeSig.direction,
+                confidence: spikeSig.confidence,
+                agreement: 4,
+                premiumCount: 1,
+                volatilityPct: 1,
+                volatilityRatio: 1,
+                blockers: [],
+                dominantTf: "1m",
+                suggestedDuration: 5,
+                trendAlignmentScore: 4,
+                patternBonus: 10,
+              };
+            }
+          }
+          return { symbol, analysis };
+        });
 
     const ordered = config.symbolMode === "all-markets"
       ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
