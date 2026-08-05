@@ -740,6 +740,40 @@ function SettingsPage() {
             </div>
           </CollapsibleSection>
 
+          {/* Telegram Notifications Card */}
+          <CollapsibleSection
+            icon={<span className="mt-1 text-lg">🔔</span>}
+            title="Notifications Telegram"
+            help="Alertes instantanées de trade et de signaux Spike Hunter envoyées directement sur ton téléphone via Telegram."
+            defaultOpen
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-neutral-300">
+                  Bot Token Telegram (BotFather)
+                </span>
+                <input
+                  type="password"
+                  placeholder="7812345678:AAHxxxxxxxx..."
+                  onChange={(e) => {
+                    const token = e.target.value;
+                    api.post("/api/telegram", { action: "save", config: { botToken: token, enabled: true } }).catch(() => {});
+                  }}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-xs md:text-sm font-mono text-foreground focus:ring-1 focus:ring-sky-500/50 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Génère ton bot via <span className="font-bold text-sky-400">@BotFather</span> et trouve ton ID avec <span className="font-bold text-sky-400">@userinfobot</span>.
+                </p>
+                <Link to="/autotrader" className="text-xs font-bold text-sky-400 hover:underline shrink-0">
+                  Configurer dans Auto-Trader →
+                </Link>
+              </div>
+            </div>
+          </CollapsibleSection>
+
           {/* Push Notifications Card */}
           <CollapsibleSection
             icon={<Bell className="mt-1 h-5.5 w-5.5 text-amber-400 shrink-0" />}

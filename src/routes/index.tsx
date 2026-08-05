@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrokerBalances } from "@/hooks/use-broker-balances";
 import { api } from "@/lib/api";
+import { HealthPanel } from "@/components/health-panel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -217,6 +218,17 @@ function Dashboard() {
 
       {/* ── BOT STATUS (mobile only — Auto-Trader isn't in the bottom nav) ── */}
       <BotStatusCard />
+
+      {/* ── LIVE HEALTH & GUARD MONITOR ── */}
+      <div className="mt-4">
+        <HealthPanel
+          currentPnl={realStats?.todayPnl ?? 0}
+          maxDailyLoss={15}
+          activePreset="default"
+          winRate={realStats?.winRate ?? 0}
+          openPositionsCount={0}
+        />
+      </div>
 
       {/* ── BROKER BALANCES ── */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
