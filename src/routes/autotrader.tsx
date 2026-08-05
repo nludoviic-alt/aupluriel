@@ -845,15 +845,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // ── derived helpers ─────────────────────────────────────────────────────────
   const anyRunning = anyPresetEnabled;
   const brokerBalances = cloud?.brokerBalances;
-  const totalBrokerBalance =
-    (brokerBalances?.deriv?.balance ?? 0) +
-    (brokerBalances?.kraken?.balance ?? 0) +
-    (brokerBalances?.binance?.balance ?? 0) +
-    (brokerBalances?.oanda?.balance ?? 0);
-  const hasBrokerBalance = !!brokerBalances && !!(brokerBalances.deriv || brokerBalances.kraken || brokerBalances.binance || brokerBalances.oanda);
+  const derivBalance = brokerBalances?.deriv?.balance ?? null;
   const stakeAtRisk = openTradeList.reduce((s, l) => s + l.stake, 0);
-  const balanceLabel = hasBrokerBalance
-    ? `$${totalBrokerBalance.toFixed(2)}`
+  const balanceLabel = derivBalance !== null
+    ? `$${derivBalance.toFixed(2)}`
     : derivSession.balance !== null
       ? `$${derivSession.balance.toFixed(2)}`
       : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
