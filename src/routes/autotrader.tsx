@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  X,
   Zap,
 } from "lucide-react";
 
