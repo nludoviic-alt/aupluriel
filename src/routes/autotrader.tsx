@@ -1692,11 +1692,23 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   if (!forceSymbol) return;
                   const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
                   const isLive = config.mode === "live";
+                  const currentUtcHour = new Date().getUTCHours();
+                  const isUnfavorableHour = [3, 4, 7, 8, 11, 16, 19].includes(currentUtcHour);
+                  const hourStr = `${String(currentUtcHour).padStart(2, "0")}:00 UTC`;
+
+                  const title = isUnfavorableHour
+                    ? `⚠️ Créneau Défavorable (${hourStr})`
+                    : isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?";
+
+                  const warningMsg = isUnfavorableHour
+                    ? `\n\n⚠️ AVERTISSEMENT : Le créneau de ${hourStr} est historiquement défavorable (Win Rate 45%-65% · liquidité faible/piégeuse). Confirmer l'exécution en toute conscience ?`
+                    : "";
+
                   const confirmed = await confirm({
-                    title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
-                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
-                    confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
-                    danger: isLive,
+                    title,
+                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}${warningMsg}`,
+                    confirmLabel: isUnfavorableHour ? "Exécuter quand même" : isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                    danger: isLive || isUnfavorableHour,
                   });
                   if (!confirmed) return;
                   setForcingTrade(true);
@@ -1830,11 +1842,23 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 if (!forceSymbol) return;
                 const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
                 const isLive = config.mode === "live";
+                const currentUtcHour = new Date().getUTCHours();
+                const isUnfavorableHour = [3, 4, 7, 8, 11, 16, 19].includes(currentUtcHour);
+                const hourStr = `${String(currentUtcHour).padStart(2, "0")}:00 UTC`;
+
+                const title = isUnfavorableHour
+                  ? `⚠️ Créneau Défavorable (${hourStr})`
+                  : isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?";
+
+                const warningMsg = isUnfavorableHour
+                  ? `\n\n⚠️ AVERTISSEMENT : Le créneau de ${hourStr} est historiquement défavorable (Win Rate 45%-65% · liquidité faible/piégeuse). Confirmer l'exécution en toute conscience ?`
+                  : "";
+
                 const confirmed = await confirm({
-                  title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
-                  description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
-                  confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
-                  danger: isLive,
+                  title,
+                  description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}${warningMsg}`,
+                  confirmLabel: isUnfavorableHour ? "Exécuter quand même" : isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                  danger: isLive || isUnfavorableHour,
                 });
                 if (!confirmed) return;
                 setForcingTrade(true);
@@ -1925,11 +1949,23 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   if (!forceSymbol) return;
                   const label = SYMBOLS.find((x) => x.deriv === forceSymbol)?.label ?? forceSymbol;
                   const isLive = config.mode === "live";
+                  const currentUtcHour = new Date().getUTCHours();
+                  const isUnfavorableHour = [3, 4, 7, 8, 11, 16, 19].includes(currentUtcHour);
+                  const hourStr = `${String(currentUtcHour).padStart(2, "0")}:00 UTC`;
+
+                  const title = isUnfavorableHour
+                    ? `⚠️ Créneau Défavorable (${hourStr})`
+                    : isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?";
+
+                  const warningMsg = isUnfavorableHour
+                    ? `\n\n⚠️ AVERTISSEMENT : Le créneau de ${hourStr} est historiquement défavorable (Win Rate 45%-65% · liquidité faible/piégeuse). Confirmer l'exécution en toute conscience ?`
+                    : "";
+
                   const confirmed = await confirm({
-                    title: isLive ? "Confirmer le trade (réel) ?" : "Confirmer le trade (démo) ?",
-                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}`,
-                    confirmLabel: isLive ? "Exécuter (RÉEL)" : "Exécuter",
-                    danger: isLive,
+                    title,
+                    description: `Position ${forceDir === "CALL" || forceDir === "MULTUP" ? "Hausse" : "Baisse"} (${forceDir}) sur ${label} · $${forceStake}${warningMsg}`,
+                    confirmLabel: isUnfavorableHour ? "Exécuter quand même" : isLive ? "Exécuter (RÉEL)" : "Exécuter",
+                    danger: isLive || isUnfavorableHour,
                   });
                   if (!confirmed) return;
                   setForcingTrade(true);
