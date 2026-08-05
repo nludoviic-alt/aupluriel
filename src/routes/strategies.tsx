@@ -30,6 +30,12 @@ export interface PresetStrategyDef {
   riskProfile: "Équilibré" | "Conservateur" | "Volumique" | "Spikes";
   color: string;
   borderGlow: string;
+  /** Set only on strategies whose configOverride was cross-checked against
+   * real production trade data (bot_trades / config-change-impact) and
+   * corrected to match — not just a plausible-sounding template. Renders the
+   * green "Vérifié" badge below. See src/lib/signal-core.ts DEFAULT_CONFIG
+   * for the audited symbol/confidence values this must stay aligned with. */
+  verified?: boolean;
   params: {
     minConfidence: number;
     maxConfidence: number;
@@ -200,29 +206,36 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Multi — Conservateur",
     category: "Multi",
     targetPreset: "default",
-    targetMarkets: "Dow Jones · S&P 500 · Nasdaq · DAX · EUR/GBP · GBP/USD",
-    tagline: "Filtrage ultra-strict avec accord 4/4 TF et confiance 82-89%. Risque minimal.",
+    targetMarkets: "Dow Jones · Nasdaq · EUR/GBP · EUR/USD · BTC/USD · GBP/USD · USD/CAD",
+    tagline: "Filtrage ultra-strict avec accord 4/4 TF et confiance 85-89%. Symboles et seuils alignés sur l'audit VPS de production le plus récent.",
     badge: "Sécurité Max",
     riskProfile: "Conservateur",
     color: "from-blue-500/20 via-indigo-500/10 to-transparent",
     borderGlow: "border-blue-500/30",
+    verified: true,
     params: {
-      minConfidence: 82,
+      minConfidence: 85,
       maxConfidence: 89,
       minTfAgreement: 4,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 15,
-      symbolsCount: 6,
+      symbolsCount: 7,
     },
     configOverride: {
-      minConfidence: 82,
+      minConfidence: 85,
       maxConfidence: 89,
       minTfAgreement: 4,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 15,
-      symbols: ["OTC_DJI", "OTC_NDX", "OTC_SPC", "OTC_GDAXI", "frxEURGBP", "frxGBPUSD"],
+      // Aligné sur DEFAULT_CONFIG.symbols (src/lib/signal-core.ts) — OTC_GDAXI
+      // et OTC_SPC retirés : les deux pires symboles de l'audit VPS du
+      // 2026-08-05 (OTC_GDAXI -$77.54, et responsable direct de la perte du
+      // 2026-08-04 avec OTC_SPC). minConfidence relevé de 82 à 85 pour la même
+      // raison : le même audit classe 75-84% comme "CATASTROPHE" (-$232.83),
+      // et 82 tombait dans cette tranche.
+      symbols: ["OTC_DJI", "OTC_NDX", "frxEURGBP", "frxEURUSD", "cryBTCUSD", "frxGBPUSD", "frxUSDCAD"],
     },
   },
   {
@@ -531,6 +544,14 @@ function StrategiesPage() {
                         {(s.id === "gold-trend-liquidity-sweep" || s.id === "smc-liquidity-avg" || s.id === "gold-infinite-trailing") && (
                           <span className="rounded-md border border-rose-500/60 bg-rose-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.6)]">
                             NEW
+                          </span>
+                        )}
+                        {s.verified && (
+                          <span
+                            className="rounded-md border border-emerald-500/60 bg-emerald-500/20 text-emerald-300 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider flex items-center gap-1"
+                            title="Symboles et seuils vérifiés contre les trades réels de production — les autres modèles n'ont pas encore été recoupés"
+                          >
+                            <CheckCircle2 className="h-3 w-3" /> Vérifié
                           </span>
                         )}
                       </div>
