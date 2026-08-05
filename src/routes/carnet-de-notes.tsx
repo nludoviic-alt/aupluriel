@@ -79,15 +79,15 @@ function MarkdownRenderer({ content }: { content: string }) {
   let tableHeader: string[] = [];
 
   const parseInline = (text: string) => {
-    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\$[A-Z0-9_]+)/g);
+    const parts = text.split(/(\*\*.+?\*\*|\*[^*]+\*|`[^`]+`|\$[A-Z0-9_]+)/g);
     return parts.map((part, idx) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return <strong key={idx} className="font-bold text-foreground">{part.slice(2, -2)}</strong>;
+      if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+        return <strong key={idx} className="font-bold text-foreground">{parseInline(part.slice(2, -2))}</strong>;
       }
-      if (part.startsWith("*") && part.endsWith("*")) {
-        return <em key={idx} className="italic text-foreground/90">{part.slice(1, -1)}</em>;
+      if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+        return <em key={idx} className="italic text-foreground/90">{parseInline(part.slice(1, -1))}</em>;
       }
-      if (part.startsWith("`") && part.endsWith("`")) {
+      if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
         return (
           <code key={idx} className="bg-rose-500/10 border border-rose-500/20 text-rose-300 font-mono px-1.5 py-0.5 rounded text-xs">
             {part.slice(1, -1)}
