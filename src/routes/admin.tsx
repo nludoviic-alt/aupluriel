@@ -830,7 +830,7 @@ function AdminPage() {
   const boomBreakdownTotal = boomBreakdown.reduce((acc, b) => ({ trades: acc.trades + b.trades, wins: acc.wins + b.wins, losses: acc.losses + b.losses, netPnl: acc.netPnl + b.netPnl }), { trades: 0, wins: 0, losses: 0, netPnl: 0 });
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 md:px-16 lg:px-24 py-6 space-y-6">
+    <div className="mx-auto max-w-screen-2xl px-2 sm:px-4 md:px-16 lg:px-24 py-6 space-y-6">
       
       {/* ── HEADER ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
