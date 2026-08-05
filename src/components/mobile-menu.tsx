@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import {
   LayoutDashboard, Zap, BriefcaseBusiness, FlaskConical,
   BarChart3, PieChart, CandlestickChart, Settings,
-  ShieldCheck, LogOut, X, Wrench, Target, Cpu,
+  ShieldCheck, LogOut, X, Wrench, Target, Cpu, NotebookPen,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,6 +25,7 @@ const NAV_MORE = [
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
+  { title: "Notes",          url: "/carnet-de-notes", icon: NotebookPen,      hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
   { title: "Skills",          url: "/skills",          icon: Wrench,           hover: "hover:bg-sky-500/[0.04] hover:text-sky-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];
