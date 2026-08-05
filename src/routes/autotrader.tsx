@@ -2089,7 +2089,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           <HealthPanel
             currentPnl={kpis.totalProfit}
             maxDailyLoss={config.maxDailyLossUsd}
-            activePreset={activePreset}
+            activePreset={selectedPreset}
             winRate={kpis.winRate}
             openPositionsCount={liveDerivPositions.length}
           />
