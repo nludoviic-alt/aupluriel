@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Bell, CheckCircle2, Eye, EyeOff, FlaskConical, KeyRound, Loader2, LogOut, ShieldAlert, UserCircle, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
