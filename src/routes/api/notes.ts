@@ -28,9 +28,14 @@ export const Route = createFileRoute("/api/notes")({
         const auth = await getUserFromRequest(request);
         if (!auth) return json({ error: "Non authentifié" }, 401);
 
+        const body = (await request.json().catch(() => ({}))) as {
+          title?: string;
+          content?: string;
+        };
+
         const newId = randomUUID();
-        const title = "Nouvelle Note";
-        const content = "";
+        const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Nouvelle Note";
+        const content = typeof body.content === "string" ? body.content : "";
         const now = Math.floor(Date.now() / 1000);
 
         getDb()
