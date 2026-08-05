@@ -344,6 +344,11 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // maintenant explicitement excludedSymbols au lieu de le laisser ici.
   // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
   instrumentType: "multiplier",
+  // Sweep tune-boom-preset 2026-08-05 : BOOM1000 performe mieux avec SL 10%
+  // (edge +10.7pp, +$11.22) qu'avec SL 20% (edge +6.0pp, +$8.82). BOOM500
+  // garde SL 20% (edge +1.1pp, optimal pour lui). Pas d'override TP/SL par
+  // symbole possible actuellement (symbolInstrumentOverrides ne gère que le
+  // type d'instrument, pas TP/SL). SL 20% conservé car partagé entre les deux.
   symbolInstrumentOverrides: {},
   // ── Signaux — audit VPS 2026-08-05 : bucket 75-84% = -$232.83, 85+ = +$50.09 ──
   minConfidence: 85,
@@ -478,12 +483,13 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
-  // Revalidation Deriv récente (300 bougies, 330 trades candidats, levier
-  // 100x) : TP 5% / SL 20% a produit +$17.59, 82.4% de réussite contre
-  // 80% requis, avec seulement 14 sorties au temps. TP 10% / SL 20% était
-  // plus faible sur la même fenêtre (+$12.58) et davantage dépendant du timeout.
+  // Sweep tune-crash-preset 2026-08-05 (150 bougies, 163 trades, levier 100x) :
+  // TP 5% / SL 10% = +$10, edge +8.2pp, 74.8% WR (breakeven 66.7%).
+  // SL 10% surpasse SL 20% (+$9.12, edge +2.8pp) — le stop serré coupe les
+  // pertes plus tôt sans sacrifier les gains (TP 5% atteint rapidement).
+  // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
   takeProfitPctOfStake: 5,
-  stopLossPctOfStake: 20,
+  stopLossPctOfStake: 10,
   // Audit VPS 2026-08-05 : bucket 85+ = +$50.09, bucket 75-84 = -$232.83.
   // CRASH est le seul preset rentable (+$150.12) — le seuil à 85 filtre le bruit
   // tout en conservant les signaux à forte probabilité.
