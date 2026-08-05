@@ -395,12 +395,13 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // 80-89 + accord TF 3+. Or/argent/ETH et les forex faibles restent exclus :
   // ils redonnaient les gains plus vite que le preset ne les construisait.
   symbols: [
-    "OTC_DJI", "OTC_NDX", "OTC_SPC", "OTC_GDAXI",
-    "frxEURGBP", "frxGBPUSD", "frxUSDCAD"
+    "OTC_DJI", "OTC_NDX", "OTC_GDAXI",
+    "frxUSDCHF", "frxEURGBP", "frxEURUSD", "cryBTCUSD",
+    "frxGBPUSD", "frxUSDCAD"
   ],
   excludedSymbols: [
-    "frxXAUUSD", "frxXAGUSD", "frxUSDCHF", "frxEURJPY", "frxGBPJPY",
-    "frxEURUSD", "frxAUDUSD", "frxUSDJPY", "cryETHUSD", "cryBTCUSD"
+    "frxXAUUSD", "frxXAGUSD", "OTC_SPC", "cryETHUSD",
+    "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY"
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,
