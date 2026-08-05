@@ -828,7 +828,7 @@ function AdminPage() {
             <p className="text-xs text-muted-foreground mt-1">Gérez les terminaux, approuvez les comptes et suivez la télémétrie.</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -1428,7 +1428,7 @@ function AdminPage() {
       >
         {/* Preset scope — compare accounts on one engine at a time instead of
             only the all-presets-combined total. */}
-        <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-fit">
+        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-full sm:w-fit">
           {(["all", "default", "boom", "crash", "scalping", "liquidity"] as const).map((p) => (
             <button
               key={p}
