@@ -2995,6 +2995,57 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </div>
                   </details>
 
+                  {/* ── Stratégies Gagnantes & Algorithmes Pro ── */}
+                  <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black/40 to-black/60 p-5 space-y-4 shadow-xl">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                      <h4 className="text-sm font-black uppercase tracking-wider text-foreground">
+                        Stratégies Gagnantes & Algorithmes Pro
+                      </h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Ces algorithmes surveillent et optimisent chaque position en direct pour maximiser le rendement et sécuriser le capital.
+                    </p>
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-2">
+                      <div className="rounded-xl border border-white/[0.08] bg-black/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Trailing Stop & Break-Even</span>
+                          <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-300">
+                            Automatique
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Déplace le Stop-Loss au prix d'entrée dès +50% du Take-Profit. Risque zéro garanti sur le trade.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-white/[0.08] bg-black/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Mise Dynamique par Confiance</span>
+                          <span className="rounded bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 text-[9px] font-black uppercase text-amber-300">
+                            IA Active
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Multiplie la mise par 1.5x (≥75%) et par 2.0x (≥80% avec 100% accord TF) sur les pépites d'or.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-white/[0.08] bg-black/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Auto-Blacklist Symboles</span>
+                          <span className="rounded bg-sky-500/20 border border-sky-500/40 px-2 py-0.5 text-[9px] font-black uppercase text-sky-300">
+                            ≥50% WR
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Suspend automatiquement les symboles en sous-performance pour concentrer le capital sur les gagnants.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               )}
 

@@ -852,6 +852,69 @@ export function computeProgressiveStake(baseStake: number, consecutiveLosses: nu
   return Math.max(1, Math.round(baseStake * (1 - reduction) * 100) / 100);
 }
 
+// ─── Dynamic Stake Scaling by AI Confidence ─────────────────────────────────
+
+/**
+ * Scales the stake dynamically according to AI signal confidence and TF agreement:
+ * - Confidence >= 80% with 100% TF agreement (4/4 TF) -> 2.0x base stake
+ * - Confidence >= 75% -> 1.5x base stake
+ * - Confidence 55%-74% -> 1.0x base stake
+ */
+export function computeConfidenceScaledStake(
+  baseStake: number,
+  confidence: number,
+  tfAgreement: number,
+  enabled: boolean = true
+): number {
+  if (!enabled || baseStake <= 0) return baseStake;
+  if (confidence >= 80 && tfAgreement >= 4) {
+    return Math.round(baseStake * 2.0 * 100) / 100;
+  }
+  if (confidence >= 75) {
+    return Math.round(baseStake * 1.5 * 100) / 100;
+  }
+  return baseStake;
+}
+
+// ─── Position Trailing Stop & Auto Break-Even ────────────────────────────────
+
+/**
+ * Position-level Trailing Stop & Auto Break-Even logic:
+ * When position profit reaches 50% of target profit, set stop-loss to entry price (Break-Even).
+ * Trailing Stop maintains a trailing buffer as profit increases.
+ */
+export function computePositionTrailingStop(
+  entryPrice: number,
+  currentPrice: number,
+  direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN",
+  targetProfitUsd: number,
+  currentPnlUsd: number,
+  currentStopLossUsd: number,
+  autoBreakEvenEnabled: boolean = true,
+  trailingStopEnabled: boolean = true
+): { newStopLossUsd: number; isBreakEven: boolean; isTrailing: boolean } {
+  let isBreakEven = false;
+  let isTrailing = false;
+  let newStopLossUsd = currentStopLossUsd;
+
+  // Auto Break-Even: when P&L reaches >= 50% of target profit, move SL to 0 ($0 risk)
+  if (autoBreakEvenEnabled && targetProfitUsd > 0 && currentPnlUsd >= targetProfitUsd * 0.5) {
+    newStopLossUsd = Math.max(newStopLossUsd, 0);
+    isBreakEven = true;
+  }
+
+  // Trailing Stop: trailing buffer locking in 70% of peak P&L achieved
+  if (trailingStopEnabled && currentPnlUsd > 0) {
+    const trailingThreshold = currentPnlUsd * 0.7;
+    if (trailingThreshold > newStopLossUsd) {
+      newStopLossUsd = Math.round(trailingThreshold * 100) / 100;
+      isTrailing = true;
+    }
+  }
+
+  return { newStopLossUsd, isBreakEven, isTrailing };
+}
+
 // ─── Dynamic minConfidence based on payout ────────────────────────────────────
 
 /**
