@@ -1125,6 +1125,27 @@ class ServerBotEngine {
       return finishScan();
     }
 
+    // ── Preset-wide consecutive-loss circuit breaker ──
+    // maxConsecutiveLosses is also enforced per-symbol further below (each
+    // symbol tracks its own streak), but that alone can't see a preset
+    // bleeding across SEVERAL different symbols in a row. Incident
+    // 2026-08-04 : Default lost 4 straight trades across 3 different OTC
+    // symbols (GDAXI, SPC, DJI, GDAXI) — no single symbol's own streak ever
+    // reached 3, so the per-symbol cooldown never engaged and the account
+    // kept trading straight through it. countConsecutiveLosses(logs) with no
+    // symbol filter counts the streak across this preset's own trade stream.
+    const presetConsecutiveLosses = countConsecutiveLosses(logs);
+    if (presetConsecutiveLosses >= config.maxConsecutiveLosses) {
+      if (config.stopOnRisk) {
+        this.riskPause(
+          [`${presetConsecutiveLosses} pertes consécutives (tous symboles confondus)`],
+          this.nextShortResume(),
+        );
+      }
+      for (const symbol of config.symbols) scanResults.push({ symbol, action: "cooldown" });
+      return finishScan();
+    }
+
     // ── Stake ──
     const balance = await this.conn.getBalance();
     const currentBalance = balance?.balance;
