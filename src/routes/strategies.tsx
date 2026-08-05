@@ -462,9 +462,16 @@ function StrategiesPage() {
                   <div>
                     {/* Top badges */}
                     <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black uppercase text-muted-foreground">
-                        Preset {s.category}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black uppercase text-muted-foreground">
+                          Preset {s.category}
+                        </span>
+                        {s.id === "smc-liquidity-avg" && (
+                          <span className="rounded-md border border-rose-500/60 bg-rose-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.6)]">
+                            NEW
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={cn(
                           "rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase border",
