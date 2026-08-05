@@ -222,10 +222,10 @@ function Dashboard() {
       {/* ── LIVE HEALTH & GUARD MONITOR ── */}
       <div className="mt-4">
         <HealthPanel
-          currentPnl={realStats?.todayPnl ?? 0}
+          currentPnl={todayPnl ?? 0}
           maxDailyLoss={15}
           activePreset="default"
-          winRate={realStats?.winRate ?? 0}
+          winRate={winRate ?? 0}
           openPositionsCount={0}
         />
       </div>
