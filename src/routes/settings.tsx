@@ -336,6 +336,24 @@ export function SettingsPage() {
         });
       }
 
+      // Sync local storage autotrader config drafts so Auto-Trader HUD immediately sees the new daily loss limit & stake
+      const presetsList = ["default", "boom", "crash", "scalping", "liquidity"];
+      for (const p of presetsList) {
+        const pKey = `lio23.autotrader_config.${p}`;
+        try {
+          const existing = JSON.parse(localStorage.getItem(pKey) ?? "{}");
+          existing.maxDailyLossUsd = maxDailyLoss;
+          existing.stakeUsd = stake;
+          localStorage.setItem(pKey, JSON.stringify(existing));
+        } catch {}
+      }
+      try {
+        const globalCfg = JSON.parse(localStorage.getItem("lio23.autotrader_config") ?? "{}");
+        globalCfg.maxDailyLossUsd = maxDailyLoss;
+        globalCfg.stakeUsd = stake;
+        localStorage.setItem("lio23.autotrader_config", JSON.stringify(globalCfg));
+      } catch {}
+
       toast.success("Toutes les modifications ont été enregistrées !");
     } catch {
       toast.error("Échec de l'enregistrement de certaines modifications");

@@ -328,7 +328,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       // The decision summary must describe what the engine actually uses;
       // sync once per preset before the user edits anything locally.
       const savedConfig = data.presets?.[selectedPreset]?.savedConfig;
-      if (!syncedFromServerRef.current[selectedPreset] && savedConfig) {
+      if (savedConfig) {
         syncedFromServerRef.current[selectedPreset] = true;
         setConfig((prev) => {
           const next = { ...prev, ...savedConfig };
