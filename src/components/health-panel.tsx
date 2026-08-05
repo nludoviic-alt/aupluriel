@@ -3,11 +3,11 @@ import { ShieldCheck, ShieldAlert, AlertTriangle, Clock, RefreshCcw, Activity } 
 import { cn } from "@/lib/utils";
 
 interface HealthPanelProps {
-  currentPnl: number;
-  maxDailyLoss: number;
-  activePreset: string;
-  winRate: number;
-  openPositionsCount: number;
+  currentPnl?: number;
+  maxDailyLoss?: number;
+  activePreset?: string;
+  winRate?: number;
+  openPositionsCount?: number;
 }
 
 export function HealthPanel({

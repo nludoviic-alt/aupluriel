@@ -285,7 +285,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
   const [mobileTab, setMobileTab] = useState<"control" | "dashboard" | "config" | "journal" | "data">("control");
-  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "multiplier">("profiles");
+  const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "multiplier" | "backtest">("profiles");
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
   // Drives the preset-tab filter below. Same 768px breakpoint as Tailwind's
@@ -2639,7 +2639,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <div className="border-b border-border/40">
               <div className="max-w-6xl mx-auto flex flex-col gap-4 px-6 pt-4 pb-4 sm:flex-row sm:items-center sm:gap-3 sm:pt-3 sm:pb-0">
                 <div className="flex overflow-x-auto scrollbar-none gap-1.5 -mb-px">
-                  {([["profiles","Profils"],["params","Paramètres"],["risk","Risque & Sessions"],["multiplier","Moteur Multiplicateur"]] as const).map(([t, label]) => (
+                  {(["profiles","Profils"], ["params","Paramètres"], ["risk","Risque & Sessions"], ["multiplier","Moteur Multiplicateur"], ["backtest","Backtest 30j"]] as const).map(([t, label]) => (
                     <button key={t} onClick={() => setConfigTab(t)}
                       className={cn("px-5 py-3.5 text-sm font-black uppercase tracking-wider rounded-t-lg transition-colors whitespace-nowrap border-b-2 sm:py-2.5",
                         configTab === t ? "text-foreground border-primary bg-muted/20" : "text-muted-foreground border-transparent hover:text-foreground")}>
