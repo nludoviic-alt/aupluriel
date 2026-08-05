@@ -44,6 +44,36 @@ export interface PresetStrategyDef {
 
 const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
   {
+    id: "gold-trend-liquidity-sweep",
+    name: "Gold & Trend — Fakeout & Chasse à la Liquidité",
+    category: "Multi",
+    targetPreset: "default",
+    targetMarkets: "Gold (XAU/USD)",
+    tagline: "Continuation de tendance HTF sur l'Or. Vente après tentative de breakout / fakeout au-dessus de la droite de tendance avec réintégration et viseur BOS.",
+    badge: "Fakeout & Trend 4R",
+    riskProfile: "Équilibré",
+    color: "from-amber-500/30 via-rose-500/15 to-transparent",
+    borderGlow: "border-amber-500/50",
+    params: {
+      minConfidence: 80,
+      maxConfidence: 95,
+      minTfAgreement: 3,
+      durationMinutes: 15,
+      stakeUsd: 5,
+      maxDailyLossUsd: 20,
+      symbolsCount: 1,
+    },
+    configOverride: {
+      minConfidence: 80,
+      maxConfidence: 95,
+      minTfAgreement: 3,
+      durationMinutes: 15,
+      stakeUsd: 5,
+      maxDailyLossUsd: 20,
+      symbols: ["frxXAUUSD"],
+    },
+  },
+  {
     id: "gold-infinite-trailing",
     name: "Gold & Crypto — Trailing SL / Sans TP",
     category: "Multi",
@@ -498,7 +528,7 @@ function StrategiesPage() {
                         <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black uppercase text-muted-foreground">
                           Preset {s.category}
                         </span>
-                        {(s.id === "smc-liquidity-avg" || s.id === "gold-infinite-trailing") && (
+                        {(s.id === "gold-trend-liquidity-sweep" || s.id === "smc-liquidity-avg" || s.id === "gold-infinite-trailing") && (
                           <span className="rounded-md border border-rose-500/60 bg-rose-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.6)]">
                             NEW
                           </span>

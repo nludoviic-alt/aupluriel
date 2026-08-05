@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { MarketSessionsBar } from "@/components/market-sessions-bar";
 import { HealthPanel } from "@/components/health-panel";
 import { BacktestVisualizer } from "@/components/backtest-visualizer";
-import { SYMBOLS, getOpenPositions, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
+import { SYMBOLS, getOpenPositions, sellContractNow, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
 import {
   addToCumulativePnl,
   computeAdaptiveStake,
@@ -1167,12 +1167,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           </div>
       </section>
 
-      <div className={cn("grid items-start gap-5", tradingTab === "auto" ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
-      <div className={cn("min-w-0 space-y-5", tradingTab !== "auto" && "hidden")}>
       <LivePositionsPanel
         openTrades={combinedAutoOpenTrades}
         onDismiss={(t) => { setEngineLogs([...dismissTrade(t.id)]); toast.info(`Carte fermée — ${t.symbol}`); }}
       />
+      <div className={cn("grid items-start gap-5", tradingTab === "auto" ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
+      <div className={cn("min-w-0 space-y-5", tradingTab !== "auto" && "hidden")}>
       <OpportunityCommandCenter
         presetLabel={presetLabels[selectedPreset]}
         opportunity={selectedOpportunity}
@@ -1210,6 +1210,136 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         )}
         aria-label="Prise directe manuelle"
       >
+        {/* OPEN POSITIONS & RISK CONTROL PANEL (MANUAL MODE) */}
+        <div className="rounded-2xl border border-white/10 bg-neutral-900/80 p-5 space-y-4 backdrop-blur-md shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                <h3 className="text-sm md:text-base font-black text-foreground uppercase tracking-wider">
+                  Positions Ouvertes & Contrôle Direct
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Clôturez vos positions au marché, ajustez le Stop Loss et le Trailing Stop en temps réel.
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-white/5 border border-white/10 text-neutral-300">
+              {liveDerivPositions.length} position{liveDerivPositions.length > 1 ? "s" : ""} ouverte{liveDerivPositions.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {liveDerivPositions.length === 0 ? (
+            <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02] text-center text-xs text-neutral-400">
+              Aucune position ouverte actuellement. Utilisez le formulaire ci-dessous pour placer un ordre manuel.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {liveDerivPositions.map((pos) => (
+                <div key={pos.contractId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-white/10 bg-black/40">
+                  <div className="flex items-center gap-3">
+                    <span className={cn(
+                      "px-2 py-1 rounded text-xs font-black uppercase tracking-wider",
+                      pos.contractType === "CALL" || pos.contractType === "MULTUP" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
+                    )}>
+                      {pos.contractType}
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-foreground">
+                        {SYMBOLS.find((s) => s.deriv === pos.symbol)?.label ?? pos.symbol}
+                      </div>
+                      <div className="text-[11px] font-mono text-neutral-400">
+                        Entrée : ${pos.buyPrice.toFixed(2)} · Spot : {pos.currentSpot > 0 ? pos.currentSpot.toFixed(pos.symbol.startsWith("frx") ? 5 : 2) : "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase font-bold text-neutral-400">P&L actuel</div>
+                      <div className={cn("text-xs font-mono font-black", pos.profit >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                        {pos.profit >= 0 ? "+" : ""}${pos.profit.toFixed(2)}
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "Clôturer la position au marché ?",
+                          description: `Vendre ${pos.symbol} maintenant au prix du marché. P&L en cours: ${pos.profit >= 0 ? "+" : ""}$${pos.profit.toFixed(2)}.`,
+                          confirmLabel: "Fermer au marché",
+                          danger: pos.profit < 0,
+                        });
+                        if (!ok) return;
+                        try {
+                          const res = await sellContractNow(pos.contractId);
+                          toast.success(`Position fermée ! P&L: ${res.soldFor >= res.boughtFor ? "+" : ""}${(res.soldFor - res.boughtFor).toFixed(2)}`);
+                          refreshCloud();
+                        } catch (e) {
+                          toast.error(`Échec: ${(e as Error).message}`);
+                        }
+                      }}
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-bold h-8 px-3 rounded-lg"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" /> Fermer
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Quick Risk Controls row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-white/5 text-xs">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-neutral-400">Mise par Ordre ($)</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={forceStake}
+                onChange={(e) => setForceStake(Number(e.target.value))}
+                className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-foreground outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-neutral-400">Trailing Stop (% / $)</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                step={0.1}
+                value={config.trailingStopPct ? config.trailingStopPct * 100 : 15}
+                onChange={(e) => {
+                  const val = Number(e.target.value) / 100;
+                  const next = { ...config, trailingStopPct: val };
+                  setConfig(next);
+                  saveConfig(next, selectedPreset);
+                  toast.success(`Trailing stop réglé à ${e.target.value}%`);
+                }}
+                className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-foreground outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-neutral-400">Perte Max Jour ($)</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={config.maxDailyLossUsd}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  const next = { ...config, maxDailyLossUsd: val };
+                  setConfig(next);
+                  saveConfig(next, selectedPreset);
+                  toast.success(`Perte max jour réglée à $${val}`);
+                }}
+                className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-foreground outline-none"
+              />
+            </div>
+          </div>
+        </div>
         {/* Manual order overview — mobile: ultra-compact, desktop: original */}
         <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-r from-white/[0.045] via-card/40 to-transparent p-3 lg:p-5">
           <div className="flex items-center justify-between gap-3">
