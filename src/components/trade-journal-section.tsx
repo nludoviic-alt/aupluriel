@@ -356,92 +356,43 @@ export function TradeJournalSection({
                     )}
                   />
 
-                  {/* Header Row: Direction Icon + Symbol + Direction Pill + Status Pill */}
+                  {/* Row 1: Symbol + Direction Badge on Left | P&L Result on Right */}
                   <div className="flex items-center justify-between gap-2 pl-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm font-black text-foreground truncate">{symbolLabel}</span>
                       <span
                         className={cn(
-                          "grid h-8 w-8 shrink-0 place-items-center rounded-xl border font-mono text-xs font-black shadow-sm",
+                          "rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider border shrink-0",
                           isBuy
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                            : "border-rose-500/40 bg-rose-500/15 text-rose-300"
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-rose-500/30 bg-rose-500/10 text-rose-300"
                         )}
                       >
-                        {isBuy ? "▲" : "▼"}
+                        {isBuy ? "HAUSSE ▲" : "BAISSE ▼"}
                       </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-black text-foreground truncate">{symbolLabel}</span>
-                          <span
-                            className={cn(
-                              "rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider border shrink-0",
-                              isBuy
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                                : "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                            )}
-                          >
-                            {isBuy ? "HAUSSE ▲" : "BAISSE ▼"}
-                          </span>
-                        </div>
-                      </div>
                     </div>
 
-                    <span
+                    <div
                       className={cn(
-                        "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-sm",
-                        isOpen
-                          ? "border border-amber-500/40 bg-amber-500/15 text-amber-300 animate-pulse"
-                          : isWon
-                            ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                            : isLost
-                              ? "border border-rose-500/40 bg-rose-500/15 text-rose-300"
-                              : "border border-white/10 bg-white/[0.04] text-muted-foreground"
+                        "font-mono text-sm font-black shrink-0",
+                        isWon ? "text-emerald-400" : isLost ? "text-rose-400" : isOpen ? "text-amber-300" : "text-muted-foreground"
                       )}
                     >
-                      {isOpen ? "En cours" : isWon ? "Gagné" : isLost ? "Perdu" : isError ? "Erreur" : t.status.toUpperCase()}
-                    </span>
+                      {isWon ? `+$${t.profit.toFixed(2)}` : isLost ? `-$${Math.abs(t.profit).toFixed(2)}` : isOpen ? "En cours" : "—"}
+                    </div>
                   </div>
 
-                  {/* Timestamps Row: Pris à ... · fermé à ... */}
-                  <div className="flex items-center justify-between gap-2 pl-1.5 text-[10px] font-semibold text-muted-foreground/80 border-t border-white/5 pt-2">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-muted-foreground/60">Pris à</span>
-                      <span className="font-mono font-bold text-foreground/90">
-                        {new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
+                  {/* Row 2: Timestamps on Left | Stake ($) on Right */}
+                  <div className="flex items-center justify-between gap-2 pl-1.5 text-[10px] font-semibold text-muted-foreground/80 border-t border-white/5 pt-1.5">
+                    <div className="flex items-center gap-1 truncate">
+                      <span>Pris à <strong className="font-mono text-foreground/90">{new Date(t.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</strong></span>
                       {closedTime && (isWon || isLost) && (
-                        <>
-                          <span className="text-white/20 mx-0.5">·</span>
-                          <span className="text-muted-foreground/60">fermé à</span>
-                          <span className="font-mono font-bold text-foreground/90">
-                            {new Date(closedTime).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                          </span>
-                        </>
+                        <span>· fermé à <strong className="font-mono text-foreground/90">{new Date(closedTime).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</strong></span>
                       )}
                     </div>
-                    {t.isLiveDeriv && (
-                      <span className="shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
-                        Direct Deriv
-                      </span>
-                    )}
-                  </div>
 
-                  {/* Inset Metrics Bar */}
-                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-black/40 p-2.5 pl-3 text-xs">
-                    <div>
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise</div>
-                      <div className="font-mono text-xs font-black text-foreground">${stakeVal.toFixed(2)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Gain / P&L</div>
-                      <div
-                        className={cn(
-                          "font-mono text-xs font-black",
-                          isWon ? "text-emerald-300" : isLost ? "text-rose-400" : isOpen ? "text-amber-300" : "text-muted-foreground"
-                        )}
-                      >
-                        {isWon ? `+$${t.profit.toFixed(2)}` : isLost ? `-$${Math.abs(t.profit).toFixed(2)}` : isOpen ? "En cours" : "—"}
-                      </div>
+                    <div className="font-mono text-[10px] font-bold text-muted-foreground/90 shrink-0">
+                      Mise: <span className="text-foreground font-black">${stakeVal.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

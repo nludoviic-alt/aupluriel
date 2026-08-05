@@ -2139,7 +2139,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   return (
                     <div
                       key={trade.id}
-                      className="relative overflow-hidden rounded-2xl border border-white/10 bg-card/40 p-3.5 sm:p-4 space-y-2.5 sm:space-y-0 transition-all duration-200 shadow-md hover:bg-white/[0.03] sm:flex sm:items-center sm:justify-between sm:gap-4"
+                      className="relative overflow-hidden rounded-xl border border-white/10 bg-card/40 p-3 transition-all duration-200 shadow-md hover:bg-white/[0.03]"
                     >
                       {/* Left vertical accent indicator bar */}
                       <div
@@ -2157,21 +2157,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         )}
                       />
 
-                      {/* Header/Left Block: Symbol + Direction Badge + Timestamps */}
-                      <div className="flex items-center gap-3 pl-1.5 min-w-0">
-                        <span
-                          className={cn(
-                            "grid h-8 w-8 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-xl border font-mono text-xs sm:text-base font-black shadow-sm",
-                            isUp
-                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                              : "border-rose-500/40 bg-rose-500/15 text-rose-300"
-                          )}
-                        >
-                          {isUp ? "▲" : "▼"}
-                        </span>
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm sm:text-base font-black text-foreground truncate">{symLabel}</span>
+                      {/* Mobile Layout (sm:hidden): 2 Compact Rows */}
+                      <div className="sm:hidden space-y-1.5">
+                        {/* Row 1: Symbol + Direction Badge on Left | Gain/P&L on Right */}
+                        <div className="flex items-center justify-between gap-2 pl-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm font-black text-foreground truncate">{symLabel}</span>
                             <span
                               className={cn(
                                 "rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider border shrink-0",
@@ -2182,43 +2173,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             >
                               {trade.direction === "CALL" || trade.direction === "MULTUP" ? "HAUSSE ▲" : "BAISSE ▼"}
                             </span>
-                            {trade.isLiveDeriv && (
-                              <span className="hidden sm:inline-flex rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
-                                Direct Deriv
-                              </span>
-                            )}
                           </div>
 
-                          {/* Timestamps */}
-                          <div className="flex items-center gap-2 text-[10px] sm:text-xs font-semibold text-muted-foreground/80">
-                            <span>
-                              Pris à <strong className="font-mono text-foreground/90">{new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
-                            </span>
-                            {trade.closedAt && (isWin || isLoss) && (
-                              <>
-                                <span className="text-white/20">·</span>
-                                <span>
-                                  fermé à <strong className="font-mono text-foreground/90">{new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Block (Desktop): Stake, P&L & Status Badge */}
-                      <div className="flex items-center gap-4 sm:gap-6 justify-between sm:justify-end shrink-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-0">
-                        <div className="text-left sm:text-right">
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise</div>
-                          <div className="font-mono text-xs sm:text-sm font-black text-foreground">${trade.stake.toFixed(2)}</div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Gain / P&L</div>
                           <div
                             className={cn(
-                              "font-mono text-xs sm:text-sm font-black",
-                              isWin ? "text-emerald-300" : isLoss ? "text-rose-400" : isOpen ? "text-amber-300" : "text-foreground"
+                              "font-mono text-sm font-black shrink-0",
+                              isWin ? "text-emerald-400" : isLoss ? "text-rose-400" : isOpen ? "text-amber-300" : "text-muted-foreground"
                             )}
                           >
                             {isWin
@@ -2233,26 +2193,116 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           </div>
                         </div>
 
-                        {/* Status Badge */}
-                        <div className="shrink-0">
-                          {isOpen ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-amber-300 animate-pulse">
-                              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
-                              En cours
-                            </span>
-                          ) : isWin ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-emerald-300 shadow-sm">
-                              Gagné
-                            </span>
-                          ) : isLoss ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[10px] sm:text-xs font-black uppercase text-rose-300 shadow-sm">
-                              Perdu
-                            </span>
-                          ) : (
-                            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] sm:text-xs font-bold text-muted-foreground">
-                              {trade.status}
-                            </span>
-                          )}
+                        {/* Row 2: Timestamps on Left | Stake on Right */}
+                        <div className="flex items-center justify-between gap-2 pl-1.5 text-[10px] font-semibold text-muted-foreground/80 border-t border-white/5 pt-1.5">
+                          <div className="flex items-center gap-1 truncate">
+                            <span>Pris à <strong className="font-mono text-foreground/90">{new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</strong></span>
+                            {trade.closedAt && (isWin || isLoss) && (
+                              <span>· fermé à <strong className="font-mono text-foreground/90">{new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</strong></span>
+                            )}
+                          </div>
+
+                          <div className="font-mono text-[10px] font-bold text-muted-foreground/90 shrink-0">
+                            Mise: <span className="text-foreground font-black">${trade.stake.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Desktop Layout (hidden sm:flex): Original Horizontal Row */}
+                      <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-4 w-full">
+                        <div className="flex items-center gap-3 pl-1.5 min-w-0">
+                          <span
+                            className={cn(
+                              "grid h-10 w-10 shrink-0 place-items-center rounded-xl border font-mono text-base font-black shadow-sm",
+                              isUp
+                                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                                : "border-rose-500/40 bg-rose-500/15 text-rose-300"
+                            )}
+                          >
+                            {isUp ? "▲" : "▼"}
+                          </span>
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-black text-foreground truncate">{symLabel}</span>
+                              <span
+                                className={cn(
+                                  "rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider border shrink-0",
+                                  isUp
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                    : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                                )}
+                              >
+                                {trade.direction === "CALL" || trade.direction === "MULTUP" ? "HAUSSE ▲" : "BAISSE ▼"}
+                              </span>
+                              {trade.isLiveDeriv && (
+                                <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[8px] font-black text-emerald-300 uppercase tracking-wider">
+                                  Direct Deriv
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/80">
+                              <span>
+                                Pris à <strong className="font-mono text-foreground/90">{new Date(trade.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                              </span>
+                              {trade.closedAt && (isWin || isLoss) && (
+                                <>
+                                  <span className="text-white/20">·</span>
+                                  <span>
+                                    fermé à <strong className="font-mono text-foreground/90">{new Date(trade.closedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6 justify-end shrink-0">
+                          <div className="text-right">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise</div>
+                            <div className="font-mono text-sm font-black text-foreground">${trade.stake.toFixed(2)}</div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/80">Gain / P&L</div>
+                            <div
+                              className={cn(
+                                "font-mono text-sm font-black",
+                                isWin ? "text-emerald-300" : isLoss ? "text-rose-400" : isOpen ? "text-amber-300" : "text-foreground"
+                              )}
+                            >
+                              {isWin
+                                ? `+$${(trade.pnl ?? trade.potentialProfit).toFixed(2)}`
+                                : isLoss
+                                  ? `-$${Math.abs(trade.pnl ?? trade.stake).toFixed(2)}`
+                                  : isOpen
+                                    ? trade.pnl !== undefined && trade.pnl !== 0
+                                      ? `${trade.pnl > 0 ? "+" : ""}$${trade.pnl.toFixed(2)}`
+                                      : "En cours"
+                                    : "—"}
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isOpen ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-xs font-black uppercase text-amber-300 animate-pulse">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                                En cours
+                              </span>
+                            ) : isWin ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-xs font-black uppercase text-emerald-300 shadow-sm">
+                                Gagné
+                              </span>
+                            ) : isLoss ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-xs font-black uppercase text-rose-300 shadow-sm">
+                                Perdu
+                              </span>
+                            ) : (
+                              <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                                {trade.status}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
