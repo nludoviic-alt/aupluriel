@@ -12,6 +12,7 @@ import {
   Save,
   Settings2,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Zap,
