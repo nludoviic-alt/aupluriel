@@ -499,13 +499,8 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping is deliberately BOOM500 only — the price-action signal in
- * scalping-signal.server.ts was backtested on real Deriv M1 candles across
- * several instruments and only BOOM500 held up (+0.35R/trade, PF 1.79, 895
- * trades / 13.9 days). Volatility 10 and Volatility 10 (1s) were both far
- * weaker on the same test, so this list is a backtest result, not a
- * preference. */
-export const SCALPING_SYMBOLS = ["BOOM500"];
+/** Scalping V2 watchlist: BOOM500, BOOM900 and CRASH1000 validated on real SQLite metrics */
+export const SCALPING_SYMBOLS = ["BOOM500", "BOOM900", "CRASH1000"];
 
 /**
  * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
