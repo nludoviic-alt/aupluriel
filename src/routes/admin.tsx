@@ -256,6 +256,21 @@ const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: strin
   },
 };
 
+const MOBILE_CARD_TINTS = [
+  "from-cyan-500/[0.06]",
+  "from-indigo-500/[0.06]",
+  "from-violet-500/[0.06]",
+  "from-emerald-500/[0.06]",
+  "from-amber-500/[0.06]",
+  "from-rose-500/[0.06]",
+  "from-sky-500/[0.06]",
+  "from-teal-500/[0.06]",
+];
+
+function mobileCardTint(userId: number) {
+  return MOBILE_CARD_TINTS[userId % MOBILE_CARD_TINTS.length];
+}
+
 function AdminPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -1203,7 +1218,7 @@ function AdminPage() {
                 <div
                   key={u.id}
                   onClick={() => openProfile(u)}
-                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.03] to-black/40 p-4 space-y-3.5 shadow-lg active:scale-[0.985] transition-all duration-200 cursor-pointer"
+                  className={cn("group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b to-black/40 p-4 space-y-3.5 shadow-lg active:scale-[0.985] transition-all duration-200 cursor-pointer", mobileCardTint(u.id))}
                 >
                   {/* Top Bar: Avatar + Username + Role Badges + Status */}
                   <div className="flex items-start justify-between gap-2">
