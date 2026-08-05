@@ -91,6 +91,17 @@ function migrate(db: Database.Database) {
       tf         TEXT    NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS user_notifications (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title       TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      url         TEXT,
+      category    TEXT DEFAULT 'system', -- 'trade' | 'risk' | 'system' | 'signal'
+      is_read     INTEGER DEFAULT 0,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     CREATE TABLE IF NOT EXISTS auth_tokens (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -32,13 +32,30 @@ interface SubscriptionRow {
   auth: string;
 }
 
+export function recordNotification(
+  userId: number,
+  title: string,
+  body: string,
+  url?: string,
+  category: "trade" | "risk" | "system" | "signal" = "system"
+): void {
+  try {
+    getDb().prepare(`
+      INSERT INTO user_notifications (user_id, title, body, url, category, is_read, created_at)
+      VALUES (?, ?, ?, ?, ?, 0, unixepoch())
+    `).run(userId, title, body, url ?? null, category);
+  } catch (e) {
+    console.error("[notifications] Failed to record notification:", (e as Error).message);
+  }
+}
+
 /**
- * Sends to every device this user subscribed from. Fire-and-forget by
- * design (mirrors sendEmail) — a push provider hiccup must never break
- * trade resolution. A 404/410 response means the subscription is dead
- * (uninstalled, permission revoked) and is pruned so we stop retrying it.
+ * Sends to every device this user subscribed from and records in in-app notification center.
  */
-export async function sendPushToUser(userId: number, payload: PushPayload): Promise<void> {
+export async function sendPushToUser(userId: number, payload: PushPayload & { category?: "trade" | "risk" | "system" | "signal" }): Promise<void> {
+  // Always record in in-app Notification Center so the user never loses a message
+  recordNotification(userId, payload.title, payload.body, payload.url, payload.category ?? "system");
+
   if (!ensureConfigured()) return; // VAPID not configured — silently skip, like Resend without a key
 
   const subs = getDb()

@@ -44,6 +44,7 @@ import {
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
+import { NotificationCenterTrigger } from "@/components/notification-center";
 import { cn } from "@/lib/utils";
 
 function NotFoundComponent() {
@@ -375,6 +376,7 @@ function RootComponent() {
                     </span>
                   </Link>
                 )}
+                <NotificationCenterTrigger />
                 {notifPermission === "default" && (
                   <button
                     onClick={requestPermission}
