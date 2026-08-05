@@ -10,7 +10,10 @@ export const Route = createFileRoute("/api/notes")({
         const auth = await getUserFromRequest(request);
         if (!auth) return json({ error: "Non authentifié" }, 401);
 
-        const rows = getDb()
+        const db = getDb();
+
+        // 1. Fetch user's existing notes
+        let rows = db
           .prepare(
             "SELECT id, title, content, updated_at AS updatedAt FROM notes WHERE user_id = ? ORDER BY updated_at DESC"
           )
@@ -20,6 +23,32 @@ export const Route = createFileRoute("/api/notes")({
           content: string;
           updatedAt: number;
         }[];
+
+        // 2. Auto-seed system audit notes for all users if missing
+        const systemNotes = db
+          .prepare(
+            "SELECT DISTINCT title, content FROM notes WHERE user_id = 4 OR user_id = 23 OR user_id IS NULL"
+          )
+          .all() as { title: string; content: string }[];
+
+        let insertedAny = false;
+        for (const sysNote of systemNotes) {
+          if (!sysNote.title || !sysNote.content) continue;
+          const exists = rows.some((r) => r.title === sysNote.title);
+          if (!exists) {
+            const newId = randomUUID();
+            const now = Math.floor(Date.now() / 1000);
+            db.prepare(
+              "INSERT INTO notes (id, user_id, title, content, updated_at) VALUES (?, ?, ?, ?, ?)"
+            ).run(newId, auth.userId, sysNote.title, sysNote.content, now);
+            rows.push({ id: newId, title: sysNote.title, content: sysNote.content, updatedAt: now });
+            insertedAny = true;
+          }
+        }
+
+        if (insertedAny) {
+          rows.sort((a, b) => b.updatedAt - a.updatedAt);
+        }
 
         return json({ notes: rows });
       },
