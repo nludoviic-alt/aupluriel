@@ -5,7 +5,7 @@ import {
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
   BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
   Mail, Ban, Copy, Send, Lightbulb, AlertTriangle, Pencil, StickyNote,
-  Lock, ChevronRight,
+  Lock, ChevronRight, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -1427,14 +1427,19 @@ function AdminPage() {
 
       {/* ── TRADING RECAP BY USER ── */}
       <CollapsibleBlock
-        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
         header={
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-foreground">Récapitulatif de Trading</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-foreground">Récapitulatif de Trading</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
+              </div>
             </div>
-            <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04]">
+            <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04] shrink-0">
               <RefreshCw className={cn("h-4 w-4 mr-1.5", recapLoading && "animate-spin")} />
               Actualiser
             </Button>
@@ -1577,15 +1582,15 @@ function AdminPage() {
       {/* ── BOOM SYMBOL BREAKDOWN ── */}
       {boomBreakdown.some((b) => b.trades > 0) && (
         <CollapsibleBlock
-          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
           header={
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
-                <Dices className="h-4.5 w-4.5" />
+              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
+                <Dices className="h-4 w-4" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-foreground">🚀 Performance par Index Boom</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom (BOOM1000/500/600/900) — démo uniquement, jamais mélangé au réel.</p>
+                <h2 className="text-sm sm:text-base font-bold text-foreground">Performance par Index Boom</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom — démo uniquement, jamais mélangé au réel.</p>
               </div>
             </div>
           }
@@ -1655,11 +1660,16 @@ function AdminPage() {
       {/* ── BACKTEST vs REAL GAUGE ── */}
       {backtestVsReal && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
           header={
-            <div>
-              <h2 className="text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
+                <Activity className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
+              </div>
             </div>
           }
         >
@@ -1709,13 +1719,18 @@ function AdminPage() {
       {/* ── CONFIDENCE CALIBRATION ── */}
       {calibration.length > 0 && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
           header={
-            <div>
-              <h2 className="text-base font-bold text-foreground">Calibration de la Confiance</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
-              </p>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
+                <Award className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-foreground">Calibration de la Confiance</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
+                </p>
+              </div>
             </div>
           }
         >
@@ -1761,14 +1776,14 @@ function AdminPage() {
       {componentBreakdown.length > 0 && (
         <CollapsibleBlock
           alwaysCollapsible
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
           header={
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
-                <BrainCircuit className="h-4.5 w-4.5" />
+              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
+                <BrainCircuit className="h-4 w-4" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
+                <h2 className="text-sm sm:text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">Formule adaptative du cerveau de trading partagé entre tous les utilisateurs.</p>
               </div>
             </div>
