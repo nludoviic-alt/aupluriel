@@ -975,47 +975,87 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <span className="hidden text-xs font-bold text-muted-foreground sm:block font-mono">P&L du jour</span>
           </div>
 
-          {/* Mobile: horizontal scroll cards */}
-          <div className="md:hidden -mx-4 flex gap-2 overflow-x-auto scrollbar-none px-4 pb-1">
+          {/* Mobile: 2-column grid */}
+          <div className="md:hidden grid grid-cols-2 gap-2.5">
             {shownPresets.map((p) => {
               const st = cloud?.presets?.[p];
               const pnlVal = st?.todayPnl ?? 0;
               const isOnline = !!st?.enabled && !!st?.running;
-              const styles = {
-                default: { active: "border-purple-500/50 bg-purple-500/10" },
-                boom: { active: "border-orange-500/50 bg-orange-500/10" },
-                crash: { active: "border-amber-500/50 bg-amber-500/10" },
-                scalping: { active: "border-cyan-500/50 bg-cyan-500/10" },
-                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10" },
+              const isSelected = selectedPreset === p;
+
+              const accentStyles = {
+                default: {
+                  active: "border-purple-500/60 bg-purple-500/10 ring-1 ring-purple-500/50",
+                },
+                boom: {
+                  active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
+                },
+                crash: {
+                  active: "border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/50",
+                },
+                scalping: {
+                  active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50",
+                },
+                liquidity: {
+                  active: "border-fuchsia-500/60 bg-fuchsia-500/10 ring-1 ring-fuchsia-500/50",
+                },
               } as const;
+
               return (
                 <button
                   key={p}
                   onClick={() => selectPresetView(p)}
                   className={cn(
-                    "flex shrink-0 flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all duration-200 w-[140px]",
-                    selectedPreset === p
-                      ? styles[p].active
+                    "relative flex w-full flex-col justify-between rounded-2xl border p-3 text-left transition-all duration-200 touch-manipulation active:scale-[0.98] min-h-[92px] space-y-2",
+                    isSelected
+                      ? accentStyles[p].active
                       : pnlVal > 0
-                        ? "border-up/30 bg-up/5"
+                        ? "border-emerald-500/30 bg-emerald-500/[0.04]"
                         : pnlVal < 0
-                          ? "border-down/30 bg-down/5"
-                          : "border-white/10 bg-card/30"
+                          ? "border-rose-500/30 bg-rose-500/[0.04]"
+                          : "border-white/10 bg-card/40"
                   )}
                 >
-                  <div className="flex w-full items-center justify-between gap-1.5">
-                    <span className="flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-foreground">
+                  {/* Top Bar: Title + Online Dot / Test Badge */}
+                  <div className="flex items-start justify-between gap-1 w-full">
+                    <span className="font-black text-xs uppercase tracking-wider text-foreground truncate">
                       {presetLabels[p]}
-                      <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-up animate-pulse" : "bg-muted-foreground/40")} />
                     </span>
-                    {PRESET_PRESENTATION[p].experimental && (
-                      <span className="text-[8px] font-black uppercase text-cyan-300">Test</span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {PRESET_PRESENTATION[p].experimental && (
+                        <span className="rounded bg-cyan-500/20 border border-cyan-500/40 px-1 py-0.2 text-[8px] font-black uppercase text-cyan-300">
+                          TEST
+                        </span>
+                      )}
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full",
+                          isOnline
+                            ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"
+                            : "bg-white/20"
+                        )}
+                        title={isOnline ? "En cours d'exécution" : "Inactif"}
+                      />
+                    </div>
                   </div>
-                  <span className="text-[10px] font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
-                  <span className={cn("text-sm font-black font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
-                    {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
-                  </span>
+
+                  {/* Subtitle: Market */}
+                  <div className="text-[10px] font-semibold text-muted-foreground truncate leading-tight">
+                    {PRESET_PRESENTATION[p].market}
+                  </div>
+
+                  {/* Bottom Bar: P&L Today */}
+                  <div className="flex items-end justify-between w-full pt-1 border-t border-white/5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">P&L Jour</span>
+                    <span
+                      className={cn(
+                        "text-xs font-mono font-black",
+                        pnlVal > 0 ? "text-emerald-400" : pnlVal < 0 ? "text-rose-400" : "text-muted-foreground"
+                      )}
+                    >
+                      {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
+                    </span>
+                  </div>
                 </button>
               );
             })}
