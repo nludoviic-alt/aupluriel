@@ -145,8 +145,11 @@ function migrate(db: Database.Database) {
       fields      TEXT    NOT NULL,   -- JSON: { fieldName: { from, to } }
       trades_before INTEGER,
       win_rate_before REAL,
-      pnl_before    REAL
+      pnl_before    REAL,
+      source        TEXT    NOT NULL DEFAULT 'user',
+      resolved_at   INTEGER
     );
+    CREATE INDEX IF NOT EXISTS idx_config_changes_user_preset_time ON config_changes(user_id, preset, changed_at);
 
     -- Big Data historical candles store for backtesting & machine learning sweeps
     CREATE TABLE IF NOT EXISTS historical_candles (
@@ -160,10 +163,13 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (symbol, granularity, epoch)
     );
     CREATE INDEX IF NOT EXISTS idx_hist_candles_lookup ON historical_candles(symbol, granularity, epoch DESC);
-      source      TEXT    NOT NULL DEFAULT 'user', -- 'user' | 'admin' | 'auto-rollback'
-      resolved_at INTEGER             -- set once config-rollback-guardian.server.ts has judged this change (reverted or confirmed fine)
+
+    -- General per-user JSON config (Telegram settings, custom preferences)
+    CREATE TABLE IF NOT EXISTS user_config (
+      user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      config      TEXT    NOT NULL DEFAULT '{}',
+      updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
     );
-    CREATE INDEX IF NOT EXISTS idx_config_changes_user_preset_time ON config_changes(user_id, preset, changed_at);
 
     -- Trades placed by the SERVER engine (the browser engine logs to localStorage).
     CREATE TABLE IF NOT EXISTS bot_trades (
