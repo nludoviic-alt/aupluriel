@@ -23,6 +23,8 @@ import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MarketSessionsBar } from "@/components/market-sessions-bar";
+import { HealthPanel } from "@/components/health-panel";
+import { BacktestVisualizer } from "@/components/backtest-visualizer";
 import { SYMBOLS, getOpenPositions, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
 import {
   addToCumulativePnl,
@@ -336,6 +338,58 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       }
     } catch { /* signed out or server unreachable — leave as-is */ }
   }, [selectedPreset]);
+
+  const [telegramConfig, setTelegramConfig] = useState({
+    botToken: "",
+    chatId: "",
+    enabled: true,
+    notifyOnTradeOpen: true,
+    notifyOnTradeClose: true,
+    notifyOnRiskLimit: true,
+    notifyOnSpikeSignal: true,
+  });
+  const [testingTelegram, setTestingTelegram] = useState(false);
+
+  useEffect(() => {
+    api.get<{ config: any }>("/api/telegram")
+      .then((res) => {
+        if (res.config && res.config.botToken !== undefined) {
+          setTelegramConfig((prev) => ({ ...prev, ...res.config }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleTestTelegram() {
+    setTestingTelegram(true);
+    try {
+      const res = await api.post<{ success: boolean; error?: string }>("/api/telegram", {
+        action: "test",
+        config: { ...telegramConfig, enabled: true },
+      });
+      if (res.success) {
+        toast.success("🔔 Notification Telegram envoyée avec succès !");
+      } else {
+        toast.error(`Échec Telegram: ${res.error || "Vérifiez Token et Chat ID"}`);
+      }
+    } catch {
+      toast.error("Erreur de connexion à l'API Telegram");
+    } finally {
+      setTestingTelegram(false);
+    }
+  }
+
+  async function handleSaveTelegram() {
+    try {
+      await api.post("/api/telegram", {
+        action: "save",
+        config: telegramConfig,
+      });
+      toast.success("Configuration Telegram sauvegardée !");
+    } catch {
+      toast.error("Erreur lors de la sauvegarde Telegram");
+    }
+  }
 
   const refreshOpportunities = useCallback(async () => {
     setOpportunitiesBusy(true);
@@ -2030,6 +2084,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           </div>
         </div>
 
+        {/* Live Health & Guard Monitor */}
+        <div className="mt-6">
+          <HealthPanel
+            currentPnl={kpis.totalProfit}
+            maxDailyLoss={config.maxDailyLossUsd}
+            activePreset={activePreset}
+            winRate={kpis.winRate}
+            openPositionsCount={liveDerivPositions.length}
+          />
+        </div>
+
         {/* ── Mini Journal des Contrats en Cours & Récents ── */}
         <div className="mt-6 glass-panel rounded-2xl border border-border/60 bg-card/30 p-3.5 space-y-4 md:p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-3">
@@ -3294,6 +3359,70 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         </Field>
                       </div>
                     </details>
+
+                    {/* Telegram Notifications Config */}
+                    <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🔔</span>
+                          <span className="text-xs font-black uppercase tracking-wider text-neutral-200">
+                            Notifications Telegram Instantanées
+                          </span>
+                        </div>
+                        <Switch
+                          checked={telegramConfig.enabled}
+                          onCheckedChange={(v) => {
+                            setTelegramConfig((prev) => ({ ...prev, enabled: v }));
+                            handleSaveTelegram();
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Recevez une alerte sur Telegram à chaque ouverture/fermeture de trade, détection Spike Hunter ou atteinte de limite de risque.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Bot Token (BotFather)</label>
+                          <input
+                            type="password"
+                            placeholder="7812345678:AAHxxxxxxxx..."
+                            value={telegramConfig.botToken}
+                            onChange={(e) => setTelegramConfig((prev) => ({ ...prev, botToken: e.target.value }))}
+                            className="cfg-input font-mono text-xs w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Chat ID (userinfobot)</label>
+                          <input
+                            type="text"
+                            placeholder="123456789"
+                            value={telegramConfig.chatId}
+                            onChange={(e) => setTelegramConfig((prev) => ({ ...prev, chatId: e.target.value }))}
+                            className="cfg-input font-mono text-xs w-full"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={testingTelegram || !telegramConfig.botToken || !telegramConfig.chatId}
+                          onClick={handleTestTelegram}
+                          className="text-xs font-bold border-sky-500/30 text-sky-300 hover:bg-sky-500/10"
+                        >
+                          {testingTelegram ? "Envoi..." : "🔔 Tester la Notification"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSaveTelegram}
+                          className="text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white"
+                        >
+                          Sauvegarder Telegram
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3442,6 +3571,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               )}
 
               {/* TAB: Backtest */}
+              {configTab === "backtest" && (
+                <div className="space-y-5">
+                  <BacktestVisualizer symbol={config.symbols[0] || "BOOM900"} preset={selectedPreset} />
+                </div>
+              )}
             </div>
           </div>
         )}

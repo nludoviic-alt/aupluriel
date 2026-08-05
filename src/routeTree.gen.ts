@@ -33,12 +33,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
+import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiStatsRouteImport } from './routes/api/stats'
 import { Route as ApiSignalHistoryRouteImport } from './routes/api/signal-history'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiPresenceRouteImport } from './routes/api/presence'
+import { Route as ApiOptimizeRouteImport } from './routes/api/optimize'
 import { Route as ApiOpportunitiesRouteImport } from './routes/api/opportunities'
 import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
@@ -195,6 +197,11 @@ const ApiTradesRoute = ApiTradesRouteImport.update({
   path: '/api/trades',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTelegramRoute = ApiTelegramRouteImport.update({
+  id: '/api/telegram',
+  path: '/api/telegram',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStrategiesRoute = ApiStrategiesRouteImport.update({
   id: '/api/strategies',
   path: '/api/strategies',
@@ -223,6 +230,11 @@ const ApiPushRoute = ApiPushRouteImport.update({
 const ApiPresenceRoute = ApiPresenceRouteImport.update({
   id: '/api/presence',
   path: '/api/presence',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOptimizeRoute = ApiOptimizeRouteImport.update({
+  id: '/api/optimize',
+  path: '/api/optimize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiOpportunitiesRoute = ApiOpportunitiesRouteImport.update({
@@ -436,12 +448,14 @@ export interface FileRoutesByFullPath {
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
+  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
+  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
@@ -503,12 +517,14 @@ export interface FileRoutesByTo {
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
+  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
+  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
@@ -571,12 +587,14 @@ export interface FileRoutesById {
   '/api/notes': typeof ApiNotesRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
+  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
+  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
@@ -640,12 +658,14 @@ export interface FileRouteTypes {
     | '/api/notes'
     | '/api/notify-me'
     | '/api/opportunities'
+    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
+    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
     | '/api/admin/bot'
@@ -707,12 +727,14 @@ export interface FileRouteTypes {
     | '/api/notes'
     | '/api/notify-me'
     | '/api/opportunities'
+    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
+    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
     | '/api/admin/bot'
@@ -774,12 +796,14 @@ export interface FileRouteTypes {
     | '/api/notes'
     | '/api/notify-me'
     | '/api/opportunities'
+    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
+    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
     | '/api/admin/bot'
@@ -842,12 +866,14 @@ export interface RootRouteChildren {
   ApiNotesRoute: typeof ApiNotesRoute
   ApiNotifyMeRoute: typeof ApiNotifyMeRoute
   ApiOpportunitiesRoute: typeof ApiOpportunitiesRoute
+  ApiOptimizeRoute: typeof ApiOptimizeRoute
   ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiSignalHistoryRoute: typeof ApiSignalHistoryRoute
   ApiStatsRoute: typeof ApiStatsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
+  ApiTelegramRoute: typeof ApiTelegramRoute
   ApiTradesRoute: typeof ApiTradesRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminBotRoute: typeof ApiAdminBotRoute
@@ -1045,6 +1071,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTradesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/telegram': {
+      id: '/api/telegram'
+      path: '/api/telegram'
+      fullPath: '/api/telegram'
+      preLoaderRoute: typeof ApiTelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/strategies': {
       id: '/api/strategies'
       path: '/api/strategies'
@@ -1085,6 +1118,13 @@ declare module '@tanstack/react-router' {
       path: '/api/presence'
       fullPath: '/api/presence'
       preLoaderRoute: typeof ApiPresenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/optimize': {
+      id: '/api/optimize'
+      path: '/api/optimize'
+      fullPath: '/api/optimize'
+      preLoaderRoute: typeof ApiOptimizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/opportunities': {
@@ -1381,12 +1421,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotesRoute: ApiNotesRoute,
   ApiNotifyMeRoute: ApiNotifyMeRoute,
   ApiOpportunitiesRoute: ApiOpportunitiesRoute,
+  ApiOptimizeRoute: ApiOptimizeRoute,
   ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiSignalHistoryRoute: ApiSignalHistoryRoute,
   ApiStatsRoute: ApiStatsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
+  ApiTelegramRoute: ApiTelegramRoute,
   ApiTradesRoute: ApiTradesRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminBotRoute: ApiAdminBotRoute,

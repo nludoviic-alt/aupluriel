@@ -1,106 +1,102 @@
-// Feature health dashboard — mirrors health-monitor.server.ts's checks
-// (bots running, backtest scheduler, push subscriptions, email config,
-// Deriv tokens). The server already pushes admins on any status change;
-// this panel is the always-current "go look" view.
-import { useCallback, useEffect, useState } from "react";
-import { Activity } from "lucide-react";
-import { CollapsibleBlock } from "@/components/collapsible-section";
+import { useState, useEffect } from "react";
+import { ShieldCheck, ShieldAlert, AlertTriangle, Clock, RefreshCcw, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
 
-type Status = "ok" | "warn" | "error";
-
-interface HealthCheck {
-  checkKey: string;
-  label: string;
-  status: Status;
-  detail: string;
-  checkedAt: number;
+interface HealthPanelProps {
+  currentPnl: number;
+  maxDailyLoss: number;
+  activePreset: string;
+  winRate: number;
+  openPositionsCount: number;
 }
 
-const STATUS_META: Record<Status, { dot: string; label: string; className: string }> = {
-  ok: { dot: "bg-emerald-500", label: "OK", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  warn: { dot: "bg-amber-500", label: "Attention", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  error: { dot: "bg-rose-500", label: "Panne", className: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
-};
+export function HealthPanel({
+  currentPnl = 0,
+  maxDailyLoss = 15,
+  activePreset = "default",
+  winRate = 0,
+  openPositionsCount = 0,
+}: HealthPanelProps) {
+  const currentUtcHour = new Date().getUTCHours();
+  const isUnfavorableHour = [3, 4, 7, 8, 11, 16, 19].includes(currentUtcHour);
+  const hourStr = `${String(currentUtcHour).padStart(2, "0")}:00 UTC`;
 
-function relativeTime(unixSeconds: number): string {
-  const diffMin = Math.round((Date.now() - unixSeconds * 1000) / 60_000);
-  if (diffMin < 1) return "à l'instant";
-  if (diffMin < 60) return `il y a ${diffMin} min`;
-  return `il y a ${Math.round(diffMin / 60)}h`;
-}
-
-export function HealthPanel() {
-  const [checks, setChecks] = useState<HealthCheck[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api.get<{ checks: HealthCheck[] }>("/api/admin/health");
-      setChecks(data.checks);
-    } catch {
-      // signed out or server unreachable — leave last-known state visible
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  const worst: Status = checks.some((c) => c.status === "error")
-    ? "error"
-    : checks.some((c) => c.status === "warn")
-      ? "warn"
-      : "ok";
+  const remainingDailyRisk = Math.max(0, maxDailyLoss + (currentPnl < 0 ? currentPnl : 0));
+  const riskUsagePct = Math.min(100, Math.round(((maxDailyLoss - remainingDailyRisk) / maxDailyLoss) * 100));
 
   return (
-    <CollapsibleBlock
-      className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
-      header={
+    <div className="rounded-2xl border border-white/[0.08] bg-black/40 backdrop-blur-xl p-5 shadow-2xl">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 mb-4">
         <div className="flex items-center gap-2.5">
-          <div className={cn("h-8 w-8 flex items-center justify-center rounded-xl border", STATUS_META[worst].className)}>
-            <Activity className="h-4.5 w-4.5" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <Activity className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-foreground">Surveillance des fonctionnalités</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {loading
-                ? "Chargement…"
-                : checks.length === 0
-                  ? "Premier cycle pas encore passé — réessaie dans une minute."
-                  : worst === "ok"
-                    ? "Tout fonctionne normalement."
-                    : `${checks.filter((c) => c.status !== "ok").length} point(s) à vérifier.`}
-            </p>
+            <h3 className="text-sm font-extrabold text-foreground tracking-tight">Santé & Garde-fous en Direct</h3>
+            <p className="text-[11px] text-muted-foreground">Surveillance temps réel du risque et des plages horaires</p>
           </div>
         </div>
-      }
-    >
-      <div className="grid gap-2 sm:grid-cols-2">
-        {checks.map((c) => {
-          const meta = STATUS_META[c.status];
-          return (
-            <div key={c.checkKey} className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-3.5 space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={cn("h-2 w-2 rounded-full shrink-0", meta.dot)} />
-                  <h3 className="text-sm font-semibold text-foreground truncate">{c.label}</h3>
-                </div>
-                <span className={cn("shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border", meta.className)}>
-                  {meta.label}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">{c.detail}</p>
-              <p className="text-[10px] text-muted-foreground/60">Vérifié {relativeTime(c.checkedAt)}</p>
-            </div>
-          );
-        })}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+          Actif
+        </span>
       </div>
-    </CollapsibleBlock>
+
+      {/* Grid of metrics */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Risk Quota Card */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Quota Risque Jour</span>
+            <span className="text-xs font-mono font-bold text-emerald-400">${remainingDailyRisk.toFixed(2)} restant</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className={cn("h-full transition-all duration-500 rounded-full", riskUsagePct > 80 ? "bg-rose-500" : riskUsagePct > 50 ? "bg-amber-400" : "bg-emerald-400")}
+              style={{ width: `${riskUsagePct}%` }}
+            />
+          </div>
+          <span className="mt-1.5 text-[10px] text-muted-foreground/80">Limite max journalière : ${maxDailyLoss.toFixed(2)}</span>
+        </div>
+
+        {/* UTC Hour Status */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Créneau UTC Actuel</span>
+            <span className="text-xs font-mono font-bold text-foreground">{hourStr}</span>
+          </div>
+          <div className="flex items-center gap-1.5 my-1">
+            {isUnfavorableHour ? (
+              <>
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                <span className="text-xs font-bold text-amber-300">Défavorable (Liquidité faible)</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span className="text-xs font-bold text-emerald-300">Favorable (Plein flux)</span>
+              </>
+            )}
+          </div>
+          <span className="text-[10px] text-muted-foreground/80">
+            {isUnfavorableHour ? "Warning actif sur les trades manuels" : "Heure optimale pour le scan"}
+          </span>
+        </div>
+
+        {/* Active Preset & Positions */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3.5 flex flex-col justify-between sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Preset Actif</span>
+            <span className="text-xs font-mono font-bold uppercase text-rose-300">{activePreset}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs my-1">
+            <span className="text-muted-foreground">Positions Ouvertes :</span>
+            <span className="font-mono font-bold text-foreground">{openPositionsCount} / 3 max</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground/80">Auto Break-Even actif à +50% TP</span>
+        </div>
+      </div>
+    </div>
   );
 }
