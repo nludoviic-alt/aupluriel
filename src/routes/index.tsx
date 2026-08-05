@@ -135,6 +135,17 @@ function Dashboard() {
   const opportunityScan = useDashboardOpportunities();
   const isForex = chartSymbol.market === "forex";
 
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(500);
+
+  useEffect(() => {
+    api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot")
+      .then((res) => {
+        const cfg = res.presets?.default?.savedConfig?.maxDailyLossUsd;
+        if (cfg) setMaxDailyLoss(cfg);
+      })
+      .catch(() => {});
+  }, []);
+
   const priceChange = useMemo(() => {
     if (series.length < 2) return null;
     const first = series[0].price;
@@ -223,7 +234,7 @@ function Dashboard() {
       <div className="mt-4">
         <HealthPanel
           currentPnl={todayPnl ?? 0}
-          maxDailyLoss={15}
+          maxDailyLoss={maxDailyLoss}
           activePreset="default"
           winRate={winRate ?? 0}
           openPositionsCount={0}

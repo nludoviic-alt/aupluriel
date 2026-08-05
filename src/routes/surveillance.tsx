@@ -1,8 +1,10 @@
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
 import { HealthPanel } from "@/components/health-panel";
 import { ChangelogPanel } from "@/components/changelog-panel";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/surveillance")({
   head: () => ({ meta: [{ title: "Surveillance — Au Pluriel" }] }),
@@ -12,6 +14,17 @@ export const Route = createFileRoute("/surveillance")({
 function SurveillancePage() {
   const { user } = useAuth();
   const isAdmin = user?.is_admin === 1;
+
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(500);
+
+  useEffect(() => {
+    api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot")
+      .then((res) => {
+        const cfg = res.presets?.default?.savedConfig?.maxDailyLossUsd;
+        if (cfg) setMaxDailyLoss(cfg);
+      })
+      .catch(() => {});
+  }, []);
 
   if (!isAdmin) {
     return (
@@ -39,7 +52,7 @@ function SurveillancePage() {
         </div>
       </div>
 
-      <HealthPanel />
+      <HealthPanel maxDailyLoss={maxDailyLoss} />
       <ChangelogPanel />
     </div>
   );
