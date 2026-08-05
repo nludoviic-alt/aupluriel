@@ -39,8 +39,14 @@ export function generateSpikeHunterSignal(
   // 1. Calculate Recent Spike Activity on M1
   const m1Ranges = tailM1.map((c) => c.high - c.low);
   const avgRangeM1 = m1Ranges.reduce((a, b) => a + b, 0) / m1Ranges.length;
-  const recentSpikes = tailM1.filter((c) => (c.high - c.low) > avgRangeM1 * 2.5);
-  const minutesSinceLastSpike = tailM1.length - 1 - tailM1.findLastIndex((c) => (c.high - c.low) > avgRangeM1 * 2.5);
+  let lastSpikeIdx = -1;
+  for (let i = tailM1.length - 1; i >= 0; i--) {
+    if (tailM1[i].high - tailM1[i].low > avgRangeM1 * 2.5) {
+      lastSpikeIdx = i;
+      break;
+    }
+  }
+  const minutesSinceLastSpike = lastSpikeIdx >= 0 ? tailM1.length - 1 - lastSpikeIdx : 10;
 
   if (isBoom) {
     // ── BOOM SPIKE HUNTER (CALL) ──
