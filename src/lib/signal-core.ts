@@ -373,9 +373,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  // Multi Conservateur par défaut : confiance 82% min et accord 4/4 TF obligatoire
+  // Multi Conservateur par défaut : confiance 85% min et accord 4/4 TF obligatoire
   // pour éliminer les faux signaux et protéger le capital sur le preset Multi.
-  minConfidence: 82,
+  // Audit VPS 5 août 2026 : bucket 75-84% = -$232.83 sur 894 trades, bucket 85+ = +$50.09.
+  minConfidence: 85,
   maxConfidence: 89,
   minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
@@ -390,18 +391,18 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // il évitait juste une boucle de scan qui tournerait pour rien une fois la
   // limite atteinte.
   maxTradesPerDay: 200,
-  // Multi filtré après audit production (2026-08-02) : conserver uniquement
-  // les marchés dont l'espérance restait positive dans le noyau confiance
-  // 80-89 + accord TF 3+. Or/argent/ETH et les forex faibles restent exclus :
-  // ils redonnaient les gains plus vite que le preset ne les construisait.
+  // Multi filtré après audit VPS production (2026-08-05) : OTC_GDAXI (-$77.54)
+  // et frxUSDCHF (-$46.08) retirés — les deux pires pertes du preset.
+  // OTC_NDX (+$86.29), frxUSDCAD (+$23.95), frxEURGBP (+$20.33) conservés.
   symbols: [
-    "OTC_DJI", "OTC_NDX", "OTC_GDAXI",
-    "frxUSDCHF", "frxEURGBP", "frxEURUSD", "cryBTCUSD",
+    "OTC_DJI", "OTC_NDX",
+    "frxEURGBP", "frxEURUSD", "cryBTCUSD",
     "frxGBPUSD", "frxUSDCAD"
   ],
   excludedSymbols: [
     "frxXAUUSD", "frxXAGUSD", "OTC_SPC", "cryETHUSD",
-    "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY"
+    "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY",
+    "OTC_GDAXI", "frxUSDCHF"
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,

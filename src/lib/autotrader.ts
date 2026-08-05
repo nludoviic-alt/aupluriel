@@ -275,8 +275,11 @@ export type QuickPreset = "default" | "boom" | "crash" | "scalping";
  * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
  * Deriv Options/Multipliers at all; BOOM600 excluded after production
  * audit: 62.7% WR, -$46.95 over 150 trades; BOOM1000 excluded after
- * recalibrage TP 10%: EV -$0.02/trade, quasi break-even). */
-export const BOOM_SYMBOLS = ["BOOM500", "BOOM900"];
+ * recalibrage TP 10%: EV -$0.02/trade, quasi break-even).
+ * Audit VPS 2026-08-05 : BOOM900 est le 2e pire symbole (-$60.96 sur 358
+ * trades, R:R 0.51 insuffisant malgré 62.3% WR). Remplacé par BOOM1000
+ * (-$7.97, WR 72.8%, EV -$0.04/trade — quasi break-even). */
+export const BOOM_SYMBOLS = ["BOOM500", "BOOM1000"];
 
 /** Mirror of BOOM_SYMBOLS for Crash — 2 variants retained after production
  * audit (CRASH600 dominates, CRASH1000/900 near breakeven). NOT yet
@@ -342,8 +345,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
   instrumentType: "multiplier",
   symbolInstrumentOverrides: {},
-  // ── Signaux — très permissif pour du volume ──
-  minConfidence: 80,
+  // ── Signaux — audit VPS 2026-08-05 : bucket 75-84% = -$232.83, 85+ = +$50.09 ──
+  minConfidence: 85,
   maxConfidence: 89,
   minTfAgreement: 2,
   premiumOnly: false,
@@ -376,13 +379,10 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // s'arme quasiment jamais avec un TP de $0.50 : il faudrait des centaines
   // de trades pour un pic de $30). À revoir avant tout passage en mode live.
   maxDailyLossUsd: 50,
-  // hourlyEdgeFilter off : il bloque une heure UTC dès que 5 trades y ont un
-  // P&L cumulé négatif (voir getBlockedHours dans signal-core.ts). Conçu pour
-  // le preset Default (2-12 trades/jour, une heure atteint rarement 5 trades),
-  // il devient un frein permanent en haute fréquence — sur un synthétique RNG
-  // la moitié des heures finissent négatives par pur hasard, et une heure
-  // bloquée ne peut plus se rétablir puisqu'elle ne trade plus.
-  hourlyEdgeFilter: false,
+  // hourlyEdgeFilter on (audit VPS 2026-08-05) : les données montrent 04h,
+  // 09h, 11h, 13h, 14h UTC comme heures perdantes récurrentes. Le filtre
+  // dynamique auto-bloque les heures à P&L négatif récent.
+  hourlyEdgeFilter: true,
   // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
   // symbole déjà en position), donc 3 positions simultanées avec 3 symboles.
   // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
@@ -484,10 +484,10 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // plus faible sur la même fenêtre (+$12.58) et davantage dépendant du timeout.
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 20,
-  // Noyau prod retenu le 2026-08-02 : CRASH1000/900 avec accord TF 3+.
-  // La confiance reste large (70-100) car ce preset manque encore de marge ;
-  // le vrai filtre est le symbole + TF, pas un bucket 80-89 comme Boom.
-  minConfidence: 70,
+  // Audit VPS 2026-08-05 : bucket 85+ = +$50.09, bucket 75-84 = -$232.83.
+  // CRASH est le seul preset rentable (+$150.12) — le seuil à 85 filtre le bruit
+  // tout en conservant les signaux à forte probabilité.
+  minConfidence: 85,
   maxConfidence: 100,
   minTfAgreement: 3,
   multiplierLevel: 100,
@@ -499,8 +499,8 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping V2 watchlist: BOOM500, BOOM900 and CRASH1000 validated on real SQLite metrics */
-export const SCALPING_SYMBOLS = ["BOOM500", "BOOM900", "CRASH1000"];
+/** Scalping V2 watchlist: BOOM500, BOOM1000 and CRASH1000 validated on real VPS metrics (2026-08-05) */
+export const SCALPING_SYMBOLS = ["BOOM500", "BOOM1000", "CRASH1000"];
 
 /**
  * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
@@ -530,10 +530,8 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  // Keep scalping in the same conservative confidence band as the current
-  // production test. The sample is still tiny, so volume stays intentionally
-  // constrained until it proves itself.
-  minConfidence: 80,
+  // Audit VPS 2026-08-05 : bucket 85+ = +$50.09, bucket 75-84 = -$232.83.
+  minConfidence: 85,
   maxConfidence: 89,
   stakeUsd: 1,
   // Scaled down from BOOM_PRESET's $5 stake to this preset's $1 — not left at

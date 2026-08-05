@@ -421,6 +421,14 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE users ADD COLUMN visible_presets TEXT");
   }
 
+  // --- Additive column migrations on `notes` (idempotent) ---
+  const notesCols = new Set(
+    (db.prepare("PRAGMA table_info(notes)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!notesCols.has("tag")) {
+    db.exec("ALTER TABLE notes ADD COLUMN tag TEXT");
+  }
+
   // --- Additive column migrations on `alerts` (idempotent) ---
   // The API/table existed but was never wired to the UI (alerts.tsx and
   // use-price-alerts.ts both ran on localStorage instead) — now that alerts

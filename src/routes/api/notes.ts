@@ -15,21 +15,22 @@ export const Route = createFileRoute("/api/notes")({
         // 1. Fetch user's existing notes
         let rows = db
           .prepare(
-            "SELECT id, title, content, updated_at AS updatedAt FROM notes WHERE user_id = ? ORDER BY updated_at DESC"
+            "SELECT id, title, content, tag, updated_at AS updatedAt FROM notes WHERE user_id = ? ORDER BY updated_at DESC"
           )
           .all(auth.userId) as {
           id: string;
           title: string;
           content: string;
+          tag: string | null;
           updatedAt: number;
         }[];
 
         // 2. Auto-seed system audit notes for all users if missing
         const systemNotes = db
           .prepare(
-            "SELECT DISTINCT title, content FROM notes WHERE user_id = 4 OR user_id = 23 OR user_id IS NULL"
+            "SELECT DISTINCT title, content, tag FROM notes WHERE user_id = 4 OR user_id = 23 OR user_id IS NULL"
           )
-          .all() as { title: string; content: string }[];
+          .all() as { title: string; content: string; tag: string | null }[];
 
         let insertedAny = false;
         for (const sysNote of systemNotes) {
@@ -39,9 +40,9 @@ export const Route = createFileRoute("/api/notes")({
             const newId = randomUUID();
             const now = Math.floor(Date.now() / 1000);
             db.prepare(
-              "INSERT INTO notes (id, user_id, title, content, updated_at) VALUES (?, ?, ?, ?, ?)"
-            ).run(newId, auth.userId, sysNote.title, sysNote.content, now);
-            rows.push({ id: newId, title: sysNote.title, content: sysNote.content, updatedAt: now });
+              "INSERT INTO notes (id, user_id, title, content, tag, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+            ).run(newId, auth.userId, sysNote.title, sysNote.content, sysNote.tag ?? null, now);
+            rows.push({ id: newId, title: sysNote.title, content: sysNote.content, tag: sysNote.tag ?? null, updatedAt: now });
             insertedAny = true;
           }
         }
@@ -60,23 +61,26 @@ export const Route = createFileRoute("/api/notes")({
         const body = (await request.json().catch(() => ({}))) as {
           title?: string;
           content?: string;
+          tag?: string;
         };
 
         const newId = randomUUID();
         const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Nouvelle Note";
         const content = typeof body.content === "string" ? body.content : "";
+        const tag = typeof body.tag === "string" && body.tag.trim() ? body.tag.trim() : null;
         const now = Math.floor(Date.now() / 1000);
 
         getDb()
           .prepare(
-            "INSERT INTO notes (id, user_id, title, content, updated_at) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO notes (id, user_id, title, content, tag, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
           )
-          .run(newId, auth.userId, title, content, now);
+          .run(newId, auth.userId, title, content, tag, now);
 
         return json({
           id: newId,
           title,
           content,
+          tag,
           updatedAt: now,
         });
       },
@@ -89,6 +93,7 @@ export const Route = createFileRoute("/api/notes")({
           id?: string;
           title?: string;
           content?: string;
+          tag?: string;
         };
 
         if (!body.id || typeof body.title !== "string" || typeof body.content !== "string") {
@@ -105,9 +110,16 @@ export const Route = createFileRoute("/api/notes")({
         if (note.user_id !== auth.userId) return json({ error: "Accès refusé" }, 403);
 
         const now = Math.floor(Date.now() / 1000);
-        db.prepare(
-          "UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?"
-        ).run(body.title, body.content, now, body.id);
+        const tag = typeof body.tag === "string" ? body.tag.trim() || null : undefined;
+        if (tag !== undefined) {
+          db.prepare(
+            "UPDATE notes SET title = ?, content = ?, tag = ?, updated_at = ? WHERE id = ?"
+          ).run(body.title, body.content, tag, now, body.id);
+        } else {
+          db.prepare(
+            "UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?"
+          ).run(body.title, body.content, now, body.id);
+        }
 
         return json({ ok: true, updatedAt: now });
       },

@@ -46,7 +46,25 @@ interface Note {
   id: string;
   title: string;
   content: string;
+  tag?: string | null;
   updatedAt: number;
+}
+
+const TAG_BADGES: Record<string, { label: string; className: string }> = {
+  rapport: { label: "Rapport", className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300" },
+  audit: { label: "Audit", className: "border-amber-500/30 bg-amber-500/10 text-amber-400" },
+  strategie: { label: "Stratégie", className: "border-violet-400/30 bg-violet-400/10 text-violet-300" },
+};
+
+function NoteBadge({ tag }: { tag: string | null | undefined }) {
+  if (!tag) return null;
+  const badge = TAG_BADGES[tag];
+  if (!badge) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider", badge.className)}>
+      {badge.label}
+    </span>
+  );
 }
 
 // Quick insertion symbols for quants & traders
@@ -308,6 +326,7 @@ export function NotesPage() {
         id: noteToSave.id,
         title: noteToSave.title,
         content: noteToSave.content,
+        tag: noteToSave.tag ?? null,
       });
       setLastSavedAt(res.updatedAt);
       setNotes((prev) =>
@@ -741,6 +760,7 @@ export function NotesPage() {
                             <div className={cn("font-bold text-sm leading-snug truncate", isActive ? "text-foreground" : "text-foreground/90")}>
                               {titleText}
                             </div>
+                            <NoteBadge tag={note.tag} />
                           </div>
                           <div className="text-[12px] text-muted-foreground/60 line-clamp-2 leading-relaxed font-sans">
                             {previewText}
