@@ -204,6 +204,7 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/strategies": { label: "Stratégies", icon: Workflow },
   "/surveillance": { label: "Surveillance", icon: Activity },
   "/alerts": { label: "Alertes", icon: Bell },
+  "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
 };

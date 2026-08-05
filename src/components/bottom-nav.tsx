@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, ShieldCheck, Target } from "lucide-react";
+import { LayoutDashboard, Zap, ShieldCheck, Target, NotebookPen } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
@@ -17,6 +17,7 @@ export function BottomNav() {
     { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
     { title: "Opportunités", url: "/opportunities", icon: Target },
     { title: "Auto-Trader", url: "/autotrader", icon: Zap },
+    { title: "Notes",       url: "/carnet-de-notes", icon: NotebookPen },
   ];
 
   const items = user?.is_admin ? [...primaryItems, ADMIN_ITEM] : primaryItems;
