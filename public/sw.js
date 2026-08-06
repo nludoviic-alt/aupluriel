@@ -8,10 +8,10 @@
 // v3 bumps the cache name so returning visitors — whose v2 cache still holds
 // the pre-rebrand icons — get evicted and re-fetch the current Pluriel assets
 // instead of being stuck with stale icons forever (cache-first never expires).
-// v4: cache-name bump to force-evict every installed client's stale cache
-// while debugging the iOS keyboard-viewport fixes — guarantees phones that
-// keep reporting the old behavior aren't simply running an old bundle.
-const CACHE_NAME = 'lio23-v4';
+// v5: cache-name bump to force-evict every installed client's stale cache
+// after the admin user profile page deploy — guarantees phones/browsers
+// that keep reporting the old modal behavior aren't simply running an old bundle.
+const CACHE_NAME = 'lio23-v5';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo.png',
