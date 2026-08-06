@@ -131,7 +131,7 @@ const byUser = db.prepare(`
   FROM bot_trades t JOIN users u ON u.id = t.user_id
   WHERE t.status IN ('won','lost') AND ${modeFilter}
     AND t.time >= ${dayStart} AND t.time < ${dayEnd}
-  GROUP BY u.username ORDER BY t.pnl DESC
+  GROUP BY u.username ORDER BY pnl DESC
 `).all();
 
 const report = {

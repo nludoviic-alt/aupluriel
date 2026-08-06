@@ -213,6 +213,7 @@ function StrategiesPage() {
             { id: "Boom", label: "Preset Boom", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Boom").length, green: false },
             { id: "Crash", label: "Preset Crash", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Crash").length, green: false },
             { id: "Scalping", label: "Preset Scalping", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Scalping").length, green: false },
+            { id: "Best Day", label: "Best Day", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Best Day").length, green: true },
             { id: "custom", label: "Règles Sur-Mesure", count: items.length, green: false },
           ] as const
         ).map((tab) => (

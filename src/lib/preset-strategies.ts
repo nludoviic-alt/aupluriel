@@ -9,7 +9,7 @@ import type { AutoTraderConfig } from "./signal-core";
 export interface PresetStrategyDef {
   id: string;
   name: string;
-  category: "Multi" | "Boom" | "Crash" | "Scalping";
+  category: "Multi" | "Boom" | "Crash" | "Scalping" | "Best Day";
   targetPreset: "default" | "boom" | "crash" | "scalping" | "liquidity";
   targetMarkets: string;
   tagline: string;
@@ -340,6 +340,79 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       stakeUsd: 5,
       maxDailyLossUsd: 15,
       symbols: ["CRASH900"],
+    },
+  },
+  // ── Best Day — Config gagnante de mardi 4 août 2026 ──
+  // Boom: +31.78$ (138 trades, 59.4% WR) · Crash: +92.48$ (114 trades, 71.1% WR)
+  // Total Boom+Crash: +124.26$ — seule la config Multi/default perdait ce jour.
+  {
+    id: "best-day-boom",
+    name: "Best Day — Boom (Mardi)",
+    category: "Best Day",
+    targetPreset: "boom",
+    targetMarkets: "BOOM 500 · BOOM 1000",
+    tagline: "Configuration exacte de mardi 4 août 2026 — jour gagnant Boom (+31.78$, 138 trades, 59.4% WR). Multi-symboles, TF≥2, SL 15%, TP 10%.",
+    badge: "Best Day",
+    riskProfile: "Spikes",
+    color: "from-green-500/25 via-emerald-500/10 to-transparent",
+    borderGlow: "border-green-500/40",
+    verified: true,
+    params: {
+      minConfidence: 85,
+      maxConfidence: 89,
+      minTfAgreement: 2,
+      durationMinutes: 5,
+      stakeUsd: 5,
+      maxDailyLossUsd: 30,
+      symbolsCount: 2,
+    },
+    configOverride: {
+      // Config de mardi 4 août 2026 — jour gagnant (+31.78$ sur 138 trades)
+      minConfidence: 85,
+      maxConfidence: 89,
+      minTfAgreement: 2,
+      stakeUsd: 5,
+      maxDailyLossUsd: 30,
+      stopLossPctOfStake: 15,
+      takeProfitPctOfStake: 10,
+      multiplierLevel: 100,
+      symbols: ["BOOM500", "BOOM1000"],
+      excludedSymbols: ["BOOM600", "BOOM900"],
+    },
+  },
+  {
+    id: "best-day-crash",
+    name: "Best Day — Crash (Mardi)",
+    category: "Best Day",
+    targetPreset: "crash",
+    targetMarkets: "CRASH 900 · CRASH 1000",
+    tagline: "Configuration exacte de mardi 4 août 2026 — meilleur jour Crash (+92.48$, 114 trades, 71.1% WR). CRASH900+1000, TF≥3, SL 10%, TP 10%.",
+    badge: "Best Day",
+    riskProfile: "Spikes",
+    color: "from-green-500/25 via-emerald-500/10 to-transparent",
+    borderGlow: "border-green-500/40",
+    verified: true,
+    params: {
+      minConfidence: 85,
+      maxConfidence: 100,
+      minTfAgreement: 3,
+      durationMinutes: 5,
+      stakeUsd: 5,
+      maxDailyLossUsd: 50,
+      symbolsCount: 2,
+    },
+    configOverride: {
+      // Config de mardi 4 août 2026 — meilleur jour Crash (+92.48$ sur 114 trades, 71.1% WR)
+      minConfidence: 85,
+      maxConfidence: 100,
+      minTfAgreement: 3,
+      stakeUsd: 5,
+      maxDailyLossUsd: 50,
+      stopLossPctOfStake: 10,
+      takeProfitPctOfStake: 10,
+      multiplierLevel: 100,
+      symbols: ["CRASH1000", "CRASH900"],
+      excludedSymbols: ["CRASH500", "CRASH600"],
     },
   },
 ];
