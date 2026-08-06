@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   CheckCheck,
@@ -143,7 +144,15 @@ export function NotificationCenterModal({
   const filtered = notifications.filter((n) => (filter === "all" ? true : n.category === filter));
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Rendered inline (not portaled) this was a child of <header>, which has
+  // overflow-hidden for its decorative glow blobs — a `fixed` descendant
+  // still gets clipped to an overflow:hidden ancestor's box in this DOM
+  // subtree, so the modal only ever showed a sliver inside the header's own
+  // ~80px height instead of covering the screen. Portal to <body>, same
+  // pattern as StrategyEditor in strategies.tsx.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200">
       <div className="relative flex h-[90vh] max-h-[750px] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0B0F19] shadow-2xl">
         
@@ -325,7 +334,8 @@ export function NotificationCenterModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

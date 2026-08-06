@@ -138,10 +138,20 @@ export function SettingsPage() {
           if (cfg.enableKraken !== undefined) setEnableKraken(cfg.enableKraken);
           if (cfg.enableBinance !== undefined) setEnableBinance(cfg.enableBinance);
           if (cfg.enableOanda !== undefined) setEnableOanda(cfg.enableOanda);
-          if (cfg.maxDailyLossUsd !== undefined) setMaxDailyLoss(cfg.maxDailyLossUsd);
+          // maxDailyLossUsd is NOT read from here — see the /api/bot fetch
+          // below, which is the value the bot actually runs with.
         } catch { /* ignore */ }
       }
       setAutoBacktestEnabled(!!s.auto_backtest_enabled);
+    }).catch(() => {});
+
+    // Perte Max Jour must show what the Default preset's bot actually runs
+    // with (same source as the Dashboard's "Quota risque du jour" card) —
+    // not a separate value from /api/settings that was never wired to the
+    // live engine, which is what made this field look "unsynced".
+    api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot").then((res) => {
+      const live = res.presets?.default?.savedConfig?.maxDailyLossUsd;
+      if (live !== undefined) setMaxDailyLoss(live);
     }).catch(() => {});
 
     api.get<{ config?: { botToken?: string } }>("/api/telegram").then((res) => {
@@ -335,6 +345,15 @@ export function SettingsPage() {
           config: { botToken: telegramToken, enabled: true },
         });
       }
+
+      // Push to the live Default preset config — /api/settings above only
+      // wrote to a separate field the bot never reads, which is why this
+      // field could show one number here while the Dashboard's "Quota
+      // risque du jour" (same value, read from bot_state) showed another.
+      // Scoped to Default only: Boom/Crash keep their own tuned caps.
+      try {
+        await api.post("/api/bot", { action: "update", preset: "default", config: { maxDailyLossUsd: maxDailyLoss } });
+      } catch { /* non-fatal — the rest of settings still saved */ }
 
       // Sync local storage autotrader config drafts so Auto-Trader HUD immediately sees the new daily loss limit & stake
       const presetsList = ["default", "boom", "crash", "scalping", "liquidity"];

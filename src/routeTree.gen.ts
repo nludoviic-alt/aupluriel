@@ -43,6 +43,7 @@ import { Route as ApiPresenceRouteImport } from './routes/api/presence'
 import { Route as ApiOptimizeRouteImport } from './routes/api/optimize'
 import { Route as ApiOpportunitiesRouteImport } from './routes/api/opportunities'
 import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
+import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -247,6 +248,11 @@ const ApiNotifyMeRoute = ApiNotifyMeRouteImport.update({
   path: '/api/notify-me',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
+  id: '/api/notifications',
+  path: '/api/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiNotesRoute = ApiNotesRouteImport.update({
   id: '/api/notes',
   path: '/api/notes',
@@ -446,6 +452,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/optimize': typeof ApiOptimizeRoute
@@ -515,6 +522,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/optimize': typeof ApiOptimizeRoute
@@ -585,6 +593,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
+  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
   '/api/optimize': typeof ApiOptimizeRoute
@@ -656,6 +665,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
     | '/api/optimize'
@@ -725,6 +735,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
     | '/api/optimize'
@@ -794,6 +805,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
+    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
     | '/api/optimize'
@@ -864,6 +876,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
   ApiNotesRoute: typeof ApiNotesRoute
+  ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiNotifyMeRoute: typeof ApiNotifyMeRoute
   ApiOpportunitiesRoute: typeof ApiOpportunitiesRoute
   ApiOptimizeRoute: typeof ApiOptimizeRoute
@@ -1139,6 +1152,13 @@ declare module '@tanstack/react-router' {
       path: '/api/notify-me'
       fullPath: '/api/notify-me'
       preLoaderRoute: typeof ApiNotifyMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notifications': {
+      id: '/api/notifications'
+      path: '/api/notifications'
+      fullPath: '/api/notifications'
+      preLoaderRoute: typeof ApiNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/notes': {
@@ -1419,6 +1439,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
   ApiNotesRoute: ApiNotesRoute,
+  ApiNotificationsRoute: ApiNotificationsRoute,
   ApiNotifyMeRoute: ApiNotifyMeRoute,
   ApiOpportunitiesRoute: ApiOpportunitiesRoute,
   ApiOptimizeRoute: ApiOptimizeRoute,
