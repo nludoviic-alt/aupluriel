@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Outlet, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
@@ -826,6 +826,12 @@ function AdminPage() {
   const boomTotalPnl = boomRecaps.reduce((sum, r) => sum + r.netPnl, 0);
   const boomTotalTrades = boomRecaps.reduce((sum, r) => sum + r.trades, 0);
   const boomBreakdownTotal = boomBreakdown.reduce((acc, b) => ({ trades: acc.trades + b.trades, wins: acc.wins + b.wins, losses: acc.losses + b.losses, netPnl: acc.netPnl + b.netPnl }), { trades: 0, wins: 0, losses: 0, netPnl: 0 });
+
+  // If we're on a child route (/admin/users/:id), render only the Outlet
+  // so the user profile page replaces the admin content entirely.
+  const routerState = useRouterState();
+  const onChildRoute = routerState.location.pathname.startsWith("/admin/users/");
+  if (onChildRoute) return <Outlet />;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-2 sm:px-4 md:px-16 lg:px-24 py-6 space-y-6">
