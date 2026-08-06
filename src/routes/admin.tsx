@@ -274,6 +274,7 @@ function mobileCardTint(userId: number) {
 
 function AdminPage() {
   const navigate = useNavigate();
+  const routerState = useRouterState();
   const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const { confirmState, confirm } = useConfirm();
@@ -829,9 +830,7 @@ function AdminPage() {
 
   // If we're on a child route (/admin/users/:id), render only the Outlet
   // so the user profile page replaces the admin content entirely.
-  const routerState = useRouterState();
-  const onChildRoute = routerState.location.pathname.startsWith("/admin/users/");
-  if (onChildRoute) return <Outlet />;
+  if (routerState.location.pathname.startsWith("/admin/users/")) return <Outlet />;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-2 sm:px-4 md:px-16 lg:px-24 py-6 space-y-6">
