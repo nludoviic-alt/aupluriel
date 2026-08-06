@@ -187,7 +187,7 @@ const tickSubIds = new Map<string, string>();
 // latest 1-minute candle instead of giving up, so charts keep moving instead
 // of sitting on "en attente" forever. One poll loop per symbol, shared across
 // every subscriber the same way the real subscription is.
-const TICK_POLL_FALLBACK_MS = 5000;
+const TICK_POLL_FALLBACK_MS = 2000;
 const tickPollTimers = new Map<string, ReturnType<typeof setInterval>>();
 
 function startTickPollFallback(symbol: string) {
@@ -461,8 +461,10 @@ export function subscribeTicks(
     pubListeners.add(l);
     pubRequest({ ticks: symbol, subscribe: 1 }).then(() => {
       console.log(`[Deriv] subscribed to ticks: ${symbol}`);
-    }).catch((e) => {
-      console.error(`[Deriv] tick subscription failed for ${symbol}, falling back to candle polling:`, e instanceof Error ? e.message : e);
+    }).catch(() => {
+      // Silently fall back to candle polling — Deriv sometimes restricts
+      // tick streaming for certain app_ids while candles still work.
+      // The fallback keeps charts updating every 2s via ticks_history.
       startTickPollFallback(symbol);
     });
   }
