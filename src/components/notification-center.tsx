@@ -32,6 +32,19 @@ export interface NotificationItem {
   createdAt: number;
 }
 
+/**
+ * Custom event dispatched whenever notifications change (marked read, cleared,
+ * deleted) so that every badge across the app (sidebar, mobile menu…) can
+ * refresh its unread count immediately instead of waiting for the 15s poll.
+ */
+export const NOTIFICATIONS_CHANGED_EVENT = "pluriel:notifications-changed";
+
+function notifyNotificationsChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT));
+  }
+}
+
 interface NotificationsResponse {
   notifications: NotificationItem[];
   unreadCount: number;
@@ -62,7 +75,14 @@ export function NotificationCenterSidebarItem({
   useEffect(() => {
     fetchUnread();
     const interval = setInterval(fetchUnread, 15_000);
-    return () => clearInterval(interval);
+    // Refresh immediately when any notification mutation happens elsewhere
+    // (e.g. user reads/clears notifications on the notifications page).
+    const onChanged = () => fetchUnread();
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, onChanged);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, onChanged);
+    };
   }, [fetchUnread]);
 
   return (
@@ -114,6 +134,7 @@ export function NotificationCenterPage() {
     try {
       await api.post("/api/notifications", { action: "mark_all_read" });
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      notifyNotificationsChanged();
       toast.success("Toutes les notifications ont été marquées comme lues");
     } catch {
       toast.error("Erreur lors de la mise à jour");
@@ -125,6 +146,7 @@ export function NotificationCenterPage() {
       await api.post("/api/notifications", { action: "clear_all" });
       setNotifications([]);
       setSelectedId(null);
+      notifyNotificationsChanged();
       toast.success("Historique des notifications effacé");
     } catch {
       toast.error("Erreur lors de la suppression");
@@ -135,6 +157,7 @@ export function NotificationCenterPage() {
     try {
       await api.post("/api/notifications", { action: "mark_read", id });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+      notifyNotificationsChanged();
     } catch {}
   }
 
@@ -152,6 +175,7 @@ export function NotificationCenterPage() {
       if (selectedId === id) {
         setSelectedId(next?.id ?? null);
       }
+      notifyNotificationsChanged();
     } catch {}
   }
 

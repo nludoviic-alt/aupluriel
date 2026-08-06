@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Plus, Power, Trash2, Zap, CheckCircle2, ShieldAlert, Sliders, ArrowRight, Play, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,7 +55,7 @@ export interface PresetStrategyDef {
   configOverride: Partial<AutoTraderConfig>;
 }
 
-const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
+export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
   {
     id: "gold-trend-liquidity-sweep",
     name: "Gold & Trend — Fakeout & Chasse à la Liquidité",
@@ -210,35 +210,36 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     category: "Multi",
     targetPreset: "default",
     targetMarkets: "Dow Jones · Nasdaq · EUR/GBP · EUR/USD · BTC/USD · GBP/USD · USD/CAD",
-    tagline: "Filtrage ultra-strict avec accord 4/4 TF et confiance 85-89%. Symboles et seuils alignés sur l'audit VPS de production le plus récent.",
+    tagline: "Filtrage ultra-strict avec accord 4/4 TF et confiance 80-89%. 3 symboles seulement, sélectionnés sur les données de production VPS (2204 trades, audit 2026-08-06).",
     badge: "Sécurité Max",
     riskProfile: "Conservateur",
     color: "from-blue-500/20 via-indigo-500/10 to-transparent",
     borderGlow: "border-blue-500/30",
     verified: true,
     params: {
-      minConfidence: 85,
+      minConfidence: 80,
       maxConfidence: 89,
       minTfAgreement: 4,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 15,
-      symbolsCount: 7,
+      symbolsCount: 3,
     },
     configOverride: {
-      minConfidence: 85,
+      // Audit VPS 2026-08-06 (2204 trades production) : seuls 3 symboles Multi
+      // sont défendables — frxEURGBP (PF 2.11, +$25), frxUSDCAD (PF 2.29,
+      // +$25), OTC_NDX (PF 10.17, +$99, échantillon faible mais prometteur).
+      // OTC_DJI retiré (PF 0.83, -$36.64), frxEURUSD retiré (PF 0.16, -$11.50),
+      // cryBTCUSD retiré (PF 0.74, -$17.65), frxGBPUSD retiré (PF 0.88, -$2.69).
+      // minConfidence abaissé 85->80 : l'audit montre que 80-89% est la tranche
+      // la plus rentable (PF 1.22, +$54), pas 85-89 seul.
+      minConfidence: 80,
       maxConfidence: 89,
       minTfAgreement: 4,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 15,
-      // Aligné sur DEFAULT_CONFIG.symbols (src/lib/signal-core.ts) — OTC_GDAXI
-      // et OTC_SPC retirés : les deux pires symboles de l'audit VPS du
-      // 2026-08-05 (OTC_GDAXI -$77.54, et responsable direct de la perte du
-      // 2026-08-04 avec OTC_SPC). minConfidence relevé de 82 à 85 pour la même
-      // raison : le même audit classe 75-84% comme "CATASTROPHE" (-$232.83),
-      // et 82 tombait dans cette tranche.
-      symbols: ["OTC_DJI", "OTC_NDX", "frxEURGBP", "frxEURUSD", "cryBTCUSD", "frxGBPUSD", "frxUSDCAD"],
+      symbols: ["frxEURGBP", "frxUSDCAD", "OTC_NDX"],
     },
   },
   {
@@ -247,33 +248,37 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     category: "Multi",
     targetPreset: "default",
     targetMarkets: "Dow Jones · Nasdaq · EUR/GBP · EUR/USD · BTC/USD · GBP/USD · USD/CAD",
-    tagline: "Même watchlist validée que Conservateur, mais accord 3/4 TF (au lieu de 4/4) pour plus de volume. Confiance 85-89% conservée — 75-84% reste la zone catastrophe de l'audit.",
+    tagline: "Même watchlist validée que Conservateur, mais accord 3/4 TF pour plus de volume. Attention : TF=3 est le pire bucket d'accord TF en production (PF 0.65, -$141.76) — à utiliser avec prudence.",
     badge: "Fréquence Élevée",
     riskProfile: "Volumique",
     color: "from-emerald-500/20 via-teal-500/10 to-transparent",
     borderGlow: "border-emerald-500/30",
-    verified: true,
+    // Badge verified retiré 2026-08-06 : l'audit VPS production (2204 trades)
+    // montre que TF=3 est le pire bucket d'accord TF (PF 0.65, -$141.76 sur
+    // la base locale ; PF 0.85 sur le VPS mais bien inférieur à TF=4 qui est
+    // à PF 0.97). Recommender TF≥3 pour "plus de volume" est dangereux —
+    // le volume supplémentaire vient des trades les plus perdants.
+    verifiedNote: "Audit VPS 2026-08-06 : TF=3 est le pire bucket d'accord TF en production (PF 0.65, -$141.76). La version Conservateur (TF≥4) est strictement supérieure. Cette stratégie reste disponible pour exploration mais n'est plus certifiée.",
     params: {
-      minConfidence: 85,
+      minConfidence: 80,
       maxConfidence: 89,
       minTfAgreement: 3,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbolsCount: 7,
+      symbolsCount: 3,
     },
     configOverride: {
-      // Seul minConfidence change vs Multi-Conservateur (75 -> 85 : 75-84%
-      // est la tranche "CATASTROPHE" -$232.83 de l'audit VPS 2026-08-05,
-      // pas un seuil qu'on peut assouplir pour plus de volume). Le reste
-      // (symboles, TF3) est déjà ce que le compte tourne réellement.
-      minConfidence: 85,
+      // Mêmes 3 symboles que Conservateur (alignés audit VPS 2026-08-06).
+      // TF≥3 au lieu de TF≥4 pour plus de volume — mais l'audit montre que
+      // TF=3 est le pire bucket (PF 0.65). À utiliser avec prudence.
+      minConfidence: 80,
       maxConfidence: 89,
       minTfAgreement: 3,
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbols: ["OTC_DJI", "OTC_NDX", "frxEURGBP", "frxEURUSD", "cryBTCUSD", "frxGBPUSD", "frxUSDCAD"],
+      symbols: ["frxEURGBP", "frxUSDCAD", "OTC_NDX"],
     },
   },
   {
@@ -281,33 +286,37 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Boom — Spikes Scalper",
     category: "Boom",
     targetPreset: "boom",
-    targetMarkets: "BOOM 500 · BOOM 1000",
-    tagline: "Spécialisé sur les 2 symboles Boom validés (BOOM600 et BOOM900 exclus après audit VPS) pour capturer les pics d'impulsion.",
+    targetMarkets: "BOOM 500",
+    tagline: "BOOM500 seul — le moins pire des symboles Boom en production (PF 0.94, -$34.53 sur 282 trades). Aucun symbole Boom n'est encore rentable : à surveiller, pas à confiance aveugle.",
     badge: "Indices Boom",
     riskProfile: "Spikes",
     color: "from-rose-500/20 via-red-500/10 to-transparent",
     borderGlow: "border-rose-500/30",
-    verified: true,
+    // Badge verified retiré 2026-08-06 : l'audit VPS production montre qu'aucun
+    // symbole Boom n'est rentable — BOOM500 (PF 0.94, -$34.53), BOOM1000
+    // (PF 0.71, -$26.99), BOOM900 (PF 0.85, -$69.55), BOOM600 (PF 0.43,
+    // -$24.30). BOOM1000 retiré de la liste (PF 0.71). BOOM500 conservé seul
+    // comme le moins pire, en attente de validation sur 150 trades.
+    verifiedNote: "Audit VPS 2026-08-06 (production, 601 trades Boom) : aucun symbole Boom n'a un PF > 1. BOOM500 est le moins pire (PF 0.94, 76.2% WR) mais reste perdant. BOOM1000 retiré (PF 0.71). Stratégie en observation, plus en validation.",
     params: {
       minConfidence: 85,
       maxConfidence: 89,
-      minTfAgreement: 3,
+      minTfAgreement: 4,
       durationMinutes: 5,
       stakeUsd: 5,
-      maxDailyLossUsd: 25,
-      symbolsCount: 2,
+      maxDailyLossUsd: 15,
+      symbolsCount: 1,
     },
     configOverride: {
-      // BOOM_SYMBOLS actuel (src/lib/autotrader.ts) : BOOM600 exclu de longue
-      // date (-$46.95/150 trades), BOOM900 exclu depuis l'audit VPS
-      // 2026-08-05 (2e pire symbole, -$60.96/358 trades). minConfidence
-      // relevé 75->85 pour la même raison catastrophe-band que les Multi.
+      // Audit VPS 2026-08-06 : BOOM500 seul (PF 0.94, le moins pire des 4
+      // symboles Boom). BOOM1000 retiré (PF 0.71, -$26.99). BOOM900 et
+      // BOOM600 déjà exclus. TF≥4 (au lieu de 3) car TF=3 est le pire bucket.
       minConfidence: 85,
       maxConfidence: 89,
-      minTfAgreement: 3,
+      minTfAgreement: 4,
       stakeUsd: 5,
-      maxDailyLossUsd: 25,
-      symbols: ["BOOM500", "BOOM1000"],
+      maxDailyLossUsd: 15,
+      symbols: ["BOOM500"],
     },
   },
   {
@@ -315,8 +324,8 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "Crash — Reversal Hunter",
     category: "Crash",
     targetPreset: "crash",
-    targetMarkets: "CRASH 1000 · CRASH 900",
-    tagline: "Spécialisé sur les 2 symboles Crash validés (CRASH500 et CRASH600 exclus — amélioration confirmée par config-change-impact) pour capturer les retournements.",
+    targetMarkets: "CRASH 900",
+    tagline: "CRASH900 seul — le meilleur symbole de toute la production (PF 1.58, +$160.31 sur 111 trades). CRASH1000 retiré (PF 0.98, quasi neutre). TF≥4 pour éliminer le pire bucket d'accord TF.",
     badge: "Indices Crash",
     riskProfile: "Spikes",
     color: "from-purple-500/20 via-fuchsia-500/10 to-transparent",
@@ -325,25 +334,25 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     params: {
       minConfidence: 85,
       maxConfidence: 100,
-      minTfAgreement: 3,
+      minTfAgreement: 4,
       durationMinutes: 5,
       stakeUsd: 5,
-      maxDailyLossUsd: 25,
-      symbolsCount: 2,
+      maxDailyLossUsd: 15,
+      symbolsCount: 1,
     },
     configOverride: {
-      // CRASH_SYMBOLS actuel : CRASH500/CRASH600 exclus (config_changes
-      // 2026-08-02, vérifié "amélioration" par config-change-impact).
-      // maxConfidence laissé à 100 (pas 89) : contrairement à Boom/Default,
-      // la config Crash réellement en prod pour les deux comptes utilise
-      // 100 — rien dans les audits ne prouve que 90-100% soit mauvais
-      // spécifiquement pour Crash.
+      // Audit VPS 2026-08-06 : CRASH900 est le meilleur symbole de toute la
+      // production (PF 1.58, +$160.31, 111 trades). CRASH1000 retiré (PF 0.98,
+      // -$9.52 — quasi neutre mais pas rentable). CRASH500/600 déjà exclus.
+      // TF≥4 (au lieu de 3) car TF=3 est le pire bucket d'accord TF (PF 0.65).
+      // maxConfidence laissé à 100 : l'audit ne montre pas que 90-100% est
+      // mauvais spécifiquement pour Crash.
       minConfidence: 85,
       maxConfidence: 100,
-      minTfAgreement: 3,
+      minTfAgreement: 4,
       stakeUsd: 5,
-      maxDailyLossUsd: 25,
-      symbols: ["CRASH1000", "CRASH900"],
+      maxDailyLossUsd: 15,
+      symbols: ["CRASH900"],
     },
   },
 ];
@@ -382,7 +391,7 @@ function StrategiesPage() {
   const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "verified" | "Multi" | "Boom" | "Crash" | "Scalping" | "custom">("all");
   const { confirmState, confirm } = useConfirm();
 
-  const refreshLiveConfigs = async () => {
+  const refreshLiveConfigs = useCallback(async () => {
     try {
       const data = await api.get<{ presets: Record<string, { savedConfig: AutoTraderConfig | null }> }>("/api/bot");
       const next: LivePresetConfigs = {};
@@ -396,7 +405,7 @@ function StrategiesPage() {
     } finally {
       setLiveConfigsLoaded(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -487,6 +496,18 @@ function StrategiesPage() {
     if (activeCategoryTab === "custom") return [];
     return OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === activeCategoryTab);
   }, [activeCategoryTab]);
+
+  // Memoize the "Active sur Bot" badge check — was recomputed on every render
+  // for every strategy. Now only recomputes when live configs or the filtered
+  // list actually change.
+  const activeStrategyIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const strat of filteredPresetStrategies) {
+      const live = liveConfigs[strat.targetPreset];
+      if (matchesLiveConfig(strat, live)) ids.add(strat.id);
+    }
+    return ids;
+  }, [filteredPresetStrategies, liveConfigs]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -584,7 +605,7 @@ function StrategiesPage() {
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredPresetStrategies.map((s) => {
-              const isActive = liveConfigsLoaded && matchesLiveConfig(s, liveConfigs[s.targetPreset]);
+              const isActive = liveConfigsLoaded && activeStrategyIds.has(s.id);
               const isApplying = applyingId === s.id;
 
               return (

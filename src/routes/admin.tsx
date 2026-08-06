@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
+import { OFFICIAL_PRESET_STRATEGIES, type PresetStrategyDef } from "@/routes/strategies";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
@@ -284,6 +285,7 @@ function AdminPage() {
   const [botStatus, setBotStatus] = useState<Record<string, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
   const [presetBusy, setPresetBusy] = useState<number | null>(null);
+  const [strategyBusy, setStrategyBusy] = useState<number | null>(null);
   const [backtestBusyId, setBacktestBusyId] = useState<number | null>(null);
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(true);
@@ -406,7 +408,9 @@ function AdminPage() {
     // status and the trading recap are the two that actually change minute
     // to minute; users/invites barely move, so they stay on the manual
     // "Actualiser" button instead of adding load for no benefit.
-    const id = setInterval(() => { loadBotStatus(); loadRecap(); }, 20_000);
+    // Poll bot status + recap in parallel (was sequential — two round trips
+    // stacked into one 20s tick). Promise.all halves the latency per tick.
+    const id = setInterval(() => { void Promise.all([loadBotStatus(), loadRecap()]); }, 20_000);
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
@@ -2201,6 +2205,64 @@ function AdminPage() {
                         Réinitialiser
                       </button>
                     </div>
+                    {/* ── Strategy selector: apply a verified strategy's
+                        configOverride to this user's preset in one click. ── */}
+                    {(() => {
+                      const matchingStrategies = OFFICIAL_PRESET_STRATEGIES.filter(
+                        (s) => s.targetPreset === profilePreset && s.verified,
+                      );
+                      if (!matchingStrategies.length) return null;
+                      return (
+                        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+                              <Dices className="h-3.5 w-3.5" /> Appliquer une stratégie
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {matchingStrategies.map((strat) => (
+                              <button
+                                key={strat.id}
+                                disabled={strategyBusy === profileUser.id}
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: `Appliquer "${strat.name}" ?`,
+                                    description: `Remplace la config ${presetLabels[profilePreset]} de ${profileUser.username} par les paramètres de cette stratégie.${strat.verified ? " ✓ Stratégie vérifiée." : strat.verifiedNote ? " ⚠ Non vérifiée." : ""}`,
+                                    confirmLabel: "Appliquer",
+                                    danger: true,
+                                  });
+                                  if (!ok) return;
+                                  setStrategyBusy(profileUser.id);
+                                  try {
+                                    const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", {
+                                      userId: profileUser.id,
+                                      preset: profilePreset,
+                                      configOverride: strat.configOverride,
+                                    });
+                                    setJournalConfig(res.config);
+                                    toast.success(`Stratégie "${strat.name}" appliquée à ${profileUser.username} ✓`);
+                                  } catch (err) {
+                                    toast.error(err instanceof Error ? err.message : "Erreur");
+                                  } finally {
+                                    setStrategyBusy(null);
+                                  }
+                                }}
+                                className={cn(
+                                  "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-bold transition-colors disabled:opacity-40",
+                                  strat.verified
+                                    ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15"
+                                    : "border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white hover:bg-white/[0.06]",
+                                )}
+                              >
+                                {strategyBusy === profileUser.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                                {strat.verified && <Check className="h-3 w-3" />}
+                                {strat.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="flex flex-col items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-3 py-2.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">Deriv</span>

@@ -27,6 +27,11 @@ interface PatchBody {
   excludedSymbols?: string[];
   autoRollbackEnabled?: boolean;
   resetToCanonical?: boolean;
+  /** Apply a full strategy configOverride (from the Strategies page) to this
+   * user's preset — merges all fields the strategy defines (symbols, confidence,
+   * TF agreement, stake, daily loss, TP/SL, etc.) into the existing config.
+   * Used by the admin user modal's strategy selector. */
+  configOverride?: Partial<AutoTraderConfig>;
 }
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
@@ -51,8 +56,8 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash" && body.preset !== "scalping" && body.preset !== "liquidity") {
           return json({ error: "Preset inconnu." }, 400);
         }
-        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical) {
-          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols, autoRollbackEnabled ou resetToCanonical requis)." }, 400);
+        if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical && !body.configOverride) {
+          return json({ error: "Aucun champ à appliquer (symbols, minConfidence, maxConfidence, excludedSymbols, autoRollbackEnabled, configOverride ou resetToCanonical requis)." }, 400);
         }
 
         const db = getDb();
@@ -107,6 +112,12 @@ export const Route = createFileRoute("/api/admin/user-config")({
             return json({ error: "autoRollbackEnabled doit être un booléen." }, 400);
           }
           config.autoRollbackEnabled = body.autoRollbackEnabled;
+        }
+        if (body.configOverride !== undefined) {
+          if (typeof body.configOverride !== "object" || body.configOverride === null) {
+            return json({ error: "configOverride doit être un objet." }, 400);
+          }
+          Object.assign(config, body.configOverride);
         }
 
         updateConfigForUser(body.userId, body.preset, config, admin.id);
