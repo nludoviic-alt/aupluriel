@@ -942,6 +942,71 @@ class ServerBotEngine {
     }, SCAN_MS);
   }
 
+  /**
+   * Admin force-trade: buys a contract directly via the engine's Deriv
+   * connection, bypassing the signal scan. Used by the admin user profile
+   * page to let an admin manually trade on behalf of a user.
+   */
+  async forceTrade(opts: {
+    symbol: string;
+    direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
+    stake: number;
+    durationMinutes: number;
+  }): Promise<TradeLog> {
+    if (this.stopped) throw new Error("Moteur arrêté — redémarrez le bot d'abord.");
+    const { symbol, direction, stake, durationMinutes } = opts;
+    const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
+    const tradeId = `srv_admin_${Date.now()}_${symbol}`;
+    const pendingLog: TradeLog = {
+      id: tradeId,
+      time: Date.now(),
+      symbol,
+      direction,
+      stake,
+      payout: 0,
+      status: "pending",
+      profit: 0,
+      confidence: 100,
+      tfAgreement: 0,
+      note: "Trade manuel admin",
+      ...(isMultiplier
+        ? { multiplier: this.config.multiplierLevel ?? 20, stopLossUsd: stake * 0.5, takeProfitUsd: stake }
+        : { durationMinutes, expiry: Date.now() + durationMinutes * 60_000 }),
+    };
+    this.emit(pendingLog);
+
+    try {
+      if (isMultiplier) {
+        const bought = await this.conn.proposeAndBuyMultiplier({
+          symbol,
+          amount: stake,
+          direction: direction === "MULTUP" ? "CALL" : "PUT",
+          multiplier: this.config.multiplierLevel ?? 20,
+          stopLossUsd: stake * 0.5,
+          takeProfitUsd: stake,
+        });
+        const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
+        this.emit(openLog);
+        this.trackMultiplierPosition(openLog);
+        return openLog;
+      } else {
+        const bought = await this.conn.proposeAndBuy({
+          symbol,
+          amount: stake,
+          contractType: direction,
+          durationMinutes,
+        });
+        const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
+        this.emit(openLog);
+        this.trackContract(openLog);
+        return openLog;
+      }
+    } catch (e) {
+      this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec admin: ${(e as Error).message}` });
+      throw e;
+    }
+  }
+
   stop() {
     this.stopped = true;
     if (this.interval) clearInterval(this.interval);
@@ -2032,4 +2097,19 @@ export function getBotTrades(userId: number, preset: Preset, limit = 20): TradeL
 
 export function getOpenBotTrades(userId: number, preset: Preset): TradeLog[] {
   return loadOpenOrPendingTrades(userId, preset);
+}
+
+/**
+ * Admin force-trade: executes a manual trade on behalf of a user via their
+ * running bot engine's Deriv connection. Requires the engine to be running
+ * (so the Deriv connection is established). Returns the trade log.
+ */
+export async function forceTradeForUser(
+  userId: number,
+  preset: Preset,
+  opts: { symbol: string; direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN"; stake: number; durationMinutes: number },
+): Promise<TradeLog> {
+  const engine = engines.get(engineKey(userId, preset));
+  if (!engine) throw new Error(`Bot non actif pour user ${userId} preset ${preset} — démarrez le bot d'abord.`);
+  return engine.forceTrade(opts);
 }

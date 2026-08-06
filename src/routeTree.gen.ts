@@ -74,9 +74,11 @@ import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
+import { Route as ApiAdminForceTradeRouteImport } from './routes/api/admin/force-trade'
 import { Route as ApiAdminConfigChangesRouteImport } from './routes/api/admin/config-changes'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
+import { Route as AdminUsersUserIdRouteImport } from './routes/admin.users.$userId'
 import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/groups/members'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
@@ -405,6 +407,11 @@ const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
   path: '/api/admin/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminForceTradeRoute = ApiAdminForceTradeRouteImport.update({
+  id: '/api/admin/force-trade',
+  path: '/api/admin/force-trade',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminConfigChangesRoute = ApiAdminConfigChangesRouteImport.update({
   id: '/api/admin/config-changes',
   path: '/api/admin/config-changes',
@@ -420,6 +427,11 @@ const ApiAdminBotRoute = ApiAdminBotRouteImport.update({
   path: '/api/admin/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminUsersUserIdRoute = AdminUsersUserIdRouteImport.update({
+  id: '/users/$userId',
+  path: '/users/$userId',
+  getParentRoute: () => AdminRoute,
+} as any)
 const ApiChatGroupsMembersRoute = ApiChatGroupsMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -428,7 +440,7 @@ const ApiChatGroupsMembersRoute = ApiChatGroupsMembersRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -472,9 +484,11 @@ export interface FileRoutesByFullPath {
   '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -499,7 +513,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -543,9 +557,11 @@ export interface FileRoutesByTo {
   '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -571,7 +587,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -615,9 +631,11 @@ export interface FileRoutesById {
   '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
+  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
@@ -688,9 +706,11 @@ export interface FileRouteTypes {
     | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
+    | '/admin/users/$userId'
     | '/api/admin/bot'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -759,9 +779,11 @@ export interface FileRouteTypes {
     | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
+    | '/admin/users/$userId'
     | '/api/admin/bot'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -830,9 +852,11 @@ export interface FileRouteTypes {
     | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
+    | '/admin/users/$userId'
     | '/api/admin/bot'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
     | '/api/admin/stats'
@@ -858,7 +882,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
+  AdminRoute: typeof AdminRouteWithChildren
   AlertsRoute: typeof AlertsRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
@@ -905,6 +929,7 @@ export interface RootRouteChildren {
   ApiAdminBotRoute: typeof ApiAdminBotRoute
   ApiAdminChangelogRoute: typeof ApiAdminChangelogRoute
   ApiAdminConfigChangesRoute: typeof ApiAdminConfigChangesRoute
+  ApiAdminForceTradeRoute: typeof ApiAdminForceTradeRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
@@ -1384,6 +1409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/force-trade': {
+      id: '/api/admin/force-trade'
+      path: '/api/admin/force-trade'
+      fullPath: '/api/admin/force-trade'
+      preLoaderRoute: typeof ApiAdminForceTradeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/config-changes': {
       id: '/api/admin/config-changes'
       path: '/api/admin/config-changes'
@@ -1405,6 +1437,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminBotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/users/$userId': {
+      id: '/admin/users/$userId'
+      path: '/users/$userId'
+      fullPath: '/admin/users/$userId'
+      preLoaderRoute: typeof AdminUsersUserIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/api/chat/groups/members': {
       id: '/api/chat/groups/members'
       path: '/members'
@@ -1414,6 +1453,16 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AdminRouteChildren {
+  AdminUsersUserIdRoute: typeof AdminUsersUserIdRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminUsersUserIdRoute: AdminUsersUserIdRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ApiChatGroupsRouteChildren {
   ApiChatGroupsMembersRoute: typeof ApiChatGroupsMembersRoute
@@ -1429,7 +1478,7 @@ const ApiChatGroupsRouteWithChildren = ApiChatGroupsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
+  AdminRoute: AdminRouteWithChildren,
   AlertsRoute: AlertsRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
@@ -1476,6 +1525,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminBotRoute: ApiAdminBotRoute,
   ApiAdminChangelogRoute: ApiAdminChangelogRoute,
   ApiAdminConfigChangesRoute: ApiAdminConfigChangesRoute,
+  ApiAdminForceTradeRoute: ApiAdminForceTradeRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
