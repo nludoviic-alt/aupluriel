@@ -271,30 +271,41 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
 export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
-/** Boom indices retained after VPS production audit (2 150 trades, 5 août 2026).
- * BOOM500 : +$15.01 sur 663 trades, WR 78.0% — seul symbole Boom rentable.
- * BOOM1000 : -$31.85 sur 201 trades, WR 72.1% — marginal, conservé pour le
- *   volume (2 positions simultanées possibles au lieu d'1).
+/** Boom indices retained after VPS production audit (2 150 trades, 5 août 2026),
+ * revu le 2026-08-06 avec 14 jours de trades réels (pas un sweep synthétique) :
+ * BOOM500 : +$3.62 sur 701 trades, WR 75.6% — seul symbole Boom rentable.
+ * BOOM1000 exclu (2026-08-06) : -$32.08 sur 208 trades (14j), WR 71.2% mais
+ *   R:R ~0.29 (avg_win $0.53, avg_loss -$1.84) — négatif malgré le WR élevé.
+ *   Confirmé sur le régime le plus récent (-$24.11 sur 13 trades depuis le
+ *   05/08 18h). Un sweep walk-forward synthétique sur 37h a donné un résultat
+ *   opposé (100% WR) mais sur seulement 16 trades au filtre réel (conf 85,
+ *   TF 3) — bruit d'échantillon, écarté au profit des trades réels.
  * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0% — R:R 0.51 insuffisant.
  * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%. */
-export const BOOM_SYMBOLS = ["BOOM500", "BOOM1000"];
+export const BOOM_SYMBOLS = ["BOOM500"];
 
-/** Mirror of BOOM_SYMBOLS for Crash — 2 variants retained after production
- * audit (CRASH600 dominates, CRASH1000/900 near breakeven). NOT yet
- * confirmed live the way BOOM_SYMBOLS was — treat as a starting guess. */
-export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
+/** Mirror de BOOM_SYMBOLS pour Crash. Revu le 2026-08-06 avec les mêmes 14
+ * jours de trades réels :
+ * CRASH900 : +$171.06 sur 202 trades, WR 61.9%, R:R ~1.0 — solide.
+ * CRASH1000 exclu (2026-08-06) : -$9.97 sur 247 trades (14j), WR 66.0% mais
+ *   R:R ~0.50 (avg_win $2.36, avg_loss -$4.70). S'aggrave sur le régime
+ *   récent (-$35.66 sur 28 trades depuis le 05/08 18h). Même divergence
+ *   sweep-synthétique-vs-réel que BOOM1000 ci-dessus — écarté pour la même
+ *   raison (16-17 trades au filtre réel, résultat instable). */
+export const CRASH_SYMBOLS = ["CRASH900"];
 
 /**
- * BOOM preset — scalping haute fréquence sur les 2 index Boom rentables.
+ * BOOM preset — scalping haute fréquence sur l'index Boom rentable (BOOM500 seul,
+ * voir BOOM_SYMBOLS ci-dessus).
  *
  * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
  * gain (même quelques centimes) plutôt que d'attendre un objectif ambitieux.
  * Trades/positions illimités (pas de plafond artificiel — seule limite
- * réelle : 1 position par symbole, donc 2 max avec 2 symboles), mais la
+ * réelle : 1 position par symbole, donc 1 seule à la fois avec BOOM500 seul), mais la
  * protection anti-série-de-pertes reste active (maxConsecutiveLosses).
  *
  * Différences clés vs Default :
- * - 2 symboles (BOOM500/900), pas de scan all-markets
+ * - 1 seul symbole (BOOM500), pas de scan all-markets
  * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
@@ -329,8 +340,8 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
  * - stakeMode fixed : mise constante, pas de Kelly
  */
 export const BOOM_PRESET: Partial<AutoTraderConfig> = {
-  // ── 2 symboles Boom (BOOM600 exclu — 62.7% WR, -$46.95 sur 150 trades ;
-  //    BOOM1000 exclu — EV -$0.02/trade après recalibrage TP 10%) ──
+  // ── 1 seul symbole Boom retenu (BOOM500) — BOOM600/900/1000 tous exclus
+  //    sur données réelles, voir le commentaire de BOOM_SYMBOLS ci-dessus ──
   symbolMode: "watchlist",
   symbols: BOOM_SYMBOLS,
   // Pas de excludedSymbols ici : c'est une curation indépendante (ex. BOOM600
@@ -468,6 +479,11 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
  * optimiser/vérifier comme celui qui a validé BOOM_PRESET (deux fenêtres
  * distinctes, la seconde jamais vue par l'optimisation). Traiter comme un
  * signal réel fort, pas encore comme un résultat aussi solide que Boom.
+ *
+ * MAJ 2026-08-06 : le doute ci-dessus sur CRASH1000 est tranché — 247 vrais
+ * trades sur 14 jours donnent -$9.97 (R:R ~0.50), et ça s'aggrave sur le
+ * régime récent (-$35.66/28 trades depuis le 05/08 18h). Exclu de
+ * CRASH_SYMBOLS ci-dessus ; seul CRASH900 reste.
  */
 export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,

@@ -181,6 +181,34 @@ let pubReqId = 0;
 const tickListenersBySymbol = new Map<string, Set<(tick: DerivTick) => void>>();
 const tickSharedListeners = new Map<string, Listener>();
 const tickSubIds = new Map<string, string>();
+// Fallback when Deriv's live `ticks` subscription rejects every symbol with
+// InvalidSymbol (observed 2026-08-06 — ticks_history/candles still works fine,
+// so this is a Deriv-side streaming outage, not a bad symbol). Polls the
+// latest 1-minute candle instead of giving up, so charts keep moving instead
+// of sitting on "en attente" forever. One poll loop per symbol, shared across
+// every subscriber the same way the real subscription is.
+const TICK_POLL_FALLBACK_MS = 5000;
+const tickPollTimers = new Map<string, ReturnType<typeof setInterval>>();
+
+function startTickPollFallback(symbol: string) {
+  if (tickPollTimers.has(symbol)) return;
+  const poll = async () => {
+    try {
+      const candles = await fetchCandles(symbol, 60, 1, 0);
+      const c = candles[candles.length - 1];
+      if (!c) return;
+      const tick: DerivTick = { epoch: Math.floor(Date.now() / 1000), quote: c.close, symbol };
+      for (const cb of tickListenersBySymbol.get(symbol) ?? []) cb(tick);
+    } catch { /* Deriv still unreachable this cycle — retry next tick */ }
+  };
+  tickPollTimers.set(symbol, setInterval(poll, TICK_POLL_FALLBACK_MS));
+  poll();
+}
+
+function stopTickPollFallback(symbol: string) {
+  const t = tickPollTimers.get(symbol);
+  if (t) { clearInterval(t); tickPollTimers.delete(symbol); }
+}
 
 function nextPubId(): number {
   pubReqId = (pubReqId + 1) % 9000000000;
@@ -433,7 +461,10 @@ export function subscribeTicks(
     pubListeners.add(l);
     pubRequest({ ticks: symbol, subscribe: 1 }).then(() => {
       console.log(`[Deriv] subscribed to ticks: ${symbol}`);
-    }).catch((e) => { console.error(`[Deriv] tick subscription failed for ${symbol}:`, e instanceof Error ? e.message : e); });
+    }).catch((e) => {
+      console.error(`[Deriv] tick subscription failed for ${symbol}, falling back to candle polling:`, e instanceof Error ? e.message : e);
+      startTickPollFallback(symbol);
+    });
   }
   listeners.add(onTick);
 
@@ -449,6 +480,7 @@ export function subscribeTicks(
       const l = tickSharedListeners.get(symbol);
       if (l) pubListeners.delete(l);
       tickSharedListeners.delete(symbol);
+      stopTickPollFallback(symbol);
       const subId = tickSubIds.get(symbol);
       tickSubIds.delete(symbol);
       if (subId) pubRequest({ forget: subId }).catch(() => {});
