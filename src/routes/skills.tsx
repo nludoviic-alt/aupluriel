@@ -7,11 +7,15 @@ import {
   Clipboard,
   Check,
   Code2,
+  Crosshair,
   FlaskConical,
+  Gauge,
   RefreshCcw,
   Rocket,
   ShieldCheck,
   Sparkles,
+  Target,
+  TrendingUp,
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,17 +27,17 @@ export const Route = createFileRoute("/skills")({
   component: SkillsPage,
 });
 
-type SkillCategory = "all" | "tune" | "audit" | "security";
+type SkillCategory = "all" | "tune" | "audit" | "security" | "intelligence";
 
 interface SkillItem {
   name: string;
   title: string;
-  category: "tune" | "audit" | "security";
+  category: "tune" | "audit" | "security" | "intelligence";
   categoryLabel: string;
   description: string;
   prompt: string;
   icon: any;
-  tone: "sky" | "emerald" | "amber" | "purple";
+  tone: "sky" | "emerald" | "amber" | "purple" | "rose" | "cyan";
   capabilities: string[];
 }
 
@@ -126,6 +130,61 @@ const ACTIVE_SKILLS: readonly SkillItem[] = [
     tone: "sky",
     capabilities: ["Avant/après par changement", "Espérance et profit factor", "Rollback automatique opt-in", "Par utilisateur et preset"],
   },
+  {
+    name: "adaptive-trading-optimizer",
+    title: "Cerveau Adaptatif",
+    category: "intelligence",
+    categoryLabel: "Intelligence",
+    description: "Apprend des erreurs de trades, classifie les pertes par cause racine, découvre les patterns gagnants (zones d'or), optimise automatiquement les paramètres et cherche à approcher 90% de win rate. Se documente dans un journal persistant.",
+    prompt: "Utilise $adaptive-trading-optimizer pour analyser toutes les données de trading et optimiser automatiquement les paramètres.",
+    icon: BrainCircuit,
+    tone: "purple",
+    capabilities: ["Classification des erreurs (10 causes)", "Zones d'or (WR ≥ 70%)", "Sweep confiance/TF/symboles/heures", "Journal persistant + progression vers 90%"],
+  },
+  {
+    name: "daily-pnl-review",
+    title: "Revue Quotidienne",
+    category: "intelligence",
+    categoryLabel: "Intelligence",
+    description: "Analyse quotidienne des trades de la veille — identifie les pertes évitables, les symboles à suspendre, et recommande les ajustements pour aujourd'hui. Compare avec la moyenne des 7 derniers jours.",
+    prompt: "Utilise $daily-pnl-review pour analyser les trades d'hier et recommander des ajustements.",
+    icon: TrendingUp,
+    tone: "emerald",
+    capabilities: ["P&L par preset/symbole/heure", "Comparaison vs 7 jours", "Plus grosses pertes + streaks", "Changements de config du jour"],
+  },
+  {
+    name: "risk-optimizer",
+    title: "Optimiseur de Risque",
+    category: "intelligence",
+    categoryLabel: "Intelligence",
+    description: "Optimise la taille de position avec le critère de Kelly fractionnel — maximise la croissance tout en limitant le drawdown. Inclut stress tests et limites de perte quotidiennes.",
+    prompt: "Utilise $risk-optimizer pour calculer la mise optimale et les limites de risque.",
+    icon: Gauge,
+    tone: "rose",
+    capabilities: ["Kelly fractionnel par preset", "Mise recommandée vs actuelle", "Stress tests (5/10/20 pertes)", "Limites quotidienne/hebdomadaire"],
+  },
+  {
+    name: "session-timing-analyzer",
+    title: "Analyseur de Sessions",
+    category: "intelligence",
+    categoryLabel: "Intelligence",
+    description: "Analyse quelles heures et sessions de trading (Asia, London, New York) sont les plus rentables historiquement. Heatmap heure × jour de la semaine.",
+    prompt: "Utilise $session-timing-analyzer pour trouver les meilleures heures et sessions de trading.",
+    icon: Target,
+    tone: "amber",
+    capabilities: ["Par heure UTC (24h)", "Par session (Asia/London/NY)", "Heatmap heure × jour", "Fenêtres recommandées"],
+  },
+  {
+    name: "backtest-vs-live-validator",
+    title: "Backtest vs Live",
+    category: "intelligence",
+    categoryLabel: "Intelligence",
+    description: "Compare les promesses du backtest avec les résultats réels en production — détecte si le bot sous-performe et pourquoi (slippage, exécution, config drift).",
+    prompt: "Utilise $backtest-vs-live-validator pour comparer le backtest avec les résultats live.",
+    icon: Crosshair,
+    tone: "cyan",
+    capabilities: ["Écart win rate backtest/live", "Causes probables d'écart", "Par preset et symbole", "Verdict fiable/non fiable"],
+  },
 ];
 
 function SkillsPage() {
@@ -159,6 +218,7 @@ function SkillsPage() {
 
   const categories = [
     { id: "all", label: "Toutes les procédures", count: ACTIVE_SKILLS.length },
+    { id: "intelligence", label: "Intelligence & Optimisation", count: ACTIVE_SKILLS.filter((s) => s.category === "intelligence").length },
     { id: "tune", label: "Optimisations & Sweeps", count: ACTIVE_SKILLS.filter((s) => s.category === "tune").length },
     { id: "audit", label: "Audits & Contrôle", count: ACTIVE_SKILLS.filter((s) => s.category === "audit").length },
     { id: "security", label: "Sécurité & Déploiement", count: ACTIVE_SKILLS.filter((s) => s.category === "security").length },
@@ -239,6 +299,8 @@ function SkillsPage() {
             emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
             amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
             purple: "border-purple-500/30 bg-purple-500/10 text-purple-300",
+            rose: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+            cyan: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
           }[skill.tone];
 
           return (
