@@ -27,7 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
-import { OFFICIAL_PRESET_STRATEGIES, type PresetStrategyDef } from "@/routes/strategies";
+import { OFFICIAL_PRESET_STRATEGIES, type PresetStrategyDef } from "@/lib/preset-strategies";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
