@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
   Zap,
+  Crosshair,
 } from "lucide-react";
 
 import { playWinSound, playLossSound, playOpenSound } from "@/lib/sounds";
@@ -1324,14 +1325,51 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </span>
                   <span className="text-xs font-black uppercase tracking-wider text-foreground truncate">Marché & Signal</span>
                 </div>
-                {actionableOpportunity?.direction && (
-                  <button
-                    onClick={prepareManualOpportunity}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-up hover:text-up/80 transition-all px-2 py-1 rounded-lg border border-up/30 bg-up/5 shrink-0 active:scale-95 touch-manipulation"
-                  >
-                    <Zap className="h-3 w-3" /> {actionableOpportunity.symbol}
-                  </button>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* ── CRASH900 Sniper: pre-filtered manual mode ──
+                      Only activates when CRASH900 has a MULTDOWN signal at
+                      confidence ≥ 90 (the edge documented in the VPS audit
+                      2026-08-06: PF 1.58, 71.4% WR at conf 95+). Pre-fills
+                      $50 stake, MULTDOWN direction, CRASH900 symbol — the
+                      trader just hits "Exécuter". */}
+                  {(() => {
+                    const crash900Opp = (opportunities?.opportunities ?? []).find(
+                      (o) => o.symbol === "CRASH900" && o.direction === "PUT" && o.confidence >= 90 && o.decision === "take",
+                    );
+                    if (!crash900Opp) {
+                      // Show a disabled "scanning" state so the trader knows
+                      // the feature exists but conditions aren't met yet.
+                      return (
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40 px-2 py-1 rounded-lg border border-white/[0.06] bg-white/[0.02]">
+                          <Crosshair className="h-3 w-3" /> CRASH900 Sniper — en attente
+                        </span>
+                      );
+                    }
+                    return (
+                      <button
+                        onClick={() => {
+                          setForceSymbol("CRASH900");
+                          setForceDir("MULTDOWN");
+                          setForceStake(50);
+                          setPreparedManualOpportunity(crash900Opp);
+                          setManualArmed(true);
+                          window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+                        }}
+                        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200 transition-all px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 active:scale-95 touch-manipulation animate-pulse"
+                      >
+                        <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper · {Math.round(crash900Opp.confidence)}% · $50
+                      </button>
+                    );
+                  })()}
+                  {actionableOpportunity?.direction && (
+                    <button
+                      onClick={prepareManualOpportunity}
+                      className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-up hover:text-up/80 transition-all px-2 py-1 rounded-lg border border-up/30 bg-up/5 active:scale-95 touch-manipulation"
+                    >
+                      <Zap className="h-3 w-3" /> {actionableOpportunity.symbol}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* ── AI-qualified market selector ── */}
