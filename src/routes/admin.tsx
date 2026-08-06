@@ -525,7 +525,7 @@ function AdminPage() {
     try {
       const patch: { userId: number; preset: PresetKey; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id, preset: profilePreset };
       if (rec.type === "disable-symbol" && rec.symbol) {
-        patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
+        patch.symbols = (journalConfig?.symbols ?? []).filter((s) => s !== rec.symbol);
       } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
         patch.minConfidence = rec.suggestedMinConfidence;
       } else {
@@ -2575,7 +2575,7 @@ function ChatStatusCell({
 }
 
 function BreakdownTable({ rows, title }: { rows: BreakdownRow[]; title: string }) {
-  if (rows.length === 0) return null;
+  if (!rows || rows.length === 0) return null;
   return (
     <div>
       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">{title}</div>
@@ -2758,13 +2758,13 @@ function UserInsightsPanel({
             Confiance min <span className="text-foreground font-semibold">{config.minConfidence}%</span>
           </span>
           <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">
-            {config.symbols.length} symbole{config.symbols.length > 1 ? "s" : ""}
+            {config.symbols?.length ?? 0} symbole{(config.symbols?.length ?? 0) > 1 ? "s" : ""}
           </span>
         </div>
       )}
 
       <div className="space-y-2">
-        {current.recommendations.map((rec) => (
+        {(current.recommendations ?? []).map((rec) => (
           <div
             key={rec.message}
             className={cn(
