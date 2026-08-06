@@ -391,18 +391,19 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // il évitait juste une boucle de scan qui tournerait pour rien une fois la
   // limite atteinte.
   maxTradesPerDay: 200,
-  // Multi filtré après audit VPS production (2026-08-05) : OTC_GDAXI (-$77.54)
-  // et frxUSDCHF (-$46.08) retirés — les deux pires pertes du preset.
-  // OTC_NDX (+$86.29), frxUSDCAD (+$23.95), frxEURGBP (+$20.33) conservés.
+  // Multi filtré après audit VPS production (2026-08-05, 2 150 trades) :
+  // OTC_GDAXI (-$77.54), frxUSDCHF (-$46.08), OTC_DJI (-$28.34) retirés.
+  // OTC_NDX (+$92.37), frxUSDCAD (+$23.95), frxEURGBP (+$24.42) conservés.
+  // cryBTCUSD marginal (+$1.23 sur 18 trades, WR 27.8%) — gardé pour le volume.
   symbols: [
-    "OTC_DJI", "OTC_NDX",
+    "OTC_NDX",
     "frxEURGBP", "frxEURUSD", "cryBTCUSD",
     "frxGBPUSD", "frxUSDCAD"
   ],
   excludedSymbols: [
     "frxXAUUSD", "frxXAGUSD", "OTC_SPC", "cryETHUSD",
     "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY",
-    "OTC_GDAXI", "frxUSDCHF"
+    "OTC_GDAXI", "frxUSDCHF", "OTC_DJI"
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,

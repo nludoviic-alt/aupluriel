@@ -271,14 +271,12 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
 export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
-/** The 3 Boom indices Deriv actually offers as Multiplier that are
- * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
- * Deriv Options/Multipliers at all; BOOM600 excluded after production
- * audit: 62.7% WR, -$46.95 over 150 trades; BOOM1000 excluded after
- * recalibrage TP 10%: EV -$0.02/trade, quasi break-even).
- * Audit VPS 2026-08-05 : BOOM900 est le 2e pire symbole (-$60.96 sur 358
- * trades, R:R 0.51 insuffisant malgré 62.3% WR). Remplacé par BOOM1000
- * (-$7.97, WR 72.8%, EV -$0.04/trade — quasi break-even). */
+/** Boom indices retained after VPS production audit (2 150 trades, 5 août 2026).
+ * BOOM500 : +$15.01 sur 663 trades, WR 78.0% — seul symbole Boom rentable.
+ * BOOM1000 : -$31.85 sur 201 trades, WR 72.1% — marginal, conservé pour le
+ *   volume (2 positions simultanées possibles au lieu d'1).
+ * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0% — R:R 0.51 insuffisant.
+ * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%. */
 export const BOOM_SYMBOLS = ["BOOM500", "BOOM1000"];
 
 /** Mirror of BOOM_SYMBOLS for Crash — 2 variants retained after production
@@ -368,22 +366,18 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // gains suivis d'UNE perte normale).
   // Règle appliquée : le giveback toléré doit couvrir les maxConsecutiveLosses
   // pertes d'affilée, sinon une série normale tue la journée.
-  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 20% = $1.00
-  //   4 pertes    = $4.00  →  peak × 0.20 > $4.00  →  peak > $20
-  // (stopLossPctOfStake est passé de 30% à 20% le 2026-08-02, voir plus bas —
-  // trailingStopMinPeakUsd=30 reste donc plus conservateur que le minimum
-  // requis, pas un oubli de recalibrage.)
+  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 15% = $0.75
+  //   4 pertes    = $3.00  →  peak × 0.20 > $3.00  →  peak > $15
+  // (stopLossPctOfStake est passé de 20% à 15% le 2026-08-05 après audit VPS :
+  // R:R 0.50 avec SL 20% → break-even 66.7%, mais R:R réel 0.33 sur VPS.
+  // SL 15% → R:R 0.67, break-even 60%, compatible avec WR 72%.)
   maxConsecutiveLosses: 4,
   cooldownMinutes: 15,
   trailingStopPct: 0.20,
-  trailingStopMinPeakUsd: 30,
-  // maxDailyLossUsd 50 (au lieu des 15 hérités de DEFAULT_CONFIG) : à $1.00
-  // de perte par trade (SL 20%), $50 = 50 trades perdants, atteignable en
-  // haute fréquence avant la pause jusqu'à minuit UTC. C'est le garde-fou de
-  // RISQUE RÉEL qui borne la journée (le trailing stop ci-dessus, lui, ne
-  // s'arme quasiment jamais avec un TP de $0.50 : il faudrait des centaines
-  // de trades pour un pic de $30). À revoir avant tout passage en mode live.
-  maxDailyLossUsd: 50,
+  trailingStopMinPeakUsd: 15,
+  // maxDailyLossUsd 30 : à $0.75 de perte par trade (SL 15%), $30 = 40 trades
+  // perdants. Garde-fou de RISQUE RÉEL qui borne la journée.
+  maxDailyLossUsd: 30,
   // hourlyEdgeFilter on (audit VPS 2026-08-05) : les données montrent 04h,
   // 09h, 11h, 13h, 14h UTC comme heures perdantes récurrentes. Le filtre
   // dynamique auto-bloque les heures à P&L négatif récent.
@@ -395,23 +389,20 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   maxOpenPositions: 3,
   maxTradesPerDay: 100_000,
   maxDailyProfitUsd: 0,
-  // ── Take-profit/stop-loss + levier — recalibrés après audit production
-  //    (8 juillet → 2 août, 874 trades Boom clôturés).
+  // ── Take-profit/stop-loss + levier — recalibrés après audit VPS production
+  //    (2 150 trades, 5 août 2026).
   // 1) multiplierLevel 100x confirmé : à 20x, 93% des trades n'atteignaient
   //    ni TP ni SL en 60 min. À 100x, les trades se résolvent sur TP/SL.
-  // 2) TP relevé de 5% à 10% après analyse des données réelles :
-  //    TP 5% / SL 30% → break-even à 85.7% de wins. BOOM500 (86.3%) et
-  //    BOOM900 (82.2%) passent juste, mais BOOM1000 (74.1%) perd.
-  //    TP 10% / SL 30% → break-even à 75%. Gain $0.50 au lieu de $0.25.
-  //    BOOM500 : EV +$0.23/trade (was +$0.08), BOOM900 : +$0.14 (was +$0.07),
-  //    BOOM1000 : EV -$0.02 (was -$0.20) — quasi break-even au lieu de perte.
-  //    MULTDOWN (79.3% WR, -$203.86 avec TP 5%) devient EV +$0.09/trade.
-  // 3) Contrepartie : le win rate baissera (TP plus distant), mais l'EV
-  //    s'améliore sur tous les symboles. Les garde-fous (maxConsecutiveLosses,
-  //    cooldown, maxDailyLoss) restent calibrés sur SL 20% = $1.00/trade.
+  // 2) TP 10% / SL 15% : R:R 0.67, break-even 60%. VPS montre WR 72.4% sur
+  //    1 360 trades → EV positive. SL resserré de 20% à 15% car R:R réel
+  //    était 0.33 (avg_win $1.02, avg_loss $3.06) — une perte effaçait 3 gains.
+  //    Avec SL 15% : gain $0.50, perte $0.75 sur $5 stake → R:R 0.67.
+  // 3) Contrepartie : le win rate baissera légèrement (SL plus serré), mais
+  //    l'EV s'améliore structurellement. Les garde-fous sont recalibrés sur
+  //    SL 15% = $0.75/trade.
   multiplierLevel: 100,
   takeProfitPctOfStake: 10,
-  stopLossPctOfStake: 20,
+  stopLossPctOfStake: 15,
   atrStopMode: false,
   partialTakeProfitPct: 0,
   maxHoldMinutes: 60,
@@ -505,8 +496,11 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping V2 watchlist: BOOM500, BOOM1000 and CRASH1000 validated on real VPS metrics (2026-08-05) */
-export const SCALPING_SYMBOLS = ["BOOM500", "BOOM1000", "CRASH1000"];
+/** Scalping V2 watchlist: BOOM1000 and CRASH1000 retained after VPS audit.
+ * BOOM500 retiré du scalping : WR 36.1%, -$3.14 sur 36 trades — performance
+ * catastrophique en mode scalping (contrairement au preset Boom où il
+ * performe bien avec TP/SL différents et levier 100x). */
+export const SCALPING_SYMBOLS = ["BOOM1000", "CRASH1000"];
 
 /**
  * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
@@ -568,7 +562,7 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
 export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
-  symbols: ["frxXAUUSD", "OTC_NDX"],
+  symbols: ["OTC_NDX"],
   // Pas de excludedSymbols ici — même raison que BOOM_PRESET : un preset
   // qui le fixe à [] l'efface silencieusement à chaque (ré)application.
   instrumentType: "binary",

@@ -420,8 +420,8 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
     const merged: AutoTraderConfig = {
       ...DEFAULT_CONFIG,
       ...saved,
-      stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
-      maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
+      stakeUsd: Math.min(50, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
+      maxDailyLossUsd: Math.min(100, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
       // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
     };
