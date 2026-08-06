@@ -36,6 +36,13 @@ export interface PresetStrategyDef {
    * green "Vérifié" badge below. See src/lib/signal-core.ts DEFAULT_CONFIG
    * for the audited symbol/confidence values this must stay aligned with. */
   verified?: boolean;
+  /** Set on strategies that were re-run through the real historical
+   * backtest engine (backtestMultiTfServer / backtestLiquidityReversalServer
+   * — see scratch analysis run 2026-08-06) but did NOT clear the bar for
+   * `verified`, so the finding is shown instead of hidden. Never invent a
+   * green badge to fill this gap — an honest "pas encore d'edge démontrée"
+   * note is the point of testing, not a defect to paper over. */
+  verifiedNote?: string;
   params: {
     minConfidence: number;
     maxConfidence: number;
@@ -60,6 +67,7 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     riskProfile: "Équilibré",
     color: "from-amber-500/30 via-rose-500/15 to-transparent",
     borderGlow: "border-amber-500/50",
+    verifiedNote: "Backtest réel (150 bougies M15, moteur multi-TF) : 0 signal qualifié sur la fenêtre testée à ces seuils — un seul symbole à 80%+ confiance / 3 TF est trop strict pour juger. Ni validé ni invalidé, juste pas assez de données encore.",
     params: {
       minConfidence: 80,
       maxConfidence: 95,
@@ -81,15 +89,22 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
   },
   {
     id: "gold-infinite-trailing",
-    name: "Gold & Crypto — Trailing SL / Sans TP",
+    name: "Gold & Crypto — Trailing de Compte",
     category: "Multi",
     targetPreset: "default",
-    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC) · GBP/USD · Boom 1000",
-    tagline: "Pas de TP fixe (sans plafond). Le SL remonte par paliers (+40 pips, +100 pips) pour capturer 100% des grandes tendances sans limitation.",
-    badge: "Sans TP · Trailing Pure",
+    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC)",
+    tagline: "Binaire CALL/PUT classique (pas de position à SL/TP individuel) — la protection est un trailing stop AU NIVEAU DU COMPTE : pas de plafond de profit journalier fixe, coupe seulement si le pic de gains recule de 15%.",
+    badge: "Trailing de Compte",
     riskProfile: "Volumique",
     color: "from-amber-500/30 via-yellow-500/15 to-transparent",
     borderGlow: "border-amber-500/40",
+    // BOOM1000 et frxGBPUSD retirés après backtest réel : BOOM1000 portait
+    // 22 des 33 trades de la version précédente à 72.7% WR, mais c'est un
+    // indice synthétique sans edge structurel documenté (cf. exclusion des
+    // synthétiques en mode all-markets, DEFAULT_CONFIG.symbols) — un résultat
+    // à ce niveau sur un RNG est du bruit, pas une edge. frxGBPUSD tournait
+    // à 16.7% WR (6 trades) et tirait le reste vers le bas.
+    verifiedNote: "Backtest réel (150 bougies M15) sur XAU+BTC seuls : 5 trades sur la fenêtre testée — bien trop peu pour juger. L'ancienne version (avec BOOM1000 + GBP/USD) affichait 60.6% agrégé, mais 22 des 33 trades venaient de BOOM1000 (indice synthétique sans edge documentée) et GBP/USD était à 16.7% — un artefact, pas une edge réelle.",
     params: {
       minConfidence: 75,
       maxConfidence: 95,
@@ -97,7 +112,7 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbolsCount: 4,
+      symbolsCount: 2,
     },
     configOverride: {
       minConfidence: 75,
@@ -108,7 +123,7 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       maxDailyLossUsd: 20,
       trailingStopPct: 0.15,
       trailingStopMinPeakUsd: 5,
-      symbols: ["frxXAUUSD", "cryBTCUSD", "frxGBPUSD", "BOOM1000"],
+      symbols: ["frxXAUUSD", "cryBTCUSD"],
     },
   },
   {
@@ -116,12 +131,18 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     name: "SMC — Liquidité Externe & AVG 50-60%",
     category: "Multi",
     targetPreset: "liquidity",
-    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC) · EUR/USD · Boom 1000 · Germany 40",
+    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC) · EUR/USD",
     tagline: "Biais institutionnel H1 sur zone d'équilibre 50-60% (OTE/AVG). Entrée M5/M15 dans le FVG interne avec TP sur la liquidité externe.",
     badge: "Institutionnel SMC",
     riskProfile: "Équilibré",
     color: "from-purple-500/20 via-violet-500/10 to-transparent",
     borderGlow: "border-purple-500/30",
+    // OTC_GDAXI retiré : déjà identifié comme le pire symbole de l'audit VPS
+    // 2026-08-05 (-$77.54) et responsable direct de la perte Multi du
+    // 2026-08-04. BOOM1000 retiré : synthétique sans edge structurelle
+    // documentée, et sous breakeven ici (38.5% sur 13 trades) — c'était lui
+    // qui gonflait artificiellement l'agrégat.
+    verifiedNote: "Backtest réel (moteur retournement de liquidité, 300 bougies M15) : l'agrégat à 5 symboles dépassait le seuil de rentabilité (57.1%), mais porté par 2 échantillons minuscules à 100% (4 trades chacun sur XAU et EUR/USD) pendant que BOOM1000 (38.5%/13) et OTC_GDAXI — déjà signalé ailleurs comme le pire symbole de l'audit prod — tiraient vers le bas. Retirés ici ; à retester sur un plus grand échantillon avant de faire confiance au chiffre.",
     params: {
       minConfidence: 78,
       maxConfidence: 95,
@@ -129,7 +150,7 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbolsCount: 5,
+      symbolsCount: 3,
     },
     configOverride: {
       minConfidence: 78,
@@ -138,39 +159,20 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       durationMinutes: 15,
       stakeUsd: 5,
       maxDailyLossUsd: 20,
-      symbols: ["frxXAUUSD", "cryBTCUSD", "frxEURUSD", "BOOM1000", "OTC_GDAXI"],
+      symbols: ["frxXAUUSD", "cryBTCUSD", "frxEURUSD"],
     },
   },
-  {
-    id: "multi-balanced",
-    name: "Multi — Équilibré",
-    category: "Multi",
-    targetPreset: "default",
-    targetMarkets: "Dow Jones · S&P 500 · DAX · EUR/GBP · GBP/USD · USD/CAD",
-    tagline: "Configuration optimale multi-marchés. Confiance 80-89% avec accord 3/4 TF.",
-    badge: "Recommandé (Prod)",
-    riskProfile: "Équilibré",
-    color: "from-amber-500/20 via-orange-500/10 to-transparent",
-    borderGlow: "border-amber-500/30",
-    params: {
-      minConfidence: 80,
-      maxConfidence: 89,
-      minTfAgreement: 3,
-      durationMinutes: 15,
-      stakeUsd: 5,
-      maxDailyLossUsd: 15,
-      symbolsCount: 7,
-    },
-    configOverride: {
-      minConfidence: 80,
-      maxConfidence: 89,
-      minTfAgreement: 3,
-      durationMinutes: 15,
-      stakeUsd: 5,
-      maxDailyLossUsd: 15,
-      symbols: ["OTC_DJI", "OTC_NDX", "OTC_SPC", "OTC_GDAXI", "frxEURGBP", "frxGBPUSD", "frxUSDCAD"],
-    },
-  },
+  // "multi-balanced" retiré le 2026-08-06 : backtest réel (150 bougies M15)
+  // sur sa config d'origine → 22 trades, 45.5% WR, -8.6pp sous breakeven
+  // (DÉFAVORABLE). Sa liste de symboles incluait OTC_SPC et OTC_GDAXI — les
+  // deux symboles que l'audit VPS 2026-08-05 identifie comme les pires
+  // (et responsables directs de la perte Multi du 2026-08-04, voir l'analyse
+  // du mardi). Une version corrigée (symboles retirés, confiance relevée à
+  // 85) reste sous breakeven sur l'échantillon testé ET utilise 2 symboles
+  // de moins que "Multi — Volumique" (cryBTCUSD, frxEURUSD absents) — donc
+  // strictement inférieure à un modèle déjà vérifié plutôt qu'une variante
+  // utile. Pas de raison de la garder ; "Multi — Conservateur"/"Volumique"
+  // couvrent déjà ce terrain avec des symboles prouvés.
   {
     id: "scalping-m1",
     name: "Scalping — M1/M5 Haute Fréquence",
@@ -182,6 +184,7 @@ const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     riskProfile: "Volumique",
     color: "from-cyan-500/20 via-sky-500/10 to-transparent",
     borderGlow: "border-cyan-500/30",
+    verifiedNote: "Backtest réel (150 bougies M15) : 110 trades, 52.7% — quasi pile ou face, sous le seuil de rentabilité (54.1%). Une variante plus stricte testée (confiance 78%, TF 3/4) fait pire (51.4% sur 37 trades). BOOM500 seul est légèrement positif (54.7%) mais frxEURUSD est exactement à 50% et le tire vers le bas. Aucune edge démontrée pour l'instant.",
     params: {
       minConfidence: 70,
       maxConfidence: 95,
@@ -376,7 +379,7 @@ function StrategiesPage() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [liveConfigs, setLiveConfigs] = useState<LivePresetConfigs>({});
   const [liveConfigsLoaded, setLiveConfigsLoaded] = useState(false);
-  const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "Multi" | "Boom" | "Crash" | "Scalping" | "custom">("all");
+  const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "verified" | "Multi" | "Boom" | "Crash" | "Scalping" | "custom">("all");
   const { confirmState, confirm } = useConfirm();
 
   const refreshLiveConfigs = async () => {
@@ -480,6 +483,7 @@ function StrategiesPage() {
 
   const filteredPresetStrategies = useMemo(() => {
     if (activeCategoryTab === "all") return OFFICIAL_PRESET_STRATEGIES;
+    if (activeCategoryTab === "verified") return OFFICIAL_PRESET_STRATEGIES.filter((s) => s.verified);
     if (activeCategoryTab === "custom") return [];
     return OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === activeCategoryTab);
   }, [activeCategoryTab]);
@@ -533,26 +537,33 @@ function StrategiesPage() {
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-white/10 pb-3">
         {(
           [
-            { id: "all", label: "Toutes les Stratégies", count: OFFICIAL_PRESET_STRATEGIES.length + items.length },
-            { id: "Multi", label: "Preset Multi", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Multi").length },
-            { id: "Boom", label: "Preset Boom", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Boom").length },
-            { id: "Crash", label: "Preset Crash", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Crash").length },
-            { id: "Scalping", label: "Preset Scalping", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Scalping").length },
-            { id: "custom", label: "Règles Sur-Mesure", count: items.length },
+            { id: "all", label: "Toutes les Stratégies", count: OFFICIAL_PRESET_STRATEGIES.length + items.length, green: false },
+            { id: "verified", label: "Vérifiées", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.verified).length, green: true },
+            { id: "Multi", label: "Preset Multi", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Multi").length, green: false },
+            { id: "Boom", label: "Preset Boom", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Boom").length, green: false },
+            { id: "Crash", label: "Preset Crash", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Crash").length, green: false },
+            { id: "Scalping", label: "Preset Scalping", count: OFFICIAL_PRESET_STRATEGIES.filter((s) => s.category === "Scalping").length, green: false },
+            { id: "custom", label: "Règles Sur-Mesure", count: items.length, green: false },
           ] as const
         ).map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveCategoryTab(tab.id)}
+            title={tab.id === "verified" ? "Symboles et seuils cross-vérifiés contre des trades réels ou un backtest réel sur données historiques" : undefined}
             className={cn(
               "shrink-0 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-all border flex items-center gap-2",
               activeCategoryTab === tab.id
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-lg shadow-amber-500/10"
-                : "bg-white/[0.03] text-muted-foreground border-white/10 hover:text-foreground hover:bg-white/[0.08]"
+                ? tab.green
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10"
+                  : "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-lg shadow-amber-500/10"
+                : tab.green
+                  ? "bg-emerald-500/[0.06] text-emerald-400/80 border-emerald-500/20 hover:text-emerald-300 hover:bg-emerald-500/10"
+                  : "bg-white/[0.03] text-muted-foreground border-white/10 hover:text-foreground hover:bg-white/[0.08]"
             )}
           >
+            {tab.id === "verified" && <CheckCircle2 className="h-3.5 w-3.5" />}
             <span>{tab.label}</span>
-            <span className="rounded-full bg-white/10 px-1.5 py-0.2 text-[10px] font-mono font-bold">
+            <span className={cn("rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold", tab.green ? "bg-emerald-500/20" : "bg-white/10")}>
               {tab.count}
             </span>
           </button>
@@ -566,7 +577,7 @@ function StrategiesPage() {
             <div className="flex items-center gap-2">
               <Sliders className="h-4.5 w-4.5 text-cyan" />
               <h2 className="text-sm md:text-base font-extrabold text-foreground uppercase tracking-wide">
-                Modèles Prédéfinis {activeCategoryTab !== "all" ? `· ${activeCategoryTab}` : ""}
+                Modèles Prédéfinis {activeCategoryTab === "verified" ? "· Vérifiées" : activeCategoryTab !== "all" ? `· ${activeCategoryTab}` : ""}
               </h2>
             </div>
           </div>
@@ -649,6 +660,13 @@ function StrategiesPage() {
                         <strong className="text-amber-400 font-black text-xs">${s.params.stakeUsd} · Max ${s.params.maxDailyLossUsd}</strong>
                       </div>
                     </div>
+
+                    {!s.verified && s.verifiedNote && (
+                      <div className="mb-3 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-2 text-[11px] leading-snug text-amber-200/80">
+                        <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-[1px] text-amber-400/80" />
+                        <span>{s.verifiedNote}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Bottom CTA button */}

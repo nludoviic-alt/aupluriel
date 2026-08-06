@@ -80,15 +80,16 @@ async function proposeAndBuyMultiplier(params: {
   multiplier: number;
   stopLossUsd: number;
   takeProfitUsd: number;
-}, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number }> {
+}, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
   let lastError: Error | null = null;
+  let currentMultiplier = params.multiplier;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const proposal = await proposalMultiplierContract({
         symbol: params.symbol,
         amount: params.amount,
         contractType: params.direction,
-        multiplier: params.symbol.startsWith("cry") ? Math.min(params.multiplier, 10) : params.multiplier,
+        multiplier: currentMultiplier,
         stopLossUsd: params.stopLossUsd,
         takeProfitUsd: params.takeProfitUsd,
       });
@@ -97,7 +98,38 @@ async function proposeAndBuyMultiplier(params: {
       return { contractId: bought.contractId, buyPrice: bought.buyPrice };
     } catch (e) {
       lastError = e as Error;
-      if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) break;
+      const errMsg = lastError.message;
+
+      // Auto-guérison : même logique que le moteur serveur
+      // (deriv.server.ts) — Deriv rejette parfois le multiplicateur demandé
+      // (ex: crypto à 10x refusé, doit être ~100x) et donne la plage acceptée
+      // dans le message d'erreur ; on l'extrait et on retente avec la valeur
+      // la plus proche au lieu d'abandonner immédiatement.
+      if (errMsg.toLowerCase().includes("multiplier") || errMsg.toLowerCase().includes("limit_order")) {
+        const numbers = errMsg.match(/\b\d+\b/g)?.map(Number).filter((n) => n >= 1 && n <= 1000);
+        if (numbers && numbers.length > 0) {
+          const closest = numbers.reduce((prev, curr) =>
+            Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+          );
+          if (closest !== currentMultiplier) {
+            currentMultiplier = closest;
+            continue;
+          }
+        } else {
+          let fallbackMultipliers = [20, 50, 100];
+          if (params.symbol.startsWith("cry")) fallbackMultipliers = [10, 20, 50, 100];
+          else if (!params.symbol.startsWith("frx")) fallbackMultipliers = [100, 200, 500];
+          const closest = fallbackMultipliers.reduce((prev, curr) =>
+            Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+          );
+          if (closest !== currentMultiplier) {
+            currentMultiplier = closest;
+            continue;
+          }
+        }
+      }
+
+      if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(errMsg)) break;
       if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
     }
   }
@@ -935,7 +967,7 @@ export async function forceDemoTrade(
     note: isMultiplier ? "Prise manuelle · Multiplicateur" : "Prise manuelle · CALL/PUT",
     entryPrice: entryPrice || undefined,
     ...(isMultiplier
-      ? { multiplier: symbolDeriv.startsWith("cry") ? Math.min(multiplierSettings.multiplierLevel, 10) : multiplierSettings.multiplierLevel, stopLossUsd, takeProfitUsd }
+      ? { multiplier: multiplierSettings.multiplierLevel, stopLossUsd, takeProfitUsd }
       : { durationMinutes, expiry: Date.now() + durationMinutes * 60_000 }),
   };
   emit(pending);
