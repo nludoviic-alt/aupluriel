@@ -10,6 +10,8 @@ import {
   Crosshair,
   FlaskConical,
   Gauge,
+  Loader2,
+  Play,
   RefreshCcw,
   Rocket,
   ShieldCheck,
@@ -17,9 +19,11 @@ import {
   Target,
   TrendingUp,
   Wrench,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/skills")({
@@ -192,6 +196,8 @@ function SkillsPage() {
   const isAdmin = user?.is_admin === 1;
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory>("all");
   const [copiedName, setCopiedName] = useState<string | null>(null);
+  const [runningSkill, setRunningSkill] = useState<string | null>(null);
+  const [report, setReport] = useState<{ skill: string; output: string; success: boolean } | null>(null);
 
   if (!isAdmin) {
     return (
@@ -210,6 +216,33 @@ function SkillsPage() {
     setCopiedName(skill.name);
     toast.success(`Commande copiée : $${skill.name}`);
     setTimeout(() => setCopiedName(null), 2000);
+  }
+
+  // Skills that can be executed directly on the VPS
+  const EXECUTABLE_SKILLS = new Set([
+    "adaptive-trading-optimizer",
+    "daily-pnl-review",
+    "risk-optimizer",
+    "session-timing-analyzer",
+    "backtest-vs-live-validator",
+    "audit-trading-production",
+  ]);
+
+  async function runSkill(skill: SkillItem) {
+    setRunningSkill(skill.name);
+    setReport(null);
+    try {
+      const res = await api.post<{ success: boolean; output: string; error?: string; skill: string }>("/api/admin/run-skill", {
+        skill: skill.name,
+      });
+      setReport({ skill: skill.name, output: res.output, success: res.success });
+      if (res.success) toast.success(`${skill.title} terminé — rapport disponible`);
+      else toast.error(`${skill.title}: ${res.error ?? "erreur"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur d'exécution");
+    } finally {
+      setRunningSkill(null);
+    }
   }
 
   const filteredSkills = ACTIVE_SKILLS.filter(
@@ -343,21 +376,44 @@ function SkillsPage() {
                 ))}
               </div>
 
-              {/* Interactive Copy Prompt Bar */}
-              <div
-                onClick={() => void copyPrompt(skill)}
-                className="group/btn flex items-center justify-between gap-2 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] p-2.5 transition-all duration-200 cursor-pointer hover:border-sky-500/40 hover:bg-sky-500/[0.12] active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-mono text-[10px] font-black uppercase tracking-wider text-sky-400 shrink-0">PROMPT</span>
-                  <code className="truncate text-xs font-mono text-sky-200">{skill.prompt}</code>
-                </div>
-                <button
-                  type="button"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-sky-500/30 bg-sky-500/20 text-sky-300 transition-colors group-hover/btn:bg-sky-500/30"
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {/* Execute button — only for executable skills */}
+                {EXECUTABLE_SKILLS.has(skill.name) && (
+                  <button
+                    onClick={() => void runSkill(skill)}
+                    disabled={runningSkill !== null}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 active:scale-[0.98] disabled:opacity-40",
+                      runningSkill === skill.name
+                        ? "border-sky-500/40 bg-sky-500/15 text-sky-300"
+                        : "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15",
+                    )}
+                  >
+                    {runningSkill === skill.name ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Exécution…</>
+                    ) : (
+                      <><Play className="h-3.5 w-3.5" /> Exécuter sur VPS</>
+                    )}
+                  </button>
+                )}
+
+                {/* Copy prompt button */}
+                <div
+                  onClick={() => void copyPrompt(skill)}
+                  className="group/btn flex items-center justify-between gap-2 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] p-2.5 transition-all duration-200 cursor-pointer hover:border-sky-500/40 hover:bg-sky-500/[0.12] active:scale-[0.99] flex-1"
                 >
-                  {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Clipboard className="h-3.5 w-3.5" />}
-                </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-[10px] font-black uppercase tracking-wider text-sky-400 shrink-0">PROMPT</span>
+                    <code className="truncate text-xs font-mono text-sky-200">{skill.prompt}</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-sky-500/30 bg-sky-500/20 text-sky-300 transition-colors group-hover/btn:bg-sky-500/30"
+                  >
+                    {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Clipboard className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -371,6 +427,76 @@ function SkillsPage() {
           <strong className="text-foreground">Utilisation responsable des Skills AI :</strong> Les procédures spécialisées garantissent la rigueur des audits, la précision des sweeps de backtest et la sécurité des déploiements. Elles s'exécutent en conformité avec les règles de gestion du risque configurées.
         </p>
       </div>
+
+      {/* ── Report Modal ── */}
+      {report && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setReport(null)}
+        >
+          <div
+            className="relative w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl border border-white/10 bg-[#060e0c] shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-5 py-3.5 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
+                  report.success ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-rose-500/30 bg-rose-500/10 text-rose-400",
+                )}>
+                  {report.success ? <CheckCircle2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-foreground truncate">
+                    Rapport — {ACTIVE_SKILLS.find(s => s.name === report.skill)?.title ?? report.skill}
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    Exécuté sur le VPS · {new Date().toLocaleString("fr-FR")}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReport(null)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Report content */}
+            <div className="overflow-y-auto p-5">
+              <pre className="whitespace-pre-wrap text-xs font-mono text-foreground/90 leading-relaxed">
+                {report.output}
+              </pre>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-2 border-t border-white/[0.08] px-5 py-3 shrink-0">
+              <span className="text-[10px] text-muted-foreground">
+                Données de production · VPS · Lecture seule
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(report.output);
+                    toast.success("Rapport copié");
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
+                >
+                  <Clipboard className="h-3.5 w-3.5" /> Copier
+                </button>
+                <button
+                  onClick={() => setReport(null)}
+                  className="rounded-lg border border-sky-500/30 bg-sky-500/15 px-3 py-1.5 text-xs font-bold text-sky-300 hover:bg-sky-500/25 transition-colors"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

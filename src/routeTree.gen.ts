@@ -72,6 +72,7 @@ import { Route as ApiAdminVisiblePresetsRouteImport } from './routes/api/admin/v
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
+import { Route as ApiAdminRunSkillRouteImport } from './routes/api/admin/run-skill'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminForceTradeRouteImport } from './routes/api/admin/force-trade'
@@ -397,6 +398,11 @@ const ApiAdminStatsRoute = ApiAdminStatsRouteImport.update({
   path: '/api/admin/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminRunSkillRoute = ApiAdminRunSkillRouteImport.update({
+  id: '/api/admin/run-skill',
+  path: '/api/admin/run-skill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminInvitesRoute = ApiAdminInvitesRouteImport.update({
   id: '/api/admin/invites',
   path: '/api/admin/invites',
@@ -491,6 +497,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -564,6 +571,7 @@ export interface FileRoutesByTo {
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -638,6 +646,7 @@ export interface FileRoutesById {
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -713,6 +722,7 @@ export interface FileRouteTypes {
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -786,6 +796,7 @@ export interface FileRouteTypes {
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -859,6 +870,7 @@ export interface FileRouteTypes {
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -932,6 +944,7 @@ export interface RootRouteChildren {
   ApiAdminForceTradeRoute: typeof ApiAdminForceTradeRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
+  ApiAdminRunSkillRoute: typeof ApiAdminRunSkillRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
@@ -1395,6 +1408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/run-skill': {
+      id: '/api/admin/run-skill'
+      path: '/api/admin/run-skill'
+      fullPath: '/api/admin/run-skill'
+      preLoaderRoute: typeof ApiAdminRunSkillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/invites': {
       id: '/api/admin/invites'
       path: '/api/admin/invites'
@@ -1528,6 +1548,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminForceTradeRoute: ApiAdminForceTradeRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
+  ApiAdminRunSkillRoute: ApiAdminRunSkillRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
