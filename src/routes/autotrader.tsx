@@ -1217,6 +1217,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         )}
         aria-label="Prise directe manuelle"
       >
+        {/* Desktop: 2-column layout for Quick Risk Controls + Manual Order header */}
+        <div className="grid gap-4 lg:grid-cols-2 items-start">
         {/* QUICK RISK CONTROLS (MANUAL MODE) — the open-positions list that used to
             live here was a duplicate of the one below (Suivi des Contrats &
             Positions), which now also carries the close-at-market action. */}
@@ -1306,6 +1308,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">2 · Position</div>
             <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2.5 text-muted-foreground">3 · Validation</div>
           </div>
+        </div>
         </div>
 
         {/* 2-Column Tactical Layout — mobile: single column, desktop: 2 cols */}

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   Bell,
   CheckCheck,
@@ -12,12 +11,15 @@ import {
   ChevronRight,
   Sparkles,
   Inbox,
+  ArrowLeft,
+  ChevronLeft,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 export interface NotificationItem {
   id: number;
@@ -35,17 +37,26 @@ interface NotificationsResponse {
   unreadCount: number;
 }
 
-export function NotificationCenterTrigger() {
-  const [open, setOpen] = useState(false);
+export function NotificationCenterSidebarItem({
+  className,
+  iconClassName,
+  labelClassName,
+  badgeClassName,
+  onClick,
+}: {
+  className?: string;
+  iconClassName?: string;
+  labelClassName?: string;
+  badgeClassName?: string;
+  onClick?: () => void;
+}) {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchUnread = useCallback(async () => {
     try {
       const data = await api.get<NotificationsResponse>("/api/notifications");
       setUnreadCount(data.unreadCount || 0);
-    } catch {
-      // Ignore if signed out
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -55,36 +66,33 @@ export function NotificationCenterTrigger() {
   }, [fetchUnread]);
 
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08] hover:text-foreground transition-all duration-300 shadow-sm"
-        title="Centre de Notifications"
-        aria-label="Centre de Notifications"
-      >
-        <Bell className={cn("h-4 w-4 transition-transform", unreadCount > 0 && "text-amber-400 animate-pulse")} />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 font-mono text-[10px] font-black text-white shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-bounce">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {open && <NotificationCenterModal onClose={() => setOpen(false)} onUpdate={fetchUnread} />}
-    </>
+    <Link
+      to="/notifications"
+      onClick={onClick}
+      className={cn("relative flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-base transition-all duration-200 bg-transparent border border-transparent hover:bg-amber-500/[0.04] hover:border-amber-500/15", className)}
+      title="Notifications"
+    >
+      <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover/nav:bg-amber-500/15 group-hover/nav:border-amber-500/25 group-hover/nav:text-amber-400", iconClassName)}>
+        <Bell className={cn("h-4.5 w-4.5 transition-colors duration-200", unreadCount > 0 && "text-amber-400 animate-pulse")} />
+      </span>
+      <span className={cn("font-semibold transition-colors duration-200 text-[15px] tracking-wide text-muted-foreground/80 hover:text-amber-300", labelClassName)}>
+        Notifications
+      </span>
+      {unreadCount > 0 && (
+        <span className={cn("ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 font-mono text-[10px] font-black text-white shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-bounce", badgeClassName)}>
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </Link>
   );
 }
 
-export function NotificationCenterModal({
-  onClose,
-  onUpdate,
-}: {
-  onClose: () => void;
-  onUpdate: () => void;
-}) {
+export function NotificationCenterPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "trade" | "signal" | "risk" | "system">("all");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
@@ -106,7 +114,6 @@ export function NotificationCenterModal({
     try {
       await api.post("/api/notifications", { action: "mark_all_read" });
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      onUpdate();
       toast.success("Toutes les notifications ont été marquées comme lues");
     } catch {
       toast.error("Erreur lors de la mise à jour");
@@ -117,7 +124,7 @@ export function NotificationCenterModal({
     try {
       await api.post("/api/notifications", { action: "clear_all" });
       setNotifications([]);
-      onUpdate();
+      setSelectedId(null);
       toast.success("Historique des notifications effacé");
     } catch {
       toast.error("Erreur lors de la suppression");
@@ -128,112 +135,102 @@ export function NotificationCenterModal({
     try {
       await api.post("/api/notifications", { action: "mark_read", id });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-      onUpdate();
-    } catch {}
-  }
-
-  async function deleteOne(id: number, e: React.MouseEvent) {
-    e.stopPropagation();
-    try {
-      await api.post("/api/notifications", { action: "delete", id });
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      onUpdate();
     } catch {}
   }
 
   const filtered = notifications.filter((n) => (filter === "all" ? true : n.category === filter));
+  const selected = filtered.find((n) => n.id === selectedId) || null;
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  if (typeof document === "undefined") return null;
+  async function deleteOne(id: number, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    try {
+      await api.post("/api/notifications", { action: "delete", id });
+      const idx = filtered.findIndex((n) => n.id !== id);
+      const next = filtered[idx + 1] ?? filtered[idx - 1];
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (selectedId === id) {
+        setSelectedId(next?.id ?? null);
+      }
+    } catch {}
+  }
 
-  // Rendered inline (not portaled) this was a child of <header>, which has
-  // overflow-hidden for its decorative glow blobs — a `fixed` descendant
-  // still gets clipped to an overflow:hidden ancestor's box in this DOM
-  // subtree, so the modal only ever showed a sliver inside the header's own
-  // ~80px height instead of covering the screen. Portal to <body>, same
-  // pattern as StrategyEditor in strategies.tsx.
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="relative flex h-[90vh] max-h-[750px] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0B0F19] shadow-2xl">
-        
+  // Auto-select first notification on desktop
+  useEffect(() => {
+    if (selectedId === null && filtered.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+      setSelectedId(filtered[0].id);
+    }
+  }, [filtered.length, selectedId]);
+
+  return (
+    <div className="flex h-full w-full overflow-hidden">
+      {/* ── LEFT SIDEBAR ── */}
+      <div
+        className={cn(
+          "flex w-full flex-col border-r border-white/[0.06] bg-background/40 md:w-[340px] lg:w-[400px] shrink-0",
+          selected ? "hidden md:flex" : "flex"
+        )}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 bg-black/40">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/15 text-amber-400">
-              <Bell className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-foreground tracking-tight">Centre de Notifications</h2>
-                {unreadCount > 0 && (
-                  <span className="rounded-full bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 font-mono text-xs font-bold text-rose-400">
-                    {unreadCount} non lue{unreadCount > 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Historique complet de vos alertes & signaux</p>
-            </div>
+        <div className="shrink-0 space-y-5 border-b border-white/[0.06] px-5 py-5">
+          {/* Top row: back + mark all */}
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={() => navigate({ to: "/" })}
+              className="group flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+              Retour
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={markAllAsRead}
+              disabled={unreadCount === 0}
+              className="h-7 gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 text-[11px] font-semibold text-foreground hover:bg-white/[0.06] disabled:opacity-40"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Tout lu</span>
+            </Button>
           </div>
 
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-white/10 bg-white/5 p-2 text-muted-foreground hover:bg-white/10 hover:text-foreground transition-all"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Action Controls & Filter Bar */}
-        <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-3 bg-white/[0.02]">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-mono text-muted-foreground font-semibold">
-              {filtered.length} notification{filtered.length > 1 ? "s" : ""}
-            </span>
-            <div className="flex items-center gap-2">
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={markAllAsRead}
-                  className="h-8 gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Tout marquer comme lu</span>
-                </Button>
-              )}
-              {notifications.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearAll}
-                  className="h-8 gap-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Tout effacer</span>
-                </Button>
-              )}
+          {/* Title + count */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/15 text-amber-400 shrink-0">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-black tracking-tight text-foreground leading-none">Notifications</h1>
+              <p className="mt-1.5 text-[11px] text-muted-foreground/70 leading-none">
+                {unreadCount > 0 ? (
+                  <span className="text-amber-400 font-semibold">{unreadCount} non lue{unreadCount > 1 ? "s" : ""}</span>
+                ) : (
+                  <span>Toutes lues</span>
+                )}
+                <span className="text-muted-foreground/40"> · {filtered.length} au total</span>
+              </p>
             </div>
           </div>
 
           {/* Filter tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {(
               [
                 { id: "all", label: "Toutes" },
-                { id: "trade", label: "Trades 📈" },
-                { id: "signal", label: "Signaux ⚡" },
-                { id: "risk", label: "Sécurité 🛡️" },
-                { id: "system", label: "Système ⚙️" },
+                { id: "trade", label: "Trades" },
+                { id: "signal", label: "Signaux" },
+                { id: "risk", label: "Sécurité" },
+                { id: "system", label: "Système" },
               ] as const
             ).map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setFilter(tab.id)}
+                onClick={() => { setFilter(tab.id); setSelectedId(null); }}
                 className={cn(
-                  "rounded-xl px-3 py-1.5 font-bold whitespace-nowrap transition-all border text-xs",
+                  "rounded-full px-3 py-1.5 font-semibold whitespace-nowrap transition-all border text-[11px]",
                   filter === tab.id
-                    ? "border-primary/50 bg-primary/20 text-primary shadow-sm"
-                    : "border-white/5 bg-black/30 text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+                    : "border-transparent bg-white/[0.03] text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.06]"
                 )}
               >
                 {tab.label}
@@ -242,114 +239,163 @@ export function NotificationCenterModal({
           </div>
         </div>
 
-        {/* Notifications Scroll List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Notification list */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1 custom-scrollbar">
           {loading ? (
-            <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
-              Chargement des notifications…
+            <div className="flex h-48 items-center justify-center text-xs text-muted-foreground/60">
+              Chargement…
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center text-center p-6 space-y-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-muted-foreground">
-                <Inbox className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">Aucune notification enregistrée</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                  Les futurs signaux de trading, alertes de risque et mises à jour apparaîtront ici.
-                </p>
-              </div>
+              <Inbox className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-sm font-semibold text-foreground/80">Aucune notification</p>
             </div>
           ) : (
             filtered.map((item) => {
               const meta = getCategoryMeta(item.category);
               const Icon = meta.icon;
               const formattedDate = formatNotificationTime(item.createdAt);
+              const isActive = selectedId === item.id;
 
               return (
                 <div
                   key={item.id}
-                  onClick={() => markAsRead(item.id)}
+                  onClick={() => { markAsRead(item.id); setSelectedId(item.id); }}
                   className={cn(
-                    "relative group flex flex-col gap-2.5 rounded-2xl border p-4 transition-all duration-200 cursor-pointer shadow-md",
-                    item.isRead
-                      ? "border-white/5 bg-black/40 text-muted-foreground hover:border-white/15"
-                      : "border-amber-500/30 bg-amber-500/[0.04] text-foreground shadow-[0_0_15px_rgba(245,158,11,0.05)]"
+                    "group relative flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-all duration-150",
+                    isActive
+                      ? "border-amber-500/25 bg-amber-500/[0.06] shadow-[0_0_12px_rgba(245,158,11,0.04)]"
+                      : "border-transparent bg-transparent hover:bg-white/[0.03] hover:border-white/[0.04]"
                   )}
                 >
-                  {/* Top line: Icon + Category + Date + Delete */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-xs font-bold", meta.style)}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <span className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border", meta.style)}>
-                        {meta.label}
-                      </span>
+                  <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs", meta.style)}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className={cn("text-[13px] font-bold leading-snug", item.isRead ? "text-neutral-400" : "text-foreground")}>
+                        {item.title}
+                      </h3>
                       {!item.isRead && (
-                        <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping shrink-0" title="Non lu" />
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400 animate-pulse" />
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono text-[11px] text-muted-foreground font-medium">
+                    <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground/60 break-words">
+                      {item.body}
+                    </p>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50 font-mono">
+                        <Clock className="h-3 w-3" />
                         {formattedDate}
-                      </span>
-                      <button
-                        onClick={(e) => deleteOne(item.id, e)}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-rose-400 transition-opacity p-1"
-                        title="Supprimer la notification"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Title */}
-                  <h3 className={cn("text-xs sm:text-sm font-black tracking-tight", item.isRead ? "text-neutral-300" : "text-foreground")}>
-                    {item.title}
-                  </h3>
-
-                  {/* Full Body Text — NO TRUNCATION! FULL READABILITY */}
-                  <div className="text-xs text-neutral-300 leading-relaxed font-sans bg-black/30 p-3 rounded-xl border border-white/5 whitespace-pre-wrap break-words">
-                    {item.body}
-                  </div>
-
-                  {/* Optional Action Button Link */}
-                  {item.url && (
-                    <div className="pt-1 flex justify-end">
-                      <Link
-                        to={item.url as any}
-                        onClick={onClose}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all"
-                      >
-                        <span>Ouvrir l'action</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                  )}
                 </div>
               );
             })
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+
+      {/* ── RIGHT DETAIL PANE ── */}
+      <div
+        className={cn(
+          "flex flex-1 flex-col overflow-hidden bg-background/20 min-w-0",
+          !selected ? "hidden md:flex" : "flex"
+        )}
+      >
+        {/* Mobile header */}
+        <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-3 md:hidden shrink-0">
+          <button
+            onClick={() => setSelectedId(null)}
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-bold text-foreground">Détail</span>
+        </div>
+
+        {selected ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="mx-auto max-w-2xl px-6 py-8 lg:px-10 lg:py-12 space-y-8">
+              {/* Date + category badge */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {(() => {
+                  const meta = getCategoryMeta(selected.category);
+                  const Icon = meta.icon;
+                  return (
+                    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider", meta.style)}>
+                      <Icon className="h-3 w-3" />
+                      {meta.label}
+                    </span>
+                  );
+                })()}
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 font-mono">
+                  <Clock className="h-3 w-3" />
+                  {formatFullDate(selected.createdAt)}
+                </div>
+              </div>
+
+              {/* Title */}
+              <h2 className="text-2xl lg:text-3xl font-black tracking-tight text-foreground leading-tight">
+                {selected.title}
+              </h2>
+
+              {/* Divider */}
+              <div className="h-px w-full bg-gradient-to-r from-amber-500/20 via-white/10 to-transparent" />
+
+              {/* Body */}
+              <div className="text-sm lg:text-[15px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                {selected.body}
+              </div>
+
+              {/* Action link */}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center text-center p-8 text-muted-foreground/40 space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+              <Bell className="h-8 w-8 text-muted-foreground/30" />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-foreground/80">Sélectionne une notification</p>
+              <p className="text-xs text-muted-foreground/50 max-w-xs">
+                Clique sur un élément de la liste pour afficher les détails complets.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 function getCategoryMeta(category: NotificationItem["category"]) {
   switch (category) {
     case "trade":
-      return { label: "Trade", icon: TrendingUp, style: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400" };
+      return { label: "Trade", icon: TrendingUp, style: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400", borderClass: "border-l-emerald-500/60", textClass: "text-emerald-400" };
     case "signal":
-      return { label: "Signal IA", icon: Sparkles, style: "border-purple-500/40 bg-purple-500/15 text-purple-400" };
+      return { label: "Signal IA", icon: Sparkles, style: "border-purple-500/40 bg-purple-500/15 text-purple-400", borderClass: "border-l-purple-500/60", textClass: "text-purple-400" };
     case "risk":
-      return { label: "Sécurité", icon: ShieldAlert, style: "border-rose-500/40 bg-rose-500/15 text-rose-400" };
+      return { label: "Sécurité", icon: ShieldAlert, style: "border-rose-500/40 bg-rose-500/15 text-rose-400", borderClass: "border-l-rose-500/60", textClass: "text-rose-400" };
     default:
-      return { label: "Système", icon: Activity, style: "border-cyan-500/40 bg-cyan-500/15 text-cyan-400" };
+      return { label: "Système", icon: Activity, style: "border-cyan-500/40 bg-cyan-500/15 text-cyan-400", borderClass: "border-l-cyan-500/60", textClass: "text-cyan-400" };
   }
+}
+
+function formatFullDate(timestampSeconds: number) {
+  if (!timestampSeconds) return "";
+  const date = new Date(timestampSeconds * 1000);
+  return date.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatNotificationTime(timestampSeconds: number) {

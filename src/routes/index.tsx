@@ -135,7 +135,7 @@ function Dashboard() {
   const opportunityScan = useDashboardOpportunities();
   const isForex = chartSymbol.market === "forex";
 
-  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(500);
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(15);
 
   useEffect(() => {
     api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot")

@@ -9,6 +9,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
+import { NotificationCenterSidebarItem } from "@/components/notification-center";
 
 // Même palette de survol par page que la sidebar desktop (app-sidebar.tsx) —
 // seule la couleur du hover est reprise ici, rien d'autre ne doit changer.
@@ -24,7 +25,6 @@ const NAV_MORE = [
   { title: "Backtest",        url: "/backtest",        icon: FlaskConical,     hover: "hover:bg-fuchsia-500/[0.04] hover:text-fuchsia-300" },
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
-  { title: "Marchés",         url: "/markets",         icon: CandlestickChart, hover: "hover:bg-blue-500/[0.04] hover:text-blue-300" },
   { title: "Notes",          url: "/carnet-de-notes", icon: NotebookPen,      hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
   { title: "Skills",          url: "/skills",          icon: Wrench,           hover: "hover:bg-sky-500/[0.04] hover:text-sky-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
@@ -193,6 +193,13 @@ export function MobileMenu() {
                   </Link>
                 );
               })}
+              <NotificationCenterSidebarItem
+                className="relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm transition-all duration-150 text-muted-foreground hover:bg-amber-500/[0.04] hover:text-amber-300"
+                iconClassName="h-4 w-4"
+                labelClassName="text-sm font-medium"
+                badgeClassName="h-4 min-w-4 text-[9px]"
+                onClick={close}
+              />
               {user?.is_admin && (
                 <Link
                   to="/admin"

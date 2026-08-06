@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { NotificationCenterSidebarItem } from "@/components/notification-center";
 
 const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
@@ -49,7 +50,6 @@ const analysisItems = [
 ];
 
 const toolItems = [
-  { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
   { title: "Notes",            url: "/carnet-de-notes", icon: NotebookPen,      color: "text-rose-400",   glow: "shadow-rose-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
@@ -321,6 +321,9 @@ export function AppSidebar() {
               {filteredToolItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
+              <SidebarMenuItem className="relative">
+                <NotificationCenterSidebarItem onClick={handleNavClick} />
+              </SidebarMenuItem>
               {user?.is_admin && (() => {
                 const active = isActive("/admin");
                 return (

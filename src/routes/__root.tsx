@@ -44,7 +44,6 @@ import {
 import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
-import { NotificationCenterTrigger } from "@/components/notification-center";
 import { cn } from "@/lib/utils";
 
 function NotFoundComponent() {
@@ -199,12 +198,12 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/opportunities": { label: "Opportunités", icon: Target },
   "/signals": { label: "IA Signals", icon: Radar },
   "/autotrader": { label: "Auto-Trader", icon: Zap },
-  "/markets": { label: "Marchés", icon: CandlestickChart },
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
   "/strategies": { label: "Stratégies", icon: Workflow },
   "/surveillance": { label: "Surveillance", icon: Activity },
   "/alerts": { label: "Alertes", icon: Bell },
+  "/notifications": { label: "Notifications", icon: Bell },
   "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
@@ -376,7 +375,6 @@ function RootComponent() {
                     </span>
                   </Link>
                 )}
-                <NotificationCenterTrigger />
                 {notifPermission === "default" && (
                   <button
                     onClick={requestPermission}

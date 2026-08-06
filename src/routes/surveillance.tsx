@@ -15,7 +15,7 @@ function SurveillancePage() {
   const { user } = useAuth();
   const isAdmin = user?.is_admin === 1;
 
-  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(500);
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(15);
 
   useEffect(() => {
     api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot")

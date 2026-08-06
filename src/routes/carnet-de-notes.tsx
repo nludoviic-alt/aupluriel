@@ -181,11 +181,6 @@ function MarkdownRenderer({ content }: { content: string }) {
     }
 
     if (trimmed.startsWith("# ")) {
-      elements.push(
-        <h1 key={index} className="text-2xl font-black text-foreground tracking-tight mt-6 mb-3 bg-gradient-to-r from-white via-white/90 to-rose-200 bg-clip-text text-transparent">
-          {parseInline(trimmed.slice(2))}
-        </h1>
-      );
       return;
     }
 

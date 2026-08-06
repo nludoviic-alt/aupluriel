@@ -12,7 +12,7 @@ interface HealthPanelProps {
 
 export function HealthPanel({
   currentPnl = 0,
-  maxDailyLoss = 500,
+  maxDailyLoss = 15,
   activePreset = "default",
   winRate = 0,
   openPositionsCount = 0,

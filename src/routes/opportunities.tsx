@@ -308,19 +308,7 @@ function OpportunitiesPage() {
               )}
             </div>
 
-            <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
-              <Link
-                to="/manual-trader"
-                search={{
-                  symbol: topTake.symbol,
-                  direction: topTake.direction || undefined,
-                  preset: topTake.preset,
-                  take: "1",
-                }}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-up px-6 text-xs font-black uppercase tracking-wider text-black hover:bg-emerald-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-              >
-                <Zap className="h-4 w-4 fill-current" /> Prendre ce Trade Direct
-              </Link>
+            <div className="shrink-0 flex flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
               <ActionStrip item={topTake} />
             </div>
           </div>
@@ -507,13 +495,13 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
           take: "1",
         }}
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-black uppercase tracking-wider transition-all shadow-md",
+          "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-6 text-xs font-black uppercase tracking-wider transition-all shadow-md",
           isTake
-            ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
             : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
         )}
       >
-        <Zap className="h-3.5 w-3.5 fill-current" />
+        <Zap className="h-4 w-4 fill-current" />
         {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
       </Link>
 
