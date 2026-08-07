@@ -73,7 +73,16 @@ export async function fetchOandaCandles(
   const oandaSymbol = OANDA_SYMBOL_MAP[symbol] ?? symbol;
   const granularity = getOandaGranularity(granularitySeconds);
   const baseUrl = isPractice ? OANDA_PRACTICE_URL : OANDA_REST_URL;
-  const url = `${baseUrl}/instruments/${oandaSymbol}/candles?granularity=${granularity}&count=${count}&price=Mid`;
+  // OANDA's v3 API wants the single-letter price code (M=mid, B=bid, A=ask),
+  // not the word "Mid" — the wrong value silently 400'd every OANDA candle
+  // fetch ("Invalid value specified for 'price'"), confirmed by testing this
+  // exact request directly against OANDA's API on 2026-08-07. Since routing
+  // only ever engages when a user has OANDA credentials AND the symbol is
+  // OANDA-mapped (isOandaSymbol + this.oandaConn in bot-engine.server.ts),
+  // this was silently breaking candle fetches for every OANDA-mapped forex
+  // symbol (EUR/GBP, USD/CAD, XAU/USD, ...) for any account with OANDA
+  // credentials configured, not just gold.
+  const url = `${baseUrl}/instruments/${oandaSymbol}/candles?granularity=${granularity}&count=${count}&price=M`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
