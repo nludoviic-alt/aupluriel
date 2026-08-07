@@ -92,6 +92,11 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}`;
+// Suggested stake for an opportunity-driven manual trade (Prise Directe) —
+// the user explicitly wants every surfaced "take" opportunity pre-filled at
+// $50 so all they do is click Execute, separate from their configured
+// auto-trader stakeUsd (often $1-5, tuned for the fully-automatic bots).
+const MANUAL_SUGGESTED_STAKE = 50;
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
 
@@ -283,6 +288,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   }, []);
 
   const manualTradeRef = useRef<HTMLElement>(null);
+  // Symbol we arrived for via a ?take=1 opportunity link, still waiting on
+  // /api/opportunities to load so we can resolve the full OpportunityItem
+  // and run it through prepareManualSignal (sets preparedManualOpportunity +
+  // the $50 suggested stake consistently, not just the bare symbol/direction
+  // the URL alone can carry).
+  const pendingTakeSymbolRef = useRef<string | null>(null);
   // Mobile-only section switcher — desktop keeps the always-visible 2-col layout;
   // below md, showing every section stacked at once was too dense, so mobile
   // sees one focused section at a time instead.
@@ -561,7 +572,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       setMobileTab("control");
       const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
       if (isTakeAction) {
-        toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt ! Ajustez votre mise et validez.`);
+        setForceStake(MANUAL_SUGGESTED_STAKE);
+        pendingTakeSymbolRef.current = pair; // resolved into a full prepareManualSignal() call once opportunities load, see effect below
+        toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt à $${MANUAL_SUGGESTED_STAKE} ! Vérifiez et cliquez Exécuter.`);
       } else {
         toast.success(`${label} sélectionné — prêt à trader`);
       }
@@ -571,7 +584,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     }
 
     setConfig(loaded);
-    setForceStake(loaded.stakeUsd);
+    if (!isTakeAction) setForceStake(loaded.stakeUsd);
     setCumulativePnl(loadCumulativePnl());
     // Update active sessions every minute
     setActiveSessions(currentActiveSessions());
@@ -672,6 +685,19 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     (opportunity) => opportunity.direction && (opportunity.decision === "take" || opportunity.decision === "wait"),
   );
   const manualOpportunity = selectedPresetOpportunities.find((o) => o.symbol === forceSymbol) ?? null;
+
+  // Resolves a ?take=1 deep link (from /opportunities or a push notification)
+  // into the same prepareManualSignal() flow a manual "Signal" button click
+  // uses — the mount effect above can only set the bare symbol/direction from
+  // the URL, since /api/opportunities hasn't loaded yet at that point. This
+  // fires once the matching OpportunityItem shows up, so preparedManualOpportunity
+  // (shown in the order card) and the $50 stake stay consistent either way.
+  useEffect(() => {
+    if (pendingTakeSymbolRef.current && manualOpportunity && manualOpportunity.symbol === pendingTakeSymbolRef.current) {
+      pendingTakeSymbolRef.current = null;
+      prepareManualSignal(manualOpportunity);
+    }
+  }, [manualOpportunity]);
   const manualInstrument = forceSymbol ? getInstrumentForSymbol(forceSymbol, config) : "binary";
   const manualDirectionBias = forceDir === "CALL" || forceDir === "MULTUP" ? "CALL" : "PUT";
   const manualDirectionMatchesSignal = !!manualOpportunity?.direction
@@ -838,7 +864,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     }
     setForceSymbol(opportunity.symbol);
     setForceDir(opportunity.direction);
-    setForceStake(config.stakeUsd);
+    setForceStake(MANUAL_SUGGESTED_STAKE);
     setPreparedManualOpportunity(opportunity);
     setManualArmed(true);
     window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);

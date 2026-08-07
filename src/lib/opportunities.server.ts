@@ -79,7 +79,14 @@ export interface OpportunitiesResponse {
   };
 }
 
-const PRESETS: Preset[] = ["boom", "crash", "default", "scalping", "liquidity"];
+// "boom" deliberately excluded from opportunity scanning (2026-08-07,
+// strategy-tournament audit): production data shows Boom losing overall
+// (PF 0.85, -$198 on 1443 trades) with NO Boom symbol above PF 1 on a
+// reliable sample — surfacing it as a "take" suggestion here would
+// contradict the same evidence that already keeps it off in auto-trading
+// for these accounts. Re-add it if a future strategy actually demonstrates
+// an edge on Boom symbols.
+const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
