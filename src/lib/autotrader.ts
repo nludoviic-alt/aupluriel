@@ -603,15 +603,25 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
 };
 
 /**
- * Demo-only experiment for XAU/USD and US Tech 100: an M15 sweep of a recent
- * liquidity extreme, followed by a close back into the range and RSI turn.
- * It is intentionally a separate preset so it cannot alter Multi's validated
- * market list or risk behaviour.
+ * Demo-only experiment: an M15 sweep of a recent liquidity extreme, followed
+ * by a close back into the range and RSI turn. It is intentionally a
+ * separate preset so it cannot alter Multi's validated market list or risk
+ * behaviour.
+ *
+ * Retargeted to XAU/USD only on 2026-08-07 (strategy-tournament Phase 2):
+ * this header comment used to promise "XAU/USD and US Tech 100" while
+ * `symbols` actually only ran OTC_NDX — a pre-existing drift bug, found
+ * while preparing the tournament, not caused by it. The tournament backtest
+ * (`.claude/skills/strategy-tournament`) showed this engine's best signal on
+ * gold at +12.6pp edge over breakeven, but on only 6 trades — too small to
+ * trust yet, which is exactly why this preset exists: to accumulate a real,
+ * committed-in-advance sample (50 trades, extend once to 100 if PF lands in
+ * the 1.0-1.2 ambiguous band) before deciding to keep or drop it.
  */
 export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
-  symbols: ["OTC_NDX"],
+  symbols: ["frxXAUUSD"],
   // Pas de excludedSymbols ici — même raison que BOOM_PRESET : un preset
   // qui le fixe à [] l'efface silencieusement à chaque (ré)application.
   instrumentType: "binary",
