@@ -57,6 +57,32 @@ export function getStoredHistoricalCandles(symbol: string, granularity: number, 
 }
 
 /**
+ * Cache-first candle fetch for research tools that repeatedly re-analyze the
+ * same symbol/granularity (e.g. strategy-tournament comparing 4 engines
+ * across N symbols) — tune-multi-preset's own SKILL.md flags the "no caching,
+ * fetch-per-call" cost of the existing backtest*Server functions as a real
+ * limitation; this is the fix for NEW callers, not a change to those
+ * functions (which back the live scheduled auto-backtest job and must keep
+ * their current direct-fetch behavior). Falls through to a live fetch (and
+ * persists it) whenever the cached tail is short or stale.
+ */
+export async function getCachedCandlesServer(
+  symbol: string,
+  granularitySec: number,
+  count: number,
+  maxAgeMs = 15 * 60_000,
+): Promise<ServerCandle[]> {
+  const stored = getStoredHistoricalCandles(symbol, granularitySec, count);
+  const newestEpoch = stored.length ? stored[stored.length - 1].epoch : 0;
+  const isFresh = stored.length >= count && Date.now() - newestEpoch * 1000 < maxAgeMs;
+  if (isFresh) return stored;
+
+  const fresh = await fetchCandlesServer(symbol, granularitySec, count).catch(() => []);
+  if (fresh.length) saveHistoricalCandles(symbol, granularitySec, fresh);
+  return fresh.length >= stored.length ? fresh : stored;
+}
+
+/**
  * Paginated historical candle fetcher. Downloads up to targetCount candles
  * going back in time from Deriv API and stores them in SQLite.
  */

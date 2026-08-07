@@ -13,6 +13,7 @@ import { atr, generateSignal } from "./indicators";
 import { aggregateTfSignals, computeAtrStopUsd, GRANULARITY_SECONDS, TIMEFRAMES, type TfSignalMap, type Veto4hMode } from "./signal-core";
 import { getLearnedWeightsServer } from "./indicator-weights.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
+import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 
 const GRAN_MINUTES: Record<string, number> = { "5m": 5, "15m": 15, "1H": 60, "4H": 240 };
 // Deriv's public ticks_history (unauthenticated — this file only ever runs
@@ -70,6 +71,47 @@ export async function backtestLiquidityReversalServer(
     // The setup only receives candles closed before entry; the expiry candle
     // is read afterwards, so the replay cannot see into the future.
     const signal = generateLiquidityReversalSignal(candles.slice(0, i));
+    if (!signal) continue;
+    const entry = candles[i - 1].close;
+    const exit = candles[i - 1 + durationCandles].close;
+    const won = signal.direction === "CALL" ? exit > entry : exit < entry;
+    if (won) wins++; else losses++;
+  }
+
+  const trades = wins + losses;
+  return {
+    trades,
+    wins,
+    losses,
+    winRate: trades ? wins / trades : 0,
+    breakEvenWinRate: 1 / (1 + FALLBACK_PAYOUT_PCT),
+    payoutPct: FALLBACK_PAYOUT_PCT,
+  };
+}
+
+/** Replay generateScalpingSignal() at fixed expiry, for comparison against the
+ * other two binary engines on the same footing (strategy-tournament skill).
+ * This deliberately ignores the signal's own riskAbs/rewardAbs structural
+ * stop/target — those only make sense for a Multiplier position walked
+ * candle-by-candle (see strategy-sweep.server.ts's simulateComboStructural
+ * for that). Here we only reuse the signal's DIRECTION and judge it the same
+ * fixed-expiry way as backtestMultiTfServer/backtestLiquidityReversalServer,
+ * so all three Track A engines are compared on identical terms. */
+export async function backtestScalpingBinaryServer(
+  symbolDeriv: string,
+  { durationMinutes = 15, testCandles = 300 }: { durationMinutes?: number; testCandles?: number } = {},
+): Promise<ServerBacktestResult> {
+  const durationCandles = Math.max(1, Math.round(durationMinutes));
+  const candles = await fetchCandlesServer(symbolDeriv, 60, MIN_M1_CANDLES + testCandles + durationCandles + 5);
+  let wins = 0;
+  let losses = 0;
+  const start = Math.max(MIN_M1_CANDLES, candles.length - testCandles - durationCandles);
+  const end = candles.length - durationCandles;
+
+  for (let i = start; i < end; i++) {
+    // Same no-look-ahead discipline as backtestLiquidityReversalServer: the
+    // signal only ever sees candles closed before entry.
+    const signal = generateScalpingSignal(candles.slice(0, i));
     if (!signal) continue;
     const entry = candles[i - 1].close;
     const exit = candles[i - 1 + durationCandles].close;
