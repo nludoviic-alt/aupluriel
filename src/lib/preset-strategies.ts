@@ -312,7 +312,7 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     category: "Crash",
     targetPreset: "crash",
     targetMarkets: "CRASH 900",
-    tagline: "CRASH900 seul — le meilleur symbole de toute la production (PF 1.58, +$160.31 sur 111 trades). CRASH1000 retiré (PF 0.98, quasi neutre). TF≥4 pour éliminer le pire bucket d'accord TF.",
+    tagline: "CRASH900 seul — le meilleur symbole de toute la production (PF 1.58, +$170.92 sur 256 trades, audit 2026-08-07). CRASH1000 retiré (PF 0.98, quasi neutre). TF≥4 pour éliminer le pire bucket d'accord TF.",
     badge: "Indices Crash",
     riskProfile: "Spikes",
     color: "from-purple-500/20 via-fuchsia-500/10 to-transparent",
@@ -328,12 +328,13 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       symbolsCount: 1,
     },
     configOverride: {
-      // Audit VPS 2026-08-06 : CRASH900 est le meilleur symbole de toute la
-      // production (PF 1.58, +$160.31, 111 trades). CRASH1000 retiré (PF 0.98,
-      // -$9.52 — quasi neutre mais pas rentable). CRASH500/600 déjà exclus.
-      // TF≥4 (au lieu de 3) car TF=3 est le pire bucket d'accord TF (PF 0.65).
-      // maxConfidence laissé à 100 : l'audit ne montre pas que 90-100% est
-      // mauvais spécifiquement pour Crash.
+      // Audit VPS 2026-08-06 (111 trades) : CRASH900 déjà le meilleur symbole
+      // de la production. Reconfirmé 2026-08-07 sur un échantillon 2.3x plus
+      // grand (256 trades, PF 1.58, +$170.92) — le edge tient dans la durée,
+      // pas un artefact d'échantillon. CRASH1000 retiré (PF 0.98, quasi
+      // neutre). CRASH500/600 déjà exclus. TF≥4 (au lieu de 3) car TF=3 est
+      // un bucket faible d'accord TF. maxConfidence laissé à 100 : l'audit ne
+      // montre pas que 90-100% est mauvais spécifiquement pour Crash.
       minConfidence: 85,
       maxConfidence: 100,
       minTfAgreement: 4,
@@ -351,12 +352,21 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     category: "Best Day",
     targetPreset: "boom",
     targetMarkets: "BOOM 500 · BOOM 1000",
-    tagline: "Configuration exacte de mardi 4 août 2026 — jour gagnant Boom (+31.78$, 138 trades, 59.4% WR). Multi-symboles, TF≥2, SL 15%, TP 10%.",
+    tagline: "Configuration exacte de mardi 4 août 2026 — jour gagnant Boom (+31.78$, 138 trades, 59.4% WR). Multi-symboles, TF≥2, SL 15%, TP 10%. Un bon jour isolé, pas une edge Boom démontrée sur la durée (voir note).",
     badge: "Best Day",
     riskProfile: "Spikes",
     color: "from-green-500/25 via-emerald-500/10 to-transparent",
     borderGlow: "border-green-500/40",
-    verified: true,
+    // Badge verified retiré 2026-08-07 : un mardi gagnant ne prouve pas une
+    // edge Boom. L'audit production (2026-08-07, 1443 trades Boom) montre
+    // Boom perdant dans l'ensemble (PF 0.85, -$179.63) et AUCUN symbole Boom
+    // au-dessus de PF 1 sur un échantillon fiable — confirmé indépendamment
+    // par l'analyse "Bon Jour Crash" du 2026-08-06 (espérance Boom -0.75%/
+    // trade sur 7 jours, d'où son exclusion complète de Boom). Un jour
+    // favorable choisi après coup est un artefact de sélection, pas une
+    // validation — voir la règle du fichier ci-dessus sur ce que "verified"
+    // doit vouloir dire.
+    verifiedNote: "Le mardi 4 août a été un bon jour pour Boom, mais l'audit production (2026-08-07, 1443 trades) montre Boom perdant dans l'ensemble (PF 0.85) et aucun symbole Boom rentable sur un échantillon fiable. Cette config reste disponible pour qui veut la retester, mais un seul bon jour ne suffit pas à la certifier.",
     params: {
       minConfidence: 85,
       maxConfidence: 89,
@@ -429,12 +439,23 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     category: "Best Day",
     targetPreset: "crash",
     targetMarkets: "CRASH 900 · CRASH 1000",
-    tagline: "Stratégie optimisée pour viser 200$/jour. Crash uniquement (Boom exclu — perdant en moyenne). CRASH900+1000, mise 50$, filtre horaire auto activé. Analyse: +38$/jour moyen, +1035$ meilleur jour, -200$ pire jour. Capital min: 1000$.",
+    tagline: "Stratégie optimisée pour viser 200$/jour. Crash uniquement (Boom exclu — perdant en moyenne). CRASH900+1000, mise 50$, filtre horaire auto activé. Analyse: +38$/jour moyen, +1035$ meilleur jour, -200$ pire jour. Capital min: 1000$. Mise élevée, pas encore recoupée sur un vrai échantillon — voir note.",
     badge: "Bon Jour",
     riskProfile: "Spikes",
     color: "from-green-500/30 via-teal-500/15 to-transparent",
     borderGlow: "border-green-500/50",
-    verified: true,
+    // Badge verified retiré 2026-08-07 : l'analyse d'origine (7 jours, 1580
+    // trades Boom+Crash) n'a jamais été recoupée par audit-production.mjs sur
+    // la config RÉELLEMENT en place, et le stop journalier -$200 est calé sur
+    // le pire jour observé dans un backtest de 7 jours seulement — un stop
+    // qui absorbe exactement le pire cas connu ne protège quasiment rien en
+    // pratique. Appliquée en production le 2026-08-07 à 3 comptes (Ludovic,
+    // Juluo, Stella) ; Stella a été recalibrée à $5/-$50 15 minutes après par
+    // un admin, Ludovic et Juluo ont tourné à $50/-$200 pendant des heures
+    // avant correction (voir audit VPS 2026-08-07). Même symboles que
+    // "Best Day — Crash" ci-dessus à un dixième de la mise et du stop : à
+    // utiliser pour accumuler un échantillon réel avant de remonter la mise.
+    verifiedNote: "Basée sur une analyse réelle (7 jours de production) mais jamais recoupée par l'audit complet sur la config effectivement déployée, et le stop -$200 correspond exactement au pire jour du backtest — il n'absorbe donc quasiment aucune surprise. \"Best Day — Crash\" vise les mêmes symboles à un dixième du risque ($5/-$50) : à privilégier tant que celle-ci n'a pas accumulé au moins 100 trades clôturés à mise réduite.",
     params: {
       minConfidence: 80,
       maxConfidence: 100,

@@ -459,6 +459,19 @@ class ServerBotEngine {
   // cooldown has been served, the symbol gets one real attempt to trade
   // again; only a genuinely NEW loss re-arms the cooldown.
   private servedCooldownFor = new Map<string, string>();
+  // Same idea as servedCooldownFor but for the PRESET-WIDE circuit breaker
+  // below (countConsecutiveLosses(logs) with no symbol filter): identifies
+  // which streak the preset's last risk-pause was served for, by the id of
+  // the most recent closed trade at pause time. Without this, a preset that
+  // stops trading during its own pause re-reads the SAME stale streak on
+  // every resume and immediately re-pauses — forever, since no new trade can
+  // occur while paused to ever produce a win and clear it. Observed live:
+  // Stella/crash cycled "5 pertes consécutives" → 45min pause → resume →
+  // re-pause every ~45min for 8.5+ hours (2026-08-07) with zero new trades
+  // in between. The per-symbol version of this exact bug was already fixed
+  // (see servedCooldownFor above); this preset-wide breaker never got the
+  // same fix when it was added after the 2026-08-04 incident.
+  private presetServedCooldownFor: string | undefined;
   private contractUnsubs = new Map<number, () => void>();
   private fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
   // Set by stopScanning() when a stop was requested while a position was still
@@ -1201,14 +1214,30 @@ class ServerBotEngine {
     // symbol filter counts the streak across this preset's own trade stream.
     const presetConsecutiveLosses = countConsecutiveLosses(logs);
     if (presetConsecutiveLosses >= config.maxConsecutiveLosses) {
-      if (config.stopOnRisk) {
-        this.riskPause(
-          [`${presetConsecutiveLosses} pertes consécutives (tous symboles confondus)`],
-          this.nextShortResume(),
-        );
+      // Same "already served" check as the per-symbol breaker below: identify
+      // THIS streak by its most recent closed trade. If the pause already
+      // served was for this exact streak (no new trade since — expected,
+      // since the preset was blocked), the penalty is served: fall through
+      // and let it try again instead of reading the same stale history and
+      // re-pausing forever.
+      const streakTrade = logs.find((l) => l.status === "won" || l.status === "lost");
+      const streakKey = streakTrade?.id;
+      const alreadyServed = streakKey !== undefined && this.presetServedCooldownFor === streakKey;
+      if (!alreadyServed) {
+        if (config.stopOnRisk) {
+          this.riskPause(
+            [`${presetConsecutiveLosses} pertes consécutives (tous symboles confondus)`],
+            this.nextShortResume(),
+          );
+        }
+        if (streakKey !== undefined) this.presetServedCooldownFor = streakKey;
+        for (const symbol of config.symbols) scanResults.push({ symbol, action: "cooldown" });
+        return finishScan();
       }
-      for (const symbol of config.symbols) scanResults.push({ symbol, action: "cooldown" });
-      return finishScan();
+      // Pause already served for this streak — fall through and attempt a
+      // trade. A fresh loss produces a new streakKey and re-arms the breaker
+      // normally; a win clears the streak (countConsecutiveLosses stops at
+      // the first "won") and this branch stops matching entirely.
     }
 
     // ── Stake ──

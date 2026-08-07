@@ -37,7 +37,7 @@ function StrategiesPage() {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [liveConfigs, setLiveConfigs] = useState<LivePresetConfigs>({});
   const [liveConfigsLoaded, setLiveConfigsLoaded] = useState(false);
-  const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "verified" | "Multi" | "Boom" | "Crash" | "Scalping" | "custom">("all");
+  const [activeCategoryTab, setActiveCategoryTab] = useState<"all" | "verified" | "Multi" | "Boom" | "Crash" | "Scalping" | "Best Day" | "custom">("all");
   const { confirmState, confirm } = useConfirm();
 
   const refreshLiveConfigs = useCallback(async () => {
