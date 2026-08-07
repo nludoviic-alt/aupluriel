@@ -96,6 +96,7 @@ function UserProfilePage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [profilePreset, setProfilePreset] = useState<PresetKey>("default");
   const [journalTrades, setJournalTrades] = useState<JournalTrade[]>([]);
+  const [manualTrades, setManualTrades] = useState<JournalTrade[]>([]);
   const [journalConfig, setJournalConfig] = useState<UserBotConfig | null>(null);
   const [journalInsights, setJournalInsights] = useState<{ demo: UserInsights; live: UserInsights } | null>(null);
   const [journalLoading, setJournalLoading] = useState(true);
@@ -161,10 +162,11 @@ function UserProfilePage() {
     setJournalLoading(true);
     try {
       const data = await api.get<{
-        trades: JournalTrade[]; config: UserBotConfig | null;
+        trades: JournalTrade[]; manualTrades: JournalTrade[]; config: UserBotConfig | null;
         insights: { demo: UserInsights; live: UserInsights };
       }>(`/api/admin/stats?userId=${uid}&preset=${preset}`);
       setJournalTrades(data.trades);
+      setManualTrades(data.manualTrades ?? []);
       setJournalConfig(data.config);
       setJournalInsights(data.insights);
     } catch (err) {
@@ -512,14 +514,14 @@ function UserProfilePage() {
 
       {/* ── Mini journal ── */}
       <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
-        <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Mini journal</div>
+        <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Mini journal — Bot ({presetLabels[profilePreset]})</div>
         {journalLoading ? (
           <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" /></div>
         ) : (() => {
           const outcomeTrades = journalTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open");
           const shown = outcomeTrades.slice(0, 24);
           const hiddenCount = outcomeTrades.length - shown.length;
-          if (shown.length === 0) return <p className="text-sm text-muted-foreground font-semibold">Aucun trade enregistré.</p>;
+          if (shown.length === 0) return <p className="text-sm text-muted-foreground font-semibold">Aucun trade bot enregistré.</p>;
           return (
             <div className="flex flex-wrap gap-1.5">
               {shown.map((t) => (
@@ -528,6 +530,45 @@ function UserProfilePage() {
                 </span>
               ))}
               {hiddenCount > 0 && <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02]">+{hiddenCount} autres</span>}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* ── Trades manuels (Prise Directe) ── */}
+      <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <Crosshair className="h-3.5 w-3.5 text-cyan-400" />
+          <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Trades manuels — Prise Directe</div>
+          {manualTrades.length > 0 && (
+            <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-400">{manualTrades.length}</span>
+          )}
+        </div>
+        {journalLoading ? (
+          <div className="py-4 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-cyan-500" /></div>
+        ) : (() => {
+          const outcomeManual = manualTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open" || t.status === "error" || t.status === "pending");
+          const shown = outcomeManual.slice(0, 30);
+          const hiddenCount = outcomeManual.length - shown.length;
+          const manualPnl = manualTrades.filter((t) => t.status === "won" || t.status === "lost").reduce((s, t) => s + t.profit, 0);
+          const manualWins = manualTrades.filter((t) => t.status === "won").length;
+          const manualLosses = manualTrades.filter((t) => t.status === "lost").length;
+          if (shown.length === 0) return <p className="text-sm text-muted-foreground font-semibold">Aucun trade manuel.</p>;
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs">
+                <span className="font-bold text-muted-foreground">P&L: <span className={manualPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>{manualPnl >= 0 ? "+" : ""}{manualPnl.toFixed(2)} $</span></span>
+                <span className="text-emerald-400 font-bold">{manualWins}G</span>
+                <span className="text-rose-400 font-bold">{manualLosses}P</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {shown.map((t) => (
+                  <span key={t.id} title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · ${t.stake}$`} className={cn("rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono border", t.status === "won" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : t.status === "lost" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : t.status === "error" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20")}>
+                    {t.symbol.replace("frx","").replace("cry","")} {t.direction === "MULTUP" ? "↑" : t.direction === "MULTDOWN" ? "↓" : t.direction === "CALL" ? "↑" : "↓"} {t.status === "open" || t.status === "pending" ? "…" : (t.profit > 0 ? "+" : "") + t.profit.toFixed(2)}
+                  </span>
+                ))}
+                {hiddenCount > 0 && <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02] border border-white/[0.04]">+{hiddenCount} autres</span>}
+              </div>
             </div>
           );
         })()}

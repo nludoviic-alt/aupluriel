@@ -7,6 +7,7 @@ import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
+import { api } from "./api";
 import {
   DEFAULT_CONFIG,
   TIMEFRAMES,
@@ -941,6 +942,23 @@ export async function forceDemoTrade(
     else logs.unshift(log);
     saveTradeLog(logs);
     clearTradeLogCache();
+    // Persist manual trades to server DB so admin can see them
+    if (log.status === "open" || log.status === "won" || log.status === "lost" || log.status === "error") {
+      api.post("/api/trades", {
+        id: log.id,
+        time: log.time,
+        symbol: log.symbol,
+        direction: log.direction,
+        stake: log.stake,
+        payout: log.payout ?? 0,
+        status: log.status,
+        profit: log.profit ?? 0,
+        confidence: log.confidence ?? 0,
+        tf_agreement: log.tfAgreement ?? 0,
+        contract_id: log.contractId ?? null,
+        closed_at: log.closedAt ?? null,
+      }).catch(() => { /* silent — don't block the trade flow */ });
+    }
     onEvent(log);
   };
 

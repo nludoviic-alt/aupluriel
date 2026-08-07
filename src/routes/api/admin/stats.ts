@@ -100,6 +100,20 @@ export const Route = createFileRoute("/api/admin/stats")({
             )
             .all(userId, preset);
 
+          // Manual trades (from the `trades` table — forceDemoTrade / Prise Directe)
+          const manualTrades = db
+            .prepare(
+              `SELECT id, time, symbol, direction, stake, payout, status, profit, confidence,
+                      tf_agreement, contract_id, closed_at, created_at
+               FROM trades WHERE user_id = ? ORDER BY time DESC LIMIT 200`,
+            )
+            .all(userId) as Array<{
+              id: string; time: number; symbol: string; direction: string;
+              stake: number; payout: number; status: string; profit: number;
+              confidence: number; tf_agreement: number; contract_id: number | null;
+              closed_at: number | null; created_at: number;
+            }>;
+
           // ?preset picks the strategy row to inspect, defaulting to "default".
           const configRow = db
             .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
@@ -107,6 +121,7 @@ export const Route = createFileRoute("/api/admin/stats")({
 
           return json({
             trades,
+            manualTrades,
             config: configRow ? JSON.parse(configRow.config) : null,
             insights: {
               demo: getUserInsights(userId, "demo", preset),
