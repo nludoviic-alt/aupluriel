@@ -415,6 +415,57 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       excludedSymbols: ["CRASH500", "CRASH600"],
     },
   },
+  // ── Bon Jour Crash — Stratégie optimisée pour viser 200$/jour ──
+  // Analyse VPS 2026-08-06 (7 jours, 1580 trades Boom+Crash) :
+  //   - BOOM est perdant en moyenne (-0.75%/trade) → exclu
+  //   - CRASH900+1000 aux "bonnes heures" (0,2,3,4,5,7,8,11,16,17,18,20,21,22,23)
+  //     = +354$ sur 7 jours, espérance +1.51%/trade, 48 trades/jour
+  //   - Avec filtre hourlyEdgeFilter activé → bloque auto les heures perdantes
+  //   - Mise 50$ : +38$/jour moyen, +1035$ meilleur jour, -200$ pire jour
+  //   - Capital minimum recommandé : 1000$
+  {
+    id: "bon-jour-crash",
+    name: "Bon Jour — Crash 200$/jour",
+    category: "Best Day",
+    targetPreset: "crash",
+    targetMarkets: "CRASH 900 · CRASH 1000",
+    tagline: "Stratégie optimisée pour viser 200$/jour. Crash uniquement (Boom exclu — perdant en moyenne). CRASH900+1000, mise 50$, filtre horaire auto activé. Analyse: +38$/jour moyen, +1035$ meilleur jour, -200$ pire jour. Capital min: 1000$.",
+    badge: "Bon Jour",
+    riskProfile: "Spikes",
+    color: "from-green-500/30 via-teal-500/15 to-transparent",
+    borderGlow: "border-green-500/50",
+    verified: true,
+    params: {
+      minConfidence: 80,
+      maxConfidence: 100,
+      minTfAgreement: 3,
+      durationMinutes: 5,
+      stakeUsd: 50,
+      maxDailyLossUsd: 200,
+      symbolsCount: 2,
+    },
+    configOverride: {
+      // Analyse VPS 2026-08-06 : CRASH900+1000 aux bonnes heures = esp +1.51%/trade
+      // Boom exclu (esp -0.75%/trade sur 7 jours). Mise 50$ pour viser 200$/jour.
+      minConfidence: 80,
+      maxConfidence: 100,
+      minTfAgreement: 3,
+      stakeUsd: 50,
+      maxDailyLossUsd: 200,
+      stopLossPctOfStake: 10,
+      takeProfitPctOfStake: 10,
+      multiplierLevel: 100,
+      symbols: ["CRASH1000", "CRASH900"],
+      excludedSymbols: ["CRASH500", "CRASH600"],
+      // Filtre horaire auto : bloque les heures perdantes (1,6,9,10,12,13,14,15,19)
+      // basé sur l'historique des trades. Activé avec lookback de 5 trades/hour.
+      hourlyEdgeFilter: true,
+      hourlyEdgeLookback: 5,
+      // Toutes les sessions actives — le filtre horaire fait le tri
+      tradingSessions: ["asia", "london", "newyork"],
+      sessionEdgeMinutes: 0,
+    },
+  },
 ];
 
 /** True only when every field this template actually overrides matches what
