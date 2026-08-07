@@ -15,6 +15,7 @@ import { closePublicSocket } from "../../../../src/lib/deriv.server";
 import { backtestMultiTfServer, backtestLiquidityReversalServer, backtestScalpingBinaryServer } from "../../../../src/lib/backtest.server";
 import { fetchAndAnalyzeSymbol, simulateCombo, defaultSweepGrid, type SweepCombo } from "../../../../src/lib/boom-sweep.server";
 import { fetchAndAnalyzeSymbolLiquidity, fetchAndAnalyzeSymbolSpikeHunter, fetchAndAnalyzeSymbolScalping, simulateComboStructural } from "../../../../src/lib/strategy-sweep.server";
+import { walkForwardEvaluate } from "../../../../src/lib/walk-forward.server";
 
 function parseArgs() {
   const argv = process.argv.slice(2);
@@ -28,10 +29,13 @@ function parseArgs() {
     process.exit(1);
   }
   const quick = argv.includes("--quick");
+  const walkforward = argv.includes("--walkforward");
   const defaultSymbols = market === "gold" ? "frxXAUUSD" : "BOOM500,CRASH900,BOOM1000,CRASH1000";
   return {
     market: market as "gold" | "synthetics",
     quick,
+    walkforward,
+    folds: Number(get("folds", "3")),
     symbols: get("symbols", defaultSymbols).split(",").map((s) => s.trim()).filter(Boolean),
     candles: Number(get("candles", market === "gold" ? "300" : "250")),
     durationMinutes: Number(get("duration", "15")),
@@ -89,39 +93,32 @@ async function runSynthetics(args: ReturnType<typeof parseArgs>) {
   console.log(`=== Track B (Multiplier, path-dependent) — ${args.symbols.join(",")} — ${args.candles} candles, ${args.holdMinutes}min max hold, $${args.stake} stake, ${args.leverage}x ===\n`);
 
   const grid = defaultSweepGrid(args.quick);
-  const scalpConfCombos = args.quick ? [0, 75] : [0, 60, 75, 85];
+  const scalpGrid = (args.quick ? [0, 75] : [0, 60, 75, 85]).map((minConfidence) => ({ minConfidence }));
 
-  type EngineResult = { engine: string; bestPnl: number; trades: number; winRate: number; perSymbol: { symbol: string; trades: number; pnl: number }[] };
+  type EngineResult = {
+    engine: string; bestPnl: number; trades: number; winRate: number;
+    perSymbol: { symbol: string; trades: number; pnl: number }[];
+    walkForward: { oosPnl: number; oosTrades: number; oosWinRate: number; inSamplePnl: number; gap: number; usableFolds: number } | null;
+  };
   const results: EngineResult[] = [];
 
-  // Confluence — reuses boom-sweep.server.ts unchanged (already-verified engine).
-  {
-    const perSymbol: { symbol: string; trades: number; pnl: number; winRate: number }[] = [];
-    let best = { pnl: -Infinity, trades: 0, winRate: 0 };
-    for (const combo of grid) {
-      let pnl = 0, trades = 0, wins = 0;
-      for (const symbol of args.symbols) {
-        const { entries, c5m } = await fetchAndAnalyzeSymbol(symbol, args.candles, args.holdMinutes);
-        const r = simulateCombo(entries, c5m, combo, args.stake, args.leverage, args.holdMinutes);
-        pnl += r.totalPnlUsd; trades += r.trades; wins += r.wins;
-      }
-      process.stderr.write(".");
-      if (pnl > best.pnl) best = { pnl, trades, winRate: trades ? (wins / trades) * 100 : 0 };
-    }
-    for (const symbol of args.symbols) {
-      const { entries, c5m } = await fetchAndAnalyzeSymbol(symbol, args.candles, args.holdMinutes);
-      const r = simulateCombo(entries, c5m, grid[0], args.stake, args.leverage, args.holdMinutes);
-      perSymbol.push({ symbol, trades: entries.length, pnl: r.totalPnlUsd, winRate: r.winRate });
-    }
-    results.push({ engine: "confluence", bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol });
-  }
+  // Fetch once per symbol per engine — every combo/fold reuses this, no
+  // repeat network calls (was double-fetching confluence before this pass).
+  const confluenceBySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbol>>>();
+  for (const symbol of args.symbols) confluenceBySymbol.set(symbol, await fetchAndAnalyzeSymbol(symbol, args.candles, args.holdMinutes));
+  const liquidityBySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolLiquidity>>>();
+  for (const symbol of args.symbols) liquidityBySymbol.set(symbol, await fetchAndAnalyzeSymbolLiquidity(symbol, args.candles, args.holdMinutes));
+  const spikeBySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolSpikeHunter>>>();
+  for (const symbol of args.symbols) spikeBySymbol.set(symbol, await fetchAndAnalyzeSymbolSpikeHunter(symbol, args.candles, args.holdMinutes));
+  const scalpingBySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolScalping>>>();
+  for (const symbol of args.symbols) scalpingBySymbol.set(symbol, await fetchAndAnalyzeSymbolScalping(symbol, args.candles, args.holdMinutes));
+  process.stderr.write(".");
 
-  // Liquidity-sweep — new fetch fn, existing simulateCombo (same %-of-stake shape live).
-  {
+  function runComboEngine(
+    engine: string,
+    bySymbol: Map<string, { entries: import("../../../../src/lib/boom-sweep.server").RawEntry[]; c5m: import("../../../../src/lib/deriv.server").ServerCandle[] }>,
+  ): EngineResult {
     let best = { pnl: -Infinity, trades: 0, winRate: 0 };
-    const perSymbol: { symbol: string; trades: number; pnl: number }[] = [];
-    const bySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolLiquidity>>>();
-    for (const symbol of args.symbols) bySymbol.set(symbol, await fetchAndAnalyzeSymbolLiquidity(symbol, args.candles, args.holdMinutes));
     for (const combo of grid) {
       let pnl = 0, trades = 0, wins = 0;
       for (const symbol of args.symbols) {
@@ -132,57 +129,59 @@ async function runSynthetics(args: ReturnType<typeof parseArgs>) {
       process.stderr.write(".");
       if (pnl > best.pnl) best = { pnl, trades, winRate: trades ? (wins / trades) * 100 : 0 };
     }
-    for (const symbol of args.symbols) {
-      const { entries } = bySymbol.get(symbol)!;
-      perSymbol.push({ symbol, trades: entries.length, pnl: 0 });
-    }
-    results.push({ engine: "liquidity-sweep", bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol });
-  }
+    const perSymbol = args.symbols.map((symbol) => ({ symbol, trades: bySymbol.get(symbol)!.entries.length, pnl: 0 }));
 
-  // Spike Hunter — standalone, NOT its live fallback-only role (see SKILL.md caveat).
-  {
-    let best = { pnl: -Infinity, trades: 0, winRate: 0 };
-    const perSymbol: { symbol: string; trades: number; pnl: number }[] = [];
-    const bySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolSpikeHunter>>>();
-    for (const symbol of args.symbols) bySymbol.set(symbol, await fetchAndAnalyzeSymbolSpikeHunter(symbol, args.candles, args.holdMinutes));
-    for (const combo of grid) {
-      let pnl = 0, trades = 0, wins = 0;
+    let walkForward: EngineResult["walkForward"] = null;
+    if (args.walkforward) {
+      let oosPnl = 0, oosTrades = 0, oosWins = 0, inSamplePnl = 0, usableFoldsTotal = 0;
       for (const symbol of args.symbols) {
         const { entries, c5m } = bySymbol.get(symbol)!;
-        const r = simulateCombo(entries, c5m, combo, args.stake, args.leverage, args.holdMinutes);
-        pnl += r.totalPnlUsd; trades += r.trades; wins += r.wins;
+        const wf = walkForwardEvaluate(entries, c5m, grid, (e, c, combo) => simulateCombo(e, c, combo, args.stake, args.leverage, args.holdMinutes), args.folds);
+        oosPnl += wf.outOfSample.totalPnlUsd; oosTrades += wf.outOfSample.trades; oosWins += wf.outOfSample.wins;
+        inSamplePnl += wf.inSampleBest.totalPnlUsd; usableFoldsTotal += wf.usableFolds;
       }
-      process.stderr.write(".");
-      if (pnl > best.pnl) best = { pnl, trades, winRate: trades ? (wins / trades) * 100 : 0 };
+      walkForward = {
+        oosPnl: Math.round(oosPnl * 100) / 100, oosTrades, oosWinRate: oosTrades ? (oosWins / oosTrades) * 100 : 0,
+        inSamplePnl: Math.round(inSamplePnl * 100) / 100, gap: Math.round((inSamplePnl - oosPnl) * 100) / 100, usableFolds: usableFoldsTotal,
+      };
     }
-    for (const symbol of args.symbols) {
-      const { entries } = bySymbol.get(symbol)!;
-      perSymbol.push({ symbol, trades: entries.length, pnl: 0 });
-    }
-    results.push({ engine: "spike-hunter (standalone)", bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol });
+    return { engine, bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol, walkForward };
   }
+
+  results.push(runComboEngine("confluence", confluenceBySymbol));
+  results.push(runComboEngine("liquidity-sweep", liquidityBySymbol));
+  results.push(runComboEngine("spike-hunter (standalone)", spikeBySymbol));
 
   // Scalping — own structural stop/target, RR_TARGET-fixed breakeven, confidence-only sweep.
   {
     let best = { pnl: -Infinity, trades: 0, winRate: 0 };
-    const perSymbol: { symbol: string; trades: number; pnl: number }[] = [];
-    const bySymbol = new Map<string, Awaited<ReturnType<typeof fetchAndAnalyzeSymbolScalping>>>();
-    for (const symbol of args.symbols) bySymbol.set(symbol, await fetchAndAnalyzeSymbolScalping(symbol, args.candles, args.holdMinutes));
-    for (const minConfidence of scalpConfCombos) {
+    for (const combo of scalpGrid) {
       let pnl = 0, trades = 0, wins = 0;
       for (const symbol of args.symbols) {
-        const { entries, c1m } = bySymbol.get(symbol)!;
-        const r = simulateComboStructural(entries, c1m, args.stake, args.leverage, args.holdMinutes, minConfidence);
+        const { entries, c1m } = scalpingBySymbol.get(symbol)!;
+        const r = simulateComboStructural(entries, c1m, args.stake, args.leverage, args.holdMinutes, combo.minConfidence);
         pnl += r.totalPnlUsd; trades += r.trades; wins += r.wins;
       }
       process.stderr.write(".");
       if (pnl > best.pnl) best = { pnl, trades, winRate: trades ? (wins / trades) * 100 : 0 };
     }
-    for (const symbol of args.symbols) {
-      const { entries } = bySymbol.get(symbol)!;
-      perSymbol.push({ symbol, trades: entries.length, pnl: 0 });
+    const perSymbol = args.symbols.map((symbol) => ({ symbol, trades: scalpingBySymbol.get(symbol)!.entries.length, pnl: 0 }));
+
+    let walkForward: EngineResult["walkForward"] = null;
+    if (args.walkforward) {
+      let oosPnl = 0, oosTrades = 0, oosWins = 0, inSamplePnl = 0, usableFoldsTotal = 0;
+      for (const symbol of args.symbols) {
+        const { entries, c1m } = scalpingBySymbol.get(symbol)!;
+        const wf = walkForwardEvaluate(entries, c1m, scalpGrid, (e, c, combo) => simulateComboStructural(e, c, args.stake, args.leverage, args.holdMinutes, combo.minConfidence), args.folds);
+        oosPnl += wf.outOfSample.totalPnlUsd; oosTrades += wf.outOfSample.trades; oosWins += wf.outOfSample.wins;
+        inSamplePnl += wf.inSampleBest.totalPnlUsd; usableFoldsTotal += wf.usableFolds;
+      }
+      walkForward = {
+        oosPnl: Math.round(oosPnl * 100) / 100, oosTrades, oosWinRate: oosTrades ? (oosWins / oosTrades) * 100 : 0,
+        inSamplePnl: Math.round(inSamplePnl * 100) / 100, gap: Math.round((inSamplePnl - oosPnl) * 100) / 100, usableFolds: usableFoldsTotal,
+      };
     }
-    results.push({ engine: "scalping (structural)", bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol });
+    results.push({ engine: "scalping (structural)", bestPnl: Math.round(best.pnl * 100) / 100, trades: best.trades, winRate: best.winRate, perSymbol, walkForward });
   }
   process.stderr.write("\n\n");
 
@@ -197,6 +196,30 @@ async function runSynthetics(args: ReturnType<typeof parseArgs>) {
     console.log(`  ${r.engine}: ${r.perSymbol.map((s) => `${s.symbol}=${s.trades}`).join(", ")}`);
   }
   console.log(`\n$P&L assumes $${args.stake} stake at ${args.leverage}x leverage, ${args.holdMinutes}min max hold — same assumptions across all 4 engines so this ranking is apples-to-apples. spike-hunter's number is its STANDALONE edge if it traded every qualifying setup, not its live contribution (live it only fires as a fallback when confluence confidence<75 on Boom/Crash). Treat any engine under ~30 trades as exploratory only.`);
+
+  if (args.walkforward) {
+    console.log(`\n=== Walk-forward (out-of-sample) — ${args.folds} folds, expanding window ===`);
+    console.log("The number above (\"BestComboPnL\") is IN-SAMPLE: the best combo chosen and");
+    console.log("scored on the SAME data. Below, each fold's combo is picked using only PRIOR");
+    console.log("folds, then scored on a fold it never saw — this is what a strategy would");
+    console.log("actually have made if you'd re-optimized periodically instead of picking the");
+    console.log("one combo that happened to fit this whole window.\n");
+    console.log("Engine                     | OOS Trades  OOS WinRate  OOS PnL($)  InSample PnL($)  Gap($)");
+    const wfRanked = [...results].filter((r) => r.walkForward).sort((a, b) => b.walkForward!.oosPnl - a.walkForward!.oosPnl);
+    for (const r of wfRanked) {
+      const wf = r.walkForward!;
+      console.log(
+        `${r.engine.padEnd(26)} | ${pad(wf.oosTrades, 10)}  ${wf.oosTrades > 0 ? wf.oosWinRate.toFixed(1).padStart(10) + "%" : "       n/a"}  ` +
+        `${(wf.oosPnl >= 0 ? "+" : "") + "$" + wf.oosPnl}`.padEnd(11) + `  ${(wf.inSamplePnl >= 0 ? "+" : "") + "$" + wf.inSamplePnl}`.padEnd(17) +
+        `  ${wf.gap > 0 ? "+" : ""}$${wf.gap}`,
+      );
+    }
+    console.log("\nGap = InSample - OOS. A LARGE positive gap means the in-sample number was mostly");
+    console.log("overfitting — the combo fit that window's noise, not a real edge. A small gap (or");
+    console.log("OOS close to/above in-sample) is the actual trustworthy signal. With this little");
+    console.log(`data (${args.candles} candles split into ${args.folds} folds), OOS trade counts per engine are`);
+    console.log("often under 30 — read the gap as a warning sign, not a precise number.");
+  }
 }
 
 async function main() {

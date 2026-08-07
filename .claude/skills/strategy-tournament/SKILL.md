@@ -21,11 +21,48 @@ npx tsx .claude/skills/strategy-tournament/scripts/tournament.ts --market=gold [
 
 # Synthétiques — 4 moteurs en mode Multiplier, marche-avant (Track B)
 npx tsx .claude/skills/strategy-tournament/scripts/tournament.ts --market=synthetics [--symbols=BOOM500,CRASH900,BOOM1000,CRASH1000] [--candles=250] [--hold=60] [--stake=5] [--leverage=20] [--quick]
+
+# + validation hors échantillon (walk-forward) — Track B seulement
+npx tsx .claude/skills/strategy-tournament/scripts/tournament.ts --market=synthetics --walkforward [--folds=3] [mêmes options que ci-dessus]
 ```
 
 `--quick` réduit la grille de combos testée (plus rapide, moins exhaustif) —
 commencer par ça, surtout sur `synthetics` qui compare 4 moteurs × plusieurs
 symboles × une grille de combos.
+
+## `--walkforward` — la partie qui manquait
+
+Sans ce drapeau, le tournoi reporte un chiffre **en échantillon** : le meilleur
+combo, choisi et noté sur LA MÊME fenêtre de données. Ce chiffre est toujours
+optimiste — c'est exactement le mécanisme qui a produit "Bon Jour Crash" (bon
+sur 7 jours de backtest, jamais revalidé en aveugle avant d'être déployé à 10x
+la mise).
+
+`--walkforward` découpe la fenêtre en `--folds` tranches chronologiques
+(3 par défaut). Pour chaque tranche (sauf la première), le meilleur combo est
+choisi en ne regardant QUE les tranches précédentes, puis noté sur la tranche
+suivante — qu'il n'a jamais vue. Le total de ces notes "hors échantillon"
+(OOS) est le vrai résultat ; le "Gap" affiché = ce que l'échantillon complet
+promettait moins ce que le hors-échantillon a réellement donné. Un grand écart
+positif = le chiffre en échantillon était surtout du bruit ajusté après coup,
+pas une edge réelle.
+
+Premier run réel (BOOM500+CRASH900, 200 bougies, 3 tranches) :
+
+| Moteur | OOS Trades | OOS P&L | En échantillon | Écart |
+|---|---:|---:|---:|---:|
+| scalping (structural) | 96 | +$19.49 | +$30.49 | +$11 (edge réelle, un peu gonflée en échantillon) |
+| confluence | 185 | -$0.05 | -$1.53 | quasi nul (cohérent, mais cohérent autour de zéro) |
+| liquidity-sweep | 13 | -$0.68 | -$0.31 | trop peu de trades pour conclure |
+| spike-hunter | 93 | -$4.85 | -$7.33 | négatif des deux côtés — pas juste du bruit, vraiment pas d'edge seul |
+
+C'est la confirmation que le scalping structurel n'est pas un artefact de
+fenêtre unique — même testé sur des données qu'il n'a jamais vues au moment de
+choisir ses seuils, il reste net positif.
+
+N'utiliser que sur Track B (`synthetics`) pour l'instant — Track A (`gold`)
+reste en fenêtre unique, les fonctions de backtest binaire n'exposent pas
+encore les entrées individuelles nécessaires au découpage par tranches.
 
 ## Les deux volets — ne jamais les fusionner
 
