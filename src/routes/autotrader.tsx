@@ -97,6 +97,15 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // $50 so all they do is click Execute, separate from their configured
 // auto-trader stakeUsd (often $1-5, tuned for the fully-automatic bots).
 const MANUAL_SUGGESTED_STAKE = 50;
+// Daily loss cap for MANUAL trades (2026-08-07) — Prise Directe had zero
+// automated risk protection (no daily stop, no consecutive-loss breaker,
+// unlike every auto-trader preset). This mirrors the bot engine's own
+// maxDailyLossUsd stop, scoped to realized P&L on the `trades` table only
+// (server-authoritative, not the local trade log) — floating P&L on still-open
+// manual positions isn't tracked continuously the way the bot's is, so this
+// is a real but narrower protection: it stops the bleeding from REALIZED
+// losses today, not from an open position still moving against you.
+const MANUAL_DAILY_LOSS_CAP = 500;
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
 
@@ -267,6 +276,22 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // can't surface bot controls on a page whose whole point is to bypass the bot.
   const advancedVisible = showAdvanced && tradingTab === "auto";
   const [preparedManualOpportunity, setPreparedManualOpportunity] = useState<OpportunityItem | null>(null);
+  // Net realized P&L on MANUAL trades today (UTC) — null while unknown yet,
+  // so the daily-loss gate below defaults to "not exceeded" rather than
+  // flashing a false block before the first fetch resolves.
+  const [manualTodayPnl, setManualTodayPnl] = useState<number | null>(null);
+  const refreshManualDailyPnl = useCallback(async () => {
+    try {
+      const rows = await api.get<{ time: number; status: string; profit: number }[]>("/api/trades?limit=200");
+      const startOfUtcDay = new Date(); startOfUtcDay.setUTCHours(0, 0, 0, 0);
+      const startMs = startOfUtcDay.getTime();
+      const net = rows
+        .filter((r) => r.time >= startMs && (r.status === "won" || r.status === "lost"))
+        .reduce((sum, r) => sum + r.profit, 0);
+      setManualTodayPnl(net);
+    } catch { /* leave last known value — a transient fetch failure shouldn't flip the gate */ }
+  }, []);
+  useEffect(() => { refreshManualDailyPnl(); }, [refreshManualDailyPnl]);
   const [liveDerivPositions, setLiveDerivPositions] = useState<OpenPosition[]>([]);
   const [showQuickCustomizer, setShowQuickCustomizer] = useState(false);
   const [quickSymbols, setQuickSymbols] = useState<string[]>(() => {
@@ -734,7 +759,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceSymbol]);
 
-  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && (
+  const manualDailyLossExceeded = manualTodayPnl !== null && manualTodayPnl <= -MANUAL_DAILY_LOSS_CAP;
+  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && !manualDailyLossExceeded && (
     config.mode === "demo"
       ? (!derivSession.connected || manualAccountMatchesMode)
       : derivSession.connected && manualAccountMatchesMode
@@ -1338,6 +1364,20 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         </div>
         </div>
 
+        {manualDailyLossExceeded && (
+          <div role="alert" className="rounded-2xl border border-down/40 bg-down/10 p-3 lg:p-4 flex items-start gap-2.5">
+            <ShieldAlert className="h-4 w-4 lg:h-5 lg:w-5 text-down shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-xs lg:text-sm font-black text-down">
+                Garde-fou manuel actif — plafond de perte journalier atteint (${MANUAL_DAILY_LOSS_CAP})
+              </p>
+              <p className="mt-0.5 text-[11px] lg:text-xs text-muted-foreground">
+                Pertes réalisées aujourd'hui : ${Math.abs(manualTodayPnl ?? 0).toFixed(2)}. L'exécution manuelle est bloquée jusqu'à minuit UTC (reprise automatique) — l'auto-trader n'est pas concerné.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 2-Column Tactical Layout — mobile: single column, desktop: 2 cols */}
         <div className="grid gap-4 lg:gap-5 lg:grid-cols-[minmax(0,1.2fr)_360px] items-start">
           {/* LEFT: Order Form */}
@@ -1917,6 +1957,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             setManualExecution({ status: log.status, symbol: label, direction: forceDir });
                           } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
                             setManualExecution(null);
+                            if (log.status === "won" || log.status === "lost") refreshManualDailyPnl();
                           }
                           if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                         },
@@ -2067,6 +2108,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           setManualExecution({ status: log.status, symbol: label, direction: forceDir });
                         } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
                           setManualExecution(null);
+                          if (log.status === "won" || log.status === "lost") refreshManualDailyPnl();
                         }
                         if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                       },
@@ -2174,6 +2216,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             setManualExecution({ status: log.status, symbol: label, direction: forceDir });
                           } else if (log.status === "won" || log.status === "lost" || log.status === "error") {
                             setManualExecution(null);
+                            if (log.status === "won" || log.status === "lost") refreshManualDailyPnl();
                           }
                           if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                         },
