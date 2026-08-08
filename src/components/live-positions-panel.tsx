@@ -41,7 +41,7 @@ export function LivePositionsPanel({
   }
 
   return (
-    <div className="glass-panel overflow-hidden rounded-2xl border border-cyan/30 bg-[#070B14]/95 p-3 lg:p-4 shadow-2xl">
+    <div className="glass-panel overflow-hidden rounded-2xl border border-cyan/30 bg-[#070B14]/95 p-3 lg:p-4 shadow-2xl mt-6 lg:mt-0">
       <div className="flex items-center justify-between border-b border-white/10 pb-2.5 lg:pb-3 mb-2.5 lg:mb-3">
         <div className="flex items-center gap-2">
           <Activity className="h-3.5 w-3.5 lg:h-4 lg:w-4 text-cyan animate-pulse" />
