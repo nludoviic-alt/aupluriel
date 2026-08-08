@@ -7,13 +7,14 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { ALL_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
 function canonicalConfig(preset: Preset) {
   if (preset === "boom") return { ...DEFAULT_CONFIG, ...BOOM_PRESET };
   if (preset === "crash") return { ...DEFAULT_CONFIG, ...CRASH_PRESET };
   if (preset === "scalping") return { ...DEFAULT_CONFIG, ...SCALPING_PRESET, mode: "demo" as const };
   if (preset === "liquidity") return { ...DEFAULT_CONFIG, ...LIQUIDITY_PRESET, mode: "demo" as const };
+  if (preset === "gold") return { ...DEFAULT_CONFIG, ...GOLD_PRESET, mode: "demo" as const };
   return DEFAULT_CONFIG;
 }
 
@@ -89,7 +90,7 @@ export const Route = createFileRoute("/api/admin/bot")({
           // jamais activer du live sans que l'utilisateur l'ait lui-même
           // déjà choisi une fois.
           const saved = loadBotConfig(userId, preset);
-          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "scalping" || preset === "liquidity" ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
+          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "scalping" || preset === "liquidity" || preset === "gold" ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
           try {
             await startBotForUser(userId, preset, config);
           } catch (e) {

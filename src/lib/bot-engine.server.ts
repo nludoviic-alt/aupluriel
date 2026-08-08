@@ -27,6 +27,7 @@ import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
+import { generateGoldTrendSignal, MIN_GOLD_CANDLES } from "./gold-trend-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import {
   DEFAULT_CONFIG,
@@ -93,12 +94,12 @@ const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity";
+export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
 
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
@@ -109,6 +110,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   crash: "Crash",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
+  gold: "Or Trend",
 };
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
@@ -119,7 +121,7 @@ const PRESET_LABEL: Record<Preset, string> = {
 export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -1393,6 +1395,25 @@ class ServerBotEngine {
             blockers: sig ? [] : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
             dominantTf: "15m",
             suggestedDuration: 15,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: 0,
+          };
+          return { symbol, analysis };
+        })
+      : this.preset === "gold"
+      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const m15 = await candleFetcher(symbol, 900, MIN_GOLD_CANDLES + 5);
+          const sig = m15.length >= MIN_GOLD_CANDLES ? generateGoldTrendSignal(m15) : null;
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0,
+            premiumCount: 0,
+            volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas de setup trend-following confirmé (EMA/ADX/RSI/MACD/candle)"],
+            dominantTf: "15m",
+            suggestedDuration: 30,
             trendAlignmentScore: sig ? 4 : 0,
             patternBonus: 0,
           };

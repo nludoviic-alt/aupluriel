@@ -41,7 +41,7 @@ export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
 });
 
-type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "manual";
+type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "manual";
 
 interface PresetMeta {
   label: string;
@@ -86,6 +86,13 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     color: "text-blue-400",
     borderColor: "border-blue-500/30",
     bgTone: "bg-blue-500/10",
+  },
+  gold: {
+    label: "Or Trend",
+    badge: "🥇 Or",
+    color: "text-yellow-400",
+    borderColor: "border-yellow-500/30",
+    bgTone: "bg-yellow-500/10",
   },
   manual: {
     label: "Prise Directe Manuelle",

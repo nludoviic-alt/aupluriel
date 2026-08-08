@@ -640,6 +640,62 @@ export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   mode: "demo",
 };
 
+/**
+ * Gold preset — trend-following M15 strategy exclusively for XAU/USD.
+ *
+ * This is a DIFFERENT TRADING MECHANISM from the Multi engine, for the same
+ * reason Scalping and Liquidity are isolated: the Multi engine's
+ * mean-reversion filter (RSI > 70 blocks buying, RSI < 30 blocks selling)
+ * systematically kills the best gold entries — gold can stay overbought or
+ * oversold for extended periods during strong trends. The 6 real production
+ * trades on frxXAUUSD with the Multi engine gave 16.7% win rate (−$37.46),
+ * which is why the symbol was excluded from DEFAULT_CONFIG.
+ *
+ * The dedicated engine (gold-trend-signal.server.ts) is pure trend-following:
+ * RSI > 70 is treated as STRENGTH (momentum confirmation), not as a sell
+ * signal. See that file's header for the full gate list.
+ *
+ * Risk profile (demo-only, same caution as Liquidity):
+ * - 1 symbol (frxXAUUSD), binary CALL/PUT
+ * - London + New York sessions only (gold is erratic in the Asian session)
+ * - 30-min expiry (gold needs more time than 15 min for a move to develop)
+ * - $1 stake, $3 daily loss cap, 3 trades/day max — tiny until proven
+ * - minConfidence 75 (the engine's base score; 5 gates must all agree)
+ * - mode forced to "demo" server-side (same guard as Scalping/Liquidity)
+ */
+export const GOLD_SYMBOLS = ["frxXAUUSD"];
+
+export const GOLD_PRESET: Partial<AutoTraderConfig> = {
+  ...DEFAULT_CONFIG,
+  symbolMode: "watchlist",
+  symbols: GOLD_SYMBOLS,
+  // Pas de excludedSymbols ici — même raison que BOOM_PRESET/LIQUIDITY_PRESET.
+  instrumentType: "binary",
+  stakeUsd: 1,
+  durationMinutes: 30,
+  minConfidence: 75,
+  maxConfidence: 95,
+  minTfAgreement: 4,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 2,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  tradingSessions: ["london", "newyork"],
+  // Gold's natural ATR% is 1.5-4% — the engine itself gates on this range,
+  // but keep the scan-level filter permissive so the engine can make the
+  // call (the engine's ATR% gate is more precise than the global one).
+  maxVolatilityPct: 6,
+  newsFilter: true,
+  mode: "demo",
+};
+
+export function isGoldPresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === GOLD_SYMBOLS.length
+    && GOLD_SYMBOLS.every((s) => config.symbols.includes(s));
+}
+
 export function isScalpingPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === SCALPING_SYMBOLS.length

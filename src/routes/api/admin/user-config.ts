@@ -16,7 +16,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
@@ -39,6 +39,7 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
   if (preset === "liquidity") return LIQUIDITY_PRESET;
+  if (preset === "gold") return GOLD_PRESET;
   return DEFAULT_CONFIG;
 }
 
@@ -53,7 +54,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash" && body.preset !== "scalping" && body.preset !== "liquidity") {
+        if (body.preset !== "default" && body.preset !== "boom" && body.preset !== "crash" && body.preset !== "scalping" && body.preset !== "liquidity" && body.preset !== "gold") {
           return json({ error: "Preset inconnu." }, 400);
         }
         if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical && !body.configOverride) {
@@ -80,7 +81,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
           Object.assign(config, presetFieldsFor(body.preset), {
             stakeUsd, maxDailyLossUsd, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled,
-            mode: body.preset === "scalping" || body.preset === "liquidity" ? "demo" : mode,
+            mode: body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" ? "demo" : mode,
           });
         }
         if (body.symbols !== undefined) {

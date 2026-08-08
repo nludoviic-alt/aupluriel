@@ -50,7 +50,7 @@ import {
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
-  LIQUIDITY_PRESET, SCALPING_PRESET,
+  LIQUIDITY_PRESET, SCALPING_PRESET, GOLD_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -107,9 +107,9 @@ const MANUAL_SUGGESTED_STAKE = 50;
 // losses today, not from an open position still moving against you.
 const MANUAL_DAILY_LOSS_CAP = 500;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
@@ -119,6 +119,7 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   crash: { market: "Indices Crash", description: "Crash 1000 · Crash 900" },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
   liquidity: { market: "Or · Nasdaq", description: "M15 · balayage + RSI", experimental: true },
+  gold: { market: "Or (XAU/USD)", description: "M15 · trend-following", experimental: true },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -131,12 +132,12 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity"] as const;
+const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity", "gold"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
   id: string;
-  preset: "default" | "boom" | "crash" | "scalping" | "liquidity";
+  preset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
   presetLabel: string;
   symbol: string;
   label: string;
@@ -343,7 +344,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false, gold: false });
 
   // Mobile shows at most 3 of the 4 preset tabs (admin choice) — four didn't
   // fit a phone-width strip. Desktop is never filtered. Falls back to all four
@@ -502,7 +503,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           // Demo — lighter confirmation so a stray tap can't start the bot.
           const ok = await confirm({
             title: `Démarrer l'auto-exécution — ${presetLabels[selectedPreset]} (Démo) ?`,
-            description: `Au Pluriel va scanner les marchés ${presetLabels[selectedPreset]} et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${config.stakeUsd} par trade.\n\nAu Pluriel n'exécute que les signaux qu'il classe « à prendre ».`,
+            description: `Scan ${presetLabels[selectedPreset]} en démo, 24/7. Mise : $${config.stakeUsd}/trade. Signaux « à prendre » uniquement.`,
             confirmLabel: "Démarrer",
           });
           if (!ok) return;
@@ -818,14 +819,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "gold" ? GOLD_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
     const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
     const next: AutoTraderConfig = hasSavedOverride
       ? saved
-      : target === "scalping" || target === "liquidity"
+      : target === "scalping" || target === "liquidity" || target === "gold"
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {
             ...DEFAULT_CONFIG, ...presetFields,
@@ -1103,6 +1104,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 liquidity: {
                   active: "border-fuchsia-500/60 bg-fuchsia-500/10 ring-1 ring-fuchsia-500/50",
                 },
+                gold: {
+                  active: "border-yellow-500/60 bg-yellow-500/10 ring-1 ring-yellow-500/50",
+                },
               } as const;
 
               return (
@@ -1181,6 +1185,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 crash: { active: "border-amber-500/50 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]" },
                 scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]" },
                 liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]" },
+                gold: { active: "border-yellow-500/50 bg-yellow-500/10 shadow-[0_0_20px_rgba(234,179,8,0.15)]" },
               } as const;
               return (
                 <button
@@ -1210,7 +1215,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </div>
                   <span className="text-xs font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
                   <span className="text-[11px] text-muted-foreground/75 truncate w-full" title={configuredMarkets}>
-                    {p === "default" || p === "scalping" || p === "liquidity" ? PRESET_PRESENTATION[p].description : configuredMarkets}
+                    {p === "default" || p === "scalping" || p === "liquidity" || p === "gold" ? PRESET_PRESENTATION[p].description : configuredMarkets}
                   </span>
                   <span className={cn("mt-1.5 text-sm font-black font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
                     {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}

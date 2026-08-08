@@ -1,4 +1,4 @@
-import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
+import { BOOM_PRESET, CRASH_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -6,6 +6,7 @@ import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
+import { generateGoldTrendSignal, MIN_GOLD_CANDLES } from "./gold-trend-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -86,13 +87,14 @@ export interface OpportunitiesResponse {
 // contradict the same evidence that already keeps it off in auto-trading
 // for these accounts. Re-add it if a future strategy actually demonstrates
 // an edge on Boom symbols.
-const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity"];
+const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity", "gold"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
   crash: "Crash",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
+  gold: "Or Trend",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
@@ -101,6 +103,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   crash: CRASH_PRESET,
   scalping: SCALPING_PRESET,
   liquidity: LIQUIDITY_PRESET,
+  gold: GOLD_PRESET,
 };
 
 const SYMBOL_LABELS = new Map(SYMBOLS.map((s) => [s.deriv, s]));
@@ -275,6 +278,63 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
       takeProfitUsd: null,
       stopLossUsd: null,
       reasons: signal ? [signal.reason] : ["Aucun setup de reversal de liquidité confirmé."],
+      blockers: analysis.blockers,
+      stats,
+      updatedAt: now,
+    };
+  }
+
+  if (preset === "gold") {
+    const m15 = await fetchCandlesServer(symbol, 900, MIN_GOLD_CANDLES + 5);
+    const signal = generateGoldTrendSignal(m15);
+    const analysis: SymbolAnalysis = signal
+      ? {
+          direction: signal.direction,
+          confidence: signal.confidence,
+          agreement: 4,
+          premiumCount: 0,
+          volatilityPct: signal.volatilityPct,
+          volatilityRatio: 1,
+          blockers: [],
+          dominantTf: "15m",
+          suggestedDuration: 30,
+          trendAlignmentScore: 4,
+          patternBonus: 0,
+        }
+      : {
+          direction: null,
+          confidence: 0,
+          agreement: 0,
+          premiumCount: 0,
+          volatilityPct: 0,
+          volatilityRatio: 1,
+          blockers: ["Pas de setup trend-following confirmé (EMA/ADX/RSI/MACD/candle)"],
+          dominantTf: "15m",
+          suggestedDuration: 30,
+          trendAlignmentScore: 0,
+          patternBonus: 0,
+        };
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
+    return {
+      id: `${preset}:${symbol}`,
+      preset,
+      presetLabel: PRESET_LABEL[preset],
+      symbol,
+      label: meta?.label ?? symbol,
+      market: meta?.market ?? "unknown",
+      decision,
+      direction: analysis.direction,
+      directionLabel: directionLabel(analysis.direction, instrument),
+      confidence: analysis.confidence,
+      agreement: analysis.agreement,
+      risk: riskLevelFor(analysis, stats),
+      mode: "manual",
+      instrument,
+      durationMinutes: 30,
+      takeProfitUsd: null,
+      stopLossUsd: null,
+      reasons: signal ? [signal.reason] : ["Aucun setup trend-following confirmé sur l'or."],
       blockers: analysis.blockers,
       stats,
       updatedAt: now,

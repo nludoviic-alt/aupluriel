@@ -26,7 +26,7 @@ interface AdminUser {
 interface BotStatus {
   userId: number; enabled: boolean; running: boolean; hasToken: boolean;
   mode: "demo" | "live" | null;
-  preset: "boom" | "crash" | "default" | "scalping" | "liquidity";
+  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold";
   lastError: string | null; autoBacktestEnabled: boolean;
 }
 interface JournalTrade {
@@ -68,9 +68,9 @@ interface UserRecap {
   tradesLive: number; netPnlLive: number;
 }
 
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité" } as const;
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
-const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity"];
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend" } as const;
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
+const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
 
 const CONFIG_FIELD_LABELS: Record<string, string> = {
   stakeUsd: "Mise", maxDailyLossUsd: "Limite perte/jour", maxDailyProfitUsd: "Objectif gain/jour",
@@ -394,11 +394,11 @@ function UserProfilePage() {
                   className={cn(
                     "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
                     profilePreset === p
-                      ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : p === "liquidity" ? "bg-violet-500/15 text-violet-300" : "bg-cyan-500/15 text-cyan-400"
+                      ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : p === "liquidity" ? "bg-violet-500/15 text-violet-300" : p === "gold" ? "bg-amber-500/15 text-amber-400" : "bg-cyan-500/15 text-cyan-400"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : p === "scalping" ? "⏱️ Scalping" : p === "liquidity" ? "◌ Liquidité" : "Multi"}
+                  {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : p === "scalping" ? "⏱️ Scalping" : p === "liquidity" ? "◌ Liquidité" : p === "gold" ? "🥇 Or" : "Multi"}
                 </button>
               ))}
             </div>

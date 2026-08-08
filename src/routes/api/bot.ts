@@ -26,15 +26,16 @@ import {
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
-const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
+const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
   if (preset === "liquidity") return LIQUIDITY_PRESET;
+  if (preset === "gold") return GOLD_PRESET;
   return DEFAULT_CONFIG;
 }
 
@@ -103,8 +104,8 @@ export const Route = createFileRoute("/api/bot")({
           config?: Partial<AutoTraderConfig>;
         };
 
-        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default" && body.preset !== "scalping" && body.preset !== "liquidity") {
-          return json({ error: "preset doit être 'boom', 'crash', 'default', 'scalping' ou 'liquidity'." }, 400);
+        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default" && body.preset !== "scalping" && body.preset !== "liquidity" && body.preset !== "gold") {
+          return json({ error: "preset doit être 'boom', 'crash', 'default', 'scalping', 'liquidity' ou 'gold'." }, 400);
         }
         const preset = body.preset;
 
@@ -134,7 +135,7 @@ export const Route = createFileRoute("/api/bot")({
           // (see SCALPING_PRESET's header comment), forced back to demo
           // server-side regardless of what's requested, not just defaulted
           // client-side where a stale draft could slip through.
-          const mode = preset === "scalping" || preset === "liquidity" ? "demo" : requested.mode === "live" ? "live" : "demo";
+          const mode = preset === "scalping" || preset === "liquidity" || preset === "gold" ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -167,7 +168,7 @@ export const Route = createFileRoute("/api/bot")({
           // client could still send "simulation" even though TradingMode no
           // longer allows it at compile time.
           if ((next.mode as string) === "simulation") next.mode = "demo";
-          if (preset === "scalping" || preset === "liquidity") next.mode = "demo"; // experimental presets never use real money
+          if (preset === "scalping" || preset === "liquidity" || preset === "gold") next.mode = "demo"; // experimental presets never use real money
           const increasesFrequency =
             Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)
             || Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
@@ -219,10 +220,10 @@ export const Route = createFileRoute("/api/bot")({
             ...presetFieldsFor(preset),
             stakeUsd,
             maxDailyLossUsd,
-            // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET; the "start" and
+            // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET/GOLD_PRESET; the "start" and
             // "update" actions and /api/admin/user-config's resetToCanonical all gate
-            // both presets the same way, this one had only checked scalping.
-            mode: preset === "scalping" || preset === "liquidity" ? "demo" : mode,
+            // these presets the same way, this one had only checked scalping.
+            mode: preset === "scalping" || preset === "liquidity" || preset === "gold" ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,
