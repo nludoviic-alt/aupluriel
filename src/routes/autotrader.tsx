@@ -1091,21 +1091,27 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               const accentStyles = {
                 default: {
                   active: "border-purple-500/60 bg-purple-500/10 ring-1 ring-purple-500/50",
+                  idle: "border-purple-500/15 bg-purple-500/[0.03]",
                 },
                 boom: {
                   active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
+                  idle: "border-orange-500/15 bg-orange-500/[0.03]",
                 },
                 crash: {
-                  active: "border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/50",
+                  active: "border-[#ff9a6c]/60 bg-[#ff9a6c]/10 ring-1 ring-[#ff9a6c]/50",
+                  idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03]",
                 },
                 scalping: {
                   active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50",
+                  idle: "border-cyan-500/15 bg-cyan-500/[0.03]",
                 },
                 liquidity: {
                   active: "border-fuchsia-500/60 bg-fuchsia-500/10 ring-1 ring-fuchsia-500/50",
+                  idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03]",
                 },
                 gold: {
-                  active: "border-yellow-500/60 bg-yellow-500/10 ring-1 ring-yellow-500/50",
+                  active: "border-lime-500/60 bg-lime-500/10 ring-1 ring-lime-500/50",
+                  idle: "border-lime-500/15 bg-lime-500/[0.03]",
                 },
               } as const;
 
@@ -1121,7 +1127,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         ? "border-emerald-500/30 bg-emerald-500/[0.04]"
                         : pnlVal < 0
                           ? "border-rose-500/30 bg-rose-500/[0.04]"
-                          : "border-white/10 bg-card/40"
+                          : accentStyles[p].idle
                   )}
                 >
                   {/* Top Bar: Title + Online Dot / Test Badge */}
@@ -1180,12 +1186,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               const configuredMarkets = formatConfiguredMarkets(st?.savedConfig?.symbols, PRESET_PRESENTATION[p].description);
               const isOnline = !!st?.enabled && !!st?.running;
               const styles = {
-                default: { active: "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.15)]" },
-                boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]" },
-                crash: { active: "border-amber-500/50 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]" },
-                scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]" },
-                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]" },
-                gold: { active: "border-yellow-500/50 bg-yellow-500/10 shadow-[0_0_20px_rgba(234,179,8,0.15)]" },
+                default: { active: "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.15)]", idle: "border-purple-500/15 bg-purple-500/[0.03] hover:bg-purple-500/[0.06]" },
+                boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]", idle: "border-orange-500/15 bg-orange-500/[0.03] hover:bg-orange-500/[0.06]" },
+                crash: { active: "border-[#ff9a6c]/50 bg-[#ff9a6c]/10 shadow-[0_0_20px_rgba(255,154,108,0.15)]", idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03] hover:bg-[#ff9a6c]/[0.06]" },
+                scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
+                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03] hover:bg-fuchsia-500/[0.06]" },
+                gold: { active: "border-lime-500/50 bg-lime-500/10 shadow-[0_0_20px_rgba(132,204,22,0.15)]", idle: "border-lime-500/15 bg-lime-500/[0.03] hover:bg-lime-500/[0.06]" },
               } as const;
               return (
                 <button
@@ -1199,7 +1205,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         ? "border-up/30 bg-up/5 hover:bg-up/10"
                         : pnlVal < 0
                           ? "border-down/30 bg-down/5 hover:bg-down/10"
-                          : "border-white/10 bg-card/30 hover:bg-card/60 hover:border-white/20"
+                          : styles[p].idle
                   )}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
