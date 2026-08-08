@@ -220,7 +220,7 @@ function OpportunitiesPage() {
                 En direct
               </span>
             </div>
-            <p className="text-xs font-semibold text-muted-foreground/80 mt-0.5">
+            <p className="text-xs font-semibold text-muted-foreground/80 mt-0.5 hidden md:block">
               Analyse algorithmique continue · Détection de signaux optimaux & analyse de risques multi-marchés.
             </p>
             {scanAgeSeconds !== null && (

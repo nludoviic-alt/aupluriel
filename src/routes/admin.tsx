@@ -1428,9 +1428,9 @@ function AdminPage() {
         </div>
       </CollapsibleBlock>
 
-      {/* ── TRADING RECAP BY USER ── */}
+      {/* ── TRADING RECAP BY USER ── desktop only ── */}
       <CollapsibleBlock
-        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
         header={
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -1582,10 +1582,10 @@ function AdminPage() {
         </div>
       </CollapsibleBlock>
 
-      {/* ── BOOM SYMBOL BREAKDOWN ── */}
+      {/* ── BOOM SYMBOL BREAKDOWN ── desktop only ── */}
       {boomBreakdown.some((b) => b.trades > 0) && (
         <CollapsibleBlock
-          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
           header={
             <div className="flex items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
@@ -1660,10 +1660,10 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── BACKTEST vs REAL GAUGE ── */}
+      {/* ── BACKTEST vs REAL GAUGE ── desktop only ── */}
       {backtestVsReal && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
           header={
             <div className="flex items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
@@ -1719,10 +1719,10 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── CONFIDENCE CALIBRATION ── */}
+      {/* ── CONFIDENCE CALIBRATION ── desktop only ── */}
       {calibration.length > 0 && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
           header={
             <div className="flex items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
@@ -1775,11 +1775,11 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── SHARED BRAIN METER ── */}
+      {/* ── SHARED BRAIN METER ── desktop only ── */}
       {componentBreakdown.length > 0 && (
         <CollapsibleBlock
           alwaysCollapsible
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
           header={
             <div className="flex items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">

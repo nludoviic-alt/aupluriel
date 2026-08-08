@@ -2264,8 +2264,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           </div>
         </div>
 
-        {/* Live Health & Guard Monitor */}
-        <div className="mt-6">
+        {/* Live Health & Guard Monitor — desktop only */}
+        <div className="mt-6 hidden md:block">
           <HealthPanel
             currentPnl={pnl}
             maxDailyLoss={config.maxDailyLossUsd}

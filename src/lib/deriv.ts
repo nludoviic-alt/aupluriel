@@ -58,11 +58,8 @@ export interface DerivTick {
 // offer CALL/PUT 15m→1h during their exchange's hours only.
 export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex" | "commodity" | "synthetic" | "indices" }[] = [
   // ── Synthétiques (24/7, CALL/PUT dès 15s) ──
-  { label: "Volatility 100", deriv: "R_100", market: "synthetic" },
-  { label: "Volatility 75", deriv: "R_75", market: "synthetic" },
-  { label: "Volatility 50", deriv: "R_50", market: "synthetic" },
-  { label: "Volatility 25", deriv: "R_25", market: "synthetic" },
-  { label: "Volatility 10", deriv: "R_10", market: "synthetic" },
+  // R_100/75/50/25/10 retirés (2026-08-08) : symboles invalides sur Deriv,
+  // causent des erreurs InvalidSymbol + RateLimit en boucle.
   { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
   { label: "Jump 100", deriv: "JD100", market: "synthetic" },
   { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },

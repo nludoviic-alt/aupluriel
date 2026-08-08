@@ -247,10 +247,10 @@ export const MODERATE_PRESET: PresetConfig = {
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  // frxEURUSD et cryBTCUSD sont dans DEFAULT_CONFIG.excludedSymbols —
+  // frxEURUSD, cryBTCUSD, frxGBPUSD sont dans DEFAULT_CONFIG.excludedSymbols —
   // utiliser frxEURGBP et frxUSDCAD (panier Multi validé) évite le piège du
   // symbole présent dans symbols ET excludedSymbols (silencieusement droppé).
-  symbols: ["frxEURGBP", "frxGBPUSD", "frxUSDCAD"],
+  symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -282,10 +282,10 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  // frxEURUSD, frxUSDJPY, frxXAUUSD, cryBTCUSD, cryETHUSD sont tous dans
-  // DEFAULT_CONFIG.excludedSymbols. On garde frxGBPUSD (validé) + OTC indices
-  // + frxEURGBP/frxUSDCAD du panier Multi.
-  symbols: ["frxEURGBP", "frxGBPUSD", "frxUSDCAD", "OTC_NDX", "OTC_SPC"],
+  // frxEURUSD, frxUSDJPY, frxXAUUSD, cryBTCUSD, cryETHUSD, frxGBPUSD sont tous
+  // dans DEFAULT_CONFIG.excludedSymbols. On garde OTC indices + frxEURGBP/
+  // frxUSDCAD du panier Multi.
+  symbols: ["frxEURGBP", "frxUSDCAD", "OTC_NDX"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -304,27 +304,19 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
 export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
-/** Boom indices retained after VPS production audit (2 150 trades, 5 août 2026),
- * revu le 2026-08-06 avec 14 jours de trades réels (pas un sweep synthétique) :
- * BOOM500 : +$3.62 sur 701 trades, WR 75.6% — seul symbole Boom rentable.
- * BOOM1000 exclu (2026-08-06) : -$32.08 sur 208 trades (14j), WR 71.2% mais
- *   R:R ~0.29 (avg_win $0.53, avg_loss -$1.84) — négatif malgré le WR élevé.
- *   Confirmé sur le régime le plus récent (-$24.11 sur 13 trades depuis le
- *   05/08 18h). Un sweep walk-forward synthétique sur 37h a donné un résultat
- *   opposé (100% WR) mais sur seulement 16 trades au filtre réel (conf 85,
- *   TF 3) — bruit d'échantillon, écarté au profit des trades réels.
- * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0% — R:R 0.51 insuffisant.
- * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%. */
+/** Boom indices retained after VPS production audit (2 446 trades, 8 août 2026) :
+ * BOOM500 : -$40.91 sur 764 trades, WR 72.9%, PF 0.93 — était +$3.62 sur 701
+ *   trades au 5 août. Détérioration sur 3 jours. Conservé avec TF=4/4 (était 2).
+ * BOOM1000 exclu (2026-08-06) : -$34.75 sur 221 trades, WR 69.7%, PF 0.70.
+ * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0%, PF 0.85.
+ * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%, PF 0.43. */
 export const BOOM_SYMBOLS = ["BOOM500"];
 
-/** Mirror de BOOM_SYMBOLS pour Crash. Revu le 2026-08-06 avec les mêmes 14
- * jours de trades réels :
- * CRASH900 : +$171.06 sur 202 trades, WR 61.9%, R:R ~1.0 — solide.
- * CRASH1000 exclu (2026-08-06) : -$9.97 sur 247 trades (14j), WR 66.0% mais
- *   R:R ~0.50 (avg_win $2.36, avg_loss -$4.70). S'aggrave sur le régime
- *   récent (-$35.66 sur 28 trades depuis le 05/08 18h). Même divergence
- *   sweep-synthétique-vs-réel que BOOM1000 ci-dessus — écarté pour la même
- *   raison (16-17 trades au filtre réel, résultat instable). */
+/** Mirror de BOOM_SYMBOLS pour Crash. Revu le 2026-08-08 avec 2 446 trades réels :
+ * CRASH900 : +$169.06 sur 322 trades, WR 54.7%, PF 1.53 — solide, pilier du P&L.
+ * CRASH1000 exclu (2026-08-06) : -$25.89 sur 270 trades, WR 63.0%, PF 0.94.
+ * CRASH500 exclu : -$6.14 sur 37 trades, WR 70.3%, PF 0.61.
+ * CRASH600 exclu : -$3.28 sur 35 trades, WR 74.3%, PF 0.77. */
 export const CRASH_SYMBOLS = ["CRASH900"];
 
 /**
@@ -342,7 +334,8 @@ export const CRASH_SYMBOLS = ["CRASH900"];
  * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
- * - Accord TF 2/4 : minimum pour valider un signal
+ * - Accord TF 4/4 : audit VPS 8 août 2026 (2 446 trades) montre TF=2 = -$299.84
+ *   (PF 0.62, catastrophique), TF=4 = +$75.39 (PF 1.07, seul rentable)
  * - Volatilité max 20% : les Boom font des spikes, on accepte tout
  * - maxConsecutiveLosses 4, trailingStopPct 0.20 : garde-fous de perte conservés (demandé)
  * - trailingStopMinPeakUsd 15, maxDailyLossUsd 50, hourlyEdgeFilter off :
@@ -392,10 +385,14 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // symbole possible actuellement (symbolInstrumentOverrides ne gère que le
   // type d'instrument, pas TP/SL). SL 20% conservé car partagé entre les deux.
   symbolInstrumentOverrides: {},
-  // ── Signaux — audit VPS 2026-08-05 : bucket 75-84% = -$232.83, 85+ = +$50.09 ──
+  // ── Signaux — audit VPS 2026-08-08 (2 446 trades) :
+  // bucket 80-89 = -$162.70 (PF 0.93), bucket 70-79 = +$54.46 (PF 1.22).
+  // BOOM500 : -$40.91 sur 764 trades (WR 72.9%, PF 0.93) — était +$3.62
+  //   sur 701 trades au 5 août. Détérioration sur 3 jours.
+  // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
   minConfidence: 85,
   maxConfidence: 89,
-  minTfAgreement: 2,
+  minTfAgreement: 4,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
   durationMinutes: 5,
@@ -530,12 +527,13 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 10,
-  // Audit VPS 2026-08-05 : bucket 85+ = +$50.09, bucket 75-84 = -$232.83.
-  // CRASH est le seul preset rentable (+$150.12) — le seuil à 85 filtre le bruit
-  // tout en conservant les signaux à forte probabilité.
+  // Audit VPS 2026-08-08 (2 446 trades) : CRASH est le seul preset rentable
+  // (+$133.75, PF 1.18), porté par CRASH900 (+$169.06, PF 1.53, 322 trades).
+  // bucket 90-100 = -$130.73 (PF 0.78) → maxConfidence resserré à 89.
+  // TF=3 = -$34.48 (PF 0.97), TF=4 = +$75.39 (PF 1.07) → minTfAgreement 4/4.
   minConfidence: 85,
-  maxConfidence: 100,
-  minTfAgreement: 3,
+  maxConfidence: 89,
+  minTfAgreement: 4,
   multiplierLevel: 100,
 };
 
@@ -579,7 +577,10 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  // Audit VPS 2026-08-05 : bucket 85+ = +$50.09, bucket 75-84 = -$232.83.
+  // Audit VPS 2026-08-08 (2 446 trades) : bucket 80-89 = -$162.70 (PF 0.93),
+  // bucket 70-79 = +$54.46 (PF 1.22). minTfAgreement 4/4 hérité de BOOM_PRESET.
+  // BOOM1000 : -$34.75 sur 221 trades (PF 0.70), CRASH1000 : -$25.89 sur 270
+  //   trades (PF 0.94) — mais scalping utilise un moteur de signaux différent.
   minConfidence: 85,
   maxConfidence: 89,
   stakeUsd: 1,

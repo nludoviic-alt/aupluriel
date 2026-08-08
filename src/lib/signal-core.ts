@@ -375,7 +375,9 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   durationMinutes: 15,
   // Multi Conservateur par défaut : confiance 85% min et accord 4/4 TF obligatoire
   // pour éliminer les faux signaux et protéger le capital sur le preset Multi.
-  // Audit VPS 5 août 2026 : bucket 75-84% = -$232.83 sur 894 trades, bucket 85+ = +$50.09.
+  // Audit VPS 8 août 2026 (2 446 trades) : bucket 80-89 = -$162.70 (PF 0.93),
+  // bucket 70-79 = +$54.46 (PF 1.22). Le seuil 85-89 est conservé car le
+  // problème principal du Multi est les symboles, pas la confiance.
   minConfidence: 85,
   maxConfidence: 89,
   minTfAgreement: 4,
@@ -391,19 +393,20 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // il évitait juste une boucle de scan qui tournerait pour rien une fois la
   // limite atteinte.
   maxTradesPerDay: 200,
-  // Multi filtré après audit VPS production (2026-08-05, 2 150 trades) :
-  // OTC_GDAXI (-$77.54), frxUSDCHF (-$46.08), OTC_DJI (-$28.34) retirés.
-  // OTC_NDX (+$92.37), frxUSDCAD (+$23.95), frxEURGBP (+$24.42) conservés.
-  // cryBTCUSD marginal (+$1.23 sur 18 trades, WR 27.8%) — gardé pour le volume.
+  // Multi filtré après audit VPS production (2026-08-08, 2 446 trades) :
+  // Retirés : frxEURUSD (-$16.50, PF 0.22), cryBTCUSD (-$9.04, PF 0.87),
+  //   frxGBPUSD (-$6.33, PF 0.77) — tous perdants.
+  // Conservés : OTC_NDX (+$99.65, PF 4.52, 24 trades), frxEURGBP (+$27.77,
+  //   PF 2.00, 32 trades), frxUSDCAD (-$1.96, PF 0.96, quasi break-even).
   symbols: [
     "OTC_NDX",
-    "frxEURGBP", "frxEURUSD", "cryBTCUSD",
-    "frxGBPUSD", "frxUSDCAD"
+    "frxEURGBP", "frxUSDCAD"
   ],
   excludedSymbols: [
     "frxXAUUSD", "frxXAGUSD", "OTC_SPC", "cryETHUSD",
     "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY",
-    "OTC_GDAXI", "frxUSDCHF", "OTC_DJI"
+    "OTC_GDAXI", "frxUSDCHF", "OTC_DJI",
+    "frxEURUSD", "cryBTCUSD", "frxGBPUSD"
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,
@@ -484,9 +487,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // type à chaque trade.
   instrumentType: "binary",
   symbolInstrumentOverrides: {
-    // GBP/USD reste en Multiplier avec son override mesuré. Or/BTC sont exclus
-    // du panier Multi courant après audit production.
-    "frxGBPUSD": "multiplier",
+    // GBP/USD exclu du panier Multi après audit production (PF 0.77).
+    // Or/BTC également exclus. Plus d'override nécessaire.
   },
   multiplierLevel: 20,
   stopLossPctOfStake: 50,
@@ -530,7 +532,6 @@ export interface MultiplierSymbolOverride {
 // comment on DEFAULT_CONFIG above) and must stay 4/4 there.
 export const MULTIPLIER_SYMBOL_OVERRIDES: Record<string, MultiplierSymbolOverride> = {
   frxXAUUSD: { minTfAgreement: 3, atrStopMode: false, stopLossPctOfStake: 50, takeProfitPctOfStake: 10 },
-  frxGBPUSD: { minTfAgreement: 3, atrStopMode: false, stopLossPctOfStake: 50, takeProfitPctOfStake: 10 },
 };
 
 export function getMultiplierOverride(symbol: string): MultiplierSymbolOverride | undefined {

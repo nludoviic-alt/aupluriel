@@ -52,7 +52,9 @@ function SurveillancePage() {
         </div>
       </div>
 
-      <HealthPanel maxDailyLoss={maxDailyLoss} />
+      <div className="hidden md:block">
+        <HealthPanel maxDailyLoss={maxDailyLoss} />
+      </div>
       <ChangelogPanel />
     </div>
   );

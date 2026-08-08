@@ -230,8 +230,8 @@ function Dashboard() {
       {/* ── BOT STATUS (mobile only — Auto-Trader isn't in the bottom nav) ── */}
       <BotStatusCard />
 
-      {/* ── LIVE HEALTH & GUARD MONITOR ── */}
-      <div className="mt-4">
+      {/* ── LIVE HEALTH & GUARD MONITOR — desktop only ── */}
+      <div className="mt-4 hidden md:block">
         <HealthPanel
           currentPnl={todayPnl ?? 0}
           maxDailyLoss={maxDailyLoss}
@@ -254,6 +254,7 @@ function Dashboard() {
           const b = brokerBalances?.deriv;
           return (
             <KpiCard
+              className="order-first sm:order-none"
               label="Deriv"
               value={b ? b.balance.toFixed(2) : balanceDisplay ?? "0.00"}
               delta={b ? b.currency : derivBalance?.currency ?? "USD"}
@@ -265,6 +266,7 @@ function Dashboard() {
           const b = brokerBalances?.kraken;
           return (
             <KpiCard
+              className="hidden sm:flex"
               label="Kraken"
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "USD"}
@@ -288,6 +290,7 @@ function Dashboard() {
           const b = brokerBalances?.oanda;
           return (
             <KpiCard
+              className="hidden sm:flex"
               label="OANDA"
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "CAD"}
@@ -724,8 +727,11 @@ function DashboardOpportunityCard({ item }: { item: DashboardOpportunity }) {
       <p className="mt-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
         {item.reasons[0] ?? `${item.agreement}/4 unités de temps alignées · risque ${item.risk}`}
       </p>
-      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
-        {isTake ? "Préparer l'ordre manuel" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
+      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-bold transition-opacity hover:opacity-90 sm:hidden shadow-lg", isTake ? "bg-up text-black shadow-up/25" : "bg-orange-500 text-white shadow-orange-500/25")}>
+        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
+      </Link>
+      <Link to="/manual-trader" className={cn("mt-4 hidden sm:inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
+        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
       </Link>
     </article>
   );
