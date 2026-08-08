@@ -1394,7 +1394,7 @@ class ServerBotEngine {
             volatilityRatio: 1,
             blockers: sig ? [] : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
             dominantTf: "15m",
-            suggestedDuration: 15,
+            suggestedDuration: 60,
             trendAlignmentScore: sig ? 4 : 0,
             patternBonus: 0,
           };
