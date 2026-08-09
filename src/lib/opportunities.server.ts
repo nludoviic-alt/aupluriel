@@ -401,21 +401,6 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
         return symbols.map((symbol) => ({ preset, symbol, config }));
       });
 
-      // ── Scan also ALL tradeable symbols not already covered by a preset's
-      // watchlist, so the user sees opportunities on every market Deriv offers
-      // (CRASH1000, BOOM500, R_100, frxEURUSD, cryBTCUSD…) even if no preset
-      // currently trades them. Uses the default preset's config as the analysis
-      // baseline — the decision (take/wait/avoid) still respects the same
-      // thresholds, so a symbol with no edge shows "wait" rather than "take".
-      const coveredSymbols = new Set(jobs.map((j) => j.symbol));
-      const defaultConfig = configs.get("default") ?? { ...DEFAULT_CONFIG };
-      const allTradeable = SYMBOLS.filter(
-        (s) => s.market !== "synthetic" && !coveredSymbols.has(s.deriv),
-      );
-      for (const sym of allTradeable) {
-        jobs.push({ preset: "default", symbol: sym.deriv, config: defaultConfig });
-      }
-
       const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>
         analyzePresetSymbol(preset, symbol, config).catch((e) => {
           const meta = SYMBOL_LABELS.get(symbol);
