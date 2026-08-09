@@ -187,6 +187,15 @@ function loadConfig(preset?: string): AutoTraderConfig {
   }
 }
 
+function loadPresetStake(preset: string): number | null {
+  try {
+    const cfg = loadConfig(preset);
+    return cfg.stakeUsd ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function saveConfig(c: AutoTraderConfig, preset?: string) {
   try {
     const key = preset ? PRESET_CONFIG_KEY(preset) : CONFIG_KEY;
@@ -576,11 +585,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
     const loaded = loadConfig();
     // Pre-select a pair/direction/preset when arriving from Opportunités (?symbol=...&direction=...&preset=...&take=1)
+    // TanStack Router serializes string search params as JSON (with quotes),
+    // e.g. take="1" — strip the quotes so the checks below work correctly.
     const searchParams = new URLSearchParams(window.location.search);
-    const pair = searchParams.get("pair") || searchParams.get("symbol");
-    const direction = searchParams.get("direction");
-    const presetParam = searchParams.get("preset") as PresetKey | null;
-    const isTakeAction = searchParams.get("take") === "1" || searchParams.get("action") === "take";
+    const strip = (v: string | null) => (v ?? "").replace(/"/g, "");
+    const pair = strip(searchParams.get("pair") || searchParams.get("symbol"));
+    const direction = strip(searchParams.get("direction"));
+    const presetParam = strip(searchParams.get("preset")) as PresetKey | null;
+    const takeParam = strip(searchParams.get("take"));
+    const isTakeAction = takeParam === "1" || strip(searchParams.get("action")) === "take";
 
     if (presetParam && PRESET_ORDER.includes(presetParam)) {
       setSelectedPreset(presetParam);
@@ -599,9 +612,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       setMobileTab("control");
       const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
       if (isTakeAction) {
-        setForceStake(MANUAL_SUGGESTED_STAKE);
+        const presetStake = presetParam ? loadPresetStake(presetParam) : null;
+        const stake = presetStake ?? MANUAL_SUGGESTED_STAKE;
+        setForceStake(stake);
         pendingTakeSymbolRef.current = pair; // resolved into a full prepareManualSignal() call once opportunities load, see effect below
-        toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt à $${MANUAL_SUGGESTED_STAKE} ! Vérifiez et cliquez Exécuter.`);
+        toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt à $${stake} ! Vérifiez et cliquez Exécuter.`);
       } else {
         toast.success(`${label} sélectionné — prêt à trader`);
       }
