@@ -82,12 +82,11 @@ export interface OpportunitiesResponse {
 
 // "boom" deliberately excluded from opportunity scanning (2026-08-07,
 // strategy-tournament audit): production data shows Boom losing overall
-// (PF 0.85, -$198 on 1443 trades) with NO Boom symbol above PF 1 on a
-// reliable sample — surfacing it as a "take" suggestion here would
-// contradict the same evidence that already keeps it off in auto-trading
-// for these accounts. Re-add it if a future strategy actually demonstrates
-// an edge on Boom symbols.
-const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity", "gold", "crash900"];
+// Boom réintégré 2026-08-09 : le preset a été corrigé (minTfAgreement 2→4,
+// TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
+// résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
+// actuelle est structurellement différente.
+const PRESETS: Preset[] = ["boom", "crash", "default", "scalping", "liquidity", "gold", "crash900"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
@@ -401,6 +400,21 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
         const symbols = Array.isArray(config.symbols) ? config.symbols : [];
         return symbols.map((symbol) => ({ preset, symbol, config }));
       });
+
+      // ── Scan also ALL tradeable symbols not already covered by a preset's
+      // watchlist, so the user sees opportunities on every market Deriv offers
+      // (CRASH1000, BOOM500, R_100, frxEURUSD, cryBTCUSD…) even if no preset
+      // currently trades them. Uses the default preset's config as the analysis
+      // baseline — the decision (take/wait/avoid) still respects the same
+      // thresholds, so a symbol with no edge shows "wait" rather than "take".
+      const coveredSymbols = new Set(jobs.map((j) => j.symbol));
+      const defaultConfig = configs.get("default") ?? { ...DEFAULT_CONFIG };
+      const allTradeable = SYMBOLS.filter(
+        (s) => s.market !== "synthetic" && !coveredSymbols.has(s.deriv),
+      );
+      for (const sym of allTradeable) {
+        jobs.push({ preset: "default", symbol: sym.deriv, config: defaultConfig });
+      }
 
       const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>
         analyzePresetSymbol(preset, symbol, config).catch((e) => {
