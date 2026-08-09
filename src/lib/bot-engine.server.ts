@@ -94,12 +94,12 @@ const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
+export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
 
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
@@ -111,6 +111,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
   gold: "Or Trend",
+  crash900: "Crash900 V2",
 };
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
@@ -121,7 +122,7 @@ const PRESET_LABEL: Record<Preset, string> = {
 export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never

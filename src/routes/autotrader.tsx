@@ -50,7 +50,7 @@ import {
   PRESETS,
   BOOM_PRESET,
   CRASH_PRESET,
-  LIQUIDITY_PRESET, SCALPING_PRESET, GOLD_PRESET,
+  LIQUIDITY_PRESET, SCALPING_PRESET, GOLD_PRESET, CRASH900_V2_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -107,9 +107,9 @@ const MANUAL_SUGGESTED_STAKE = 50;
 // losses today, not from an open position still moving against you.
 const MANUAL_DAILY_LOSS_CAP = 500;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
@@ -120,6 +120,7 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
   liquidity: { market: "Or · Nasdaq", description: "M15 · balayage + RSI", experimental: true },
   gold: { market: "Or (XAU/USD)", description: "M15 · trend-following", experimental: true },
+  crash900: { market: "CRASH900", description: "Joker · optimisé data", experimental: true },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -132,12 +133,12 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity", "gold"] as const;
+const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
   id: string;
-  preset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
+  preset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
   presetLabel: string;
   symbol: string;
   label: string;
@@ -344,7 +345,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false, gold: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false, gold: false, crash900: false });
 
   // Mobile shows at most 3 of the 4 preset tabs (admin choice) — four didn't
   // fit a phone-width strip. Desktop is never filtered. Falls back to all four
@@ -819,7 +820,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "gold" ? GOLD_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "gold" ? GOLD_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
@@ -1113,6 +1114,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   active: "border-lime-500/60 bg-lime-500/10 ring-1 ring-lime-500/50",
                   idle: "border-lime-500/15 bg-lime-500/[0.03]",
                 },
+                crash900: {
+                  active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
+                  idle: "border-orange-500/15 bg-orange-500/[0.03]",
+                },
               } as const;
 
               return (
@@ -1192,6 +1197,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
                 liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03] hover:bg-fuchsia-500/[0.06]" },
                 gold: { active: "border-lime-500/50 bg-lime-500/10 shadow-[0_0_20px_rgba(132,204,22,0.15)]", idle: "border-lime-500/15 bg-lime-500/[0.03] hover:bg-lime-500/[0.06]" },
+                crash900: { active: "border-orange-500 bg-orange-500/20 shadow-[0_0_30px_rgba(249,115,22,0.4)]", idle: "border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/15" },
               } as const;
               return (
                 <button

@@ -26,7 +26,7 @@ interface AdminUser {
 interface BotStatus {
   userId: number; enabled: boolean; running: boolean; hasToken: boolean;
   mode: "demo" | "live" | null;
-  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold";
+  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold" | "crash900";
   lastError: string | null; autoBacktestEnabled: boolean;
 }
 interface JournalTrade {
@@ -68,9 +68,9 @@ interface UserRecap {
   tradesLive: number; netPnlLive: number;
 }
 
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend" } as const;
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
-const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2" } as const;
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
 
 const CONFIG_FIELD_LABELS: Record<string, string> = {
   stakeUsd: "Mise", maxDailyLossUsd: "Limite perte/jour", maxDailyProfitUsd: "Objectif gain/jour",

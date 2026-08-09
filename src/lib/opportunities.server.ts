@@ -1,4 +1,4 @@
-import { BOOM_PRESET, CRASH_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
+import { BOOM_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -87,7 +87,7 @@ export interface OpportunitiesResponse {
 // contradict the same evidence that already keeps it off in auto-trading
 // for these accounts. Re-add it if a future strategy actually demonstrates
 // an edge on Boom symbols.
-const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity", "gold"];
+const PRESETS: Preset[] = ["crash", "default", "scalping", "liquidity", "gold", "crash900"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
@@ -95,6 +95,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
   gold: "Or Trend",
+  crash900: "Crash900 V2",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
@@ -104,6 +105,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   scalping: SCALPING_PRESET,
   liquidity: LIQUIDITY_PRESET,
   gold: GOLD_PRESET,
+  crash900: CRASH900_V2_PRESET,
 };
 
 const SYMBOL_LABELS = new Map(SYMBOLS.map((s) => [s.deriv, s]));

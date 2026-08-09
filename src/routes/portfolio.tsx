@@ -41,7 +41,7 @@ export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
 });
 
-type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "manual";
+type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "manual";
 
 interface PresetMeta {
   label: string;
@@ -93,6 +93,13 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     color: "text-yellow-400",
     borderColor: "border-yellow-500/30",
     bgTone: "bg-yellow-500/10",
+  },
+  crash900: {
+    label: "Crash900 V2",
+    badge: "📉 Crash900",
+    color: "text-orange-400",
+    borderColor: "border-orange-500/30",
+    bgTone: "bg-orange-500/10",
   },
   manual: {
     label: "Prise Directe Manuelle",
@@ -271,7 +278,7 @@ export default function PortfolioPage() {
   }, [filteredBotTrades]);
 
   // ── Compute Preset Breakdown ──
-  const presetStats = (["default", "boom", "crash", "scalping", "manual"] as const).map((key) => {
+  const presetStats = (["default", "boom", "crash", "scalping", "crash900", "manual"] as const).map((key) => {
     const matching = botTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
     const closed = matching.filter((t) => t.status === "won" || t.status === "lost");
     const wins = closed.filter((t) => t.status === "won" || t.profit > 0).length;
@@ -727,6 +734,7 @@ export default function PortfolioPage() {
               <option value="boom">⚡ Preset Boom</option>
               <option value="crash">📉 Preset Crash</option>
               <option value="scalping">🎯 Preset Scalping</option>
+              <option value="crash900">📉 Preset Crash900 V2</option>
               <option value="manual">✋ Prise Directe Manuelle</option>
             </select>
           </div>

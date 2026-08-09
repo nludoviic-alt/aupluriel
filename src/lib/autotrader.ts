@@ -709,6 +709,66 @@ export function isScalpingPresetActive(config: AutoTraderConfig): boolean {
     && SCALPING_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
+/**
+ * Crash900 V2 preset — data-driven optimization of the Crash preset, focused
+ * exclusively on CRASH900 with parameters derived from 316 production trades
+ * (90 days, audit 2026-08-09).
+ *
+ * Key findings that shaped this preset:
+ * - MULTDOWN dominates: 284 trades, 54.6% WR, PF 1.60 vs MULTUP PF 0.44.
+ *   CRASH900 is a crash index — selling is the natural direction.
+ * - London AM (08-12 UTC) is catastrophic: PF 0.46. All other sessions are
+ *   profitable (Asia PF 1.91, NY PM PF 1.82, London PM/NY AM PF 1.60).
+ * - Confidence <80% has the BEST profit factor (3.01) — the score is not
+ *   calibrated for CRASH900. Lowering minConfidence to 75 captures the best
+ *   bucket while avoiding the 85-89% dead zone (PF 0.83).
+ * - TAS 3/4 beats TAS 4/4: 62.0% WR vs 46.8%. Less alignment = more wins.
+ *
+ * This preset uses the SAME confluence signal engine as the Crash preset
+ * (no dedicated signal file) — the optimization is purely in the config:
+ * different symbols, sessions, confidence threshold, and risk parameters.
+ *
+ * Risk profile (demo-only until validated):
+ * - CRASH900 only, multiplier instrument
+ * - $50 stake, $150 daily loss cap
+ * - 5 max consecutive losses (the 90-day data showed a 9-loss streak)
+ * - Asia + London PM + NY sessions (London AM 08-12 UTC excluded via
+ *   tradingSessions — see bot-engine's session filter)
+ */
+export const CRASH900_V2_SYMBOLS = ["CRASH900"];
+
+export const CRASH900_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...CRASH_PRESET,
+  symbolMode: "watchlist",
+  symbols: CRASH900_V2_SYMBOLS,
+  excludedSymbols: ["CRASH500", "CRASH600", "CRASH1000"],
+  // Lower confidence threshold: <80% bucket has PF 3.01 on CRASH900.
+  // The 85-89% bucket is a dead zone (PF 0.83) — lowering to 75 captures
+  // the best signals while avoiding that zone.
+  minConfidence: 75,
+  maxConfidence: 100,
+  // TAS 3/4 has 62% WR vs 46.8% for 4/4 — keep minTfAgreement at 3.
+  minTfAgreement: 3,
+  stakeUsd: 50,
+  maxDailyLossUsd: 150,
+  maxTradesPerDay: 10,
+  maxConsecutiveLosses: 5,
+  cooldownMinutes: 30,
+  // Asia (00-07) + London PM/NY AM (13-17) + NY PM (18-23).
+  // London AM (08-12 UTC) excluded — PF 0.46 on that session.
+  tradingSessions: ["asia", "london", "newyork"],
+  maxSimultaneousTrades: 2,
+  maxOpenPositions: 2,
+  // TP/SL inherited from CRASH_PRESET (10/10) — balanced R:R for CRASH900.
+  mode: "demo",
+};
+
+export function isCrash900PresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === CRASH900_V2_SYMBOLS.length
+    && CRASH900_V2_SYMBOLS.every((s) => config.symbols.includes(s));
+}
+
 /** Custom user preset with performance tracking */
 export interface CustomPreset extends PresetConfig {
   id: string;

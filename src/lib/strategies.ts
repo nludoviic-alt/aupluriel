@@ -9,7 +9,7 @@ export interface Strategy {
   id: string;
   name: string;
   pair: string;
-  targetPreset?: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
+  targetPreset?: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
   indicator: "RSI" | "MACD" | "EMA_CROSS" | "BB";
   buyThreshold: number;
   sellThreshold: number;

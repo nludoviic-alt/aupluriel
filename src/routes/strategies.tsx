@@ -398,7 +398,7 @@ function StrategiesPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {items.map((s) => {
-                const presetName = s.targetPreset === "boom" ? "Boom" : s.targetPreset === "crash" ? "Crash" : s.targetPreset === "scalping" ? "Scalping" : s.targetPreset === "liquidity" ? "Liquidity" : s.targetPreset === "gold" ? "Or Trend" : "Multi";
+                const presetName = s.targetPreset === "boom" ? "Boom" : s.targetPreset === "crash" ? "Crash" : s.targetPreset === "scalping" ? "Scalping" : s.targetPreset === "liquidity" ? "Liquidity" : s.targetPreset === "gold" ? "Or Trend" : s.targetPreset === "crash900" ? "Crash900 V2" : "Multi";
 
                 return (
                   <div key={s.id} className="glass-panel rounded-xl p-4 border border-white/10 flex flex-col justify-between">
@@ -545,6 +545,7 @@ function StrategyEditor({
               <option value="scalping">Preset Scalping</option>
               <option value="liquidity">Preset Liquidity</option>
               <option value="gold">Preset Or Trend</option>
+              <option value="crash900">Preset Crash900 V2</option>
             </select>
           </Field>
 

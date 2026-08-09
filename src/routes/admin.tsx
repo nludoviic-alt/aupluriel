@@ -56,7 +56,7 @@ interface BotStatus {
   running: boolean;
   hasToken: boolean;
   mode: "demo" | "live" | null;
-  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold";
+  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold" | "crash900";
   lastError: string | null;
   autoBacktestEnabled: boolean;
 }
@@ -211,10 +211,10 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   excludedSymbols: "Symboles exclus",
 };
 
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend" } as const;
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2" } as const;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold";
-const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
 // Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts (can't import a
 // *.server.ts module from a client route) — the API rejects more than this,
 // so the UI must not let you select more either. No artificial cap anymore:
@@ -260,6 +260,12 @@ const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: strin
     dot: "bg-yellow-500",
     icon: "🥇",
     desc: "Or (XAU/USD) · M15 · trend-following · démo",
+  },
+  crash900: {
+    on: "border-orange-500/40 bg-orange-500/[0.10]",
+    dot: "bg-orange-500",
+    icon: "📉",
+    desc: "Crash 900 · V2",
   },
 };
 
@@ -1458,7 +1464,7 @@ function AdminPage() {
         {/* Preset scope — compare accounts on one engine at a time instead of
             only the all-presets-combined total. */}
         <div className="flex flex-wrap items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-full sm:w-fit">
-          {(["all", "default", "boom", "crash", "scalping", "liquidity", "gold"] as const).map((p) => (
+          {(["all", "default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setRecapPreset(p)}
