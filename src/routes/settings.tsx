@@ -450,7 +450,7 @@ export function SettingsPage() {
               </div>
               <div className="text-left hidden sm:block">
                 <div className="text-xs font-bold text-neutral-200">{user?.email || "Utilisateur"}</div>
-                <div className="text-[10px] text-neutral-400 capitalize">{user?.role || "Trader"}</div>
+                <div className="text-[10px] text-neutral-400 capitalize">{user?.is_admin ? "Admin" : "Trader"}</div>
               </div>
             </div>
             <Button
