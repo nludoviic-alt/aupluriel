@@ -407,16 +407,17 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // gains suivis d'UNE perte normale).
   // Règle appliquée : le giveback toléré doit couvrir les maxConsecutiveLosses
   // pertes d'affilée, sinon une série normale tue la journée.
-  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 15% = $0.75
-  //   4 pertes    = $3.00  →  peak × 0.20 > $3.00  →  peak > $15
-  // (stopLossPctOfStake est passé de 20% à 15% le 2026-08-05 après audit VPS :
-  // R:R 0.50 avec SL 20% → break-even 66.7%, mais R:R réel 0.33 sur VPS.
-  // SL 15% → R:R 0.67, break-even 60%, compatible avec WR 72%.)
+  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 10% = $0.50
+  //   4 pertes    = $2.00  →  peak × 0.20 > $2.00  →  peak > $10
+  // (SL passé de 15% à 10% le 2026-08-09 après audit VPS 30 jours :
+  // WR 70.9% mais avg_loss $3.00 vs avg_win $1.03 → preset perdant.
+  // Inversion TP 15 / SL 10 pour que les pertes soient enfin bornées
+  // sous les gains.)
   maxConsecutiveLosses: 4,
   cooldownMinutes: 15,
   trailingStopPct: 0.20,
-  trailingStopMinPeakUsd: 15,
-  // maxDailyLossUsd 30 : à $0.75 de perte par trade (SL 15%), $30 = 40 trades
+  trailingStopMinPeakUsd: 10,
+  // maxDailyLossUsd 30 : à $0.50 de perte par trade (SL 10%), $30 = 60 trades
   // perdants. Garde-fou de RISQUE RÉEL qui borne la journée.
   maxDailyLossUsd: 30,
   // hourlyEdgeFilter on (audit VPS 2026-08-05) : les données montrent 04h,
@@ -431,19 +432,20 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   maxTradesPerDay: 100_000,
   maxDailyProfitUsd: 0,
   // ── Take-profit/stop-loss + levier — recalibrés après audit VPS production
-  //    (2 150 trades, 5 août 2026).
+  //    (1 422 trades, 9 août 2026).
   // 1) multiplierLevel 100x confirmé : à 20x, 93% des trades n'atteignaient
   //    ni TP ni SL en 60 min. À 100x, les trades se résolvent sur TP/SL.
-  // 2) TP 10% / SL 15% : R:R 0.67, break-even 60%. VPS montre WR 72.4% sur
-  //    1 360 trades → EV positive. SL resserré de 20% à 15% car R:R réel
-  //    était 0.33 (avg_win $1.02, avg_loss $3.06) — une perte effaçait 3 gains.
-  //    Avec SL 15% : gain $0.50, perte $0.75 sur $5 stake → R:R 0.67.
-  // 3) Contrepartie : le win rate baissera légèrement (SL plus serré), mais
-  //    l'EV s'améliore structurellement. Les garde-fous sont recalibrés sur
-  //    SL 15% = $0.75/trade.
+  // 2) TP 15% / SL 10% : inversion du ratio précédent (TP 10 / SL 15).
+  //    Données 30 jours : WR 70.9% mais avg_win $1.03, avg_loss $3.00
+  //    (R:R réel 0.34, pas 0.67 théorique) → preset perdant à -$202.
+  //    Inverser : TP $1.60, SL $1.07 sur $10.66 stake moyen.
+  //    EV = 0.71 × $1.60 - 0.29 × $1.07 = +$0.80/trade (était négatif).
+  // 3) Contrepartie : le win rate baissera (TP plus large = moins de hits),
+  //    mais l'EV s'améliore structurellement car les pertes sont enfin
+  //    bornées sous les gains.
   multiplierLevel: 100,
-  takeProfitPctOfStake: 10,
-  stopLossPctOfStake: 15,
+  takeProfitPctOfStake: 15,
+  stopLossPctOfStake: 10,
   atrStopMode: false,
   partialTakeProfitPct: 0,
   maxHoldMinutes: 60,
@@ -623,8 +625,10 @@ export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
   symbols: ["frxXAUUSD"],
-  // Pas de excludedSymbols ici — même raison que BOOM_PRESET : un preset
-  // qui le fixe à [] l'efface silencieusement à chaque (ré)application.
+  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
+  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
+  // dans symbols ET excludedSymbols, et le bot saute les signaux.
+  excludedSymbols: [],
   instrumentType: "binary",
   stakeUsd: 1,
   durationMinutes: 60,
@@ -669,7 +673,10 @@ export const GOLD_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
   symbols: GOLD_SYMBOLS,
-  // Pas de excludedSymbols ici — même raison que BOOM_PRESET/LIQUIDITY_PRESET.
+  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
+  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
+  // dans symbols ET excludedSymbols, et le bot saute les signaux.
+  excludedSymbols: [],
   instrumentType: "binary",
   stakeUsd: 1,
   durationMinutes: 30,
