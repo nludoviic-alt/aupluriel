@@ -68,6 +68,7 @@ import { api } from "@/lib/api";
 import { relayPush } from "@/lib/notify-push";
 import { loadDefaultStake, saveDefaultStake } from "@/lib/stake";
 import { cn, utcHourToMontreal } from "@/lib/utils";
+import { guardForManualPreset } from "@/lib/manual-trading-guardrails";
 import { toast } from "sonner";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { AmountInput } from "@/components/amount-input";
@@ -92,20 +93,7 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}`;
-// Suggested stake for an opportunity-driven manual trade (Prise Directe) —
-// the user explicitly wants every surfaced "take" opportunity pre-filled at
-// $50 so all they do is click Execute, separate from their configured
-// auto-trader stakeUsd (often $1-5, tuned for the fully-automatic bots).
-const MANUAL_SUGGESTED_STAKE = 50;
-// Daily loss cap for MANUAL trades (2026-08-07) — Prise Directe had zero
-// automated risk protection (no daily stop, no consecutive-loss breaker,
-// unlike every auto-trader preset). This mirrors the bot engine's own
-// maxDailyLossUsd stop, scoped to realized P&L on the `trades` table only
-// (server-authoritative, not the local trade log) — floating P&L on still-open
-// manual positions isn't tracked continuously the way the bot's is, so this
-// is a real but narrower protection: it stops the bleeding from REALIZED
-// losses today, not from an open position still moving against you.
-const MANUAL_DAILY_LOSS_CAP = 500;
+const FALLBACK_MANUAL_DAILY_LOSS_CAP = 10;
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
@@ -295,6 +283,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // so the daily-loss gate below defaults to "not exceeded" rather than
   // flashing a false block before the first fetch resolves.
   const [manualTodayPnl, setManualTodayPnl] = useState<number | null>(null);
+  const [manualTodayTrades, setManualTodayTrades] = useState(0);
   const refreshManualDailyPnl = useCallback(async () => {
     try {
       const rows = await api.get<{ time: number; status: string; profit: number }[]>("/api/trades?limit=200");
@@ -304,6 +293,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         .filter((r) => r.time >= startMs && (r.status === "won" || r.status === "lost"))
         .reduce((sum, r) => sum + r.profit, 0);
       setManualTodayPnl(net);
+      setManualTodayTrades(rows.filter((r) => r.time >= startMs && ["open", "won", "lost"].includes(r.status)).length);
     } catch { /* leave last known value — a transient fetch failure shouldn't flip the gate */ }
   }, []);
   useEffect(() => { refreshManualDailyPnl(); }, [refreshManualDailyPnl]);
@@ -617,7 +607,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
       if (isTakeAction) {
         const presetStake = presetParam ? loadPresetStake(presetParam) : null;
-        const stake = presetStake ?? MANUAL_SUGGESTED_STAKE;
+        const stake = presetParam ? (guardForManualPreset(presetParam)?.stakeUsd ?? presetStake ?? loaded.stakeUsd) : (presetStake ?? loaded.stakeUsd);
         setForceStake(stake);
         pendingTakeSymbolRef.current = pair; // resolved into a full prepareManualSignal() call once opportunities load, see effect below
         toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt à $${stake} ! Vérifiez et cliquez Exécuter.`);
@@ -728,7 +718,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // an informed discretionary decision without the system placing the order.
   const manualScanOpportunities = selectedPresetOpportunities;
   const manualActionableOpportunities = manualScanOpportunities.filter(
-    (opportunity) => opportunity.direction && (opportunity.decision === "take" || opportunity.decision === "wait"),
+    (opportunity) => opportunity.direction && opportunity.decision === "take",
   );
   const manualOpportunity = selectedPresetOpportunities.find((o) => o.symbol === forceSymbol) ?? null;
 
@@ -780,8 +770,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceSymbol]);
 
-  const manualDailyLossExceeded = manualTodayPnl !== null && manualTodayPnl <= -MANUAL_DAILY_LOSS_CAP;
-  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && !manualDailyLossExceeded && (
+  const manualGuard = preparedManualOpportunity ? guardForManualPreset(preparedManualOpportunity.preset) : null;
+  const manualDailyLossCap = manualGuard?.maxDailyLossUsd ?? FALLBACK_MANUAL_DAILY_LOSS_CAP;
+  const manualDailyLossExceeded = manualTodayPnl !== null && manualTodayPnl <= -manualDailyLossCap;
+  const manualTradeLimitExceeded = !!manualGuard && manualTodayTrades >= manualGuard.maxTradesPerDay;
+  const manualSignalMatchesGuard = !manualGuard || (!!preparedManualOpportunity && preparedManualOpportunity.decision === "take" && preparedManualOpportunity.direction === manualGuard.direction && manualDirectionBias === manualGuard.direction && forceStake <= manualGuard.stakeUsd);
+  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && !manualDailyLossExceeded && !manualTradeLimitExceeded && manualSignalMatchesGuard && (
     config.mode === "demo"
       ? (!derivSession.connected || manualAccountMatchesMode)
       : derivSession.connected && manualAccountMatchesMode
@@ -905,13 +899,18 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   }
 
   function prepareManualSignal(opportunity: OpportunityItem) {
-    if (!opportunity.direction) {
-      toast.info("Ce marché est en observation : aucune direction n'est proposée.");
+    if (!opportunity.direction || opportunity.decision !== "take") {
+      toast.info("Seuls les signaux « Prendre » peuvent préparer un ordre manuel.");
+      return;
+    }
+    const guard = guardForManualPreset(opportunity.preset);
+    if (guard && (opportunity.direction !== guard.direction || opportunity.confidence < guard.minConfidence || opportunity.confidence > guard.maxConfidence || opportunity.agreement < guard.minTfAgreement)) {
+      toast.warning(`Signal hors configuration manuelle ${guard.label} : ordre non préparé.`);
       return;
     }
     setForceSymbol(opportunity.symbol);
     setForceDir(opportunity.direction);
-    setForceStake(MANUAL_SUGGESTED_STAKE);
+    setForceStake(guard?.stakeUsd ?? config.stakeUsd);
     setPreparedManualOpportunity(opportunity);
     setManualArmed(true);
     window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
@@ -1413,11 +1412,21 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <ShieldAlert className="h-4 w-4 lg:h-5 lg:w-5 text-down shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="text-xs lg:text-sm font-black text-down">
-                Garde-fou manuel actif — plafond de perte journalier atteint (${MANUAL_DAILY_LOSS_CAP})
+                Garde-fou manuel actif — plafond de perte journalier atteint (${manualDailyLossCap})
               </p>
               <p className="mt-0.5 text-[11px] lg:text-xs text-muted-foreground">
                 Pertes réalisées aujourd'hui : ${Math.abs(manualTodayPnl ?? 0).toFixed(2)}. L'exécution manuelle est bloquée jusqu'à minuit UTC (reprise automatique) — l'auto-trader n'est pas concerné.
               </p>
+            </div>
+          </div>
+        )}
+
+        {manualTradeLimitExceeded && (
+          <div role="alert" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 lg:p-4 flex items-start gap-2.5">
+            <ShieldAlert className="h-4 w-4 lg:h-5 lg:w-5 text-amber-300 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs lg:text-sm font-black text-amber-200">Limite de validation manuelle atteinte</p>
+              <p className="mt-0.5 text-[11px] lg:text-xs text-muted-foreground">{manualGuard?.label} est limité à {manualGuard?.maxTradesPerDay} ordre(s) par jour pour préserver la qualité de l’échantillon.</p>
             </div>
           </div>
         )}
@@ -2005,7 +2014,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           }
                           if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                         },
-                        config
+                        config,
+                        preparedManualOpportunity ? { confidence: preparedManualOpportunity.confidence, tfAgreement: preparedManualOpportunity.agreement } : undefined,
                       );
                     } else {
                       await openPreviewTrade(
@@ -2156,7 +2166,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         }
                         if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                       },
-                      config
+                      config,
+                      preparedManualOpportunity ? { confidence: preparedManualOpportunity.confidence, tfAgreement: preparedManualOpportunity.agreement } : undefined,
                     );
                   } else {
                     await openPreviewTrade(
@@ -2264,7 +2275,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           }
                           if (log.status === "open") toast.success(`Contrat ouvert — ${label} ${forceDir}`);
                         },
-                        config
+                        config,
+                        preparedManualOpportunity ? { confidence: preparedManualOpportunity.confidence, tfAgreement: preparedManualOpportunity.agreement } : undefined,
                       );
                     } else {
                       await openPreviewTrade(

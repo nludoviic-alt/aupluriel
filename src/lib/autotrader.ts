@@ -1123,6 +1123,7 @@ export async function forceDemoTrade(
   durationMinutes: number,
   onEvent: TradeEventHandler,
   multiplierSettings: Pick<AutoTraderConfig, "multiplierLevel" | "stopLossPctOfStake" | "takeProfitPctOfStake"> = DEFAULT_CONFIG,
+  signalMeta?: Pick<TradeLog, "confidence" | "tfAgreement">,
 ): Promise<void> {
   const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
   if (!isSymbolTradeable(symbolDeriv, isMultiplier ? "multiplier" : "binary")) {
@@ -1176,8 +1177,8 @@ export async function forceDemoTrade(
     payout: 0,
     status: "pending",
     profit: 0,
-    confidence: 0,
-    tfAgreement: 0,
+    confidence: signalMeta?.confidence ?? 0,
+    tfAgreement: signalMeta?.tfAgreement ?? 0,
     note: isMultiplier ? "Prise manuelle · Multiplicateur" : "Prise manuelle · CALL/PUT",
     entryPrice: entryPrice || undefined,
     ...(isMultiplier
