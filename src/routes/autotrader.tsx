@@ -284,6 +284,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // flashing a false block before the first fetch resolves.
   const [manualTodayPnl, setManualTodayPnl] = useState<number | null>(null);
   const [manualTodayTrades, setManualTodayTrades] = useState(0);
+  const [manualConsecutiveLosses, setManualConsecutiveLosses] = useState(0);
   const refreshManualDailyPnl = useCallback(async () => {
     try {
       const rows = await api.get<{ time: number; status: string; profit: number }[]>("/api/trades?limit=200");
@@ -294,6 +295,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         .reduce((sum, r) => sum + r.profit, 0);
       setManualTodayPnl(net);
       setManualTodayTrades(rows.filter((r) => r.time >= startMs && ["open", "won", "lost"].includes(r.status)).length);
+      const latestClosedToday = rows
+        .filter((r) => r.time >= startMs && (r.status === "won" || r.status === "lost"))
+        .sort((a, b) => b.time - a.time);
+      let lossStreak = 0;
+      for (const trade of latestClosedToday) {
+        if (trade.status !== "lost") break;
+        lossStreak += 1;
+      }
+      setManualConsecutiveLosses(lossStreak);
     } catch { /* leave last known value — a transient fetch failure shouldn't flip the gate */ }
   }, []);
   useEffect(() => { refreshManualDailyPnl(); }, [refreshManualDailyPnl]);
@@ -774,8 +784,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const manualDailyLossCap = manualGuard?.maxDailyLossUsd ?? FALLBACK_MANUAL_DAILY_LOSS_CAP;
   const manualDailyLossExceeded = manualTodayPnl !== null && manualTodayPnl <= -manualDailyLossCap;
   const manualTradeLimitExceeded = !!manualGuard && manualTodayTrades >= manualGuard.maxTradesPerDay;
+  const manualLossStreakExceeded = !!manualGuard && manualConsecutiveLosses >= manualGuard.maxConsecutiveLosses;
   const manualSignalMatchesGuard = !manualGuard || (!!preparedManualOpportunity && preparedManualOpportunity.decision === "take" && preparedManualOpportunity.direction === manualGuard.direction && manualDirectionBias === manualGuard.direction && forceStake <= manualGuard.stakeUsd);
-  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && !manualDailyLossExceeded && !manualTradeLimitExceeded && manualSignalMatchesGuard && (
+  const manualTradeAllowed = manualInstrumentSupported && isMarketOpenNow && !manualDailyLossExceeded && !manualTradeLimitExceeded && !manualLossStreakExceeded && manualSignalMatchesGuard && (
     config.mode === "demo"
       ? (!derivSession.connected || manualAccountMatchesMode)
       : derivSession.connected && manualAccountMatchesMode
@@ -1427,6 +1438,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <div>
               <p className="text-xs lg:text-sm font-black text-amber-200">Limite de validation manuelle atteinte</p>
               <p className="mt-0.5 text-[11px] lg:text-xs text-muted-foreground">{manualGuard?.label} est limité à {manualGuard?.maxTradesPerDay} ordre(s) par jour pour préserver la qualité de l’échantillon.</p>
+            </div>
+          </div>
+        )}
+
+        {manualLossStreakExceeded && (
+          <div role="alert" className="rounded-2xl border border-down/40 bg-down/10 p-3 lg:p-4 flex items-start gap-2.5">
+            <ShieldAlert className="h-4 w-4 lg:h-5 lg:w-5 text-down shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs lg:text-sm font-black text-down">Arrêt après {manualGuard?.maxConsecutiveLosses} pertes consécutives</p>
+              <p className="mt-0.5 text-[11px] lg:text-xs text-muted-foreground">{manualGuard?.label} compte {manualConsecutiveLosses} pertes de suite aujourd’hui. L’exécution manuelle est bloquée jusqu’à minuit UTC ; l’auto-trader n’est pas concerné.</p>
             </div>
           </div>
         )}

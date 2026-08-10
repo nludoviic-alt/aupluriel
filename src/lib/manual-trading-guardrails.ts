@@ -16,6 +16,7 @@ export interface ManualOpportunityGuard {
   stakeUsd: number;
   maxDailyLossUsd: number;
   maxTradesPerDay: number;
+  maxConsecutiveLosses: number;
   minConfidence: number;
   maxConfidence: number;
   minTfAgreement: number;
@@ -25,9 +26,10 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
   boom: {
     label: "Boom500 · validation haussière",
     direction: "CALL",
-    stakeUsd: 1,
-    maxDailyLossUsd: 2,
-    maxTradesPerDay: 1,
+    stakeUsd: 25,
+    maxDailyLossUsd: 15,
+    maxTradesPerDay: 5,
+    maxConsecutiveLosses: 3,
     minConfidence: 85,
     maxConfidence: 89,
     minTfAgreement: 4,
@@ -35,9 +37,10 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
   boomv2: {
     label: "Boom500 V2 · validation haussière",
     direction: "CALL",
-    stakeUsd: 1,
-    maxDailyLossUsd: 2,
-    maxTradesPerDay: 1,
+    stakeUsd: 25,
+    maxDailyLossUsd: 15,
+    maxTradesPerDay: 5,
+    maxConsecutiveLosses: 3,
     minConfidence: 85,
     maxConfidence: 89,
     minTfAgreement: 4,
@@ -45,9 +48,10 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
   crash: {
     label: "Crash900 · continuation baissière",
     direction: "PUT",
-    stakeUsd: 5,
-    maxDailyLossUsd: 10,
-    maxTradesPerDay: 2,
+    stakeUsd: 25,
+    maxDailyLossUsd: 15,
+    maxTradesPerDay: 5,
+    maxConsecutiveLosses: 3,
     minConfidence: 85,
     maxConfidence: 100,
     minTfAgreement: 3,
@@ -55,9 +59,10 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
   crash900: {
     label: "Crash900 · continuation baissière",
     direction: "PUT",
-    stakeUsd: 5,
-    maxDailyLossUsd: 10,
-    maxTradesPerDay: 2,
+    stakeUsd: 25,
+    maxDailyLossUsd: 15,
+    maxTradesPerDay: 5,
+    maxConsecutiveLosses: 3,
     minConfidence: 85,
     maxConfidence: 100,
     minTfAgreement: 3,
