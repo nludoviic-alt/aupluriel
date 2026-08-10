@@ -63,7 +63,10 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
     maxDailyLossUsd: 15,
     maxTradesPerDay: 5,
     maxConsecutiveLosses: 3,
-    minConfidence: 85,
+    // Crash900 V2 is calibrated to accept its validated 75–100% window.
+    // Requiring 85% here made an app-labelled “Prendre” opportunity impossible
+    // to execute manually at 75–84%.
+    minConfidence: 75,
     maxConfidence: 100,
     minTfAgreement: 3,
   },

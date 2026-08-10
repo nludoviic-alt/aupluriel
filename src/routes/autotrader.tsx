@@ -1470,7 +1470,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       Only activates when CRASH900 has a MULTDOWN signal at
                       confidence ≥ 90 (the edge documented in the VPS audit
                       2026-08-06: PF 1.58, 71.4% WR at conf 95+). Pre-fills
-                      $50 stake, MULTDOWN direction, CRASH900 symbol — the
+                      the validated $25 manual stake, MULTDOWN direction, CRASH900 symbol — the
                       trader just hits "Exécuter". */}
                   {(() => {
                     const crash900Opp = (opportunities?.opportunities ?? []).find(
@@ -1490,14 +1490,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         onClick={() => {
                           setForceSymbol("CRASH900");
                           setForceDir("MULTDOWN");
-                          setForceStake(50);
+                          setForceStake(25);
                           setPreparedManualOpportunity(crash900Opp);
                           setManualArmed(true);
                           window.setTimeout(() => manualTradeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
                         }}
                         className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200 transition-all px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 active:scale-95 touch-manipulation animate-pulse"
                       >
-                        <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper · {Math.round(crash900Opp.confidence)}% · $50
+                        <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper · {Math.round(crash900Opp.confidence)}% · $25
                       </button>
                     );
                   })()}
