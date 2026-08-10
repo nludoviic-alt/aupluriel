@@ -39,6 +39,7 @@ interface OpportunityItem {
   id: string;
   preset: Preset;
   presetLabel: string;
+  active?: boolean;
   symbol: string;
   label: string;
   market: string;
@@ -134,6 +135,7 @@ function OpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Decision>("all");
+  const [showResearch, setShowResearch] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [hasPushSub, setHasPushSub] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -200,12 +202,23 @@ function OpportunitiesPage() {
 
   const scanAgeSeconds = data ? Math.max(0, Math.floor((now - data.generatedAt) / 1_000)) : null;
 
-  const visible = useMemo(() => {
+  const scoped = useMemo(() => {
     const rows = data?.opportunities ?? [];
-    return filter === "all" ? rows : rows.filter((o) => o.decision === filter);
-  }, [data?.opportunities, filter]);
+    return showResearch ? rows : rows.filter((o) => o.active);
+  }, [data?.opportunities, showResearch]);
 
-  const topTake = data?.opportunities.find((o) => o.decision === "take");
+  const visible = useMemo(() => {
+    const rows = scoped;
+    return filter === "all" ? rows : rows.filter((o) => o.decision === filter);
+  }, [scoped, filter]);
+
+  const topTake = scoped.find((o) => o.decision === "take");
+  const summary = {
+    take: scoped.filter((o) => o.decision === "take").length,
+    wait: scoped.filter((o) => o.decision === "wait").length,
+    avoid: scoped.filter((o) => o.decision === "avoid").length,
+    presets: new Set(scoped.map((o) => o.preset)).size,
+  };
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-4 sm:px-6 lg:px-8">
@@ -271,10 +284,10 @@ function OpportunitiesPage() {
 
       {/* ── Summary KPI Strip ── */}
       <div className="grid gap-3.5 grid-cols-2 md:grid-cols-4">
-        <SummaryCard label="À prendre (Signal prêt)" value={data?.summary.take ?? 0} tone="emerald" />
-        <SummaryCard label="À attendre (En formation)" value={data?.summary.wait ?? 0} tone="amber" />
-        <SummaryCard label="À éviter (Risqué)" value={data?.summary.avoid ?? 0} tone="rose" />
-        <SummaryCard label="Presets surveillés" value={data?.summary.presets ?? 0} tone="cyan" />
+        <SummaryCard label="À prendre (Signal prêt)" value={summary.take} tone="emerald" />
+        <SummaryCard label="À attendre (En formation)" value={summary.wait} tone="amber" />
+        <SummaryCard label="À éviter (Risqué)" value={summary.avoid} tone="rose" />
+        <SummaryCard label="Presets actifs surveillés" value={summary.presets} tone="cyan" />
       </div>
 
       {/* ── Hero Feature: Meilleure Opportunité ── */}
@@ -337,6 +350,17 @@ function OpportunitiesPage() {
             {f === "all" ? "Toutes les Opportunités" : DECISION_COPY[f].label}
           </button>
         ))}
+        <button
+          onClick={() => setShowResearch((value) => !value)}
+          className={cn(
+            "ml-auto shrink-0 rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-wider transition-all",
+            showResearch
+              ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
+              : "border-white/10 bg-white/[0.02] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground",
+          )}
+        >
+          {showResearch ? "Masquer recherche" : "Voir recherche inactive"}
+        </button>
       </div>
 
       {/* ── Opportunity Grid ── */}
@@ -420,6 +444,7 @@ function OpportunityCard({ item }: { item: OpportunityItem }) {
             <span className={cn("rounded-xl border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider", PRESET_STYLE[item.preset])}>
               {item.presetLabel}
             </span>
+            {!item.active && <span className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-200">Recherche · inactif</span>}
           </div>
 
           <h3 className="truncate text-lg font-black tracking-tight text-foreground">{item.label}</h3>
@@ -492,24 +517,30 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2 pt-2", className)}>
-      <Link
-        to="/manual-trader"
-        search={{
-          symbol: item.symbol,
-          direction: item.direction || undefined,
-          preset: item.preset,
-          take: "1",
-        }}
-        className={cn(
-          "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-6 text-xs font-black uppercase tracking-wider transition-all shadow-md",
-          isTake
-            ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-            : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
-        )}
-      >
-        <Zap className="h-4 w-4 fill-current" />
-        {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
-      </Link>
+      {item.active ? (
+        <Link
+          to="/manual-trader"
+          search={{
+            symbol: item.symbol,
+            direction: item.direction || undefined,
+            preset: item.preset,
+            take: "1",
+          }}
+          className={cn(
+            "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-6 text-xs font-black uppercase tracking-wider transition-all shadow-md",
+            isTake
+              ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+              : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
+          )}
+        >
+          <Zap className="h-4 w-4 fill-current" />
+          {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
+        </Link>
+      ) : (
+        <span className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 px-6 text-xs font-black uppercase tracking-wider text-amber-200">
+          Preset inactif
+        </span>
+      )}
 
       <Link
         to="/signals"

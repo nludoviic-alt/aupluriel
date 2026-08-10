@@ -35,6 +35,8 @@ export interface OpportunityItem {
   id: string;
   preset: Preset;
   presetLabel: string;
+  /** Whether this user's server auto-trader currently has this preset enabled. Added after analysis assembly. */
+  active?: boolean;
   symbol: string;
   label: string;
   market: string;
@@ -435,6 +437,12 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
   pendingBuildPromise = (async () => {
     try {
       const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
+      const activePresets = new Set(
+        (getDb()
+          .prepare("SELECT preset FROM bot_state WHERE user_id = ? AND enabled = 1")
+          .all(userId) as Array<{ preset: Preset }>)
+          .map((row) => row.preset),
+      );
       const jobs = PRESETS.flatMap((preset) => {
         const config = configs.get(preset)!;
         const symbols = Array.isArray(config.symbols) ? config.symbols : [];
@@ -469,7 +477,9 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
             updatedAt: Date.now(),
           };
         }),
-      )).sort(sortOpportunities);
+      ))
+        .map((opportunity) => ({ ...opportunity, active: activePresets.has(opportunity.preset) }))
+        .sort(sortOpportunities);
 
       const avoidList: AvoidItem[] = PRESETS.flatMap((preset) => {
         const config = configs.get(preset)!;
