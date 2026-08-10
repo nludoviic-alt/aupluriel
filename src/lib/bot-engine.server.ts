@@ -28,6 +28,7 @@ import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
 import { generateGoldTrendSignal, MIN_GOLD_CANDLES } from "./gold-trend-signal.server";
+import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import {
   DEFAULT_CONFIG,
@@ -94,12 +95,12 @@ const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
@@ -112,6 +113,10 @@ const PRESET_LABEL: Record<Preset, string> = {
   liquidity: "Reversal liquidité",
   gold: "Or Trend",
   crash900: "Crash900 V2",
+  boomv2: "Boom V2 — contrôlé",
+  scalpingv2: "Scalping V2 — Spike Hunter",
+  liquidityv2: "Liquidity V2 — XAU sweep",
+  goldv2: "Gold V2 — session pullback",
 };
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
@@ -122,7 +127,7 @@ const PRESET_LABEL: Record<Preset, string> = {
 export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -428,10 +433,15 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
       // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
     };
-    // Guard: a corrupted config in DB could have symbols/excludedSymbols as
-    // non-array (e.g. a string from a bad SQL UPDATE). Force them back to
-    // arrays to prevent .map crashes downstream.
-    if (!Array.isArray(merged.symbols)) merged.symbols = DEFAULT_CONFIG.symbols;
+    // Guard: a legacy save could have symbols encoded as "[frxXAUUSD]".
+    // db.server repairs it at startup, while this fallback keeps an engine
+    // safe if a malformed row is encountered before that migration runs.
+    if (!Array.isArray(merged.symbols)) {
+      const rawSymbols = typeof saved.symbols === "string" ? saved.symbols.trim() : "";
+      merged.symbols = rawSymbols.startsWith("[") && rawSymbols.endsWith("]")
+        ? rawSymbols.slice(1, -1).split(",").map((symbol) => symbol.trim()).filter(Boolean)
+        : DEFAULT_CONFIG.symbols;
+    }
     if (!Array.isArray(merged.excludedSymbols)) merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;
     return merged;
   } catch {
@@ -1382,7 +1392,29 @@ class ServerBotEngine {
           };
           return { symbol, analysis };
         })
-      : this.preset === "liquidity"
+      : this.preset === "scalpingv2"
+      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const [m1, m5] = await Promise.all([
+            candleFetcher(symbol, 60, 60),
+            candleFetcher(symbol, 300, 30),
+          ]);
+          const sig = generateSpikeHunterSignal(symbol, m1, m5);
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0,
+            premiumCount: 0,
+            volatilityPct: 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas d'accumulation/distribution Spike Hunter M1/M5"],
+            dominantTf: "1m",
+            suggestedDuration: 0,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: 0,
+          };
+          return { symbol, analysis };
+        })
+      : this.preset === "liquidity" || this.preset === "liquidityv2"
       ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
           const m15 = await candleFetcher(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
           const sig = m15.length >= MIN_LIQUIDITY_CANDLES ? generateLiquidityReversalSignal(m15) : null;
@@ -1396,6 +1428,25 @@ class ServerBotEngine {
             blockers: sig ? [] : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
             dominantTf: "15m",
             suggestedDuration: 60,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: 0,
+          };
+          return { symbol, analysis };
+        })
+      : this.preset === "goldv2"
+      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+          const m15 = await candleFetcher(symbol, 900, MIN_GOLD_SESSION_CANDLES + 5);
+          const sig = m15.length >= MIN_GOLD_SESSION_CANDLES ? generateGoldSessionBreakoutSignal(m15) : null;
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0,
+            premiumCount: 0,
+            volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas de cassure de session suivie d'un pullback validé"],
+            dominantTf: "15m",
+            suggestedDuration: 30,
             trendAlignmentScore: sig ? 4 : 0,
             patternBonus: 0,
           };

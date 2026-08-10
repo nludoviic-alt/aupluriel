@@ -516,6 +516,34 @@ function migrate(db: Database.Database) {
     `).run(...BOOM_SYMS_BACKFILL, ...CRASH_SYMS_BACKFILL);
   }
 
+  // --- Repair legacy bot-state symbol lists (idempotent) ---
+  // A few early preset saves serialized `symbols` as strings such as
+  // "[frxXAUUSD]" instead of string[]. That shape bypasses UI validation and
+  // makes a saved watchlist fall back to DEFAULT_CONFIG at engine startup.
+  // Normalize only those malformed rows; every other saved field is preserved.
+  const savedBotConfigs = db.prepare("SELECT user_id, preset, config FROM bot_state").all() as
+    { user_id: number; preset: string; config: string }[];
+  const writeRepairedBotConfig = db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?");
+  for (const row of savedBotConfigs) {
+    try {
+      const config = JSON.parse(row.config) as { symbols?: unknown } & Record<string, unknown>;
+      if (Array.isArray(config.symbols) || typeof config.symbols !== "string") continue;
+      const raw = config.symbols.trim();
+      let symbols: string[] | null = null;
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.every((symbol) => typeof symbol === "string")) symbols = parsed;
+      } catch { /* Legacy format without JSON quotes: [frxXAUUSD]. */ }
+      if (!symbols && raw.startsWith("[") && raw.endsWith("]")) {
+        symbols = raw.slice(1, -1).split(",").map((symbol) => symbol.trim()).filter(Boolean);
+      }
+      if (symbols) {
+        config.symbols = symbols;
+        writeRepairedBotConfig.run(JSON.stringify(config), row.user_id, row.preset);
+      }
+    } catch { /* Invalid JSON is handled safely by loadBotConfig. */ }
+  }
+
   // --- Additive column migrations on `user_settings` (idempotent) ---
   const settingsCols = new Set(
     (db.prepare("PRAGMA table_info(user_settings)").all() as { name: string }[]).map((c) => c.name),

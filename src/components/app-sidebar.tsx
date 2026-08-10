@@ -44,6 +44,7 @@ const tradingItems = [
 
 const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
+  { title: "Piste",            url: "/piste",           icon: FlaskConical,     color: "text-amber-400",   glow: "shadow-amber-500/30" },
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Skills",           url: "/skills",          icon: Wrench,           color: "text-sky-400",    glow: "shadow-sky-500/30" },

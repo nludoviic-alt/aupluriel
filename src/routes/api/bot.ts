@@ -26,9 +26,9 @@ import {
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
-const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
@@ -37,6 +37,10 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "liquidity") return LIQUIDITY_PRESET;
   if (preset === "gold") return GOLD_PRESET;
   if (preset === "crash900") return CRASH900_V2_PRESET;
+  if (preset === "boomv2") return BOOM_V2_PRESET;
+  if (preset === "scalpingv2") return SCALPING_V2_PRESET;
+  if (preset === "liquidityv2") return LIQUIDITY_V2_PRESET;
+  if (preset === "goldv2") return GOLD_V2_PRESET;
   return DEFAULT_CONFIG;
 }
 
@@ -105,8 +109,8 @@ export const Route = createFileRoute("/api/bot")({
           config?: Partial<AutoTraderConfig>;
         };
 
-        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default" && body.preset !== "scalping" && body.preset !== "liquidity" && body.preset !== "gold" && body.preset !== "crash900") {
-          return json({ error: "preset doit être 'boom', 'crash', 'default', 'scalping', 'liquidity', 'gold' ou 'crash900'." }, 400);
+        if (!PRESETS.includes(body.preset as Preset)) {
+          return json({ error: "Preset inconnu." }, 400);
         }
         const preset = body.preset;
 
@@ -136,7 +140,7 @@ export const Route = createFileRoute("/api/bot")({
           // (see SCALPING_PRESET's header comment), forced back to demo
           // server-side regardless of what's requested, not just defaulted
           // client-side where a stale draft could slip through.
-          const mode = preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" ? "demo" : requested.mode === "live" ? "live" : "demo";
+          const mode = preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -169,7 +173,7 @@ export const Route = createFileRoute("/api/bot")({
           // client could still send "simulation" even though TradingMode no
           // longer allows it at compile time.
           if ((next.mode as string) === "simulation") next.mode = "demo";
-          if (preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900") next.mode = "demo"; // experimental presets never use real money
+          if (preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2")) next.mode = "demo"; // experimental presets never use real money
           const increasesFrequency =
             Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)
             || Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
@@ -224,7 +228,7 @@ export const Route = createFileRoute("/api/bot")({
             // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET/GOLD_PRESET; the "start" and
             // "update" actions and /api/admin/user-config's resetToCanonical all gate
             // these presets the same way, this one had only checked scalping.
-            mode: preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" ? "demo" : mode,
+            mode: preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,

@@ -166,7 +166,11 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         // demo; a live bot the user stopped (or that this sweep stopped
         // below) waits for them to restart it themselves.
         if (isLive) continue;
-        const config = { ...DEFAULT_CONFIG, stakeUsd: existing?.stakeUsd ?? DEFAULT_CONFIG.stakeUsd, mode: "demo" as const };
+        // The verdict validates the same Multi strategy, but must never erase
+        // an account's saved watchlist, confidence band, TF agreement, or risk
+        // limits when it starts the demo engine. `loadBotConfig` already
+        // supplies DEFAULT_CONFIG fallbacks for older partial configs.
+        const config = { ...(existing ?? DEFAULT_CONFIG), mode: "demo" as const };
         await startBotForUser(user_id, PRESET, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {

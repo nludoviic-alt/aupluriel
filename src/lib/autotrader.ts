@@ -697,6 +697,68 @@ export const GOLD_PRESET: Partial<AutoTraderConfig> = {
   mode: "demo",
 };
 
+/**
+ * Experimental presets are deliberately separate records from their V1
+ * counterparts.  A V2 result must never be added to the historical journal
+ * of the original strategy: it tests a different market hypothesis.
+ */
+export const BOOM_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  stakeUsd: 1,
+  maxDailyLossUsd: 5,
+  maxTradesPerDay: 5,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** M1/M5 Spike Hunter, distinct from Scalping V1's structural pullback. */
+export const SCALPING_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...SCALPING_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["BOOM500"],
+  minConfidence: 80,
+  maxConfidence: 95,
+  stakeUsd: 1,
+  maxDailyLossUsd: 5,
+  maxTradesPerDay: 5,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** XAU/USD liquidity-sweep/reintegration experiment, isolated from V1. */
+export const LIQUIDITY_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...LIQUIDITY_PRESET,
+  symbols: ["frxXAUUSD"],
+  durationMinutes: 60,
+  stakeUsd: 1,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** XAU/USD London/New York session breakout followed by a pullback. */
+export const GOLD_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...GOLD_PRESET,
+  symbols: GOLD_SYMBOLS,
+  durationMinutes: 30,
+  minConfidence: 78,
+  maxConfidence: 92,
+  stakeUsd: 1,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
 export function isGoldPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === GOLD_SYMBOLS.length

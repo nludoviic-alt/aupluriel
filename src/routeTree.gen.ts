@@ -18,6 +18,7 @@ import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as PisteRouteImport } from './routes/piste'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MessengerRouteImport } from './routes/messenger'
@@ -125,6 +126,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PisteRoute = PisteRouteImport.update({
+  id: '/piste',
+  path: '/piste',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OpportunitiesRoute = OpportunitiesRouteImport.update({
@@ -459,6 +465,7 @@ export interface FileRoutesByFullPath {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
+  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -533,6 +540,7 @@ export interface FileRoutesByTo {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
+  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -608,6 +616,7 @@ export interface FileRoutesById {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
+  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -684,6 +693,7 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
+    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -758,6 +768,7 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
+    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -832,6 +843,7 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
+    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -907,6 +919,7 @@ export interface RootRouteChildren {
   MessengerRoute: typeof MessengerRoute
   NotificationsRoute: typeof NotificationsRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
+  PisteRoute: typeof PisteRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -1028,6 +1041,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/piste': {
+      id: '/piste'
+      path: '/piste'
+      fullPath: '/piste'
+      preLoaderRoute: typeof PisteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/opportunities': {
@@ -1511,6 +1531,7 @@ const rootRouteChildren: RootRouteChildren = {
   MessengerRoute: MessengerRoute,
   NotificationsRoute: NotificationsRoute,
   OpportunitiesRoute: OpportunitiesRoute,
+  PisteRoute: PisteRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,

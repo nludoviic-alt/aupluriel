@@ -10,7 +10,7 @@ export interface PresetStrategyDef {
   id: string;
   name: string;
   category: "Multi" | "Boom" | "Crash" | "Scalping" | "Best Day";
-  targetPreset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+  targetPreset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
   targetMarkets: string;
   tagline: string;
   badge: string;
@@ -272,7 +272,7 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
     id: "boom-spikes",
     name: "Boom — Spikes Scalper",
     category: "Boom",
-    targetPreset: "boom",
+    targetPreset: "boomv2",
     targetMarkets: "BOOM 500",
     tagline: "BOOM500 seul — le moins pire des symboles Boom en production (PF 0.94, -$34.53 sur 282 trades). Aucun symbole Boom n'est encore rentable : à surveiller, pas à confiance aveugle.",
     badge: "Indices Boom",
@@ -304,6 +304,48 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       stakeUsd: 5,
       maxDailyLossUsd: 15,
       symbols: ["BOOM500"],
+    },
+  },
+  {
+    id: "boom-v2-validation",
+    name: "Boom V2 — Validation contrôlée",
+    category: "Boom",
+    targetPreset: "boom",
+    targetMarkets: "BOOM 500 uniquement",
+    tagline: "Version démo isolée à faible exposition : BOOM500, filtrage 4/4 TF, une position et trois entrées maximum par jour. Le but est de mesurer une edge, pas de maximiser immédiatement le volume.",
+    badge: "Validation 20 / 50 / 100",
+    riskProfile: "Conservateur",
+    color: "from-sky-500/20 via-cyan-500/10 to-transparent",
+    borderGlow: "border-sky-500/40",
+    verifiedNote: "Boom reste globalement perdant sur les trades production (PF 0.85). Cette version est volontairement limitée et active le rollback automatique : elle doit obtenir PF ≥ 1.20 et une espérance positive à 50 puis 100 nouveaux trades avant toute hausse de mise ou de fréquence.",
+    params: {
+      minConfidence: 85,
+      maxConfidence: 89,
+      minTfAgreement: 4,
+      durationMinutes: 5,
+      stakeUsd: 5,
+      maxDailyLossUsd: 15,
+      symbolsCount: 1,
+    },
+    configOverride: {
+      symbolMode: "watchlist",
+      symbols: ["BOOM500"],
+      minConfidence: 85,
+      maxConfidence: 89,
+      minTfAgreement: 4,
+      durationMinutes: 5,
+      stakeUsd: 5,
+      maxDailyLossUsd: 15,
+      maxTradesPerDay: 3,
+      maxSimultaneousTrades: 1,
+      maxOpenPositions: 1,
+      multiplierLevel: 100,
+      takeProfitPctOfStake: 15,
+      stopLossPctOfStake: 10,
+      maxHoldMinutes: 60,
+      hourlyEdgeFilter: true,
+      autoRollbackEnabled: true,
+      mode: "demo",
     },
   },
   {

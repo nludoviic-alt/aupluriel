@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { ALL_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
 function canonicalConfig(preset: Preset) {
   if (preset === "boom") return { ...DEFAULT_CONFIG, ...BOOM_PRESET };
@@ -16,6 +16,10 @@ function canonicalConfig(preset: Preset) {
   if (preset === "liquidity") return { ...DEFAULT_CONFIG, ...LIQUIDITY_PRESET, mode: "demo" as const };
   if (preset === "gold") return { ...DEFAULT_CONFIG, ...GOLD_PRESET, mode: "demo" as const };
   if (preset === "crash900") return { ...DEFAULT_CONFIG, ...CRASH900_V2_PRESET, mode: "demo" as const };
+  if (preset === "boomv2") return { ...DEFAULT_CONFIG, ...BOOM_V2_PRESET, mode: "demo" as const };
+  if (preset === "scalpingv2") return { ...DEFAULT_CONFIG, ...SCALPING_V2_PRESET, mode: "demo" as const };
+  if (preset === "liquidityv2") return { ...DEFAULT_CONFIG, ...LIQUIDITY_V2_PRESET, mode: "demo" as const };
+  if (preset === "goldv2") return { ...DEFAULT_CONFIG, ...GOLD_V2_PRESET, mode: "demo" as const };
   return DEFAULT_CONFIG;
 }
 
@@ -91,7 +95,7 @@ export const Route = createFileRoute("/api/admin/bot")({
           // jamais activer du live sans que l'utilisateur l'ait lui-même
           // déjà choisi une fois.
           const saved = loadBotConfig(userId, preset);
-          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
+          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
           try {
             await startBotForUser(userId, preset, config);
           } catch (e) {
