@@ -109,6 +109,26 @@ export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
   OTC_SPC: "newyork", OTC_DJI: "newyork", OTC_NDX: "newyork",
 };
 
+/**
+ * Deriv's OTC_NDX contract has a narrower daily trading window than the
+ * generic New York forex session.  Treating the whole 12:00–21:00 UTC session
+ * as open caused rejected buy requests after its 20:00 UTC close (the broker
+ * reports the next opening at 06:00 UTC).  This is an execution guard, not a
+ * signal filter: an unavailable market must never become a journal `error`.
+ */
+const INDEX_UTC_HOURS: Partial<Record<string, { open: number; close: number }>> = {
+  OTC_NDX: { open: 6, close: 20 },
+};
+
+function isWithinUtcHours(open: number, close: number): boolean {
+  const now = new Date();
+  const day = now.getUTCDay();
+  // The broker is closed over the weekend for these exchange-backed indices.
+  if (day === 0 || day === 6) return false;
+  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return utcMins >= open * 60 && utcMins < close * 60;
+}
+
 export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
   // Crypto MARKETS trade 24/7, but this bot's crypto edge doesn't: live
   // results split sharply by session — trades opened 21h-02h UTC (forex
@@ -122,7 +142,11 @@ export function isInTradingSession(sessions: TradingSession[], symbol: string, e
 
   // Stock indices: their home exchange must be open AND enabled in the config
   const home = INDEX_HOME_SESSION[symbol];
-  if (home) return sessions.includes(home) && isSessionActive(home, edgeMinutes);
+  if (home) {
+    const hours = INDEX_UTC_HOURS[symbol];
+    return sessions.includes(home) && isSessionActive(home, edgeMinutes)
+      && (!hours || isWithinUtcHours(hours.open, hours.close));
+  }
 
   return sessions.some((s) => isSessionActive(s, edgeMinutes));
 }
