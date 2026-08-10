@@ -42,6 +42,7 @@ export const Route = createFileRoute("/portfolio")({
 });
 
 type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
+const PORTFOLIO_PRESETS = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 interface PresetMeta {
   label: string;
@@ -255,6 +256,28 @@ export default function PortfolioPage() {
   const { positions, profits, botTrades, loading, refresh, close } = usePortfolio();
   const { confirmState, confirm } = useConfirm();
   const brokerBalances = useBrokerBalances();
+  const [activePresets, setActivePresets] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    api.get<{ presets?: Record<string, { enabled?: boolean }> }>("/api/bot")
+      .then((status) => {
+        setActivePresets(new Set(
+          Object.entries(status.presets ?? {})
+            .filter(([, preset]) => preset.enabled)
+            .map(([preset]) => preset),
+        ));
+      })
+      .catch(() => setActivePresets(new Set()));
+  }, []);
+
+  // Historical rows stay safely stored on the server, but the Portfolio is a
+  // live operating view: stopped presets are deliberately excluded from it.
+  const visibleBotTrades = useMemo(
+    () => activePresets === null
+      ? botTrades
+      : botTrades.filter((trade) => !trade.preset || activePresets.has(trade.preset)),
+    [activePresets, botTrades],
+  );
 
   const todayPnl = pnlToday(profits);
   const openPnl = positions.reduce((acc, p) => acc + p.profit, 0);
@@ -268,8 +291,14 @@ export default function PortfolioPage() {
   const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState<"all" | "won" | "lost">("all");
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
 
+  useEffect(() => {
+    if (historyPresetFilter !== "all" && historyPresetFilter !== "manual" && activePresets && !activePresets.has(historyPresetFilter)) {
+      setHistoryPresetFilter("all");
+    }
+  }, [activePresets, historyPresetFilter]);
+
   const filteredBotTrades = useMemo(() => {
-    return botTrades.filter((t) => {
+    return visibleBotTrades.filter((t) => {
       // 1. Outcome filter
       const isWin = t.status === "won" || t.profit > 0;
       const isLoss = t.status === "lost" || t.profit < 0;
@@ -292,7 +321,7 @@ export default function PortfolioPage() {
 
       return true;
     });
-  }, [botTrades, historyOutcomeFilter, historyPresetFilter, historySearchQuery]);
+  }, [visibleBotTrades, historyOutcomeFilter, historyPresetFilter, historySearchQuery]);
 
   const filteredSummary = useMemo(() => {
     const closed = filteredBotTrades.filter((t) => t.status === "won" || t.status === "lost");
@@ -306,8 +335,8 @@ export default function PortfolioPage() {
   }, [filteredBotTrades]);
 
   // ── Compute Preset Breakdown ──
-  const presetStats = (["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2", "manual"] as const).map((key) => {
-    const matching = botTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
+  const presetStats = ([...PORTFOLIO_PRESETS.filter((preset) => activePresets === null || activePresets.has(preset)), "manual"] as const).map((key) => {
+    const matching = visibleBotTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
     const closed = matching.filter((t) => t.status === "won" || t.status === "lost");
     const wins = closed.filter((t) => t.status === "won" || t.profit > 0).length;
     const losses = closed.filter((t) => t.status === "lost" || t.profit < 0).length;
@@ -343,7 +372,7 @@ export default function PortfolioPage() {
     netPnl: number;
   }>();
 
-  for (const t of botTrades) {
+  for (const t of visibleBotTrades) {
     if (t.status !== "won" && t.status !== "lost") continue;
     const symObj = SYMBOLS.find((s) => s.deriv === t.symbol);
     const label = symObj?.label ?? t.symbol;
@@ -694,7 +723,7 @@ export default function PortfolioPage() {
             <h2 className="text-sm font-semibold">3. Historique des Trades & Filtres Interactifs</h2>
           </div>
           <span className="text-xs font-mono text-muted-foreground">
-            {filteredBotTrades.length} / {botTrades.length > 0 ? botTrades.length : profits.length} trades affichés
+            {filteredBotTrades.length} / {visibleBotTrades.length > 0 ? visibleBotTrades.length : profits.length} trades affichés
           </span>
         </div>
 
@@ -723,7 +752,7 @@ export default function PortfolioPage() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Tous ({botTrades.length})
+              Tous ({visibleBotTrades.length})
             </button>
             <button
               onClick={() => setHistoryOutcomeFilter("won")}
@@ -734,7 +763,7 @@ export default function PortfolioPage() {
                   : "text-emerald-400/70 hover:text-emerald-400"
               )}
             >
-              🟢 Victoires ({botTrades.filter((t) => t.status === "won" || t.profit > 0).length})
+              🟢 Victoires ({visibleBotTrades.filter((t) => t.status === "won" || t.profit > 0).length})
             </button>
             <button
               onClick={() => setHistoryOutcomeFilter("lost")}
@@ -745,7 +774,7 @@ export default function PortfolioPage() {
                   : "text-rose-400/70 hover:text-rose-400"
               )}
             >
-              🔴 Pertes ({botTrades.filter((t) => t.status === "lost" || t.profit < 0).length})
+              🔴 Pertes ({visibleBotTrades.filter((t) => t.status === "lost" || t.profit < 0).length})
             </button>
           </div>
 
@@ -758,17 +787,9 @@ export default function PortfolioPage() {
               className="h-8 rounded-lg border border-white/10 bg-black/60 px-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
             >
               <option value="all">Tous les Presets</option>
-              <option value="default">📊 Preset Multi</option>
-              <option value="boom">⚡ Preset Boom</option>
-              <option value="crash">📉 Preset Crash</option>
-              <option value="scalping">🎯 Preset Scalping</option>
-              <option value="liquidity">💧 Reversal Liquidité</option>
-              <option value="gold">🥇 Or Trend</option>
-              <option value="crash900">📉 Preset Crash900 V2</option>
-              <option value="boomv2">⚡ Boom V2</option>
-              <option value="scalpingv2">🎯 Scalping V2</option>
-              <option value="liquidityv2">💧 Liquidity V2</option>
-              <option value="goldv2">🥇 Gold V2</option>
+              {PORTFOLIO_PRESETS.filter((preset) => activePresets === null || activePresets.has(preset)).map((preset) => (
+                <option key={preset} value={preset}>{PRESET_META_MAP[preset].badge} {PRESET_META_MAP[preset].label}</option>
+              ))}
               <option value="manual">✋ Prise Directe Manuelle</option>
             </select>
           </div>

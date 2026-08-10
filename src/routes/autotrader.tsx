@@ -344,11 +344,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [configTab, setConfigTab] = useState<"profiles" | "params" | "risk" | "multiplier" | "backtest">("profiles");
   const { confirmState, confirm } = useConfirm();
   const derivSession = useDerivSession(config.mode === "demo" || config.mode === "live");
-  // Drives the preset-tab filter below. Same 768px breakpoint as Tailwind's
-  // `md:`, so the JS filter and the CSS md:hidden/hidden md:flex split can't
-  // disagree about what counts as mobile.
-  const isMobile = useIsMobile();
-
   // ── Server-side bot (runs with the app closed / phone locked) ──
   // Up to three fully independent engines per account now (2026-08-01):
   // Default/"Multi", Boom, Crash. `selectedPreset` is purely a VIEW selector
@@ -363,11 +358,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
 
-  // Mobile shows at most 3 of the 4 preset tabs (admin choice) — four didn't
-  // fit a phone-width strip. Desktop is never filtered. Falls back to all four
-  // until /api/bot answers, so the tabs never flicker down to a subset.
-  const mobilePresets: PresetKey[] = cloud?.visiblePresets?.length ? cloud.visiblePresets : [...PRESET_ORDER];
-  const shownPresets: PresetKey[] = isMobile ? mobilePresets : [...PRESET_ORDER];
+  // A stopped preset remains in the database for its audit trail, but must not
+  // stay selectable on the execution desk. Showing it here made an inactive
+  // strategy look ready to trade and invited accidental restarts.
+  const shownPresets: PresetKey[] = cloud
+    ? PRESET_ORDER.filter((preset) => !!cloud.presets?.[preset]?.enabled)
+    : [...PRESET_ORDER];
 
   const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
   // True the moment ANY of the three presets is enabled — used for guards
