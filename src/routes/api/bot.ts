@@ -29,6 +29,12 @@ import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
 import { BOOM_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
 const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+const REPLACED_V1: Partial<Record<Preset, Preset>> = {
+  boomv2: "boom",
+  scalpingv2: "scalping",
+  liquidityv2: "liquidity",
+  goldv2: "gold",
+};
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
@@ -149,6 +155,12 @@ export const Route = createFileRoute("/api/bot")({
           };
           try {
             await startBotForUser(user.id, preset, config);
+            // A V2 is a separate hypothesis, not an extra source of exposure.
+            // Stop its predecessor's scan only after V2 successfully starts.
+            // stopBotForUser deliberately keeps a currently open position
+            // subscribed until closure, so no position is orphaned.
+            const predecessor = REPLACED_V1[preset];
+            if (predecessor) stopBotForUser(user.id, predecessor, `Remplacé par ${preset} pour validation isolée`);
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }

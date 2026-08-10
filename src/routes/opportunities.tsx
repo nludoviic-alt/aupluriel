@@ -33,7 +33,7 @@ export const Route = createFileRoute("/opportunities")({
 });
 
 type Decision = "take" | "wait" | "avoid";
-type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
 interface OpportunityItem {
   id: string;
@@ -115,6 +115,10 @@ const PRESET_STYLE: Record<Preset, string> = {
   liquidity: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300",
   gold: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
   crash900: "border-orange-500/30 bg-orange-500/10 text-orange-300",
+  boomv2: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+  scalpingv2: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+  liquidityv2: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300",
+  goldv2: "border-amber-500/30 bg-amber-500/10 text-amber-300",
 };
 
 function money(v: number) {
