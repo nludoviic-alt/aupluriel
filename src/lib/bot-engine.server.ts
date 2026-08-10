@@ -88,6 +88,10 @@ const SCAN_MS = 60_000;
 // puis le bot réévalue. Une perte RÉALISÉE, elle, reste bloquante jusqu'à
 // minuit UTC : l'argent est réellement parti, contrairement au flottant.
 const REVERSIBLE_PAUSE_MS = 45 * 60_000;
+// A qualified signal is evaluated every minute.  Without a per-engine
+// cooldown, one unchanged setup would generate a push every minute while the
+// user is deciding whether to open it manually.
+const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 
 // A user can run all four presets simultaneously — each is a fully
 // independent engine with its own bot_state row (composite user_id + preset
@@ -429,7 +433,10 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
       ...DEFAULT_CONFIG,
       ...saved,
       stakeUsd: Math.min(50, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
-      maxDailyLossUsd: Math.min(100, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
+      // $200 is an explicitly supported demo risk ceiling for the four-core
+      // research basket.  Keeping the old $100 clamp made the saved value and
+      // the server's effective protection disagree silently.
+      maxDailyLossUsd: Math.min(200, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
       // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
     };
@@ -491,6 +498,7 @@ class ServerBotEngine {
   // open — non-null means "finish tearing down as soon as nothing is open."
   private pendingStopReason: string | null = null;
   private sessionPeakPnl = 0;
+  private opportunityPushes = new Map<string, { direction: "CALL" | "PUT"; sentAt: number }>();
   lastScan: ScanResult | null = null;
   lastError: string | null = null;
   private lastActiveSessions: TradingSession[] = [];
@@ -543,6 +551,26 @@ class ServerBotEngine {
 
   private setPausedUntil(ts: number | null) {
     getDb().prepare("UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(ts, this.userId, this.preset);
+  }
+
+  /**
+   * Send a server-side, actionable manual-trading alert only for a signal
+   * that passed the same quality and execution filters as an automatic trade.
+   * This reaches subscribed devices even when /opportunities is closed.
+   */
+  private notifyManualOpportunity(symbol: string, direction: "CALL" | "PUT", confidence: number, agreement: number) {
+    const now = Date.now();
+    const previous = this.opportunityPushes.get(symbol);
+    if (previous && previous.direction === direction && now - previous.sentAt < OPPORTUNITY_PUSH_COOLDOWN_MS) return;
+    this.opportunityPushes.set(symbol, { direction, sentAt: now });
+
+    void (async () => {
+      const { sendPushToUser } = await import("./push.server");
+      const title = `⚡ Opportunité ${PRESET_LABEL[this.preset]} — ${symbol}`;
+      const body = `${direction} · confiance ${Math.round(confidence)}% · ${agreement} TF alignés. Ouvrir le trade manuel.`;
+      const url = `/manual-trader?symbol=${encodeURIComponent(symbol)}&direction=${direction}&preset=${this.preset}&take=1`;
+      await sendPushToUser(this.userId, { title, body, url, category: "signal" });
+    })().catch((e) => console.error(`[bot] Notification opportunité échouée pour user ${this.userId}:`, (e as Error).message));
   }
 
   private emit(log: TradeLog) {
@@ -1667,6 +1695,11 @@ class ServerBotEngine {
           continue;
         }
       }
+
+      // The manual-trading notification is emitted only after every quality,
+      // correlation, confidence, spread and payout gate above has passed.
+      // It is therefore an actionable setup, not a generic market alert.
+      this.notifyManualOpportunity(symbol, analysis.direction, analysis.confidence, analysis.agreement);
 
       // ── Signal qualifies — place the trade ──
       // stats omitted (undefined) — no extra SQL in the 60s tick; the
