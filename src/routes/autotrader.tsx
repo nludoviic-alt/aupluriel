@@ -93,7 +93,10 @@ export const Route = createFileRoute("/autotrader")({
 
 const CONFIG_KEY = "lio23.autotrader_config";
 const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}`;
-const FALLBACK_MANUAL_DAILY_LOSS_CAP = 10;
+// Manual orders without a dedicated preset guard still need a meaningful
+// session budget. $10 was below the validated $25 manual stake and could
+// block the page after a single ordinary loss.
+const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
