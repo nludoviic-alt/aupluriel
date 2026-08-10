@@ -64,6 +64,11 @@ function PistePage() {
       <Link to="/autotrader" className="text-sm font-semibold text-amber-300 hover:text-amber-200">Ouvrir l’Auto-Trader →</Link>
     </header>
 
+    <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 text-sm text-emerald-100">
+      <p className="font-black">Expérience active : Multi M2</p>
+      <p className="mt-1 text-emerald-100/75">Démo · mise 5 $ · confiance minimale 75 % · accord 4 TF · paramètres gelés jusqu’à 50 clôtures. Boom, Crash et Or restent en validation hors exécution automatique.</p>
+    </div>
+
     <div className="flex w-fit rounded-xl border border-white/10 bg-white/[0.03] p-1">
       <button onClick={() => setTab("new")} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === "new" ? "bg-amber-500/15 text-amber-300" : "text-muted-foreground"}`}>Nouveaux presets</button>
       <button onClick={() => setTab("validation")} className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === "validation" ? "bg-amber-500/15 text-amber-300" : "text-muted-foreground"}`}>Validation</button>
