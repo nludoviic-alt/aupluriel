@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, CircleDashed, FlaskConical, ShieldCheck, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { AutoTraderConfig } from "@/lib/signal-core";
 
@@ -26,6 +27,7 @@ function PistePage() {
   const [tab, setTab] = useState<"new" | "validation">("new");
   const [statuses, setStatuses] = useState<Partial<Record<PresetKey, BotStatus>>>({});
   const [loading, setLoading] = useState(true);
+  const [changing, setChanging] = useState<PresetKey | null>(null);
 
   const refresh = async () => {
     try {
@@ -37,6 +39,19 @@ function PistePage() {
     finally { setLoading(false); }
   };
   useEffect(() => { void refresh(); }, []);
+
+  const toggleTrack = async (key: PresetKey) => {
+    setChanging(key);
+    try {
+      const running = statuses[key]?.running;
+      const result = await api.post<{ error?: string }>("/api/bot", { action: running ? "stop" : "start", preset: key, config: {} });
+      if (result.error) throw new Error(result.error);
+      toast.success(running ? "Validation arrêtée" : "Validation démarrée en démo");
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "La modification n’a pas pu être appliquée.");
+    } finally { setChanging(null); }
+  };
 
   const totalTrades = useMemo(() => TRACKS.reduce((sum, track) => sum + (statuses[track.key]?.allTimeStats?.count ?? 0), 0), [statuses]);
 
@@ -62,6 +77,7 @@ function PistePage() {
           <p className="mt-4 text-sm leading-6 text-foreground/90">{track.thesis}</p>
           <div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-3 text-xs"><span className="font-bold text-foreground">Moteur : </span><span className="text-muted-foreground">{track.engine}</span></div>
           <div className="mt-3 flex items-center gap-2 text-xs text-amber-200"><ShieldCheck className="h-3.5 w-3.5" />{track.validation}</div>
+          <Button className="mt-4 w-full" variant={status?.running ? "outline" : "default"} disabled={changing === track.key} onClick={() => void toggleTrack(track.key)}>{changing === track.key ? "Mise à jour…" : status?.running ? "Arrêter la validation" : "Démarrer en démo"}</Button>
         </article>;
       })}
     </section> : <section className="space-y-4">
