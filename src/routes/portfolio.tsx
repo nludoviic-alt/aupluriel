@@ -347,7 +347,10 @@ export default function PortfolioPage() {
   }, [filteredBotTrades]);
 
   // ── Compute Preset Breakdown ──
-  const presetStats = ([...PORTFOLIO_PRESETS.filter((preset) => activePresets === null || activePresets.has(preset)), "manual"] as const).map((key) => {
+  // The Portfolio is the permanent dashboard for the official preset set.
+  // Do not hide a card merely because a transient /api/bot request failed or
+  // because that engine is currently stopped: its zero-trade state matters.
+  const presetStats = ([...PORTFOLIO_PRESETS, "manual"] as const).map((key) => {
     const matching = visibleBotTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
     const closed = matching.filter((t) => t.status === "won" || t.status === "lost");
     const wins = closed.filter((t) => t.status === "won" || t.profit > 0).length;
@@ -799,7 +802,7 @@ export default function PortfolioPage() {
               className="h-8 rounded-lg border border-white/10 bg-black/60 px-3 text-xs font-semibold text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
             >
               <option value="all">Tous les Presets</option>
-              {PORTFOLIO_PRESETS.filter((preset) => activePresets === null || activePresets.has(preset)).map((preset) => (
+              {PORTFOLIO_PRESETS.map((preset) => (
                 <option key={preset} value={preset}>{PRESET_META_MAP[preset].badge} {PRESET_META_MAP[preset].label}</option>
               ))}
               <option value="manual">✋ Prise Directe Manuelle</option>

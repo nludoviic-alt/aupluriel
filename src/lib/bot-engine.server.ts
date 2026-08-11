@@ -493,9 +493,10 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
     // db.server repairs it at startup, while this fallback keeps an engine
     // safe if a malformed row is encountered before that migration runs.
     if (!Array.isArray(merged.symbols)) {
-      const rawSymbols = typeof saved.symbols === "string" ? saved.symbols.trim() : "";
+      const rawValue = (saved as { symbols?: unknown }).symbols;
+      const rawSymbols = typeof rawValue === "string" ? rawValue.trim() : "";
       merged.symbols = rawSymbols.startsWith("[") && rawSymbols.endsWith("]")
-        ? rawSymbols.slice(1, -1).split(",").map((symbol) => symbol.trim()).filter(Boolean)
+        ? rawSymbols.slice(1, -1).split(",").map((symbol: string) => symbol.trim()).filter(Boolean)
         : DEFAULT_CONFIG.symbols;
     }
     if (!Array.isArray(merged.excludedSymbols)) merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;

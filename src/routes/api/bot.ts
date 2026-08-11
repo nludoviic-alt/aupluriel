@@ -125,7 +125,7 @@ export const Route = createFileRoute("/api/bot")({
         if (!PRESETS.includes(body.preset as Preset)) {
           return json({ error: "Preset inconnu." }, 400);
         }
-        const preset = body.preset;
+        const preset = body.preset as Preset;
 
         if (body.action === "start") {
           // Config: on reprend la config sauvegardée en DB pour CE preset (via

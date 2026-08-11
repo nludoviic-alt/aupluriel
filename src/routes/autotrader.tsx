@@ -601,7 +601,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     const takeParam = strip(searchParams.get("take"));
     const isTakeAction = takeParam === "1" || strip(searchParams.get("action")) === "take";
 
-    if (presetParam && PRESET_ORDER.includes(presetParam)) {
+    if (presetParam && (PRESET_ORDER as readonly PresetKey[]).includes(presetParam)) {
       setSelectedPreset(presetParam);
     }
 

@@ -4,7 +4,7 @@ import { SYMBOLS, normalizeContractDirection, type OpenPosition } from "@/lib/de
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
 
-type PresetKey = "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+type PresetKey = "default" | "boom" | "boom900" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
 export function TradeJournalSection({
   journalTrades,
