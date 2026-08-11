@@ -241,14 +241,14 @@ export class DerivTradingConnection {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     const at = Date.now();
     try {
-      const active = await this.socket.request<{ active_symbols?: Array<{ symbol?: string }> }>({ active_symbols: "brief" });
+      const active = await this.socket.request<{ active_symbols?: Array<{ symbol?: string; underlying_symbol?: string }> }>({ active_symbols: "brief" });
       const activeSymbols = active.active_symbols ?? [];
       // Some Deriv Options sessions acknowledge active_symbols with an empty
       // list (observed even for BOOM500/CRASH900 that are tradable on the
       // same account). Keep the mandatory metadata request, but only reject
       // when it returned an actual, non-empty catalogue that excludes symbol.
       // contracts_for + proposal remain the definitive account-level gate.
-      if (activeSymbols.length > 0 && !activeSymbols.some((s) => s.symbol === params.symbol)) {
+      if (activeSymbols.length > 0 && !activeSymbols.some((s) => s.symbol === params.symbol || s.underlying_symbol === params.symbol)) {
         return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "SYMBOL_UNAVAILABLE", message: "Symbole absent de active_symbols" } };
       }
       const contracts = await this.socket.request<{ contracts_for?: { available?: Array<{ contract_type?: string }> } }>({ contracts_for: params.symbol });
