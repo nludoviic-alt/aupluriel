@@ -16,7 +16,7 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, fetchRecentTicksServer, closePublicSocket } from "./deriv.server";
+import { DerivApiError, DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, fetchRecentTicksServer, closePublicSocket } from "./deriv.server";
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
 import { OandaTradingConnection, isOandaSymbol, derivToOandaSymbol, fetchOandaCandles, OANDA_DERIV_SYMBOLS, closeOandaSocket } from "./oanda.server";
@@ -734,6 +734,22 @@ class ServerBotEngine {
         const won = match.profit > 0;
         this.emit({ ...log, status: won ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
         try { recordComponentOutcomesServer(log.symbol, log.components, won); } catch { /* never break reconcile */ }
+      } else if (isOandaSymbol(log.symbol) && this.oandaConn) {
+        // OANDA has no Deriv profit-table record. Reattach using the real
+        // trade id stored in contract_id, and recover the live unit size for
+        // partial/maximum-hold closes.
+        try {
+          const trade = await this.oandaConn.getTradeInfo(String(log.contractId));
+          if (trade.state === "CLOSED") {
+            const won = trade.profit > 0;
+            this.emit({ ...log, status: won ? "won" : "lost", profit: trade.profit, closedAt: Date.now() });
+            try { recordComponentOutcomesServer(log.symbol, log.components, won); } catch { /* never break reconcile */ }
+          } else {
+            this.trackOandaPosition(log, String(log.contractId), Math.abs(trade.units));
+          }
+        } catch {
+          this.emit({ ...log, status: "error", profit: 0, note: "Trade OANDA introuvable après redémarrage", closedAt: Date.now() });
+        }
       } else if (log.direction === "MULTUP" || log.direction === "MULTDOWN") {
         // Multiplier positions don't expire — getProfitTable only lists SOLD
         // contracts, so no match here just means it's still open. Re-subscribe
@@ -2063,8 +2079,9 @@ class ServerBotEngine {
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
-          const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
-          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
+          const tradeId = Number(bought.orderId);
+          if (!Number.isSafeInteger(tradeId) || tradeId <= 0) throw new Error("OANDA: identifiant de trade invalide");
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: tradeId };
           this.emit(openLog);
           this.trackOandaPosition(openLog, bought.orderId, bought.units);
         } else if (isMultiplier) {
@@ -2089,6 +2106,34 @@ class ServerBotEngine {
       } catch (e) {
         this.activeSymbols.delete(symbol); // release the reservation — no position was actually opened
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
+        if (this.preset === "boom900") {
+          const error = e instanceof DerivApiError
+            ? { code: e.code, message: e.message }
+            : { code: "TEMPORARILY_DISABLED", message: (e as Error).message };
+          const status = error.code === "SYMBOL_UNAVAILABLE" || error.code === "CONTRACT_UNAVAILABLE"
+            ? "CONTRACT_UNAVAILABLE"
+            : error.code === "INVALID_MULTIPLIER"
+              ? "INVALID_MULTIPLIER"
+              : /amount|stake/i.test(error.code) || /amount|stake/i.test(error.message)
+                ? "INVALID_STAKE"
+                : /authoriz|account|restrict/i.test(error.code) || /authoriz|account|restrict/i.test(error.message)
+                  ? "ACCOUNT_RESTRICTED"
+                  : "TEMPORARILY_DISABLED";
+          const nextConfig = {
+            ...this.config,
+            boom900ContractStatus: {
+              status,
+              at: Date.now(),
+              contractType: analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN",
+              multiplier: effMultiplier,
+              amount: stakeForTrade,
+              error,
+            },
+          } as AutoTraderConfig;
+          updateConfigForUser(this.userId, "boom900", nextConfig);
+          stopBotForUser(this.userId, "boom900", `Contrat Boom900 suspendu : ${error.code}`);
+          return finishScan();
+        }
         this.symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
     }

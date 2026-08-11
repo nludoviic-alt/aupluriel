@@ -265,7 +265,7 @@ export class OandaTradingConnection {
 
     const result = await this.request(`/accounts/${this.accountId}/orders`, "POST", orderBody);
     const response = result as {
-      orderFillTransaction?: { id: string; price: string; units: string };
+      orderFillTransaction?: { id: string; price: string; units: string; tradeOpened?: { tradeID?: string } };
       orderCancelTransaction?: { rejectReason?: string; reason?: string; id?: string };
       orderRejectTransaction?: { rejectReason?: string; reason?: string; id?: string };
     };
@@ -278,8 +278,13 @@ export class OandaTradingConnection {
       const reason = rejection?.rejectReason ?? rejection?.reason ?? "aucune transaction retournée";
       throw new Error(`OANDA: ordre non exécuté (${reason})`);
     }
+    // `id` identifies the fill transaction, while /trades/{id} requires the
+    // actual opened trade id. Persisting the transaction id made restart
+    // reconciliation silently lose an OANDA position.
+    const tradeId = orderFill.tradeOpened?.tradeID;
+    if (!tradeId) throw new Error("OANDA: ordre exécuté sans tradeOpened.tradeID");
 
-    return { orderId: orderFill.id, buyPrice: Number(orderFill.price), units: Math.abs(Number(orderFill.units)) };
+    return { orderId: tradeId, buyPrice: Number(orderFill.price), units: Math.abs(Number(orderFill.units)) };
   }
 
   /**
