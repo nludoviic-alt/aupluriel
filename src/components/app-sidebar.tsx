@@ -221,7 +221,9 @@ export function AppSidebar() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredAnalysisItems = analysisItems.filter(
-    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/skills" || !!user?.is_admin)
+    (item) => (item.url !== "/backtest" || showBacktest)
+      && (item.url !== "/skills" || !!user?.is_admin)
+      && (item.url !== "/piste" || !!user?.is_admin)
   );
 
   const filteredToolItems = toolItems;

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { AutoTraderConfig } from "@/lib/signal-core";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/piste")({
   head: () => ({ meta: [{ title: "Piste — PLURIEL" }] }),
@@ -29,11 +30,16 @@ const TRACKS: Array<{ key: PresetKey; name: string; market: string; thesis: stri
 function metric(value: number | undefined, fallback = "—") { return Number.isFinite(value) ? value!.toFixed(2) : fallback; }
 
 function PistePage() {
+  const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<"new" | "validation">("new");
   const [statuses, setStatuses] = useState<Partial<Record<PresetKey, BotStatus>>>({});
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState<PresetKey | null>(null);
   const [visible, setVisible] = useState<PresetKey[]>([]);
+
+  useEffect(() => {
+    if (!authLoading && !user?.is_admin) window.location.replace("/");
+  }, [authLoading, user?.is_admin]);
 
   const refresh = async () => {
     try {
@@ -45,7 +51,7 @@ function PistePage() {
     } catch { toast.error("Impossible de charger les données de validation."); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { if (user?.is_admin) void refresh(); }, [user?.is_admin]);
 
   const toggleTrack = async (key: PresetKey) => {
     setChanging(key);
@@ -61,6 +67,7 @@ function PistePage() {
   };
 
   const totalTrades = useMemo(() => TRACKS.reduce((sum, track) => sum + (statuses[track.key]?.allTimeStats?.count ?? 0), 0), [statuses]);
+  if (authLoading || !user?.is_admin) return null;
 
   return <main className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
     <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
