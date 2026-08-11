@@ -37,6 +37,7 @@ import {
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import { generateCrash500Signals } from "./crash500-signal.server";
+import { generateBoom500Signals } from "./boom500-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -1470,8 +1471,29 @@ class ServerBotEngine {
     // Kept separate from the generic Crash engine: each CRASH500 execution is
     // tagged in its journal note with the internal strategy that selected it.
     const crash500Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string }>();
+    const boom500Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }>();
 
-    const analyzed = this.preset === "crash500"
+    const analyzed = this.preset === "boom"
+      ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
+          const [m15, m5, m1, ticks] = await Promise.all([
+            candleFetcher(symbol, 900, 70), candleFetcher(symbol, 300, 70), candleFetcher(symbol, 60, 55),
+            fetchRecentTicksServer(symbol, 120).catch(() => []),
+          ]);
+          const candidates = generateBoom500Signals(m15, m5, m1, ticks);
+          // A qualified Spike BUY has priority; a Drift SELL may never be
+          // opened against a simultaneous spike setup.
+          const sig = candidates.find(c => c.strategy === "BOOM500_SPIKE_HUNTER_BUY") ?? candidates[0];
+          if (sig) boom500Levels.set(symbol, { ...sig, riskPct: sig.strategy === "BOOM500_SPIKE_HUNTER_BUY" ? .25 : .20 });
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null, confidence: sig?.confidence ?? 0, agreement: sig ? 4 : 0,
+            premiumCount: sig && sig.confidence >= 95 ? 1 : 0, volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1, blockers: sig ? [] : ["Pas de setup Boom500 Spike BUY ou Drift SELL confirmé"],
+            dominantTf: "1m", suggestedDuration: 0, trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: sig && sig.confidence >= 95 ? 10 : 0,
+          };
+          return { symbol, analysis };
+        })
+      : this.preset === "crash500"
       ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
           const [m15, m5, m1, ticks] = await Promise.all([
             candleFetcher(symbol, 900, 70),
@@ -1772,6 +1794,13 @@ class ServerBotEngine {
         }
       }
 
+      // Boom500's two strategies have independent risk budgets. This is
+      // calculated from balance, never from a martingale or tick count.
+      const boom500Level = this.preset === "boom" ? boom500Levels.get(symbol) : undefined;
+      if (boom500Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.max(1, Math.round(currentBalance * (boom500Level.riskPct / 100) * 100) / 100);
+      }
+
       // Gold presets are sized from the stop, not from an arbitrary stake.
       // With an ATR stop, the $ loss for a $1 multiplier position is
       // proportional to multiplier × ATR%; solve that relation backwards.
@@ -1881,7 +1910,7 @@ class ServerBotEngine {
       // % of stake — see scalping-signal.server.ts.
       const scalpingLevel = this.preset === "scalping" ? scalpingLevels.get(symbol) : undefined;
       const crash500Level = this.preset === "crash500" ? crash500Levels.get(symbol) : undefined;
-      const structuralLevel = scalpingLevel ?? crash500Level;
+      const structuralLevel = scalpingLevel ?? crash500Level ?? boom500Level;
       const { stopLossUsd, takeProfitUsd } = structuralLevel
         ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, structuralLevel.riskAbs, structuralLevel.rewardAbs)
         : useAtrStop
@@ -1907,7 +1936,7 @@ class ServerBotEngine {
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `${crash500Level ? `${crash500Level.strategy} · ${crash500Level.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        note: `${(crash500Level ?? boom500Level) ? `${(crash500Level ?? boom500Level)!.strategy} · ${(crash500Level ?? boom500Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker

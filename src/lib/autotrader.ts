@@ -380,6 +380,9 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // maintenant explicitement excludedSymbols au lieu de le laisser ici.
   // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
   instrumentType: "multiplier",
+  // New two-engine Boom500 validation remains demo-only until each engine has
+  // an independently measured sample.
+  mode: "demo",
   // Sweep tune-boom-preset 2026-08-05 : BOOM1000 performe mieux avec SL 10%
   // (edge +10.7pp, +$11.22) qu'avec SL 20% (edge +6.0pp, +$8.82). BOOM500
   // garde SL 20% (edge +1.1pp, optimal pour lui). Pas d'override TP/SL par
@@ -392,7 +395,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   //   sur 701 trades au 5 août. Détérioration sur 3 jours.
   // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
   // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
-  minConfidence: 85,
+  minConfidence: 88,
   maxConfidence: 100,
   minTfAgreement: 3,
   premiumOnly: false,
@@ -415,7 +418,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // WR 70.9% mais avg_loss $3.00 vs avg_win $1.03 → preset perdant.
   // Inversion TP 15 / SL 10 pour que les pertes soient enfin bornées
   // sous les gains.)
-  maxConsecutiveLosses: 4,
+  maxConsecutiveLosses: 3,
   cooldownMinutes: 5,
   trailingStopPct: 0.20,
   trailingStopMinPeakUsd: 10,
@@ -471,7 +474,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   stopOnRisk: true,
   progressiveStakeReduction: false,
   // ── Kelly off sur synthétique (pas d'edge mesurable fiable) ──
-  stakeMode: "fixed",
+  stakeMode: "percent",
+  stakePercent: 0.25,
   // ── ADX filter off sur Boom (RNG = pas de vrai trend) ──
   adxFilterMode: "off",
 };

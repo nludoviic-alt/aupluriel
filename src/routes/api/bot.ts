@@ -153,7 +153,7 @@ export const Route = createFileRoute("/api/bot")({
           // (see SCALPING_PRESET's header comment), forced back to demo
           // server-side regardless of what's requested, not just defaulted
           // client-side where a stale draft could slip through.
-          const mode = preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : requested.mode === "live" ? "live" : "demo";
+          const mode = preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -199,7 +199,7 @@ export const Route = createFileRoute("/api/bot")({
           // client could still send "simulation" even though TradingMode no
           // longer allows it at compile time.
           if ((next.mode as string) === "simulation") next.mode = "demo";
-          if (preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2")) next.mode = "demo"; // experimental presets never use real money
+          if (preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2")) next.mode = "demo"; // experimental presets never use real money
           if (isGoldPreset(preset)) {
             next.newsFilter = true;
             next.broker = "oanda";
@@ -261,7 +261,7 @@ export const Route = createFileRoute("/api/bot")({
             // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET/GOLD_PRESET; the "start" and
             // "update" actions and /api/admin/user-config's resetToCanonical all gate
             // these presets the same way, this one had only checked scalping.
-            mode: preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : mode,
+            mode: preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,
