@@ -122,6 +122,22 @@ export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "cr
 /** The only strategies offered for new scans, Portfolio and Opportunities. */
 export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "liquidity", "gold", "goldv2"];
 
+// These strategies are intentionally single-market. Persisted configurations
+// from before their separation must never be able to merge them back together.
+const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
+  boom: ["BOOM500"],
+  boom900: ["BOOM900"],
+  crash: ["CRASH900"],
+  liquidity: ["frxXAUUSD"],
+  gold: ["frxXAUUSD"],
+  goldv2: ["frxXAUUSD"],
+};
+
+function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
+  const symbols = LOCKED_PRESET_SYMBOLS[preset];
+  return symbols ? { ...config, symbolMode: "watchlist", symbols: [...symbols], excludedSymbols: [] } : config;
+}
+
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
 // imports FROM this file and would make it circular.
@@ -467,9 +483,9 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
         : DEFAULT_CONFIG.symbols;
     }
     if (!Array.isArray(merged.excludedSymbols)) merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;
-    return merged;
+    return lockPresetSymbols(preset, merged);
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return lockPresetSymbols(preset, { ...DEFAULT_CONFIG });
   }
 }
 
@@ -2033,6 +2049,7 @@ function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderCo
  * for a fresh human edit worth re-judging.
  */
 export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig, changedBy?: number, source?: ConfigChangeSource): void {
+  config = lockPresetSymbols(preset, config);
   const db = getDb();
   const oldRow = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
   const oldConfig = oldRow ? (JSON.parse(oldRow.config) as AutoTraderConfig) : null;
@@ -2116,6 +2133,7 @@ export async function getBrokerBalances(userId: number): Promise<{
 
 export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
   if (!ACTIVE_PRESETS.includes(preset)) throw new Error("Ce preset est désactivé et ne peut plus être démarré.");
+  config = lockPresetSymbols(preset, config);
   if (engines.has(engineKey(userId, preset))) return;
   // Defense-in-depth against a stale persisted config from before "simulation"
   // was removed as a selectable mode — TradingMode no longer allows it, so this
