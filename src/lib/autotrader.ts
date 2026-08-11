@@ -498,7 +498,8 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: ["BOOM900"],
   mode: "demo",
-  stakeUsd: 1,
+  // Deriv currently rejects BOOM900 amounts above $0.90 on this account.
+  stakeUsd: 0.9,
   minConfidence: 80,
   maxConfidence: 100,
   minTfAgreement: 3,

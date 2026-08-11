@@ -482,7 +482,9 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
     const merged: AutoTraderConfig = {
       ...DEFAULT_CONFIG,
       ...saved,
-      stakeUsd: Math.min(50, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
+      stakeUsd: preset === "boom900"
+        ? Math.min(0.9, Math.max(0.1, Number(saved.stakeUsd) || 0.9))
+        : Math.min(50, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
       // $200 is an explicitly supported demo risk ceiling for the four-core
       // research basket.  Keeping the old $100 clamp made the saved value and
       // the server's effective protection disagree silently.
@@ -1776,6 +1778,10 @@ class ServerBotEngine {
       // own bot_trades history) when enabled and enough of a sample exists,
       // otherwise the fixed/percent/adaptive stake already computed above.
       let stakeForTrade = effectiveStake;
+      // BOOM900's currently available Deriv multiplier contract caps the
+      // amount at $0.90. Keep this isolated: other presets retain their
+      // ordinary stake floor and cannot inherit this broker-specific cap.
+      if (this.preset === "boom900") stakeForTrade = Math.min(0.9, stakeForTrade);
       if (config.stakeMode === "kelly") {
         const kellyStake = computeKellyStakeServer(
           this.userId, symbol, this.config.mode === "live" ? "live" : "demo",

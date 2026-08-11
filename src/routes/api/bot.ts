@@ -134,7 +134,9 @@ export const Route = createFileRoute("/api/bot")({
           // mode). Un preset jamais démarré repart des valeurs canoniques du
           // preset (BOOM_PRESET/CRASH_PRESET/DEFAULT_CONFIG).
           const requested = body.config ?? {};
-          const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
+          const stakeUsd = preset === "boom900"
+            ? clamp(Number(requested.stakeUsd) || 0.9, 0.1, 0.9)
+            : clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
           const savedConfig = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG, ...presetFieldsFor(preset) };
           // Plancher : une mise relevée sans relever maxDailyLossUsd en même
           // temps piège le bot après ~1 perte (constaté en prod : mise $18 vs
