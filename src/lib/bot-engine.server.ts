@@ -148,6 +148,11 @@ export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 /** All 5 official production presets enabled and visible across mobile and desktop. */
 export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
+// Accounts created before the V2/isolated presets were introduced stored this
+// exact six-item default. Upgrade only that legacy default in memory; a list
+// deliberately customised by an admin remains a real whitelist.
+const LEGACY_VISIBLE_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
  * starts, stops, or hides the *engine*: a hidden preset keeps trading and
@@ -166,6 +171,9 @@ export function getVisiblePresets(userId: number): Preset[] {
     const parsed: unknown = JSON.parse(row.visible_presets);
     if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
     const clean = [...new Set(parsed.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))];
+    const isLegacyDefault = clean.length === LEGACY_VISIBLE_PRESETS.length
+      && LEGACY_VISIBLE_PRESETS.every((preset) => clean.includes(preset));
+    if (isLegacyDefault) return [...VISIBLE_PRESETS_DEFAULT];
     return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
   } catch {
     return [...VISIBLE_PRESETS_DEFAULT];

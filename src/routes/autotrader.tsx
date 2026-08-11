@@ -360,11 +360,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, crash: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
 
-  // A stopped preset remains in the database for its audit trail, but must not
-  // stay selectable on the execution desk. Showing it here made an inactive
-  // strategy look ready to trade and invited accidental restarts.
+  // The visible-preset list is an account-level display choice. Stopped
+  // presets stay selectable so a newly added strategy (notably Gold V2 and
+  // Liquidity V2) can be reviewed and started for its first demo run.
   const shownPresets: PresetKey[] = cloud
-    ? PRESET_ORDER.filter((preset) => !!cloud.presets?.[preset]?.enabled)
+    ? PRESET_ORDER.filter((preset) => cloud.visiblePresets?.includes(preset) ?? true)
     : [...PRESET_ORDER];
 
   const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
