@@ -1,4 +1,4 @@
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "./autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -17,6 +17,7 @@ import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./g
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import { generateCrash500Signals } from "./crash500-signal.server";
 import { generateBoom500Signals } from "./boom500-signal.server";
+import { generateVol75Signal } from "./vol75-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -98,11 +99,12 @@ export interface OpportunitiesResponse {
 // TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
 // résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
 // actuelle est structurellement différente.
-const PRESETS: Preset[] = ["boom", "boom900", "crash", "crash500", "default", "liquidity", "gold", "goldv2"];
+const PRESETS: Preset[] = ["boom", "vol75", "crash", "crash500", "default", "liquidity", "gold", "goldv2"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom500",
   boom900: "Boom900",
+  vol75: "Volatility 75 (1s)",
   crash: "Crash900",
   crash500: "Crash500",
   scalping: "Scalping",
@@ -119,6 +121,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   default: DEFAULT_CONFIG,
   boom: BOOM_PRESET,
   boom900: BOOM900_PRESET,
+  vol75: VOL75_PRESET,
   crash: CRASH_PRESET,
   crash500: CRASH500_PRESET,
   scalping: SCALPING_PRESET,
@@ -221,6 +224,37 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
       mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
       takeProfitUsd: null, stopLossUsd: null,
       reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : explainOpportunity(decision, analysis, thresholds, stats),
+      blockers: analysis.blockers, stats, updatedAt: now,
+    };
+  }
+
+  if (preset === "vol75") {
+    const [m15, m5, m1, ticks] = await Promise.all([
+      fetchCandlesServer(symbol, 900, 230), fetchCandlesServer(symbol, 300, 230),
+      fetchCandlesServer(symbol, 60, 80), fetchRecentTicksServer(symbol, 180).catch(() => []),
+    ]);
+    const verdict = generateVol75Signal(m15, m5, m1, ticks);
+    const signal = verdict.signal;
+    const analysis: SymbolAnalysis = signal ? {
+      direction: signal.direction, confidence: signal.confidence, agreement: 4,
+      premiumCount: signal.confidence >= 92 ? 1 : 0, volatilityPct: signal.volatilityPct,
+      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1/ticks", suggestedDuration: 0,
+      trendAlignmentScore: 4, patternBonus: signal.confidence >= 92 ? 10 : 0,
+    } : {
+      direction: null, confidence: verdict.rejection?.score ?? 0, agreement: 0, premiumCount: 0,
+      volatilityPct: 0, volatilityRatio: 1, blockers: [verdict.rejection?.reason ?? "NO_TRADE"],
+      dominantTf: "M15/M5/M1/ticks", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
+    };
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
+    return {
+      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
+      label: meta?.label ?? symbol, market: meta?.market ?? "synthetic", decision,
+      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
+      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
+      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
+      takeProfitUsd: null, stopLossUsd: null,
+      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : [`Signal refusé : ${verdict.rejection?.reason ?? "NO_TRADE"}`],
       blockers: analysis.blockers, stats, updatedAt: now,
     };
   }

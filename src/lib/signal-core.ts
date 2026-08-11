@@ -696,7 +696,7 @@ export interface TradeLog {
   multiplier?: number;       // leverage level — Multiplier trades only
   stopLossUsd?: number;      // absolute loss level that auto-closes the position — Multiplier trades only
   takeProfitUsd?: number;    // absolute profit level that auto-closes the position — Multiplier trades only
-  preset?: "default" | "boom" | "boom900" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2"; // preset engine tag
+  preset?: "default" | "boom" | "boom900" | "vol75" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2"; // preset engine tag
   mode?: "demo" | "live";    // account execution mode
 }
 

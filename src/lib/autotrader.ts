@@ -523,6 +523,22 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   symbolWinRateLookback: 20,
 };
 
+/** Volatility 75 (1s) — dedicated demo engine. The 50x multiplier is the
+ * lowest multiplier accepted by the connected Deriv account (validated by a
+ * read-only proposal on 2026-08-11). */
+export const VOL75_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
+  minConfidence: 80, maxConfidence: 100, minTfAgreement: 3,
+  instrumentType: "multiplier", multiplierLevel: 50,
+  stakeMode: "percent", stakePercent: .25,
+  atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
+  maxDailyLossUsd: 2, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
+  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 20,
+  maxVolatilityPct: 100, progressiveStakeReduction: true,
+};
+
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === BOOM_SYMBOLS.length

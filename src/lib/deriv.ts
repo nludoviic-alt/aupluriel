@@ -61,6 +61,7 @@ export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex"
   // R_100/75/50/25/10 retirés (2026-08-08) : symboles invalides sur Deriv,
   // causent des erreurs InvalidSymbol + RateLimit en boucle.
   { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
+  { label: "Volatility 75 (1s)", deriv: "1HZ75V", market: "synthetic" },
   { label: "Jump 100", deriv: "JD100", market: "synthetic" },
   { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },
   { label: "Boom 1000", deriv: "BOOM1000", market: "synthetic" },

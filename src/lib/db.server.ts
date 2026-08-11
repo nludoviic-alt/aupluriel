@@ -214,6 +214,15 @@ function migrate(db: Database.Database) {
     -- For getRecentPerformance which orders by closed_at DESC.
     CREATE INDEX IF NOT EXISTS idx_bot_trades_user_preset_closed ON bot_trades(user_id, preset, closed_at DESC);
 
+    -- Rejected specialist signals are first-class research data: a zero-trade
+    -- day must explain which Vol75 filter blocked the setup.
+    CREATE TABLE IF NOT EXISTS signal_rejections (
+      id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset TEXT NOT NULL, symbol TEXT NOT NULL, time INTEGER NOT NULL,
+      score INTEGER NOT NULL DEFAULT 0, reason TEXT NOT NULL, diagnostics TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_signal_rejections_preset_time ON signal_rejections(user_id, preset, time DESC);
+
     -- Apprentissage partagé : stats win/loss par (symbole, composant de signal),
     -- agrégées sur les trades réels de TOUS les utilisateurs. Le symbole
     -- '_global' sert de prior inter-symboles pour lisser les petits échantillons.
