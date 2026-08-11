@@ -11,14 +11,19 @@ export const Route = createFileRoute("/piste")({
   component: PistePage,
 });
 
-type PresetKey = "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+type PresetKey = "default" | "boom" | "vol75" | "rb100" | "crash" | "crash500" | "liquidity" | "gold" | "goldv2";
 type BotStatus = { enabled: boolean; running: boolean; todayCount: number; todayPnl: number; allTimeStats?: { count: number; profitFactor: number; expectancy: number }; savedConfig: AutoTraderConfig | null };
 
 const TRACKS: Array<{ key: PresetKey; name: string; market: string; thesis: string; engine: string; validation: string; color: string }> = [
-  { key: "boomv2", name: "Boom V2", market: "BOOM500", thesis: "Confluence 4/4 et exposition contrôlée sur le seul Boom à suivre.", engine: "Moteur confluence + filtre horaire", validation: "PF ≥ 1,20 et espérance positive à 50 puis 100 trades.", color: "border-sky-500/30 bg-sky-500/[0.05]" },
-  { key: "scalpingv2", name: "Scalping V2", market: "BOOM500", thesis: "Accumulation M1/M5 avant spike, au lieu du pullback structurel V1.", engine: "Spike Hunter", validation: "Démo, 1 position ; comparer séparément au Scalping V1.", color: "border-cyan-500/30 bg-cyan-500/[0.05]" },
-  { key: "liquidityv2", name: "Liquidity V2", market: "XAU/USD", thesis: "Balayage d’un extrême M15, réintégration et retournement RSI.", engine: "Liquidity sweep / reintegration", validation: "Au moins 50 trades avant tout changement de mise.", color: "border-fuchsia-500/30 bg-fuchsia-500/[0.05]" },
-  { key: "goldv2", name: "Gold V2", market: "XAU/USD", thesis: "Cassure de range Londres/New York, pullback sur le niveau, puis reprise.", engine: "Session breakout + pullback", validation: "Au moins 50 trades, news filter actif et aucune hausse de mise.", color: "border-amber-500/30 bg-amber-500/[0.05]" },
+  { key:"boom",name:"Boom500",market:"BOOM500",thesis:"Spike Hunter et Drift Scalper séparés.",engine:"Boom500",validation:"Démo · statistiques séparées.",color:"border-orange-500/30 bg-orange-500/[.05]" },
+  { key:"crash",name:"Crash900",market:"CRASH900",thesis:"Moteur Crash principal.",engine:"Crash900",validation:"Démo · risque faible.",color:"border-rose-500/30 bg-rose-500/[.05]" },
+  { key:"crash500",name:"Crash500",market:"CRASH500",thesis:"Moteur Crash500 indépendant.",engine:"Crash500",validation:"Démo · statistiques séparées.",color:"border-violet-500/30 bg-violet-500/[.05]" },
+  { key:"vol75",name:"Volatility 75 (1s)",market:"1HZ75V",thesis:"Trend pullback et breakout.",engine:"Vol75",validation:"Démo · score initial 80.",color:"border-cyan-500/30 bg-cyan-500/[.05]" },
+  { key:"rb100",name:"Range Break 100",market:"RB100",thesis:"Range aux bornes puis breakout/retest.",engine:"RB100",validation:"Démo · multiplicateur 20.",color:"border-indigo-500/30 bg-indigo-500/[.05]" },
+  { key:"default",name:"Multi",market:"Forex · Métaux · Crypto",thesis:"Panier multi-marchés.",engine:"Multi",validation:"À activer seulement si souhaité.",color:"border-amber-500/30 bg-amber-500/[.05]" },
+  { key:"liquidity",name:"Gold Liquidity Sweep",market:"XAU/USD",thesis:"Sweep de liquidité.",engine:"OANDA",validation:"Démo OANDA.",color:"border-fuchsia-500/30 bg-fuchsia-500/[.05]" },
+  { key:"gold",name:"Gold Trend Pullback",market:"XAU/USD",thesis:"Pullback de tendance.",engine:"OANDA",validation:"Démo OANDA.",color:"border-lime-500/30 bg-lime-500/[.05]" },
+  { key:"goldv2",name:"Gold Breakout",market:"XAU/USD",thesis:"Breakout de session.",engine:"OANDA",validation:"Démo OANDA.",color:"border-amber-500/30 bg-amber-500/[.05]" },
 ];
 
 function metric(value: number | undefined, fallback = "—") { return Number.isFinite(value) ? value!.toFixed(2) : fallback; }
@@ -28,13 +33,15 @@ function PistePage() {
   const [statuses, setStatuses] = useState<Partial<Record<PresetKey, BotStatus>>>({});
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState<PresetKey | null>(null);
+  const [visible, setVisible] = useState<PresetKey[]>([]);
 
   const refresh = async () => {
     try {
-      const data = await api.get<{ presets: Record<string, BotStatus> }>("/api/bot");
+      const data = await api.get<{ presets: Record<string, BotStatus>; visiblePresets?: PresetKey[] }>("/api/bot");
       const next: Partial<Record<PresetKey, BotStatus>> = {};
       for (const track of TRACKS) next[track.key] = data.presets?.[track.key];
       setStatuses(next);
+      setVisible(data.visiblePresets ?? []);
     } catch { toast.error("Impossible de charger les données de validation."); }
     finally { setLoading(false); }
   };
@@ -43,10 +50,10 @@ function PistePage() {
   const toggleTrack = async (key: PresetKey) => {
     setChanging(key);
     try {
-      const running = statuses[key]?.running;
-      const result = await api.post<{ error?: string }>("/api/bot", { action: running ? "stop" : "start", preset: key, config: {} });
-      if (result.error) throw new Error(result.error);
-      toast.success(running ? "Validation arrêtée" : "Validation démarrée en démo");
+      const next = visible.includes(key) ? visible.filter((p) => p !== key) : [...visible, key];
+      if (!next.length) throw new Error("Garde au moins un preset affiché.");
+      await api.patch("/api/admin/visible-presets", { visiblePresets: next });
+      toast.success(visible.includes(key) ? "Preset retiré des écrans" : "Preset ajouté à Auto-Trader et Portfolio");
       await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "La modification n’a pas pu être appliquée.");
@@ -82,7 +89,7 @@ function PistePage() {
           <p className="mt-4 text-sm leading-6 text-foreground/90">{track.thesis}</p>
           <div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-3 text-xs"><span className="font-bold text-foreground">Moteur : </span><span className="text-muted-foreground">{track.engine}</span></div>
           <div className="mt-3 flex items-center gap-2 text-xs text-amber-200"><ShieldCheck className="h-3.5 w-3.5" />{track.validation}</div>
-          <Button className="mt-4 w-full" variant={status?.running ? "outline" : "default"} disabled={changing === track.key} onClick={() => void toggleTrack(track.key)}>{changing === track.key ? "Mise à jour…" : status?.running ? "Arrêter la validation" : "Démarrer en démo"}</Button>
+          <Button className="mt-4 w-full" variant={visible.includes(track.key) ? "outline" : "default"} disabled={changing === track.key} onClick={() => void toggleTrack(track.key)}>{changing === track.key ? "Mise à jour…" : visible.includes(track.key) ? "Retirer des écrans" : "Ajouter aux écrans"}</Button>
         </article>;
       })}
     </section> : <section className="space-y-4">

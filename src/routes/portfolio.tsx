@@ -287,11 +287,10 @@ export default function PortfolioPage() {
   const [activePresets, setActivePresets] = useState<Set<string> | null>(null);
 
   useEffect(() => {
-    api.get<{ presets?: Record<string, { enabled?: boolean }> }>("/api/bot")
+    api.get<{ presets?: Record<string, { enabled?: boolean }>; visiblePresets?: string[] }>("/api/bot")
       .then((status) => {
-        // /api/bot only returns the supported preset set. Keep each of them
-        // visible in Portfolio, including a stopped preset with no trade yet.
-        setActivePresets(new Set(Object.keys(status.presets ?? {})));
+        // Piste owns the display catalogue for both Portfolio and Auto-Trader.
+        setActivePresets(new Set(status.visiblePresets ?? Object.keys(status.presets ?? {})));
       })
       .catch(() => setActivePresets(new Set()));
   }, []);
