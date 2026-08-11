@@ -41,8 +41,8 @@ export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
 });
 
-type PresetCategoryKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
-const PORTFOLIO_PRESETS = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
+type PresetCategoryKey = "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
+const PORTFOLIO_PRESETS = ["default", "boom", "boom900", "crash", "liquidity", "gold", "goldv2"] as const;
 
 interface PresetMeta {
   label: string;
@@ -59,6 +59,13 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     color: "text-rose-400",
     borderColor: "border-rose-500/30",
     bgTone: "bg-rose-500/10",
+  },
+  boom900: {
+    label: "Boom900",
+    badge: "⚡ Boom900",
+    color: "text-sky-300",
+    borderColor: "border-sky-500/30",
+    bgTone: "bg-sky-500/10",
   },
   crash: {
     label: "Preset Crash",
@@ -261,17 +268,15 @@ export default function PortfolioPage() {
   useEffect(() => {
     api.get<{ presets?: Record<string, { enabled?: boolean }> }>("/api/bot")
       .then((status) => {
-        setActivePresets(new Set(
-          Object.entries(status.presets ?? {})
-            .filter(([, preset]) => preset.enabled)
-            .map(([preset]) => preset),
-        ));
+        // /api/bot only returns the supported preset set. Keep each of them
+        // visible in Portfolio, including a stopped preset with no trade yet.
+        setActivePresets(new Set(Object.keys(status.presets ?? {})));
       })
       .catch(() => setActivePresets(new Set()));
   }, []);
 
-  // Historical rows stay safely stored on the server, but the Portfolio is a
-  // live operating view: stopped presets are deliberately excluded from it.
+  // Historical rows remain in the database, but Portfolio reports only the
+  // currently supported preset set, whether a given engine is stopped or on.
   const visibleBotTrades = useMemo(
     () => activePresets === null
       ? botTrades

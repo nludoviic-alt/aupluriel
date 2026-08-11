@@ -23,12 +23,13 @@ import {
   stopBotForUser,
   updateConfigForUser,
   getVisiblePresets,
+  ACTIVE_PRESETS,
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
 import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
-const PRESETS: Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+const PRESETS: Preset[] = [...ACTIVE_PRESETS];
 const REPLACED_V1: Partial<Record<Preset, Preset>> = {
   boomv2: "boom",
   scalpingv2: "scalping",

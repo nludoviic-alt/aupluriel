@@ -1,4 +1,4 @@
-import { BOOM_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "./autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -96,10 +96,11 @@ export interface OpportunitiesResponse {
 // TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
 // résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
 // actuelle est structurellement différente.
-const PRESETS: Preset[] = ["boom", "crash", "default", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+const PRESETS: Preset[] = ["boom", "boom900", "crash", "default", "liquidity", "gold", "goldv2"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
+  boom900: "Boom900",
   crash: "Crash",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
@@ -114,6 +115,7 @@ const PRESET_LABEL: Record<Preset, string> = {
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   default: DEFAULT_CONFIG,
   boom: BOOM_PRESET,
+  boom900: BOOM900_PRESET,
   crash: CRASH_PRESET,
   scalping: SCALPING_PRESET,
   liquidity: LIQUIDITY_PRESET,

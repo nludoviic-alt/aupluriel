@@ -5,7 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
-import { ALL_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
+import { ACTIVE_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
 import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
@@ -85,7 +85,7 @@ export const Route = createFileRoute("/api/admin/bot")({
 
         const db = getDb();
 
-        if ((action === "start" || action === "stop") && (!body.preset || !ALL_PRESETS.includes(body.preset))) {
+        if ((action === "start" || action === "stop") && (!body.preset || !ACTIVE_PRESETS.includes(body.preset))) {
           return json({ error: "Preset inconnu." }, 400);
         }
         const preset = body.preset as Preset;

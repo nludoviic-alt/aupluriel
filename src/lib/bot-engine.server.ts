@@ -119,6 +119,8 @@ function engineKey(userId: number, preset: Preset): string {
 }
 
 export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+/** The only strategies offered for new scans, Portfolio and Opportunities. */
+export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "liquidity", "gold", "goldv2"];
 
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
@@ -143,15 +145,10 @@ const PRESET_LABEL: Record<Preset, string> = {
  * blocked users from running/viewing every preset on mobile at once — removed
  * the artificial cap (2026-08-03), so it now just tracks the real preset
  * count. Desktop is unaffected and always renders all of them. */
-export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
+export const MAX_VISIBLE_PRESETS = ACTIVE_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
-
-// Accounts created before the V2/isolated presets were introduced stored this
-// exact six-item default. Upgrade only that legacy default in memory; a list
-// deliberately customised by an admin remains a real whitelist.
-const LEGACY_VISIBLE_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold"];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = [...ACTIVE_PRESETS];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -170,10 +167,7 @@ export function getVisiblePresets(userId: number): Preset[] {
   try {
     const parsed: unknown = JSON.parse(row.visible_presets);
     if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
-    const clean = [...new Set(parsed.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))];
-    const isLegacyDefault = clean.length === LEGACY_VISIBLE_PRESETS.length
-      && LEGACY_VISIBLE_PRESETS.every((preset) => clean.includes(preset));
-    if (isLegacyDefault) return [...VISIBLE_PRESETS_DEFAULT];
+    const clean = [...new Set(parsed.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset)))];
     return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
   } catch {
     return [...VISIBLE_PRESETS_DEFAULT];
@@ -184,7 +178,7 @@ export function getVisiblePresets(userId: number): Preset[] {
  * a bad payload can't lock the tab strip into an unusable state. Returns what
  * was actually stored. */
 export function setVisiblePresets(userId: number, presets: readonly string[]): Preset[] {
-  const clean = [...new Set(presets.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))]
+  const clean = [...new Set(presets.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset)))]
     .slice(0, MAX_VISIBLE_PRESETS);
   const final = clean.length ? clean : [...VISIBLE_PRESETS_DEFAULT];
   getDb().prepare("UPDATE users SET visible_presets = ? WHERE id = ?").run(JSON.stringify(final), userId);
@@ -2121,6 +2115,7 @@ export async function getBrokerBalances(userId: number): Promise<{
 }
 
 export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
+  if (!ACTIVE_PRESETS.includes(preset)) throw new Error("Ce preset est désactivé et ne peut plus être démarré.");
   if (engines.has(engineKey(userId, preset))) return;
   // Defense-in-depth against a stale persisted config from before "simulation"
   // was removed as a selectable mode — TradingMode no longer allows it, so this
@@ -2297,6 +2292,12 @@ export async function restoreBots(): Promise<void> {
     "SELECT bs.user_id, bs.preset FROM bot_state bs JOIN users u ON u.id = bs.user_id WHERE bs.enabled = 1 AND (u.is_admin = 1 OR u.status = 'approved')",
   ).all() as { user_id: number; preset: Preset }[];
   for (const { user_id, preset } of rows) {
+    if (!ACTIVE_PRESETS.includes(preset)) {
+      // Leave any already-open broker position untouched; this only prevents
+      // the retired engine from resuming scans after the restart.
+      getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(user_id, preset);
+      continue;
+    }
     try {
       const config = loadBotConfig(user_id, preset);
       if (!config) continue;
