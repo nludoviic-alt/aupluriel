@@ -23,6 +23,7 @@ import {
   stopBotForUser,
   updateConfigForUser,
   getVisiblePresets,
+  revalidateBoom900ContractForUser,
   ACTIVE_PRESETS,
   type Preset,
 } from "@/lib/bot-engine.server";
@@ -117,7 +118,7 @@ export const Route = createFileRoute("/api/bot")({
         if (!user) return json({ error: "Non authentifié" }, 401);
 
         const body = (await request.json().catch(() => ({}))) as {
-          action?: "start" | "stop" | "reset" | "update";
+          action?: "start" | "stop" | "reset" | "update" | "revalidate-contract";
           preset?: Preset;
           config?: Partial<AutoTraderConfig>;
         };
@@ -126,6 +127,12 @@ export const Route = createFileRoute("/api/bot")({
           return json({ error: "Preset inconnu." }, 400);
         }
         const preset = body.preset as Preset;
+
+        if (body.action === "revalidate-contract") {
+          if (preset !== "boom900") return json({ error: "Revalidation réservée à Boom900." }, 400);
+          try { return json({ ok: true, preset, validation: await revalidateBoom900ContractForUser(user.id) }); }
+          catch (e) { return json({ error: (e as Error).message }, 400); }
+        }
 
         if (body.action === "start") {
           // Config: on reprend la config sauvegardée en DB pour CE preset (via

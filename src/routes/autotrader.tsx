@@ -540,6 +540,18 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     }
   }
 
+  async function revalidateBoom900Contract() {
+    setCloudBusy(true);
+    try {
+      const result = await api.post<{ validation: { status: string; error?: { message?: string } } }>("/api/bot", { action: "revalidate-contract", preset: "boom900" });
+      await refreshCloud();
+      toast[result.validation.status === "AVAILABLE" ? "success" : "error"](
+        result.validation.status === "AVAILABLE" ? "Contrat Boom900 valide : exécution réactivée." : `Boom900 indisponible : ${result.validation.error?.message ?? result.validation.status}`,
+      );
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Revalidation Boom900 impossible"); }
+    finally { setCloudBusy(false); }
+  }
+
   async function changeTradingMode(mode: TradingMode) {
     if (mode === config.mode) return;
     if (mode === "live") {
@@ -1310,6 +1322,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         onRefresh={refreshOpportunities}
         onAuto={toggleCloud}
       />
+      {selectedPreset === "boom900" && (
+        <Button variant="outline" disabled={cloudBusy} onClick={revalidateBoom900Contract}>
+          REVALIDATE CONTRACT
+        </Button>
+      )}
       <TradeJournalSection
         journalTrades={journalTrades}
         liveDerivPositions={liveDerivPositions}

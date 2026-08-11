@@ -2169,6 +2169,23 @@ export function getBotRuntime(userId: number, preset: Preset): { running: boolea
   return { running: true, pausedUntil: paused > Date.now() ? paused : null, lastScan: engine.lastScan, lastError: engine.lastError };
 }
 
+/** Manual Boom900 revalidation: only Deriv metadata + a proposal, never buy. */
+export async function revalidateBoom900ContractForUser(userId: number) {
+  const settings = getDb().prepare("SELECT deriv_token FROM user_settings WHERE user_id = ?").get(userId) as { deriv_token?: string } | undefined;
+  const config = loadBotConfig(userId, "boom900");
+  if (!settings?.deriv_token || !config) throw new Error("Compte Deriv ou configuration Boom900 introuvable.");
+  const connection = new DerivTradingConnection(settings.deriv_token, "demo");
+  try {
+    const result = await connection.validateMultiplierContract({ symbol: "BOOM900", direction: "CALL", multiplier: config.multiplierLevel, amount: config.stakeUsd });
+    const next = { ...config, boom900ContractStatus: result } as AutoTraderConfig;
+    updateConfigForUser(userId, "boom900", next);
+    // Re-enable only after a real valid proposal. An invalid proposal leaves
+    // the temporary suspension intact.
+    if (result.status === "AVAILABLE") getDb().prepare("UPDATE bot_state SET enabled = 1, updated_at = unixepoch() WHERE user_id = ? AND preset = 'boom900'").run(userId);
+    return result;
+  } finally { connection.close(); }
+}
+
 // Account/broker balances are the same regardless of which preset's engine
 // answers — reuses whichever engine happens to be running (any of the three)
 // for a live connection, falling back to stored credentials + the "default"

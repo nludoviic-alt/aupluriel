@@ -42,6 +42,9 @@ export function effectiveMultiplier(symbol: string, requestedMultiplier: number)
 }
 
 type Msg = Record<string, unknown>;
+export class DerivApiError extends Error {
+  constructor(public code: string, message: string) { super(message); }
+}
 type Listener = (msg: Msg) => void;
 
 export interface ServerCandle {
@@ -121,7 +124,10 @@ class DerivSocket {
         if (msg.req_id !== id) return;
         clearTimeout(timer);
         off();
-        if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
+        if (msg.error) {
+          const error = msg.error as { code?: string; message?: string };
+          reject(new DerivApiError(String(error.code ?? "DERIV_ERROR"), String(error.message ?? "Deriv error")));
+        }
         else resolve(msg as T);
       });
       try {
@@ -229,6 +235,29 @@ export class DerivTradingConnection {
     }, "deriv-trading");
   }
 
+  /** Read-only contract gate. It never sends `buy`: a valid proposal is the
+   * only prerequisite for a Boom900 multiplier order. */
+  async validateMultiplierContract(params: { symbol: string; direction: "CALL" | "PUT"; multiplier: number; amount: number }) {
+    const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
+    const at = Date.now();
+    try {
+      const active = await this.socket.request<{ active_symbols?: Array<{ symbol?: string }> }>({ active_symbols: "brief" });
+      if (!(active.active_symbols ?? []).some((s) => s.symbol === params.symbol)) return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "SYMBOL_UNAVAILABLE", message: "Symbole absent de active_symbols" } };
+      const contracts = await this.socket.request<{ contracts_for?: { available?: Array<{ contract_type?: string }> } }>({ contracts_for: params.symbol });
+      if (!(contracts.contracts_for?.available ?? []).some((c) => c.contract_type === contractType)) return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "CONTRACT_UNAVAILABLE", message: `${contractType} indisponible pour ${params.symbol}` } };
+      const proposal = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
+        proposal: 1, amount: roundToCurrency(params.amount, this.currency), basis: "stake", contract_type: contractType,
+        currency: this.currency, underlying_symbol: params.symbol, multiplier: params.multiplier,
+      });
+      return { status: "AVAILABLE" as const, at, contractType, currency: this.currency, amount: params.amount, proposalId: proposal.proposal?.id, askPrice: proposal.proposal?.ask_price };
+    } catch (error) {
+      const e = error instanceof DerivApiError ? error : new DerivApiError("TEMPORARY_ERROR", (error as Error).message);
+      const lower = e.message.toLowerCase();
+      const status = lower.includes("stake amount") || lower.includes("amount") ? "INVALID_STAKE" : lower.includes("multiplier") ? "INVALID_MULTIPLIER" : lower.includes("authorize") || lower.includes("account") ? "ACCOUNT_RESTRICTED" : "TEMPORARILY_DISABLED";
+      return { status, at, contractType, currency: this.currency, amount: params.amount, error: { code: e.code, message: e.message } };
+    }
+  }
+
   get isOpen(): boolean {
     return this.socket.isOpen;
   }
@@ -332,6 +361,15 @@ export class DerivTradingConnection {
     takeProfitUsd: number;
   }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
+    // Mandatory contract gate: for BOOM900 this performs active_symbols →
+    // contracts_for → proposal before any order can reach `buy`.
+    if (params.symbol === "BOOM900") {
+      const validation = await this.validateMultiplierContract(params);
+      if (validation.status !== "AVAILABLE") {
+        const detail = validation.error;
+        throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `BOOM900 ${validation.status}`);
+      }
+    }
     let lastError: Error | null = null;
     let currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
 
