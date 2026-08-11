@@ -198,6 +198,7 @@ function migrate(db: Database.Database) {
       contract_id      INTEGER,
       closed_at        INTEGER,
       note             TEXT,
+      strategy         TEXT,
       entry_price      REAL,
       duration_minutes INTEGER,
       expiry           INTEGER,
@@ -514,6 +515,9 @@ function migrate(db: Database.Database) {
       END
       WHERE preset IS NULL
     `).run(...BOOM_SYMS_BACKFILL, ...CRASH_SYMS_BACKFILL);
+  }
+  if (!botTradeCols.has("strategy")) {
+    db.exec("ALTER TABLE bot_trades ADD COLUMN strategy TEXT");
   }
 
   // --- Repair legacy bot-state symbol lists (idempotent) ---

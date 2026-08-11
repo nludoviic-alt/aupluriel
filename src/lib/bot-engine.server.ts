@@ -241,6 +241,7 @@ interface BotTradeRow {
   contract_id: number | null;
   closed_at: number | null;
   note: string | null;
+  strategy: string | null;
   entry_price: number | null;
   duration_minutes: number | null;
   expiry: number | null;
@@ -267,7 +268,7 @@ export function logFromRow(r: BotTradeRow): TradeLog {
     id: r.id, time: r.time, symbol: r.symbol, direction: r.direction, stake: r.stake,
     payout: r.payout, status: r.status, profit: r.profit, confidence: r.confidence,
     tfAgreement: r.tf_agreement, contractId: r.contract_id ?? undefined,
-    closedAt: r.closed_at ?? undefined, note: r.note ?? undefined,
+    closedAt: r.closed_at ?? undefined, note: r.note ?? undefined, strategy: r.strategy ?? undefined,
     entryPrice: r.entry_price ?? undefined, durationMinutes: r.duration_minutes ?? undefined,
     expiry: r.expiry ?? undefined,
     components: parseComponents(r.components),
@@ -279,8 +280,8 @@ export function logFromRow(r: BotTradeRow): TradeLog {
 
 function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, strategy, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -288,7 +289,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
     id: log.id, user_id: userId, time: log.time, symbol: log.symbol, direction: log.direction,
     stake: log.stake, payout: log.payout, status: log.status, profit: log.profit,
     confidence: log.confidence, tf_agreement: log.tfAgreement,
-    contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null,
+    contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null, strategy: log.strategy ?? null,
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
@@ -1943,6 +1944,7 @@ class ServerBotEngine {
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
         note: `${(crash500Level ?? boom500Level) ? `${(crash500Level ?? boom500Level)!.strategy} · ${(crash500Level ?? boom500Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        strategy: boom500Level?.strategy ?? crash500Level?.strategy,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker

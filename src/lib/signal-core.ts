@@ -677,6 +677,8 @@ export interface TradeLog {
   contractId?: number;
   closedAt?: number;
   note?: string;
+  /** Internal engine attribution, kept separate from the preset. */
+  strategy?: string;
   entryPrice?: number;       // price at trade open (for live visual)
   durationMinutes?: number;  // contract duration (for live countdown) — binary only
   expiry?: number;           // epoch ms when the contract resolves — binary only
