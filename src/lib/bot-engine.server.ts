@@ -110,6 +110,19 @@ export type Preset = "default" | "boom" | "boom900" | "crash" | "scalping" | "li
 function isGoldPreset(preset: Preset): boolean {
   return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
 }
+
+/** Gold engines never inherit a legacy Deriv configuration on restore. */
+function lockGoldOanda(config: AutoTraderConfig): AutoTraderConfig {
+  return {
+    ...config,
+    mode: "demo",
+    broker: "oanda",
+    enableOanda: true,
+    enableDeriv: false,
+    instrumentType: "multiplier",
+    newsFilter: true,
+  };
+}
 function hasOpenGoldExposure(userId: number, except: Preset): boolean {
   const row = getDb().prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset IN ('gold','goldv2','liquidity','liquidityv2') AND preset != ? AND status IN ('open','pending')`).get(userId, except) as { n: number };
   return row.n > 0;
@@ -483,9 +496,10 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
         : DEFAULT_CONFIG.symbols;
     }
     if (!Array.isArray(merged.excludedSymbols)) merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;
-    return lockPresetSymbols(preset, merged);
+    return lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(merged) : merged);
   } catch {
-    return lockPresetSymbols(preset, { ...DEFAULT_CONFIG });
+    const fallback = { ...DEFAULT_CONFIG };
+    return lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(fallback) : fallback);
   }
 }
 
@@ -2049,7 +2063,7 @@ function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderCo
  * for a fresh human edit worth re-judging.
  */
 export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig, changedBy?: number, source?: ConfigChangeSource): void {
-  config = lockPresetSymbols(preset, config);
+  config = lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(config) : config);
   const db = getDb();
   const oldRow = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
   const oldConfig = oldRow ? (JSON.parse(oldRow.config) as AutoTraderConfig) : null;
@@ -2133,7 +2147,7 @@ export async function getBrokerBalances(userId: number): Promise<{
 
 export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
   if (!ACTIVE_PRESETS.includes(preset)) throw new Error("Ce preset est désactivé et ne peut plus être démarré.");
-  config = lockPresetSymbols(preset, config);
+  config = lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(config) : config);
   if (engines.has(engineKey(userId, preset))) return;
   // Defense-in-depth against a stale persisted config from before "simulation"
   // was removed as a selectable mode — TradingMode no longer allows it, so this
