@@ -639,8 +639,8 @@ class ServerBotEngine {
     this.finalizeIfIdle();
   }
 
-  /** Push on winning trades and risk pauses — fire-and-forget so a push
-   * provider hiccup never breaks trade resolution.
+  /** Push each automatic trade opening and resolution, plus risk pauses —
+   * fire-and-forget so a push provider hiccup never breaks trade resolution.
    * Risk pauses are exactly the event a locked-phone user most needs to see
    * (Réglages promises "pause risque envoyée même téléphone verrouillé"),
    * but riskPause()'s emit() used to fall straight through this method's
@@ -649,17 +649,35 @@ class ServerBotEngine {
    * (see riskPause), so unlike "won" it needs no prevStatus transition guard
    * — every risk-stop emit is a fresh pause, never a re-emit of the same one. */
   private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
-    if (log.status === "won" && prevStatus !== "won") {
+    // A trade can be emitted several times while its broker subscription is
+    // live. Notify only on the status transition, never for price/P&L ticks.
+    if (log.status === "open" && prevStatus !== "open") {
       void (async () => {
         const { sendPushToUser } = await import("./push.server");
         await sendPushToUser(this.userId, {
-          title: `Gagné +$${log.profit.toFixed(2)}`,
-          body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          title: `🟦 Trade ouvert — ${PRESET_LABEL[this.preset]}`,
+          body: `${log.symbol} · ${log.direction} · mise $${log.stake.toFixed(2)} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
           url: "/autotrader",
+          category: "trade",
         });
       })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
       return;
     }
+
+    if ((log.status === "won" || log.status === "lost") && prevStatus !== log.status) {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        const won = log.status === "won";
+        await sendPushToUser(this.userId, {
+          title: `${won ? "✅" : "🔴"} Trade fermé ${won ? "gagnant" : "perdant"} — ${PRESET_LABEL[this.preset]}`,
+          body: `${log.symbol} · ${log.direction} · ${won ? "+" : ""}$${log.profit.toFixed(2)} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+          category: "trade",
+        });
+      })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
+      return;
+    }
+
     if (log.status === "risk-stop") {
       void (async () => {
         const { sendPushToUser } = await import("./push.server");
