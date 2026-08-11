@@ -539,6 +539,13 @@ export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
 
+export const RB100_PRESET: Partial<AutoTraderConfig> = {
+  ...VOL75_PRESET, symbolMode: "watchlist", symbols: ["RB100"],
+  minConfidence: 78, multiplierLevel: 20, stakePercent: .20,
+  atrStopMultiple: 1.1, riskRewardRatio: 1.5, maxTradesPerDay: 7,
+  maxConsecutiveLosses: 3, cooldownMinutes: 3, newsFilter: false,
+};
+
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === BOOM_SYMBOLS.length

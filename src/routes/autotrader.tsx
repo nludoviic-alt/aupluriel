@@ -51,7 +51,7 @@ import {
   BOOM_PRESET,
   BOOM900_PRESET,
   CRASH_PRESET, CRASH500_PRESET,
-  LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, BOOM_V2_PRESET, CRASH900_V2_PRESET, VOL75_PRESET,
+  LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, BOOM_V2_PRESET, CRASH900_V2_PRESET, VOL75_PRESET, RB100_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -99,9 +99,9 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-type PresetKey = "default" | "boom" | "boom900" | "vol75" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", vol75: "Volatility 75 (1s)", crash: "Crash900", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", vol75: "Volatility 75 (1s)", rb100: "Range Break 100", crash: "Crash900", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
@@ -110,6 +110,7 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   boom: { market: "BOOM500 uniquement", description: "Boom500" },
   boom900: { market: "BOOM900 uniquement", description: "Démo · validation isolée", experimental: true },
   vol75: { market: "VOLATILITY 75 (1s) uniquement", description: "Démo · Trend Pullback + Breakout", experimental: true },
+  rb100: { market: "RANGE BREAK 100 uniquement", description: "Démo · Range + Breakout Retest", experimental: true },
   crash: { market: "CRASH900 uniquement", description: "Crash900" },
   crash500: { market: "CRASH500 uniquement", description: "Démo · Spike SELL + Drift BUY", experimental: true },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
@@ -132,7 +133,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "vol75", "crash", "crash500", "liquidity", "gold", "goldv2"] as const;
+const PRESET_ORDER = ["default", "boom", "vol75", "rb100", "crash", "crash500", "liquidity", "gold", "goldv2"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -360,7 +361,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, vol75: false, crash: false, crash500: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, vol75: false, rb100: false, crash: false, crash500: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
 
   // The visible-preset list is an account-level display choice. Stopped
   // presets stay selectable so a newly added strategy (notably Gold V2 and
@@ -859,7 +860,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "boom900" ? BOOM900_PRESET : target === "vol75" ? VOL75_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "crash500" ? CRASH500_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "boom900" ? BOOM900_PRESET : target === "vol75" ? VOL75_PRESET : target === "rb100" ? RB100_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "crash500" ? CRASH500_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
@@ -1147,6 +1148,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   idle: "border-sky-500/15 bg-sky-500/[0.03]",
                 },
                 vol75: { active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50", idle: "border-cyan-500/15 bg-cyan-500/[0.03]" },
+                rb100: { active: "border-indigo-500/60 bg-indigo-500/10 ring-1 ring-indigo-500/50", idle: "border-indigo-500/15 bg-indigo-500/[0.03]" },
                 crash: {
                   active: "border-[#ff9a6c]/60 bg-[#ff9a6c]/10 ring-1 ring-[#ff9a6c]/50",
                   idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03]",
@@ -1249,6 +1251,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]", idle: "border-orange-500/15 bg-orange-500/[0.03] hover:bg-orange-500/[0.06]" },
                 boom900: { active: "border-sky-500/50 bg-sky-500/10 shadow-[0_0_20px_rgba(14,165,233,0.15)]", idle: "border-sky-500/15 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]" },
                 vol75: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
+                rb100: { active: "border-indigo-500/50 bg-indigo-500/10 shadow-[0_0_20px_rgba(99,102,241,0.15)]", idle: "border-indigo-500/15 bg-indigo-500/[0.03] hover:bg-indigo-500/[0.06]" },
                 crash: { active: "border-[#ff9a6c]/50 bg-[#ff9a6c]/10 shadow-[0_0_20px_rgba(255,154,108,0.15)]", idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03] hover:bg-[#ff9a6c]/[0.06]" },
                 crash500: { active: "border-violet-500/50 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.15)]", idle: "border-violet-500/15 bg-violet-500/[0.03] hover:bg-violet-500/[0.06]" },
                 scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },

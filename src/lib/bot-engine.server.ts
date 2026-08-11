@@ -39,6 +39,7 @@ import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import { generateCrash500Signals } from "./crash500-signal.server";
 import { generateBoom500Signals } from "./boom500-signal.server";
 import { generateVol75Signal } from "./vol75-signal.server";
+import { generateRb100Signal } from "./rb100-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -109,7 +110,7 @@ const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "boom900" | "vol75" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+export type Preset = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 /** Gold strategies may never opt out of the macro-news safety block. */
 function isGoldPreset(preset: Preset): boolean {
   return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
@@ -135,9 +136,9 @@ function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "vol75", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 /** The only strategies offered for new scans, Portfolio and Opportunities. */
-export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "vol75", "crash", "crash500", "liquidity", "gold", "goldv2"];
+export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "vol75", "rb100", "crash", "crash500", "liquidity", "gold", "goldv2"];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
@@ -145,6 +146,7 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
   boom: ["BOOM500"],
   boom900: ["BOOM900"],
   vol75: ["1HZ75V"],
+  rb100: ["RB100"],
   crash: ["CRASH900"],
   crash500: ["CRASH500"],
   liquidity: ["frxXAUUSD"],
@@ -165,6 +167,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   boom: "Boom500",
   boom900: "Boom900 — démo isolée",
   vol75: "Volatility 75 (1s) — démo",
+  rb100: "Range Break 100 — démo",
   crash: "Crash900",
   crash500: "Crash500 — démo isolée",
   scalping: "Scalping",
@@ -1517,6 +1520,7 @@ class ServerBotEngine {
     const crash500Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string }>();
     const boom500Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }>();
     const vol75Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }>();
+    const rb100Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }>();
 
     const analyzed = this.preset === "boom"
       ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
@@ -1559,6 +1563,14 @@ class ServerBotEngine {
             patternBonus: sig && sig.confidence >= 92 ? 10 : 0,
           };
           return { symbol, analysis };
+        })
+      : this.preset === "rb100"
+      ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
+          const [m15, m5, m1, ticks] = await Promise.all([candleFetcher(symbol,900,70), candleFetcher(symbol,300,70), candleFetcher(symbol,60,60), fetchRecentTicksServer(symbol,180).catch(()=>[])]);
+          const decision = generateRb100Signal(m15,m5,m1,ticks), sig=decision.signal;
+          if(sig) rb100Levels.set(symbol,{...sig});
+          if(decision.rejection) getDb().prepare(`INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`).run(`rb100_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,this.userId,"rb100",symbol,Date.now(),Math.round(decision.rejection.score),decision.rejection.reason,JSON.stringify(decision.rejection.diagnostics));
+          return {symbol,analysis:{direction:sig?.direction??null,confidence:sig?.confidence??decision.rejection?.score??0,agreement:sig?4:0,premiumCount:sig&&sig.confidence>=92?1:0,volatilityPct:sig?.volatilityPct??0,volatilityRatio:1,blockers:sig?[]:[decision.rejection?.reason??"NO_TRADE"],dominantTf:"M15/M5/M1",suggestedDuration:0,trendAlignmentScore:sig?4:0,patternBonus:sig&&sig.confidence>=92?10:0,components:undefined}};
         })
       : this.preset === "crash500"
       ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
@@ -1869,12 +1881,14 @@ class ServerBotEngine {
       // calculated from balance, never from a martingale or tick count.
       const boom500Level = this.preset === "boom" ? boom500Levels.get(symbol) : undefined;
       const vol75Level = this.preset === "vol75" ? vol75Levels.get(symbol) : undefined;
+      const rb100Level = this.preset === "rb100" ? rb100Levels.get(symbol) : undefined;
       if (boom500Level && currentBalance && currentBalance > 0) {
         stakeForTrade = Math.max(1, Math.round(currentBalance * (boom500Level.riskPct / 100) * 100) / 100);
       }
       if (vol75Level && currentBalance && currentBalance > 0) {
         stakeForTrade = Math.max(1, Math.round(currentBalance * (vol75Level.riskPct / 100) * 100) / 100);
       }
+      if (rb100Level && currentBalance && currentBalance > 0) stakeForTrade = Math.max(1, Math.round(currentBalance * (rb100Level.riskPct / 100) * 100) / 100);
 
       // Gold presets are sized from the stop, not from an arbitrary stake.
       // With an ATR stop, the $ loss for a $1 multiplier position is
@@ -2004,7 +2018,7 @@ class ServerBotEngine {
       // % of stake — see scalping-signal.server.ts.
       const scalpingLevel = this.preset === "scalping" ? scalpingLevels.get(symbol) : undefined;
       const crash500Level = this.preset === "crash500" ? crash500Levels.get(symbol) : undefined;
-      const structuralLevel = scalpingLevel ?? crash500Level ?? boom500Level ?? vol75Level;
+      const structuralLevel = scalpingLevel ?? crash500Level ?? boom500Level ?? vol75Level ?? rb100Level;
       const { stopLossUsd, takeProfitUsd } = structuralLevel
         ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, structuralLevel.riskAbs, structuralLevel.rewardAbs)
         : useAtrStop
@@ -2030,8 +2044,8 @@ class ServerBotEngine {
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `${(crash500Level ?? boom500Level ?? vol75Level) ? `${(crash500Level ?? boom500Level ?? vol75Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
-        strategy: boom500Level?.strategy ?? crash500Level?.strategy ?? vol75Level?.strategy,
+        note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        strategy: boom500Level?.strategy ?? crash500Level?.strategy ?? vol75Level?.strategy ?? rb100Level?.strategy,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker
