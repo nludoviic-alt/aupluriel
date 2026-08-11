@@ -1128,6 +1128,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
                   idle: "border-orange-500/15 bg-orange-500/[0.03]",
                 },
+                boom900: {
+                  active: "border-sky-500/60 bg-sky-500/10 ring-1 ring-sky-500/50",
+                  idle: "border-sky-500/15 bg-sky-500/[0.03]",
+                },
                 crash: {
                   active: "border-[#ff9a6c]/60 bg-[#ff9a6c]/10 ring-1 ring-[#ff9a6c]/50",
                   idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03]",
@@ -1227,6 +1231,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               const styles = {
                 default: { active: "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.15)]", idle: "border-purple-500/15 bg-purple-500/[0.03] hover:bg-purple-500/[0.06]" },
                 boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]", idle: "border-orange-500/15 bg-orange-500/[0.03] hover:bg-orange-500/[0.06]" },
+                boom900: { active: "border-sky-500/50 bg-sky-500/10 shadow-[0_0_20px_rgba(14,165,233,0.15)]", idle: "border-sky-500/15 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]" },
                 crash: { active: "border-[#ff9a6c]/50 bg-[#ff9a6c]/10 shadow-[0_0_20px_rgba(255,154,108,0.15)]", idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03] hover:bg-[#ff9a6c]/[0.06]" },
                 scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
                 liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03] hover:bg-fuchsia-500/[0.06]" },
