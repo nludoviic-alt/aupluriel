@@ -1920,6 +1920,25 @@ class ServerBotEngine {
         }
       } catch { /* ignore */ }
 
+      // A missing broker price must stop execution. Falling back to `1` made
+      // XAU/USD sizing explode (notional / 1) and produced an impossible
+      // 22,096-unit OANDA order. A signal remains valid, but it is not
+      // executable until OANDA supplies a real price on the next scan.
+      if (useOanda && (!Number.isFinite(entryPrice) || entryPrice <= 0)) {
+        this.activeSymbols.delete(symbol);
+        const note = "OANDA: prix d’entrée indisponible — ordre non envoyé";
+        scanResults.push({ symbol, action: "session-closed", note });
+        this.emit({
+          id: `srv_${Date.now()}_${symbol}`,
+          time: Date.now(), symbol,
+          direction: analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN",
+          stake: stakeForTrade, payout: 0, profit: 0,
+          confidence: Math.round(analysis.confidence), tfAgreement: analysis.agreement,
+          status: "error", note,
+        });
+        continue;
+      }
+
       // stop_loss/take_profit are absolute $ amounts Deriv expects, derived
       // from the stake so they scale with adaptive/percent/Kelly sizing.
       // ATR mode ties the distance to the symbol's actual current volatility
@@ -2025,7 +2044,7 @@ class ServerBotEngine {
           // code and every position would ride to the maxHoldMinutes force-close
           // instead (audit finding).
           const leveredNotional = stakeForTrade * effMultiplier;
-          const units = Math.round((leveredNotional / (entryPrice || 1)) * 1000) / 1000;
+          const units = Math.round((leveredNotional / entryPrice) * 1000) / 1000;
           const slPrice = analysis.direction === "CALL"
             ? entryPrice * (1 - stopLossUsd / leveredNotional)
             : entryPrice * (1 + stopLossUsd / leveredNotional);

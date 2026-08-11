@@ -127,6 +127,7 @@ export interface OandaOrderResult {
 
 export interface OandaInstrumentSpec {
   minimumTradeSize: number;
+  maximumOrderUnits: number | null;
   tradeUnitsPrecision: number;
   displayPrecision: number;
   marginRate: number;
@@ -197,6 +198,7 @@ export class OandaTradingConnection {
     const instrument = (result as {
       instruments?: Array<{
         minimumTradeSize?: string;
+        maximumOrderUnits?: string;
         tradeUnitsPrecision?: number;
         displayPrecision?: number;
         marginRate?: string;
@@ -205,6 +207,7 @@ export class OandaTradingConnection {
     if (!instrument) throw new Error(`OANDA: instrument ${oandaSymbol} indisponible sur ce compte`);
     return {
       minimumTradeSize: Number(instrument.minimumTradeSize ?? 0),
+      maximumOrderUnits: instrument.maximumOrderUnits === undefined ? null : Number(instrument.maximumOrderUnits),
       tradeUnitsPrecision: Number(instrument.tradeUnitsPrecision ?? 0),
       displayPrecision: Number(instrument.displayPrecision ?? 5),
       marginRate: Number(instrument.marginRate ?? 0),
@@ -233,6 +236,9 @@ export class OandaTradingConnection {
     if (!Number.isFinite(normalizedUnits) || normalizedUnits < spec.minimumTradeSize) {
       throw new Error(`OANDA: taille ${normalizedUnits} sous le minimum ${spec.minimumTradeSize} pour ${oandaSymbol}`);
     }
+    if (spec.maximumOrderUnits !== null && normalizedUnits > spec.maximumOrderUnits) {
+      throw new Error(`OANDA: taille ${normalizedUnits} au-dessus du maximum ${spec.maximumOrderUnits} pour ${oandaSymbol}`);
+    }
     const side = params.direction === "BUY" ? normalizedUnits : -normalizedUnits;
 
     const orderBody: Record<string, unknown> = {
@@ -258,8 +264,20 @@ export class OandaTradingConnection {
     }
 
     const result = await this.request(`/accounts/${this.accountId}/orders`, "POST", orderBody);
-    const orderFill = (result as { orderFillTransaction?: { id: string; price: string; units: string } }).orderFillTransaction;
-    if (!orderFill) throw new Error("OANDA: aucune transaction retournée");
+    const response = result as {
+      orderFillTransaction?: { id: string; price: string; units: string };
+      orderCancelTransaction?: { rejectReason?: string; reason?: string; id?: string };
+      orderRejectTransaction?: { rejectReason?: string; reason?: string; id?: string };
+    };
+    const orderFill = response.orderFillTransaction;
+    if (!orderFill) {
+      // OANDA can acknowledge an order request (HTTP 201) then cancel it,
+      // returning no fill. Preserve the broker reason rather than pretending
+      // this is an unexplained missing transaction.
+      const rejection = response.orderRejectTransaction ?? response.orderCancelTransaction;
+      const reason = rejection?.rejectReason ?? rejection?.reason ?? "aucune transaction retournée";
+      throw new Error(`OANDA: ordre non exécuté (${reason})`);
+    }
 
     return { orderId: orderFill.id, buyPrice: Number(orderFill.price), units: Math.abs(Number(orderFill.units)) };
   }
