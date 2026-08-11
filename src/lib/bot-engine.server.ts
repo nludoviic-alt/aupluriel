@@ -27,7 +27,13 @@ import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
-import { generateGoldTrendSignal, MIN_GOLD_CANDLES } from "./gold-trend-signal.server";
+import {
+  generateGoldTrendPullbackSignal,
+  MIN_GOLD_PULLBACK_H1_CANDLES,
+  MIN_GOLD_PULLBACK_M15_CANDLES,
+  MIN_GOLD_PULLBACK_M5_CANDLES,
+  MIN_GOLD_PULLBACK_M1_CANDLES,
+} from "./gold-trend-signal.server";
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import {
@@ -99,28 +105,37 @@ const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+export type Preset = "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+/** Gold strategies may never opt out of the macro-news safety block. */
+function isGoldPreset(preset: Preset): boolean {
+  return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
+}
+function hasOpenGoldExposure(userId: number, except: Preset): boolean {
+  const row = getDb().prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset IN ('gold','goldv2','liquidity','liquidityv2') AND preset != ? AND status IN ('open','pending')`).get(userId, except) as { n: number };
+  return row.n > 0;
+}
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
 // Display names for user-facing text (push notifications) — kept local rather
 // than imported from opportunities.server.ts's own copy of this map, which
 // imports FROM this file and would make it circular.
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom",
+  boom: "Boom500",
+  boom900: "Boom900 — démo isolée",
   crash: "Crash",
   scalping: "Scalping",
-  liquidity: "Reversal liquidité",
-  gold: "Or Trend",
+  liquidity: "GOLD LIQUIDITY SWEEP",
+  gold: "GOLD TREND PULLBACK",
   crash900: "Crash900 V2",
   boomv2: "Boom V2 — contrôlé",
   scalpingv2: "Scalping V2 — Spike Hunter",
   liquidityv2: "Liquidity V2 — XAU sweep",
-  goldv2: "Gold V2 — session pullback",
+  goldv2: "GOLD BREAKOUT",
 };
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
@@ -131,7 +146,7 @@ const PRESET_LABEL: Record<Preset, string> = {
 export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -956,19 +971,23 @@ class ServerBotEngine {
         if (!partialTaken && this.config.partialTakeProfitPct > 0 && openLog.takeProfitUsd) {
           const info = await this.oandaConn.getTradeInfo(tradeId);
           const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
-          if (info.unrealizedPL >= partialTrigger) {
+          if (info.profit >= partialTrigger) {
             partialTaken = true;
             // Close partialTakeProfitPct% of the position to lock in profits
-            const partialUnits = units * (this.config.partialTakeProfitPct / 100);
-            try {
-              await this.oandaConn.closeTrade(tradeId, partialUnits);
-            } catch { /* ignore partial close failure */ }
+            const partialUnits = Math.floor(units * (this.config.partialTakeProfitPct / 100));
+            // OANDA's common unit precision is 0. Do not send an invalid
+            // fractional close for the smallest permitted Gold position.
+            if (partialUnits >= 1) {
+              try {
+                await this.oandaConn.closeTrade(tradeId, partialUnits);
+              } catch { /* ignore partial close failure */ }
+            }
           }
         }
 
         const info = await this.oandaConn.getTradeInfo(tradeId);
-        if (info.state === "CLOSE") {
-          finalize(info.unrealizedPL > 0, info.unrealizedPL);
+        if (info.state === "CLOSED") {
+          finalize(info.profit > 0, info.profit);
         }
       } catch { /* ignore poll errors */ }
     }, 30_000);
@@ -981,7 +1000,7 @@ class ServerBotEngine {
       try {
         await this.oandaConn.closeTrade(tradeId, units);
         const info = await this.oandaConn.getTradeInfo(tradeId);
-        finalize(info.unrealizedPL > 0, info.unrealizedPL);
+        finalize(info.profit > 0, info.profit);
       } catch {
         finalize(false, -openLog.stake);
       }
@@ -1283,7 +1302,12 @@ class ServerBotEngine {
 
     // ── Stake ──
     const balance = await this.conn.getBalance();
-    const currentBalance = balance?.balance;
+    // Gold presets routed to OANDA must size from the OANDA Practice equity,
+    // never from an unrelated Deriv wallet balance.
+    const oandaBalance = isGoldPreset(this.preset) && this.config.broker === "oanda"
+      ? await this.oandaConn?.getBalance().catch(() => null)
+      : null;
+    const currentBalance = oandaBalance?.balance ?? balance?.balance;
     const baseStake = config.stakeMode === "percent" && currentBalance && currentBalance > 0
       ? Math.max(1, (currentBalance * config.stakePercent) / 100)
       : config.stakeUsd;
@@ -1302,9 +1326,20 @@ class ServerBotEngine {
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
+      if (isGoldPreset(this.preset) && hasOpenGoldExposure(this.userId, this.preset)) {
+        scanResults.push({ symbol, action: "correlated", note: "Conflict Manager Gold : exposition d’un autre moteur déjà ouverte" });
+        continue;
+      }
       const symInstrument = getInstrumentForSymbol(symbol, config);
       if (!isSymbolTradeable(symbol, symInstrument)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
       if (this.activeSymbols.has(symbol)) { scanResults.push({ symbol, action: "open-trade" }); continue; }
+      // A preset that explicitly selects OANDA must never silently send a
+      // fallback order to Deriv. This matters most for Gold: its stop/target
+      // and its risk sizing are calculated for an OANDA spot position.
+      if (config.broker === "oanda") {
+        if (!isOandaSymbol(symbol)) { scanResults.push({ symbol, action: "not-tradeable", note: "Symbole indisponible chez OANDA" }); continue; }
+        if (!this.oandaConn) { scanResults.push({ symbol, action: "session-closed", note: "OANDA Practice non configuré" }); continue; }
+      }
       // ── Skip symbols from disabled brokers ──
       if (isKrakenSymbol(symbol) && !(this.config.enableKraken ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Kraken désactivé" }); continue; }
       if (isBinanceSymbol(symbol) && !(this.config.enableBinance ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Binance désactivé" }); continue; }
@@ -1314,7 +1349,7 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "session-closed" });
         continue;
       }
-      if (!is24x7Symbol(symbol) && config.newsFilter !== false) {
+      if (!is24x7Symbol(symbol) && (isGoldPreset(this.preset) || config.newsFilter !== false)) {
         const riskCheck = isHighRiskWindow();
         if (riskCheck.blocked) { scanResults.push({ symbol, action: "news-block", note: riskCheck.reason }); continue; }
       }
@@ -1482,8 +1517,13 @@ class ServerBotEngine {
         })
       : this.preset === "gold"
       ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
-          const m15 = await candleFetcher(symbol, 900, MIN_GOLD_CANDLES + 5);
-          const sig = m15.length >= MIN_GOLD_CANDLES ? generateGoldTrendSignal(m15) : null;
+          const [h1, m15, m5, m1] = await Promise.all([
+            candleFetcher(symbol, 3600, MIN_GOLD_PULLBACK_H1_CANDLES + 5),
+            candleFetcher(symbol, 900, MIN_GOLD_PULLBACK_M15_CANDLES + 5),
+            candleFetcher(symbol, 300, MIN_GOLD_PULLBACK_M5_CANDLES + 5),
+            candleFetcher(symbol, 60, MIN_GOLD_PULLBACK_M1_CANDLES + 5),
+          ]);
+          const sig = generateGoldTrendPullbackSignal(h1, m15, m5, m1);
           const analysis: SymbolAnalysis = {
             direction: sig?.direction ?? null,
             confidence: sig?.confidence ?? 0,
@@ -1491,9 +1531,9 @@ class ServerBotEngine {
             premiumCount: 0,
             volatilityPct: sig?.volatilityPct ?? 0,
             volatilityRatio: 1,
-            blockers: sig ? [] : ["Pas de setup trend-following confirmé (EMA/ADX/RSI/MACD/candle)"],
-            dominantTf: "15m",
-            suggestedDuration: 30,
+            blockers: sig ? [] : ["Pas de séquence Trend Pullback H1→M15→M5→M1 complète"],
+            dominantTf: "1m",
+            suggestedDuration: 0,
             trendAlignmentScore: sig ? 4 : 0,
             patternBonus: 0,
           };
@@ -1598,7 +1638,7 @@ class ServerBotEngine {
       }
       const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
       const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
-      const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
+      const useOanda = config.broker === "oanda" && isOandaSymbol(symbol) && this.oandaConn !== null;
       const useAltBroker = useKraken || useBinance || useOanda;
 
       // ── Spread/slippage filter (alt brokers only) ──
@@ -1663,6 +1703,30 @@ class ServerBotEngine {
         if (consecLosses > 0) {
           stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
         }
+      }
+
+      // Gold presets are sized from the stop, not from an arbitrary stake.
+      // With an ATR stop, the $ loss for a $1 multiplier position is
+      // proportional to multiplier × ATR%; solve that relation backwards.
+      // The 0.25%-of-equity target is still capped by the configured daily
+      // loss budget split across the permitted losing streak. If OANDA's
+      // minimum trade unit cannot respect that cap, placeMarketOrder rejects
+      // it before an order reaches the broker.
+      if (isGoldPreset(this.preset) && config.broker === "oanda" && isMultiplier) {
+        if (!currentBalance || currentBalance <= 0) {
+          scanResults.push({ symbol, action: "no-signal", note: "Solde indisponible : sizing risque 0,25% impossible" });
+          continue;
+        }
+        const perTradeBudget = config.maxDailyLossUsd / Math.max(1, config.maxConsecutiveLosses);
+        const riskTarget = Math.min(currentBalance * 0.0025, perTradeBudget);
+        const effMultiplier = effectiveMultiplier(symbol, config.multiplierLevel);
+        const perStakeRisk = Math.min(1, Math.max(0.0001, effMultiplier * analysis.volatilityPct * config.atrStopMultiple / 100));
+        const minimumStop = computeAtrStopUsd(1, effMultiplier, analysis.volatilityPct, config.atrStopMultiple, config.riskRewardRatio).stopLossUsd;
+        if (riskTarget < minimumStop) {
+          scanResults.push({ symbol, action: "no-signal", note: `Risque cible $${riskTarget.toFixed(2)} inférieur au stop minimal $${minimumStop.toFixed(2)}` });
+          continue;
+        }
+        stakeForTrade = Math.round((riskTarget / perStakeRisk) * 100) / 100;
       }
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
@@ -1855,7 +1919,7 @@ class ServerBotEngine {
           const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
           this.emit(openLog);
-          this.trackOandaPosition(openLog, bought.orderId, units);
+          this.trackOandaPosition(openLog, bought.orderId, bought.units);
         } else if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
             symbol, amount: stakeForTrade, direction: analysis.direction,
@@ -2088,7 +2152,17 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
     oandaConn = new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice);
   }
 
-  // Deriv is the universal fallback — every symbol Kraken/Binance/OANDA can
+  // Gold presets are an OANDA Practice-only experiment. They have different
+  // position sizing from Deriv, so an unavailable or live OANDA account is a
+  // hard start failure rather than an execution fallback.
+  if (isGoldPreset(preset)) {
+    if (config.mode !== "demo") throw new Error("Les presets Gold sont limités au mode Démo.");
+    if (config.broker !== "oanda" || !oandaConn || !settings?.oanda_is_practice) {
+      throw new Error("Les presets Gold exigent un compte OANDA Practice configuré et activé.");
+    }
+  }
+
+  // Deriv is the universal fallback for presets that select it — every symbol Kraken/Binance/OANDA can
   // trade also has a Deriv route (crypto via Multiplier, forex via CALL/PUT
   // or Multiplier), and the scan loop already falls back to it transparently
   // whenever an alt-broker connection is null (isKrakenSymbol(s) && this.

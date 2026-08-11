@@ -554,9 +554,7 @@ export interface MultiplierSymbolOverride {
 // (50%) never gets hit by normal noise — the same 3/4 threshold in binary
 // CALL/PUT mode was the #1 cause of historical losses (see minTfAgreement
 // comment on DEFAULT_CONFIG above) and must stay 4/4 there.
-export const MULTIPLIER_SYMBOL_OVERRIDES: Record<string, MultiplierSymbolOverride> = {
-  frxXAUUSD: { minTfAgreement: 3, atrStopMode: false, stopLossPctOfStake: 50, takeProfitPctOfStake: 10 },
-};
+export const MULTIPLIER_SYMBOL_OVERRIDES: Record<string, MultiplierSymbolOverride> = {};
 
 export function getMultiplierOverride(symbol: string): MultiplierSymbolOverride | undefined {
   return MULTIPLIER_SYMBOL_OVERRIDES[symbol];

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gestion du risque"
+  short_description: "Auditer et renforcer le risque du bot"
+  default_prompt: "Utilise $risk-manager pour évaluer les protections de risque du bot."

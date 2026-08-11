@@ -115,7 +115,7 @@ export const Route = createFileRoute("/api/settings")({
           // applies to EVERY preset row this user has (up to three since
           // 2026-08-01), so Default/Boom/Crash never disagree about which
           // brokers are enabled.
-          const presetsList: ("default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900")[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+          const presetsList: ("default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900")[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900"];
           const { updateConfigForUser } = await import("@/lib/bot-engine.server");
           for (const p of presetsList) {
             const row = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(auth.userId, p) as { config?: string } | undefined;

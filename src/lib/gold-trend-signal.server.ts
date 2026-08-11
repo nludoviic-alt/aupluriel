@@ -55,6 +55,12 @@ const MIN_ADX = 25;
 // calculation stability on the tail.
 export const MIN_GOLD_CANDLES = EMA_SLOW + 15;
 
+/** Candle requirements for the H1 → M15 → M5 → M1 pullback model. */
+export const MIN_GOLD_PULLBACK_H1_CANDLES = EMA_SLOW + 15;
+export const MIN_GOLD_PULLBACK_M15_CANDLES = 60;
+export const MIN_GOLD_PULLBACK_M5_CANDLES = 60;
+export const MIN_GOLD_PULLBACK_M1_CANDLES = 30;
+
 function volatilityPct(candles: ServerCandle[]): number {
   const tail = candles.slice(-15);
   if (tail.length < 2) return 0;
@@ -188,5 +194,118 @@ export function generateGoldTrendSignal(candles: ServerCandle[]): GoldTrendSigna
     confidence,
     volatilityPct: volPct,
     reason: `Tendance baissière EMA${EMA_FAST}<EMA${EMA_SLOW}, ADX ${adxNow.toFixed(0)}, RSI ${rsiNow.toFixed(0)} en repli, MACD baissier`,
+  };
+}
+
+function candleBodyRatio(candle: ServerCandle): number {
+  return Math.abs(candle.close - candle.open) / Math.max(candle.high - candle.low, Number.EPSILON);
+}
+
+function slopesUp(line: (number | null)[], at: number, bars = 3): boolean {
+  return line[at] !== null && line[at - bars] !== null && (line[at] as number) > (line[at - bars] as number);
+}
+
+function slopesDown(line: (number | null)[], at: number, bars = 3): boolean {
+  return line[at] !== null && line[at - bars] !== null && (line[at] as number) < (line[at - bars] as number);
+}
+
+/**
+ * Gold Trend Pullback, deliberately separate from the old M15 trend signal.
+ * It only emits after the whole sequence requested by the preset exists:
+ * H1 trend, M15 alignment, M5 retracement, then an M1 rejection/BOS trigger.
+ */
+export function generateGoldTrendPullbackSignal(
+  h1: ServerCandle[],
+  m15: ServerCandle[],
+  m5: ServerCandle[],
+  m1: ServerCandle[],
+): GoldTrendSignal | null {
+  if (
+    h1.length < MIN_GOLD_PULLBACK_H1_CANDLES
+    || m15.length < MIN_GOLD_PULLBACK_M15_CANDLES
+    || m5.length < MIN_GOLD_PULLBACK_M5_CANDLES
+    || m1.length < MIN_GOLD_PULLBACK_M1_CANDLES
+  ) return null;
+
+  const h1Close = h1.map((c) => c.close);
+  const h1Last = h1Close.length - 1;
+  const h1E20 = ema(h1Close, 20);
+  const h1E50 = ema(h1Close, 50);
+  const h1E200 = ema(h1Close, 200);
+  const h1Rsi = rsi(h1Close, 14);
+  const h1Values = [h1E20[h1Last], h1E50[h1Last], h1E200[h1Last], h1Rsi[h1Last]];
+  if (h1Values.some((v) => v === null)) return null;
+  const [h1_20, h1_50, h1_200, h1R] = h1Values as number[];
+  const h1Price = h1Close[h1Last];
+
+  const bullishH1 = h1Price > h1_200 && h1_20 > h1_50 && h1_50 > h1_200 && h1R >= 50;
+  const bearishH1 = h1Price < h1_200 && h1_20 < h1_50 && h1_50 < h1_200 && h1R <= 50;
+  if (!bullishH1 && !bearishH1) return null;
+  const bullish = bullishH1;
+
+  // H1 / 40: alignment is mandatory; slope and structure distinguish a
+  // merely aligned market from a mature trend.
+  const h1Slope = bullish ? slopesUp(h1E20, h1Last) && slopesUp(h1E50, h1Last) : slopesDown(h1E20, h1Last) && slopesDown(h1E50, h1Last);
+  const h1Structure = bullish ? h1Price > h1Close[h1Last - 4] : h1Price < h1Close[h1Last - 4];
+  let score = 25 + (h1Slope ? 10 : 0) + (h1Structure ? 5 : 0);
+  if (score < 30) return null;
+  const m15Close = m15.map((c) => c.close);
+  const m15Last = m15Close.length - 1;
+  const m15E20 = ema(m15Close, 20)[m15Last];
+  const m15E50 = ema(m15Close, 50)[m15Last];
+  const m15Rsi = rsi(m15Close, 14)[m15Last];
+  if (m15E20 === null || m15E50 === null || m15Rsi === null) return null;
+  const m15PriceAligned = bullish ? m15Close[m15Last] > m15E20 : m15Close[m15Last] < m15E20;
+  const m15EmaAligned = bullish ? m15E20 > m15E50 : m15E20 < m15E50;
+  const m15RsiAligned = bullish ? m15Rsi >= 50 : m15Rsi <= 50;
+  const m15Score = (m15PriceAligned ? 8 : 0) + (m15EmaAligned ? 7 : 0) + (m15RsiAligned ? 5 : 0);
+  if (m15Score < 15) return null;
+  score += m15Score;
+
+  const m5Close = m5.map((c) => c.close);
+  const m5High = m5.map((c) => c.high);
+  const m5Low = m5.map((c) => c.low);
+  const m5Last = m5Close.length - 1;
+  const m5E20 = ema(m5Close, 20)[m5Last];
+  const m5E50 = ema(m5Close, 50)[m5Last];
+  const m5Rsi = rsi(m5Close, 14)[m5Last];
+  const m5Atr = atr(m5High, m5Low, m5Close, 14)[m5Last];
+  if (m5E20 === null || m5E50 === null || m5Rsi === null || m5Atr === null) return null;
+  const m5Recent = m5.slice(-5);
+  const pullbackTouched = bullish
+    ? m5Recent.some((c) => c.low <= m5E20 || c.low <= m5E50)
+    : m5Recent.some((c) => c.high >= m5E20 || c.high >= m5E50);
+  const pullbackRsi = bullish ? m5Rsi >= 40 && m5Rsi <= 55 : m5Rsi >= 45 && m5Rsi <= 60;
+  const structureIntact = bullish ? m5Close[m5Last] >= m5E50 : m5Close[m5Last] <= m5E50;
+  if (!pullbackTouched || !pullbackRsi || !structureIntact) return null;
+  score += 20;
+
+  const m1Close = m1.map((c) => c.close);
+  const m1Last = m1Close.length - 1;
+  const trigger = m1[m1Last];
+  const priorMicro = m1.slice(-7, -1);
+  const microHigh = Math.max(...priorMicro.map((c) => c.high));
+  const microLow = Math.min(...priorMicro.map((c) => c.low));
+  const triggerRange = Math.max(trigger.high - trigger.low, Number.EPSILON);
+  const lowerWick = Math.min(trigger.open, trigger.close) - trigger.low;
+  const upperWick = trigger.high - Math.max(trigger.open, trigger.close);
+  const rejection = bullish
+    ? trigger.close > trigger.open && lowerWick / triggerRange >= 0.35
+    : trigger.close < trigger.open && upperWick / triggerRange >= 0.35;
+  const bos = bullish ? trigger.close > microHigh : trigger.close < microLow;
+  const m1RsiLine = rsi(m1Close, 14);
+  const m1Rsi = m1RsiLine[m1Last];
+  const m1PrevRsi = m1RsiLine[m1Last - 1];
+  const momentum = m1Rsi !== null && m1PrevRsi !== null && (bullish ? m1Rsi > 50 && m1Rsi > m1PrevRsi : m1Rsi < 50 && m1Rsi < m1PrevRsi);
+  if (!rejection || !bos || !momentum || candleBodyRatio(trigger) < 0.35) return null;
+  score += 20;
+
+  const confidence = Math.min(100, score);
+  if (confidence < 85) return null;
+  return {
+    direction: bullish ? "CALL" : "PUT",
+    confidence,
+    volatilityPct: (m5Atr / m5Close[m5Last]) * 100,
+    reason: `Trend Pullback ${bullish ? "haussier" : "baissier"} H1→M15, retracement M5 EMA20/50 puis rejet+BOS M1 (score ${confidence})`,
   };
 }

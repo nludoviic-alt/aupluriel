@@ -211,7 +211,7 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   excludedSymbols: "Symboles exclus",
 };
 
-const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2" } as const;
+const presetLabels = { default: "Multi", boom: "Boom500", crash: "Crash", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2" } as const;
 
 type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
 const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];

@@ -16,7 +16,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
@@ -36,6 +36,7 @@ interface PatchBody {
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
+  if (preset === "boom900") return BOOM900_PRESET;
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
   if (preset === "liquidity") return LIQUIDITY_PRESET;
@@ -46,6 +47,10 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "liquidityv2") return LIQUIDITY_V2_PRESET;
   if (preset === "goldv2") return GOLD_V2_PRESET;
   return DEFAULT_CONFIG;
+}
+
+function isGoldPreset(preset: Preset): boolean {
+  return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
 }
 
 export const Route = createFileRoute("/api/admin/user-config")({
@@ -59,7 +64,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (!body.preset || !["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"].includes(body.preset)) {
+        if (!body.preset || !["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"].includes(body.preset)) {
           return json({ error: "Preset inconnu." }, 400);
         }
         if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical && !body.configOverride) {
@@ -86,7 +91,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
           Object.assign(config, presetFieldsFor(body.preset), {
             stakeUsd, maxDailyLossUsd, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled,
-            mode: body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
+            mode: body.preset === "boom900" || body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
           });
         }
         if (body.symbols !== undefined) {
@@ -124,6 +129,17 @@ export const Route = createFileRoute("/api/admin/user-config")({
             return json({ error: "configOverride doit être un objet." }, 400);
           }
           Object.assign(config, body.configOverride);
+        }
+
+        // The three Gold strategies are never allowed to trade through the
+        // shared macro-news block, even if a stale admin configuration tries
+        // to disable it.
+        if (isGoldPreset(body.preset)) {
+          config.newsFilter = true;
+          config.broker = "oanda";
+          config.enableOanda = true;
+          config.enableDeriv = false;
+          config.instrumentType = "multiplier";
         }
 
         updateConfigForUser(body.userId, body.preset, config, admin.id);

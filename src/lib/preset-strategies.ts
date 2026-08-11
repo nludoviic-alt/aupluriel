@@ -10,7 +10,7 @@ export interface PresetStrategyDef {
   id: string;
   name: string;
   category: "Multi" | "Boom" | "Crash" | "Scalping" | "Best Day";
-  targetPreset: "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+  targetPreset: "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
   targetMarkets: string;
   tagline: string;
   badge: string;

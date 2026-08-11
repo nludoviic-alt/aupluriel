@@ -356,7 +356,7 @@ export function SettingsPage() {
       } catch { /* non-fatal — the rest of settings still saved */ }
 
       // Sync local storage autotrader config drafts so Auto-Trader HUD immediately sees the new daily loss limit & stake
-      const presetsList = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+      const presetsList = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900"];
       for (const p of presetsList) {
         const pKey = `lio23.autotrader_config.${p}`;
         try {

@@ -49,6 +49,7 @@ import {
   reconcileOpenTrades,
   PRESETS,
   BOOM_PRESET,
+  BOOM900_PRESET,
   CRASH_PRESET,
   LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, BOOM_V2_PRESET, CRASH900_V2_PRESET,
   type QuickPreset,
@@ -98,24 +99,25 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+type PresetKey = "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "Gold V2" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", crash: "Crash", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
 const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: string; experimental?: boolean }> = {
   default: { market: "Forex · Métaux · Crypto", description: "Marchés configurés" },
-  boom: { market: "Indices Boom", description: "Boom 500 · Boom 900" },
+  boom: { market: "BOOM500 uniquement", description: "Preset Boom général" },
+  boom900: { market: "BOOM900 uniquement", description: "Démo · validation isolée", experimental: true },
   crash: { market: "Indices Crash", description: "Crash 1000 · Crash 900" },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
-  liquidity: { market: "Or · Nasdaq", description: "M15 · balayage + RSI", experimental: true },
-  gold: { market: "Or (XAU/USD)", description: "M15 · trend-following", experimental: true },
+  liquidity: { market: "Or (XAU/USD)", description: "GOLD LIQUIDITY SWEEP", experimental: true },
+  gold: { market: "Or (XAU/USD)", description: "GOLD TREND PULLBACK", experimental: true },
   crash900: { market: "CRASH900", description: "Joker · optimisé data", experimental: true },
   boomv2: { market: "BOOM500", description: "Démo · exposition contrôlée", experimental: true },
   scalpingv2: { market: "BOOM500", description: "M1/M5 · Spike Hunter", experimental: true },
   liquidityv2: { market: "Or (XAU/USD)", description: "M15 · sweep/réintégration", experimental: true },
-  goldv2: { market: "Or (XAU/USD)", description: "Session · breakout/pullback", experimental: true },
+  goldv2: { market: "Or (XAU/USD)", description: "GOLD BREAKOUT", experimental: true },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -128,7 +130,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
+const PRESET_ORDER = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -356,7 +358,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, crash: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, crash: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
 
   // A stopped preset remains in the database for its audit trail, but must not
   // stay selectable on the execution desk. Showing it here made an inactive
@@ -843,14 +845,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "boom900" ? BOOM900_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
     const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
     const next: AutoTraderConfig = hasSavedOverride
       ? saved
-      : target === "scalping" || target === "liquidity" || target === "gold" || target.endsWith("v2")
+      : target === "boom900" || target === "scalping" || target === "liquidity" || target === "gold" || target.endsWith("v2")
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {
             ...DEFAULT_CONFIG, ...presetFields,

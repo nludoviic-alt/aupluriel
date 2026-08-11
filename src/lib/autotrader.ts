@@ -320,7 +320,7 @@ export const BOOM_SYMBOLS = ["BOOM500"];
 export const CRASH_SYMBOLS = ["CRASH900"];
 
 /**
- * BOOM preset — scalping haute fréquence sur l'index Boom rentable (BOOM500 seul,
+ * BOOM500 preset — stratégie dédiée à BOOM500 uniquement (voir BOOM_SYMBOLS),
  * voir BOOM_SYMBOLS ci-dessus).
  *
  * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
@@ -390,9 +390,10 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // BOOM500 : -$40.91 sur 764 trades (WR 72.9%, PF 0.93) — était +$3.62
   //   sur 701 trades au 5 août. Détérioration sur 3 jours.
   // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
+  // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
   minConfidence: 85,
-  maxConfidence: 89,
-  minTfAgreement: 4,
+  maxConfidence: 100,
+  minTfAgreement: 3,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
   durationMinutes: 5,
@@ -414,7 +415,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // Inversion TP 15 / SL 10 pour que les pertes soient enfin bornées
   // sous les gains.)
   maxConsecutiveLosses: 4,
-  cooldownMinutes: 15,
+  cooldownMinutes: 5,
   trailingStopPct: 0.20,
   trailingStopMinPeakUsd: 10,
   // maxDailyLossUsd 30 : à $0.50 de perte par trade (SL 10%), $30 = 60 trades
@@ -427,9 +428,9 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
   // symbole déjà en position), donc 3 positions simultanées avec 3 symboles.
   // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
-  maxSimultaneousTrades: 2,
-  maxOpenPositions: 3,
-  maxTradesPerDay: 100_000,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  maxTradesPerDay: 15,
   maxDailyProfitUsd: 0,
   // ── Take-profit/stop-loss + levier — recalibrés après audit VPS production
   //    (1 422 trades, 9 août 2026).
@@ -444,11 +445,13 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   //    mais l'EV s'améliore structurellement car les pertes sont enfin
   //    bornées sous les gains.
   multiplierLevel: 100,
-  takeProfitPctOfStake: 15,
-  stopLossPctOfStake: 10,
-  atrStopMode: false,
-  partialTakeProfitPct: 0,
-  maxHoldMinutes: 60,
+  // Boom500 : stop initial 1,1 ATR et cible principale 1,8R.
+  atrStopMode: true,
+  atrStopMultiple: 1.1,
+  riskRewardRatio: 1.8,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 8,
   // ── Pas de filtres inutiles sur synthétique 24/7 ──
   newsFilter: false,
   blockCorrelated: false,
@@ -470,6 +473,48 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   stakeMode: "fixed",
   // ── ADX filter off sur Boom (RNG = pas de vrai trend) ──
   adxFilterMode: "off",
+};
+
+/**
+ * BOOM900 — validation isolée, BOOM900 uniquement.
+ *
+ * Ce preset ne remplace pas BOOM_PRESET (BOOM500) et ne doit jamais hériter
+ * de ses résultats. BOOM900 a été déficitaire dans l'audit production du
+ * 2026-08-08 (PF 0,85 sur 338 trades) : il est donc verrouillé en démo.
+ *
+ * Sweep historique 2026-08-10, 1 200 bougies M15 (~300 h), levier 100x,
+ * maintien 60 min : TP 5% / SL 20% atteignaient les barrières (101 stops,
+ * 573 TP, 31 sorties délai) avec un edge de +1,6 pp. Ce n'est pas une preuve
+ * d'edge hors échantillon : une seule position et $1 de mise limitent la
+ * collecte de données avant toute décision ultérieure.
+ */
+export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["BOOM900"],
+  mode: "demo",
+  stakeUsd: 1,
+  minConfidence: 80,
+  maxConfidence: 100,
+  minTfAgreement: 3,
+  multiplierLevel: 100,
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 60,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 12,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 10,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  trailingStopPct: 0,
+  trailingStopMinPeakUsd: 0,
+  hourlyEdgeFilter: true,
+  minSymbolWinRate: 0.50,
+  symbolWinRateLookback: 20,
 };
 
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
@@ -629,18 +674,32 @@ export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
   // dans symbols ET excludedSymbols, et le bot saute les signaux.
   excludedSymbols: [],
-  instrumentType: "binary",
+  instrumentType: "multiplier",
+  broker: "oanda",
+  enableOanda: true,
   stakeUsd: 1,
-  durationMinutes: 60,
-  minConfidence: 75,
-  maxConfidence: 95,
+  stakeMode: "percent",
+  stakePercent: 0.25,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
   minTfAgreement: 4,
   maxDailyLossUsd: 3,
   maxTradesPerDay: 3,
-  maxConsecutiveLosses: 2,
+  maxConsecutiveLosses: 3,
   maxSimultaneousTrades: 1,
   maxOpenPositions: 1,
   tradingSessions: ["london", "newyork"],
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 240,
+  // XAU/USD is sensitive to macro releases. This remains explicitly enabled
+  // even though it is also the global default: every Gold strategy must use
+  // the shared news block.
+  newsFilter: true,
   mode: "demo",
 };
 
@@ -677,15 +736,31 @@ export const GOLD_PRESET: Partial<AutoTraderConfig> = {
   // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
   // dans symbols ET excludedSymbols, et le bot saute les signaux.
   excludedSymbols: [],
-  instrumentType: "binary",
+  // Position, not binary: the strategy has an ATR stop and R-multiple targets.
+  instrumentType: "multiplier",
+  broker: "oanda",
+  enableOanda: true,
   stakeUsd: 1,
-  durationMinutes: 30,
-  minConfidence: 75,
-  maxConfidence: 95,
+  stakeMode: "percent",
+  // The engine derives the stake from 0.25% of balance and the ATR stop;
+  // this is retained as the explicit risk declaration, not as a stake %.
+  stakePercent: 0.25,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
   minTfAgreement: 4,
+  multiplierLevel: 20,
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  // TP1 is recognized at 1R (50% of the 2R target). Deriv's multiplier
+  // contract has no partial-close primitive; the tracking layer records it.
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 240,
   maxDailyLossUsd: 3,
   maxTradesPerDay: 3,
-  maxConsecutiveLosses: 2,
+  maxConsecutiveLosses: 3,
   maxSimultaneousTrades: 1,
   maxOpenPositions: 1,
   tradingSessions: ["london", "newyork"],
@@ -747,13 +822,13 @@ export const LIQUIDITY_V2_PRESET: Partial<AutoTraderConfig> = {
 export const GOLD_V2_PRESET: Partial<AutoTraderConfig> = {
   ...GOLD_PRESET,
   symbols: GOLD_SYMBOLS,
-  durationMinutes: 30,
-  minConfidence: 78,
-  maxConfidence: 92,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
   stakeUsd: 1,
   maxDailyLossUsd: 3,
   maxTradesPerDay: 3,
-  maxConsecutiveLosses: 2,
+  maxConsecutiveLosses: 3,
   maxOpenPositions: 1,
   maxSimultaneousTrades: 1,
   mode: "demo",

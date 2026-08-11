@@ -6,7 +6,13 @@ import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
-import { generateGoldTrendSignal, MIN_GOLD_CANDLES } from "./gold-trend-signal.server";
+import {
+  generateGoldTrendPullbackSignal,
+  MIN_GOLD_PULLBACK_H1_CANDLES,
+  MIN_GOLD_PULLBACK_M15_CANDLES,
+  MIN_GOLD_PULLBACK_M5_CANDLES,
+  MIN_GOLD_PULLBACK_M1_CANDLES,
+} from "./gold-trend-signal.server";
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import {
@@ -328,8 +334,13 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
   }
 
   if (preset === "gold") {
-    const m15 = await fetchCandlesServer(symbol, 900, MIN_GOLD_CANDLES + 5);
-    const signal = generateGoldTrendSignal(m15);
+    const [h1, m15, m5, m1] = await Promise.all([
+      fetchCandlesServer(symbol, 3600, MIN_GOLD_PULLBACK_H1_CANDLES + 5),
+      fetchCandlesServer(symbol, 900, MIN_GOLD_PULLBACK_M15_CANDLES + 5),
+      fetchCandlesServer(symbol, 300, MIN_GOLD_PULLBACK_M5_CANDLES + 5),
+      fetchCandlesServer(symbol, 60, MIN_GOLD_PULLBACK_M1_CANDLES + 5),
+    ]);
+    const signal = generateGoldTrendPullbackSignal(h1, m15, m5, m1);
     const analysis: SymbolAnalysis = signal
       ? {
           direction: signal.direction,
@@ -339,8 +350,8 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
           volatilityPct: signal.volatilityPct,
           volatilityRatio: 1,
           blockers: [],
-          dominantTf: "15m",
-          suggestedDuration: 30,
+          dominantTf: "1m",
+          suggestedDuration: 0,
           trendAlignmentScore: 4,
           patternBonus: 0,
         }
@@ -351,9 +362,9 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
           premiumCount: 0,
           volatilityPct: 0,
           volatilityRatio: 1,
-          blockers: ["Pas de setup trend-following confirmé (EMA/ADX/RSI/MACD/candle)"],
-          dominantTf: "15m",
-          suggestedDuration: 30,
+          blockers: ["Pas de séquence Trend Pullback H1→M15→M5→M1 complète"],
+          dominantTf: "1m",
+          suggestedDuration: 0,
           trendAlignmentScore: 0,
           patternBonus: 0,
         };

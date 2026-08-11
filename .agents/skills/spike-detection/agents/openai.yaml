@@ -1,0 +1,4 @@
+interface:
+  display_name: "Détection de spikes"
+  short_description: "Auditer les signaux Boom et Crash"
+  default_prompt: "Utilise $spike-detection pour analyser les performances Spike Hunter."
