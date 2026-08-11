@@ -16,6 +16,7 @@ import {
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import { generateCrash500Signals } from "./crash500-signal.server";
+import { generateBoom500Signals } from "./boom500-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -192,6 +193,37 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
   const stats = statsFor(preset, symbol);
   const instrument = getInstrumentForSymbol(symbol, config);
   const now = Date.now();
+
+  if (preset === "boom") {
+    const [m15, m5, m1, ticks] = await Promise.all([
+      fetchCandlesServer(symbol, 900, 70), fetchCandlesServer(symbol, 300, 70),
+      fetchCandlesServer(symbol, 60, 55), fetchRecentTicksServer(symbol, 120).catch(() => []),
+    ]);
+    const candidates = generateBoom500Signals(m15, m5, m1, ticks);
+    const signal = candidates.find((candidate) => candidate.strategy === "BOOM500_SPIKE_HUNTER_BUY") ?? candidates[0];
+    const analysis: SymbolAnalysis = signal ? {
+      direction: signal.direction, confidence: signal.confidence, agreement: 4,
+      premiumCount: signal.confidence >= 95 ? 1 : 0, volatilityPct: signal.volatilityPct,
+      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1", suggestedDuration: 0,
+      trendAlignmentScore: 4, patternBonus: signal.confidence >= 95 ? 10 : 0,
+    } : {
+      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
+      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas de setup Boom500 Spike BUY ou Drift SELL confirmé"],
+      dominantTf: "M15/M5/M1", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
+    };
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
+    return {
+      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
+      label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision,
+      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
+      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
+      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
+      takeProfitUsd: null, stopLossUsd: null,
+      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : explainOpportunity(decision, analysis, thresholds, stats),
+      blockers: analysis.blockers, stats, updatedAt: now,
+    };
+  }
 
   if (preset === "crash500") {
     const [m15, m5, m1, ticks] = await Promise.all([
