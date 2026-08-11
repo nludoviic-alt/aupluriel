@@ -1,9 +1,9 @@
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "./autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
-import { fetchCandlesServer } from "./deriv.server";
+import { fetchCandlesServer, fetchRecentTicksServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
 import {
@@ -15,6 +15,7 @@ import {
 } from "./gold-trend-signal.server";
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
+import { generateCrash500Signals } from "./crash500-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -96,12 +97,13 @@ export interface OpportunitiesResponse {
 // TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
 // résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
 // actuelle est structurellement différente.
-const PRESETS: Preset[] = ["boom", "boom900", "crash", "default", "liquidity", "gold", "goldv2"];
+const PRESETS: Preset[] = ["boom", "boom900", "crash", "crash500", "default", "liquidity", "gold", "goldv2"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom",
   boom900: "Boom900",
   crash: "Crash",
+  crash500: "Crash500",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
   gold: "Or Trend",
@@ -117,6 +119,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   boom: BOOM_PRESET,
   boom900: BOOM900_PRESET,
   crash: CRASH_PRESET,
+  crash500: CRASH500_PRESET,
   scalping: SCALPING_PRESET,
   liquidity: LIQUIDITY_PRESET,
   gold: GOLD_PRESET,
@@ -189,6 +192,38 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
   const stats = statsFor(preset, symbol);
   const instrument = getInstrumentForSymbol(symbol, config);
   const now = Date.now();
+
+  if (preset === "crash500") {
+    const [m15, m5, m1, ticks] = await Promise.all([
+      fetchCandlesServer(symbol, 900, 70), fetchCandlesServer(symbol, 300, 70),
+      fetchCandlesServer(symbol, 60, 55), fetchRecentTicksServer(symbol, 120).catch(() => []),
+    ]);
+    const candidates = generateCrash500Signals(m15, m5, m1, ticks);
+    const signal = candidates.find((candidate) => candidate.strategy === "CRASH500_SPIKE_HUNTER_SELL" && candidate.confidence >= 95)
+      ?? candidates.sort((a, b) => b.confidence - a.confidence)[0];
+    const analysis: SymbolAnalysis = signal ? {
+      direction: signal.direction, confidence: signal.confidence, agreement: 4,
+      premiumCount: signal.confidence >= 95 ? 1 : 0, volatilityPct: signal.volatilityPct,
+      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1", suggestedDuration: 0,
+      trendAlignmentScore: 4, patternBonus: signal.confidence >= 95 ? 10 : 0,
+    } : {
+      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
+      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas de setup Crash500 Spike SELL ou Drift BUY confirmé"],
+      dominantTf: "M15/M5/M1", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
+    };
+    const thresholds = thresholdsFor(symbol, instrument, config);
+    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
+    return {
+      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
+      label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision,
+      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
+      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
+      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
+      takeProfitUsd: null, stopLossUsd: null,
+      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : explainOpportunity(decision, analysis, thresholds, stats),
+      blockers: analysis.blockers, stats, updatedAt: now,
+    };
+  }
 
   if (preset === "scalpingv2") {
     const [m1, m5] = await Promise.all([fetchCandlesServer(symbol, 60, 60), fetchCandlesServer(symbol, 300, 30)]);

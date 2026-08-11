@@ -319,6 +319,7 @@ export const BOOM_SYMBOLS = ["BOOM500"];
  * CRASH600 exclu : -$3.28 sur 35 trades, WR 74.3%, PF 0.77. */
 export const CRASH_SYMBOLS = ["CRASH900"];
 
+
 /**
  * BOOM500 preset — stratégie dédiée à BOOM500 uniquement (voir BOOM_SYMBOLS),
  * voir BOOM_SYMBOLS ci-dessus).
@@ -583,6 +584,27 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   minTfAgreement: 4,
   multiplierLevel: 100,
 };
+
+/** Crash500 is deliberately isolated from Crash900.  It is demo-only while
+ * its two specialised engines accumulate enough independent journal data. */
+export const CRASH500_PRESET: Partial<AutoTraderConfig> = {
+  ...CRASH_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["CRASH500"],
+  mode: "demo",
+  stakeMode: "percent",
+  stakePercent: 0.25,
+  minConfidence: 88,
+  maxConfidence: 100,
+  minTfAgreement: 4,
+  maxTradesPerDay: 15,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 5,
+  maxSimultaneousTrades: 1,
+  atrStopMode: true,
+  multiplierLevel: 100,
+};
+
 
 export function isCrashPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"

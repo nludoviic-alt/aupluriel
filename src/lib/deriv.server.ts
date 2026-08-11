@@ -173,6 +173,19 @@ export async function fetchCandlesServer(symbol: string, granularitySeconds: num
   }));
 }
 
+/** Recent tick prices for micro-momentum confirmation.  Consumers must not
+ * infer a spike from the number of ticks returned: the count is transport
+ * metadata, not a market signal. */
+export async function fetchRecentTicksServer(symbol: string, count = 120): Promise<number[]> {
+  const res = await getPublicSocket().request<{ history?: { prices?: Array<string | number> } }>({
+    ticks_history: symbol,
+    style: "ticks",
+    count,
+    end: "latest",
+  });
+  return (res.history?.prices ?? []).map(Number).filter(Number.isFinite);
+}
+
 // ─── Per-user authenticated trading connection ────────────────────────────────
 
 async function fetchOtpUrl(patToken: string, accountType: "demo" | "live"): Promise<{ url: string; currency: string; loginId: string; balance: number }> {

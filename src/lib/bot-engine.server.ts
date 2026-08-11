@@ -16,7 +16,7 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, closePublicSocket } from "./deriv.server";
+import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, fetchRecentTicksServer, closePublicSocket } from "./deriv.server";
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
 import { OandaTradingConnection, isOandaSymbol, derivToOandaSymbol, fetchOandaCandles, OANDA_DERIV_SYMBOLS, closeOandaSocket } from "./oanda.server";
@@ -36,6 +36,7 @@ import {
 } from "./gold-trend-signal.server";
 import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
 import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
+import { generateCrash500Signals } from "./crash500-signal.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -105,7 +106,7 @@ const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+export type Preset = "default" | "boom" | "boom900" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 /** Gold strategies may never opt out of the macro-news safety block. */
 function isGoldPreset(preset: Preset): boolean {
   return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
@@ -131,9 +132,9 @@ function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
+export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
 /** The only strategies offered for new scans, Portfolio and Opportunities. */
-export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "liquidity", "gold", "goldv2"];
+export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "crash", "crash500", "liquidity", "gold", "goldv2"];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
@@ -141,6 +142,7 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
   boom: ["BOOM500"],
   boom900: ["BOOM900"],
   crash: ["CRASH900"],
+  crash500: ["CRASH500"],
   liquidity: ["frxXAUUSD"],
   gold: ["frxXAUUSD"],
   goldv2: ["frxXAUUSD"],
@@ -159,6 +161,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   boom: "Boom500",
   boom900: "Boom900 — démo isolée",
   crash: "Crash",
+  crash500: "Crash500 — démo isolée",
   scalping: "Scalping",
   liquidity: "GOLD LIQUIDITY SWEEP",
   gold: "GOLD TREND PULLBACK",
@@ -1463,8 +1466,39 @@ class ServerBotEngine {
     // distances) are stashed here, keyed by symbol, and consumed below when
     // computing stopLossUsd/takeProfitUsd for THIS tick only — never persisted.
     const scalpingLevels = new Map<string, { riskAbs: number; rewardAbs: number }>();
+    // Kept separate from the generic Crash engine: each CRASH500 execution is
+    // tagged in its journal note with the internal strategy that selected it.
+    const crash500Levels = new Map<string, { riskAbs: number; rewardAbs: number; strategy: string; reason: string }>();
 
-    const analyzed = this.preset === "scalping"
+    const analyzed = this.preset === "crash500"
+      ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
+          const [m15, m5, m1, ticks] = await Promise.all([
+            candleFetcher(symbol, 900, 70),
+            candleFetcher(symbol, 300, 70),
+            candleFetcher(symbol, 60, 55),
+            fetchRecentTicksServer(symbol, 120).catch(() => []),
+          ]);
+          const candidates = generateCrash500Signals(m15, m5, m1, ticks);
+          // Premium Spike Hunter has priority over Drift when both qualify.
+          const sig = candidates.find((candidate) => candidate.strategy === "CRASH500_SPIKE_HUNTER_SELL" && candidate.confidence >= 95)
+            ?? candidates.sort((a, b) => b.confidence - a.confidence)[0];
+          if (sig) crash500Levels.set(symbol, sig);
+          const analysis: SymbolAnalysis = {
+            direction: sig?.direction ?? null,
+            confidence: sig?.confidence ?? 0,
+            agreement: sig ? 4 : 0,
+            premiumCount: sig?.confidence && sig.confidence >= 95 ? 1 : 0,
+            volatilityPct: sig?.volatilityPct ?? 0,
+            volatilityRatio: 1,
+            blockers: sig ? [] : ["Pas de setup Crash500 Spike SELL ou Drift BUY confirmé"],
+            dominantTf: "1m",
+            suggestedDuration: 0,
+            trendAlignmentScore: sig ? 4 : 0,
+            patternBonus: sig?.confidence && sig.confidence >= 95 ? 10 : 0,
+          };
+          return { symbol, analysis };
+        })
+      : this.preset === "scalping"
       ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
           const m1 = await candleFetcher(symbol, 60, Math.max(MIN_M1_CANDLES + 10, 300));
           const sig = m1.length >= MIN_M1_CANDLES ? generateScalpingSignal(m1) : null;
@@ -1845,8 +1879,10 @@ class ServerBotEngine {
       // at signal time (scalpingLevels, populated above), not ATR or a flat
       // % of stake — see scalping-signal.server.ts.
       const scalpingLevel = this.preset === "scalping" ? scalpingLevels.get(symbol) : undefined;
-      const { stopLossUsd, takeProfitUsd } = scalpingLevel
-        ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, scalpingLevel.riskAbs, scalpingLevel.rewardAbs)
+      const crash500Level = this.preset === "crash500" ? crash500Levels.get(symbol) : undefined;
+      const structuralLevel = scalpingLevel ?? crash500Level;
+      const { stopLossUsd, takeProfitUsd } = structuralLevel
+        ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, structuralLevel.riskAbs, structuralLevel.rewardAbs)
         : useAtrStop
         ? computeAtrStopUsd(
             stakeForTrade, effMultiplier, analysis.volatilityPct,
@@ -1870,7 +1906,7 @@ class ServerBotEngine {
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        note: `${crash500Level ? `${crash500Level.strategy} · ${crash500Level.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker
