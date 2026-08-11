@@ -54,6 +54,7 @@ import {
   is24x7Symbol,
   isCorrelatedWithActive,
   isSymbolTradeable,
+  isTradingSymbolDisabled,
   isHighRiskWindow,
   isInTradingSession,
   isHourBlocked,
@@ -1086,6 +1087,9 @@ class ServerBotEngine {
   }): Promise<TradeLog> {
     if (this.stopped) throw new Error("Moteur arrêté — redémarrez le bot d'abord.");
     const { symbol, direction, stake, durationMinutes } = opts;
+    if (isTradingSymbolDisabled(symbol)) {
+      throw new Error(`${symbol} est exclu globalement et ne peut pas être tradé.`);
+    }
     const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
     const tradeId = `srv_admin_${Date.now()}_${symbol}`;
     const pendingLog: TradeLog = {
@@ -1380,7 +1384,7 @@ class ServerBotEngine {
     const candidateSymbols = (config.symbolMode === "all-markets"
       ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config))).map((s) => s.deriv)
       : config.symbols
-    ).filter((s) => !excluded.has(s));
+    ).filter((s) => !excluded.has(s) && !isTradingSymbolDisabled(s));
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {

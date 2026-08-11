@@ -44,6 +44,15 @@ export function isCallPutAvailable(symbol: string): boolean {
   return !symbol.startsWith("cry") && !symbol.startsWith("BOOM") && !symbol.startsWith("CRASH");
 }
 
+/** Symbols retired from every execution path after a production review.
+ * Historical journal rows remain readable, but no automatic or manual order
+ * may be created for them, even from a stale saved configuration. */
+export const DISABLED_TRADING_SYMBOLS = new Set(["CRASH1000"]);
+
+export function isTradingSymbolDisabled(symbol: string): boolean {
+  return DISABLED_TRADING_SYMBOLS.has(symbol);
+}
+
 /**
  * Returns the instrument type for a given symbol, honoring per-symbol overrides.
  * Crypto symbols default to multiplier, everything else defaults to the global
@@ -83,6 +92,7 @@ export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig)
  * tradeable" for either mode.
  */
 export function isSymbolTradeable(symbol: string, instrumentType: "binary" | "multiplier"): boolean {
+  if (isTradingSymbolDisabled(symbol)) return false;
   if (symbol.startsWith("cry")) return instrumentType === "multiplier";
   if (symbol.startsWith("BOOM") || symbol.startsWith("CRASH")) return instrumentType === "multiplier";
   if (symbol.startsWith("OTC_") && instrumentType === "multiplier") return false;

@@ -721,7 +721,6 @@ const TRADE_SYMBOLS = [
   { value: "BOOM500", label: "BOOM 500", type: "binary" },
   { value: "BOOM1000", label: "BOOM 1000", type: "binary" },
   { value: "CRASH900", label: "CRASH 900", type: "binary" },
-  { value: "CRASH1000", label: "CRASH 1000", type: "binary" },
   { value: "frxEURUSD", label: "EUR/USD", type: "binary" },
   { value: "frxEURGBP", label: "EUR/GBP", type: "binary" },
   { value: "frxUSDCAD", label: "USD/CAD", type: "binary" },

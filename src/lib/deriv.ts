@@ -73,7 +73,6 @@ export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex"
   // (100/150/200/300/50) n'existaient pas comme Multiplier malgré leur
   // présence sur le site Deriv. À confirmer via un vrai appel proposal/
   // contracts_for avant de leur faire confiance pour trader.
-  { label: "Crash 1000", deriv: "CRASH1000", market: "synthetic" },
   { label: "Crash 900", deriv: "CRASH900", market: "synthetic" },
   { label: "Crash 600", deriv: "CRASH600", market: "synthetic" },
   { label: "Crash 500", deriv: "CRASH500", market: "synthetic" },

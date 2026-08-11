@@ -617,11 +617,11 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping V2 watchlist: BOOM1000 and CRASH1000 retained after VPS audit.
+/** Scalping V2 watchlist: BOOM1000 retained after VPS audit.
  * BOOM500 retiré du scalping : WR 36.1%, -$3.14 sur 36 trades — performance
  * catastrophique en mode scalping (contrairement au preset Boom où il
  * performe bien avec TP/SL différents et levier 100x). */
-export const SCALPING_SYMBOLS = ["BOOM1000", "CRASH1000"];
+export const SCALPING_SYMBOLS = ["BOOM1000"];
 
 /**
  * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
