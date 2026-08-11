@@ -101,15 +101,15 @@ const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
 type PresetKey = "default" | "boom" | "boom900" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", crash: "Crash", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", crash: "Crash900", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
 const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: string; experimental?: boolean }> = {
   default: { market: "Forex · Métaux · Crypto", description: "Marchés configurés" },
-  boom: { market: "BOOM500 uniquement", description: "Preset Boom général" },
+  boom: { market: "BOOM500 uniquement", description: "Boom500" },
   boom900: { market: "BOOM900 uniquement", description: "Démo · validation isolée", experimental: true },
-  crash: { market: "Indices Crash", description: "Crash 1000 · Crash 900" },
+  crash: { market: "CRASH900 uniquement", description: "Crash900" },
   crash500: { market: "CRASH500 uniquement", description: "Démo · Spike SELL + Drift BUY", experimental: true },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
   liquidity: { market: "Or (XAU/USD)", description: "GOLD LIQUIDITY SWEEP", experimental: true },

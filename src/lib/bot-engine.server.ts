@@ -160,7 +160,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom500",
   boom900: "Boom900 — démo isolée",
-  crash: "Crash",
+  crash: "Crash900",
   crash500: "Crash500 — démo isolée",
   scalping: "Scalping",
   liquidity: "GOLD LIQUIDITY SWEEP",

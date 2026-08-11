@@ -54,8 +54,8 @@ interface PresetMeta {
 
 const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
   boom: {
-    label: "Preset Boom",
-    badge: "⚡ Boom",
+    label: "Boom500",
+    badge: "⚡ Boom500",
     color: "text-rose-400",
     borderColor: "border-rose-500/30",
     bgTone: "bg-rose-500/10",
@@ -68,8 +68,8 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     bgTone: "bg-sky-500/10",
   },
   crash: {
-    label: "Preset Crash",
-    badge: "📉 Crash",
+    label: "Crash900",
+    badge: "📉 Crash900",
     color: "text-purple-400",
     borderColor: "border-purple-500/30",
     bgTone: "bg-purple-500/10",

@@ -100,9 +100,9 @@ export interface OpportunitiesResponse {
 const PRESETS: Preset[] = ["boom", "boom900", "crash", "crash500", "default", "liquidity", "gold", "goldv2"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom",
+  boom: "Boom500",
   boom900: "Boom900",
-  crash: "Crash",
+  crash: "Crash900",
   crash500: "Crash500",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
