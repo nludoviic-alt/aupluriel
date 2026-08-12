@@ -1,26 +1,25 @@
 ---
 name: regression-tester
-description: Executes regression checks across strategy presets, indicator math, API routes, database schemas, and historical trade logs to ensure new features preserve exact behavior and performance baselines. Use before deploying updates or modifying trading engine logic.
+description: Active testing role aimed at intentionally trying to break the system. Executes unit, integration, regression, and edge-case tests under severe stress conditions (disconnections, stale ticks, missing candles, invalid stakes, rejected proposals, server restarts, drawdown hits, etc.).
 ---
 
-# Regression Tester
+# Regression Tester Skill
 
-A comprehensive testing suite verifying that code updates, refactors, or new features introduce zero silent regressions in trading performance, indicator calculations, or system stability.
+Rôle : Chercher **volontairement à casser le système** pour découvrir toute faille avant la mise en production.
 
-## Regression Testing Workflow
+## Scénarios de Stress & Edge Cases Obligatoires
 
-### 1. Indicator & Signal Math Verification
-- Compare signal output (`generateSignal`) against known candle test vectors.
-- Ensure RSI, EMA, MACD, Bollinger Bands, ATR, and Stochastic calculations produce identical results across client and server.
+- [ ] **Déconnexion API Deriv** : Coupure soudaine de la connexion WebSocket pendant une analyse ou un ordre.
+- [ ] **Stale Ticks & Bougies Manquantes** : Arrêt de la réception des prix pendant > 30s ou données OHLCK incomplètes.
+- [ ] **Erreurs de Paramètres** : Stake invalide, multiplicateur non supporté, devise incorrecte.
+- [ ] **Rejet de Proposal** : Refus explicite de Deriv lors de la demande de cotation.
+- [ ] **Double Signal & Conflits** : Émission de deux signaux simultanés sur le même symbole par deux stratégies différentes.
+- [ ] **Position Déjà Ouverte** : Tentative de prise de position alors que la limite max est atteinte.
+- [ ] **Limites de Risque** : Atteinte du Daily Drawdown ou de la série de pertes consécutives (Loss Streak).
+- [ ] **Redémarrage Serveur** : Crash/Restart du serveur Node avec des positions ouvertes en cours.
+- [ ] **Portfolio Mismatch** : Désynchronisation entre le solde SQLite et le solde réel de l'API Deriv.
+- [ ] **Mise en Pause & Filtres** : Stratégie passée en `PAUSED` ou bloquée par le filtre horaire / session.
+- [ ] **Shadow Mode & Multi-Preset** : Vérifier que chaque préréglage (`BOOM`, `CRASH`, `MULTI`, `SCALPING`) fonctionne indépendamment sans interférer.
 
-### 2. Historical Trade Log & Analytics Integrity
-- Verify that trade summary calculations (`summarize` in `analytics.ts`) match raw trade arrays.
-- Confirm Profit Factor ($\frac{\text{Gross Profit}}{\text{Gross Loss}}$), Expectancy, Win Rate, and Max Drawdown calculations are mathematically accurate.
-
-### 3. Replay & Backtest Determinism
-- Run `ReplayEngine.runReplay()` on historical candle sets before and after code edits.
-- Confirm trade count, entry prices, direction, and profit factor remain 100% deterministic for identical strategy versions.
-
-### 4. Code & Build Verification
-- Execute `npx tsc --noEmit` and `npx svelte-check` to guarantee clean type compilation.
-- Verify API endpoints return valid JSON structures and correct HTTP status codes.
+## Règle de Non-Régression
+> **Après chaque modification, tous les préréglages déjà fonctionnels doivent continuer de fonctionner exactement comme prévu.**

@@ -1,28 +1,29 @@
 ---
 name: risk-manager-auditor
-description: Audits risk management logic, max daily loss limits, drawdown caps, position sizing (Kelly/Fixed), consecutive loss pauses, and account balance protections in the trading engine. Use when validating risk safeguards, inspecting drawdown behaviors, or reviewing capital protection rules.
+description: Dedicated Risk Manager auditor role verifying risk per trade, position sizing, daily drawdown, loss streaks, exposure limits (global, symbol, family), max positions, cooldowns, duplicate trade protections, conflict management, NO martingale, and NO risk escalation after loss. Ensures Risk Manager contains ZERO technical indicator logic.
 ---
 
-# Risk Manager Auditor
+# Risk Manager Auditor Skill
 
-A specialized audit pass focused strictly on capital preservation, risk control mechanics, and loss prevention rules in the **Au Pluriel** engine.
+Rôle : Auditer **exclusivement** le Risk Manager et la logique de gestion du capital.
 
-## Risk Audit Checklist
+## Règle Absolue d'Isolation
+> **LE RISK MANAGER NE DOIT CONTENIR AUCUNE RÈGLE TECHNIQUE DE SIGNAL.**
+> Le Risk Manager **ne doit pas** décider d'une prise de position ou d'un dimensionnement en fonction de :
+> `RSI`, `EMA`, `MACD`, `ADX`, `pullback`, `breakout`, `tick momentum`.
+> Sa seule responsabilité est comptable, statistique et sécuritaire.
 
-### 1. Daily Loss & Max Drawdown Limits
-- Verify that `maxDailyLossUsd` and `maxDrawdownPercent` are checked **before** every trade proposal in `bot-engine.server.ts`.
-- Ensure that once a risk cap is breached, `paused_until` is updated in `bot_state` and survives server restarts.
-- Check that floating P&L of open positions is added to realized daily loss when evaluating risk thresholds (`floating + realized`).
+## Grille d'Audit du Risk Manager
 
-### 2. Position Sizing & Kelly Criterion Math
-- Confirm that position size (`stakeUsd`) never exceeds hard risk boundaries (max 5% of total account balance).
-- Validate Kelly stake calculations (`computeKellyStakeServer`) against actual `bot_trades` win rate and win/loss ratio.
-- Ensure zero-division safety when trade sample size is small ($N < 10$).
+### 1. Contrôle des Limites de Risque
+- [ ] **Risk per trade** : Vérifier que la taille de mise (`stakeUsd`) respecte strictement le % de risque accordé par trade (ex: 0.25% du solde).
+- [ ] **Position Sizing** : Vérifier que les calculs de taille de position sont bornés et sans possibilité d'overflow.
+- [ ] **Daily Drawdown** : Vérifier l'arrêt immédiat et la mise en pause (`PAUSED`) dès que le drawdown max quotidien est atteint.
+- [ ] **Loss Streak & Cooldown** : Vérifier la mise en pause temporaire après $N$ pertes consécutives.
+- [ ] **Exposition Globale, Symbole & Famille** : Vérifier que l'exposition max sur un symbole ou une famille d'actifs n'est jamais dépassée.
+- [ ] **Max Positions** : Contrôler le nombre maximum de positions ouvertes en simultané.
 
-### 3. Consecutive Loss Pause Mechanics
-- Verify that consecutive losing trades increment loss counters per preset.
-- Confirm cooldown periods dynamically scale or trigger mandatory pause states upon $N$ consecutive losses.
-
-### 4. Multiplier & TP/SL Safeguards
-- Verify that stop-loss (`stopLossPctOfStake`) and take-profit (`takeProfitPctOfStake`) parameters are correctly calculated and transmitted to Deriv API contract proposals.
-- Ensure trailing stops correctly update peak P&L without prematurely closing positions on normal market retracements.
+### 2. Protection Anti-Surprise & Intégrité
+- [ ] **Absence de Martingale** : Interdire formellement tout doublement de mise après perte.
+- [ ] **Absence d'augmentation du risque après perte** : Vérifier qu'une perte réduit ou maintient le risque, mais ne l'augmente jamais.
+- [ ] **Duplicate Protection & Conflict Manager** : S'assurer qu'aucun ordre en double ou contradictoire (CALL + PUT simultanés) ne peut être émis pour une même opportunité.
