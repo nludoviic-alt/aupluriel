@@ -13,6 +13,8 @@ import { getDb } from "@/lib/db.server";
 import { getPresetRiskMetrics } from "@/lib/risk-manager.server";
 import { getFunnelStats } from "@/lib/signal-funnel.server";
 import { getFeatureFlags } from "@/lib/feature-flags.server";
+import { getHourlyPerformanceHeatmap } from "@/lib/hourly-performance.server";
+import { getAllStrategyHealthMetrics } from "@/lib/strategy-health.server";
 import {
   getAllTimeStats,
   getBotRuntime,
@@ -101,6 +103,8 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     riskMetrics: getPresetRiskMetrics(userId, preset),
     funnelStats: getFunnelStats(preset),
     featureFlags: getFeatureFlags(),
+    hourlyPerformance: getHourlyPerformanceHeatmap(preset),
+    strategyHealth: getAllStrategyHealthMetrics(),
   };
 }
 
