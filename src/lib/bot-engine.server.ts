@@ -137,8 +137,8 @@ function engineKey(userId: number, preset: Preset): string {
 }
 
 export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"];
-/** The only strategies offered for new scans, Portfolio and Opportunities. */
-export const ACTIVE_PRESETS: readonly Preset[] = ["default", "boom", "vol75", "rb100", "crash", "crash500", "liquidity", "gold", "goldv2"];
+/** All supported system presets eligible for user activation across Auto-Trader, Piste, Portfolio and Opportunities. */
+export const ACTIVE_PRESETS: readonly Preset[] = [...ALL_PRESETS];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.

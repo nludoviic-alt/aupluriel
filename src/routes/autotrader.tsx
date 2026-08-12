@@ -123,6 +123,24 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   goldv2: { market: "Or (XAU/USD)", description: "GOLD BREAKOUT", experimental: true },
 };
 
+const PRESET_META_MAP: Record<PresetKey, { label: string; badge: string; color: string; borderColor: string; bgTone: string }> = {
+  boom: { label: "Boom500", badge: "⚡ Boom500", color: "text-rose-400", borderColor: "border-rose-500/30", bgTone: "bg-rose-500/10" },
+  boom900: { label: "Boom900", badge: "⚡ Boom900", color: "text-sky-300", borderColor: "border-sky-500/30", bgTone: "bg-sky-500/10" },
+  vol75: { label: "Volatility 75 (1s)", badge: "📈 Volatility 75 (1s)", color: "text-lime-300", borderColor: "border-lime-500/30", bgTone: "bg-lime-500/10" },
+  rb100: { label: "Range Break 100", badge: "↔ Range Break 100", color: "text-amber-300", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
+  crash: { label: "Crash900", badge: "📉 Crash900", color: "text-purple-400", borderColor: "border-purple-500/30", bgTone: "bg-purple-500/10" },
+  crash500: { label: "Crash500", badge: "📉 Crash500", color: "text-violet-300", borderColor: "border-violet-500/30", bgTone: "bg-violet-500/10" },
+  default: { label: "Preset Multi", badge: "📊 Multi", color: "text-amber-400", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
+  scalping: { label: "Preset Scalping", badge: "🎯 Scalping", color: "text-cyan-400", borderColor: "border-cyan-500/30", bgTone: "bg-cyan-500/10" },
+  liquidity: { label: "Gold Liquidity Sweep", badge: "🥇 Liquidity Sweep", color: "text-fuchsia-300", borderColor: "border-fuchsia-500/30", bgTone: "bg-fuchsia-500/10" },
+  gold: { label: "Gold Trend Pullback", badge: "🥇 Trend Pullback", color: "text-lime-300", borderColor: "border-lime-500/30", bgTone: "bg-lime-500/10" },
+  crash900: { label: "Crash900 V2", badge: "📉 Crash900 V2", color: "text-orange-400", borderColor: "border-orange-500/30", bgTone: "bg-orange-500/10" },
+  boomv2: { label: "Boom V2", badge: "⚡ Boom V2", color: "text-sky-300", borderColor: "border-sky-500/30", bgTone: "bg-sky-500/10" },
+  scalpingv2: { label: "Scalping V2", badge: "🎯 Scalping V2", color: "text-cyan-300", borderColor: "border-cyan-500/30", bgTone: "bg-cyan-500/10" },
+  liquidityv2: { label: "Liquidity V2", badge: "💧 Liquidity V2", color: "text-fuchsia-300", borderColor: "border-fuchsia-500/30", bgTone: "bg-fuchsia-500/10" },
+  goldv2: { label: "Gold Breakout", badge: "🥇 Gold Breakout", color: "text-amber-300", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
+};
+
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
   if (!symbols?.length) return fallback;
   return symbols
@@ -133,7 +151,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "vol75", "rb100", "crash", "crash500", "liquidity", "gold", "goldv2"] as const;
+const PRESET_ORDER = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -603,7 +621,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     // Load custom presets
     setCustomPresets(loadCustomPresets());
 
-    const loaded = loadConfig();
     // Pre-select a pair/direction/preset when arriving from Opportunités (?symbol=...&direction=...&preset=...&take=1)
     // TanStack Router serializes string search params as JSON (with quotes),
     // e.g. take="1" — strip the quotes so the checks below work correctly.
@@ -615,14 +632,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     const takeParam = strip(searchParams.get("take"));
     const isTakeAction = takeParam === "1" || strip(searchParams.get("action")) === "take";
 
-    if (presetParam && (PRESET_ORDER as readonly PresetKey[]).includes(presetParam)) {
+    const targetPreset: PresetKey = presetParam && presetParam in presetLabels ? presetParam : "default";
+    if (presetParam && presetParam in presetLabels) {
       setSelectedPreset(presetParam);
     }
+    const loaded = loadConfig(targetPreset);
 
     if (pair && SYMBOLS.some((s) => s.deriv === pair)) {
       if (!loaded.symbols.includes(pair)) {
         loaded.symbols = [...loaded.symbols, pair];
-        saveConfig(loaded, presetParam || selectedPreset);
+        saveConfig(loaded, targetPreset);
       }
       setForceSymbol(pair);
       if (direction === "CALL" || direction === "PUT" || direction === "MULTUP" || direction === "MULTDOWN") {
@@ -632,8 +651,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       setMobileTab("control");
       const label = SYMBOLS.find((s) => s.deriv === pair)?.label ?? pair;
       if (isTakeAction) {
-        const presetStake = presetParam ? loadPresetStake(presetParam) : null;
-        const stake = presetParam ? (guardForManualPreset(presetParam)?.stakeUsd ?? presetStake ?? loaded.stakeUsd) : (presetStake ?? loaded.stakeUsd);
+        const presetStake = loadPresetStake(targetPreset);
+        const stake = guardForManualPreset(targetPreset)?.stakeUsd ?? presetStake ?? loaded.stakeUsd;
         setForceStake(stake);
         pendingTakeSymbolRef.current = pair; // resolved into a full prepareManualSignal() call once opportunities load, see effect below
         toast.success(`⚡ Trade Opportunité : ${label} (${direction || "CALL"}) prêt à $${stake} ! Vérifiez et cliquez Exécuter.`);
@@ -1126,82 +1145,45 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             <span className="hidden text-xs font-bold text-muted-foreground sm:block font-mono">P&L du jour</span>
           </div>
 
-          {/* Mobile: 2-column grid */}
-          <div className="md:hidden grid grid-cols-2 gap-2.5">
+          {/* Mobile & Desktop Preset Cards - Portfolio 1:1 Design */}
+          <div className={cn(
+            "grid gap-3 grid-cols-2",
+            shownPresets.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4"
+          )}>
             {shownPresets.map((p) => {
               const st = cloud?.presets?.[p];
               const pnlVal = st?.todayPnl ?? 0;
               const isOnline = !!st?.enabled && !!st?.running;
               const isSelected = selectedPreset === p;
+              const meta = PRESET_META_MAP[p];
+              const configuredMarkets = formatConfiguredMarkets(st?.savedConfig?.symbols, PRESET_PRESENTATION[p].market);
 
-              const accentStyles = {
-                default: {
-                  active: "border-purple-500/60 bg-purple-500/10 ring-1 ring-purple-500/50",
-                  idle: "border-purple-500/15 bg-purple-500/[0.03]",
-                },
-                boom: {
-                  active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
-                  idle: "border-orange-500/15 bg-orange-500/[0.03]",
-                },
-                boom900: {
-                  active: "border-sky-500/60 bg-sky-500/10 ring-1 ring-sky-500/50",
-                  idle: "border-sky-500/15 bg-sky-500/[0.03]",
-                },
-                vol75: { active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50", idle: "border-cyan-500/15 bg-cyan-500/[0.03]" },
-                rb100: { active: "border-indigo-500/60 bg-indigo-500/10 ring-1 ring-indigo-500/50", idle: "border-indigo-500/15 bg-indigo-500/[0.03]" },
-                crash: {
-                  active: "border-[#ff9a6c]/60 bg-[#ff9a6c]/10 ring-1 ring-[#ff9a6c]/50",
-                  idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03]",
-                },
-                crash500: { active: "border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/50", idle: "border-violet-500/15 bg-violet-500/[0.03]" },
-                scalping: {
-                  active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50",
-                  idle: "border-cyan-500/15 bg-cyan-500/[0.03]",
-                },
-                liquidity: {
-                  active: "border-fuchsia-500/60 bg-fuchsia-500/10 ring-1 ring-fuchsia-500/50",
-                  idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03]",
-                },
-                gold: {
-                  active: "border-lime-500/60 bg-lime-500/10 ring-1 ring-lime-500/50",
-                  idle: "border-lime-500/15 bg-lime-500/[0.03]",
-                },
-                crash900: {
-                  active: "border-orange-500/60 bg-orange-500/10 ring-1 ring-orange-500/50",
-                  idle: "border-orange-500/15 bg-orange-500/[0.03]",
-                },
-                boomv2: { active: "border-sky-500/60 bg-sky-500/10 ring-1 ring-sky-500/50", idle: "border-sky-500/15 bg-sky-500/[0.03]" },
-                scalpingv2: { active: "border-cyan-500/60 bg-cyan-500/10 ring-1 ring-cyan-500/50", idle: "border-cyan-500/15 bg-cyan-500/[0.03]" },
-                liquidityv2: { active: "border-fuchsia-500/60 bg-fuchsia-500/10 ring-1 ring-fuchsia-500/50", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03]" },
-                goldv2: { active: "border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/50", idle: "border-amber-500/15 bg-amber-500/[0.03]" },
-              } as const;
+              const closedTrades = (st?.trades ?? []).filter((t) => t.status === "won" || t.status === "lost");
+              const todayWon = (st?.trades ?? [])
+                .filter((t) => t.status === "won" || t.profit > 0)
+                .reduce((acc, t) => acc + t.profit, 0);
+              const winRate = closedTrades.length > 0
+                ? ((closedTrades.filter((t) => t.status === "won" || t.profit > 0).length / closedTrades.length) * 100)
+                : (st?.allTimeStats?.winRate ?? 0);
 
               return (
                 <button
                   key={p}
                   onClick={() => selectPresetView(p)}
                   className={cn(
-                    "relative flex w-full flex-col justify-between rounded-2xl border p-3 text-left transition-all duration-200 touch-manipulation active:scale-[0.98] min-h-[92px] space-y-2",
+                    "rounded-xl border p-4 flex flex-col justify-between gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer",
+                    meta.borderColor,
                     isSelected
-                      ? accentStyles[p].active
-                      : pnlVal > 0
-                        ? "border-emerald-500/30 bg-emerald-500/[0.04]"
-                        : pnlVal < 0
-                          ? "border-rose-500/30 bg-rose-500/[0.04]"
-                          : accentStyles[p].idle
+                      ? cn("ring-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]", meta.borderColor, meta.bgTone)
+                      : "hover:bg-white/[0.04] hover:border-white/20 opacity-85 hover:opacity-100"
                   )}
                 >
-                  {/* Top Bar: Title + Online Dot / Test Badge */}
-                  <div className="flex items-start justify-between gap-1 w-full">
-                    <span className="font-black text-xs uppercase tracking-wider text-foreground truncate">
-                      {presetLabels[p]}
+                  {/* Top: Pill Badge + Status Dot & Trades Count */}
+                  <div className="flex items-start justify-between gap-2 w-full">
+                    <span className={cn("text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shadow-sm shrink-0 whitespace-nowrap", meta.borderColor, meta.bgTone, meta.color)}>
+                      {meta.badge}
                     </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {PRESET_PRESENTATION[p].experimental && (
-                        <span className="rounded bg-cyan-500/20 border border-cyan-500/40 px-1 py-0.2 text-[8px] font-black uppercase text-cyan-300">
-                          TEST
-                        </span>
-                      )}
+                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                       <span
                         className={cn(
                           "h-2 w-2 rounded-full",
@@ -1209,93 +1191,41 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"
                             : "bg-white/20"
                         )}
-                        title={isOnline ? "En cours d'exécution" : "Inactif"}
+                        title={isOnline ? "Bot actif" : "Bot inactif"}
                       />
+                      <span className="text-[10px] font-mono text-muted-foreground font-bold">{st?.todayCount ?? 0} trades</span>
                     </div>
                   </div>
 
-                  {/* Subtitle: Market */}
-                  <div className="text-[10px] font-semibold text-muted-foreground truncate leading-tight">
-                    {PRESET_PRESENTATION[p].market}
+                  {/* Center: P&L Net du Jour */}
+                  <div>
+                    <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">P&L du Jour</div>
+                    <div className={cn("text-xl font-black font-mono mt-0.5", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                      {pnlVal >= 0 ? `+$${pnlVal.toFixed(2)}` : `-$${Math.abs(pnlVal).toFixed(2)}`}
+                    </div>
                   </div>
 
-                  {/* Bottom Bar: P&L Today */}
-                  <div className="flex items-end justify-between w-full pt-1 border-t border-white/5">
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">P&L Jour</span>
-                    <span
-                      className={cn(
-                        "text-xs font-mono font-black",
-                        pnlVal > 0 ? "text-emerald-400" : pnlVal < 0 ? "text-rose-400" : "text-muted-foreground"
-                      )}
-                    >
-                      {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
-                    </span>
+                  {/* Middle Stats Bar: Gagné & Win Rate */}
+                  <div className="pt-2 border-t border-white/5 grid grid-cols-2 gap-2 text-[10px] font-mono">
+                    <div>
+                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">Gagné : </span>
+                      <span className="text-emerald-400 font-bold">+${todayWon.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">Win Rate : </span>
+                      <span className="text-foreground font-bold">{winRate.toFixed(0)}%</span>
+                    </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
 
-          {/* Desktop: original grid */}
-          <div className={cn(
-            "hidden md:grid gap-2.5 grid-cols-2",
-            shownPresets.length === 3 ? "md:grid-cols-3" : "md:grid-cols-4"
-          )}>
-            {shownPresets.map((p) => {
-              const st = cloud?.presets?.[p];
-              const pnlVal = st?.todayPnl ?? 0;
-              const configuredMarkets = formatConfiguredMarkets(st?.savedConfig?.symbols, PRESET_PRESENTATION[p].description);
-              const isOnline = !!st?.enabled && !!st?.running;
-              const styles = {
-                default: { active: "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.15)]", idle: "border-purple-500/15 bg-purple-500/[0.03] hover:bg-purple-500/[0.06]" },
-                boom: { active: "border-orange-500/50 bg-orange-500/10 shadow-[0_0_20px_rgba(249,115,22,0.15)]", idle: "border-orange-500/15 bg-orange-500/[0.03] hover:bg-orange-500/[0.06]" },
-                boom900: { active: "border-sky-500/50 bg-sky-500/10 shadow-[0_0_20px_rgba(14,165,233,0.15)]", idle: "border-sky-500/15 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]" },
-                vol75: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
-                rb100: { active: "border-indigo-500/50 bg-indigo-500/10 shadow-[0_0_20px_rgba(99,102,241,0.15)]", idle: "border-indigo-500/15 bg-indigo-500/[0.03] hover:bg-indigo-500/[0.06]" },
-                crash: { active: "border-[#ff9a6c]/50 bg-[#ff9a6c]/10 shadow-[0_0_20px_rgba(255,154,108,0.15)]", idle: "border-[#ff9a6c]/15 bg-[#ff9a6c]/[0.03] hover:bg-[#ff9a6c]/[0.06]" },
-                crash500: { active: "border-violet-500/50 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.15)]", idle: "border-violet-500/15 bg-violet-500/[0.03] hover:bg-violet-500/[0.06]" },
-                scalping: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
-                liquidity: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03] hover:bg-fuchsia-500/[0.06]" },
-                gold: { active: "border-lime-500/50 bg-lime-500/10 shadow-[0_0_20px_rgba(132,204,22,0.15)]", idle: "border-lime-500/15 bg-lime-500/[0.03] hover:bg-lime-500/[0.06]" },
-                crash900: { active: "border-orange-500 bg-orange-500/20 shadow-[0_0_30px_rgba(249,115,22,0.4)]", idle: "border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/15" },
-                boomv2: { active: "border-sky-500/50 bg-sky-500/10 shadow-[0_0_20px_rgba(14,165,233,0.15)]", idle: "border-sky-500/15 bg-sky-500/[0.03] hover:bg-sky-500/[0.06]" },
-                scalpingv2: { active: "border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.15)]", idle: "border-cyan-500/15 bg-cyan-500/[0.03] hover:bg-cyan-500/[0.06]" },
-                liquidityv2: { active: "border-fuchsia-500/50 bg-fuchsia-500/10 shadow-[0_0_20px_rgba(217,70,239,0.15)]", idle: "border-fuchsia-500/15 bg-fuchsia-500/[0.03] hover:bg-fuchsia-500/[0.06]" },
-                goldv2: { active: "border-amber-500/50 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)]", idle: "border-amber-500/15 bg-amber-500/[0.03] hover:bg-amber-500/[0.06]" },
-              } as const;
-              return (
-                <button
-                  key={p}
-                  onClick={() => selectPresetView(p)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-2xl border p-3.5 text-left transition-all duration-200",
-                    selectedPreset === p
-                      ? styles[p].active
-                      : pnlVal > 0
-                        ? "border-up/30 bg-up/5 hover:bg-up/10"
-                        : pnlVal < 0
-                          ? "border-down/30 bg-down/5 hover:bg-down/10"
-                          : styles[p].idle
-                  )}
-                >
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-foreground">
-                      {presetLabels[p]}
-                      <span className={cn("h-2 w-2 rounded-full", isOnline ? "bg-up animate-pulse shadow-[0_0_8px_var(--up)]" : "bg-muted-foreground/40")} />
+                  {/* Bottom Bar: Indice en bas + Statut Actif / Prêt */}
+                  <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-2 text-[10px] font-mono">
+                    <span className="font-semibold text-muted-foreground truncate" title={configuredMarkets}>
+                      {configuredMarkets}
                     </span>
-                    {PRESET_PRESENTATION[p].experimental && (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan-300">
-                        <FlaskConical className="h-2.5 w-2.5" /> Test
-                      </span>
-                    )}
+                    <span className={cn("font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-[9px] shrink-0", isOnline ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" : "bg-white/5 text-muted-foreground border border-white/10")}>
+                      {isOnline ? "Actif" : "Prêt"}
+                    </span>
                   </div>
-                  <span className="text-xs font-semibold text-muted-foreground">{PRESET_PRESENTATION[p].market}</span>
-                  <span className="text-[11px] text-muted-foreground/75 truncate w-full" title={configuredMarkets}>
-                    {p === "default" || p === "scalping" || p === "liquidity" || p === "gold" ? PRESET_PRESENTATION[p].description : configuredMarkets}
-                  </span>
-                  <span className={cn("mt-1.5 text-sm font-black font-mono-tabular", pnlVal > 0 ? "text-up" : pnlVal < 0 ? "text-down" : "text-muted-foreground")}>
-                    {pnlVal >= 0 ? "+" : ""}${pnlVal.toFixed(2)}
-                  </span>
                 </button>
               );
             })}

@@ -211,62 +211,62 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   excludedSymbols: "Symboles exclus",
 };
 
-const presetLabels = { default: "Multi", boom: "Boom500", crash: "Crash900", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2" } as const;
+const presetLabels = {
+  default: "Multi",
+  boom: "Boom500",
+  boom900: "Boom900",
+  vol75: "Volatility 75 (1s)",
+  rb100: "Range Break 100",
+  crash: "Crash900",
+  crash500: "Crash500",
+  scalping: "Scalping",
+  liquidity: "GOLD LIQUIDITY SWEEP",
+  gold: "GOLD TREND PULLBACK",
+  crash900: "Crash900 V2",
+  boomv2: "Boom V2",
+  scalpingv2: "Scalping V2",
+  liquidityv2: "Liquidity V2",
+  goldv2: "GOLD BREAKOUT",
+} as const;
 
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
-const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
-// Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts (can't import a
-// *.server.ts module from a client route) — the API rejects more than this,
-// so the UI must not let you select more either. No artificial cap anymore:
-// all presets can be shown on mobile.
+type PresetKey = keyof typeof presetLabels;
+
+const PRESET_KEYS: readonly PresetKey[] = [
+  "default",
+  "boom",
+  "boom900",
+  "vol75",
+  "rb100",
+  "crash",
+  "crash500",
+  "scalping",
+  "liquidity",
+  "gold",
+  "crash900",
+  "boomv2",
+  "scalpingv2",
+  "liquidityv2",
+  "goldv2",
+];
+
 const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
-/** Static class strings only: Tailwind's JIT scanner can't see names built at
- * runtime like `border-${accent}-500/40`, which would silently emit no CSS in
- * the production build. */
 const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: string; desc: string }> = {
-  default: {
-    on: "border-violet-500/40 bg-violet-500/[0.10]",
-    dot: "bg-violet-500",
-    icon: "🌐",
-    desc: "Forex, or, crypto, indices",
-  },
-  boom: {
-    on: "border-orange-500/40 bg-orange-500/[0.10]",
-    dot: "bg-orange-500",
-    icon: "🚀",
-    desc: "Boom 1000 / 500 / 900",
-  },
-  crash: {
-    on: "border-yellow-500/40 bg-yellow-500/[0.10]",
-    dot: "bg-yellow-500",
-    icon: "📉",
-    desc: "Crash 1000 / 500 / 600 / 900",
-  },
-  scalping: {
-    on: "border-cyan-500/40 bg-cyan-500/[0.10]",
-    dot: "bg-cyan-500",
-    icon: "⏱️",
-    desc: "Boom 500 · M1/M5 · démo",
-  },
-  liquidity: {
-    on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]",
-    dot: "bg-fuchsia-500",
-    icon: "↩",
-    desc: "Or · Nasdaq · M15 · démo",
-  },
-  gold: {
-    on: "border-yellow-500/40 bg-yellow-500/[0.10]",
-    dot: "bg-yellow-500",
-    icon: "🥇",
-    desc: "Or (XAU/USD) · M15 · trend-following · démo",
-  },
-  crash900: {
-    on: "border-orange-500/40 bg-orange-500/[0.10]",
-    dot: "bg-orange-500",
-    icon: "📉",
-    desc: "Crash 900 · V2",
-  },
+  default: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "🌐", desc: "Forex, Or, Crypto" },
+  boom: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "🚀", desc: "Boom 500 Spike & Drift" },
+  boom900: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom 900 Démo Isolée" },
+  vol75: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "📈", desc: "Volatility 75 (1s) Trend Pullback" },
+  rb100: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "↔", desc: "Range Break 100 Revers. & Cassure" },
+  crash: { on: "border-rose-500/40 bg-rose-500/[0.10]", dot: "bg-rose-500", icon: "📉", desc: "Crash 900 Principal" },
+  crash500: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "📉", desc: "Crash 500 Démo Indépendant" },
+  scalping: { on: "border-cyan-500/40 bg-cyan-500/[0.10]", dot: "bg-cyan-500", icon: "⏱️", desc: "Boom 500 Scalping M1/M5" },
+  liquidity: { on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]", dot: "bg-fuchsia-500", icon: "↩", desc: "Or Liquidity Sweep" },
+  gold: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "🥇", desc: "Or Trend Pullback" },
+  crash900: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "📉", desc: "Crash 900 V2" },
+  boomv2: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom V2 Exposition Contrôlée" },
+  scalpingv2: { on: "border-indigo-500/40 bg-indigo-500/[0.10]", dot: "bg-indigo-500", icon: "🎯", desc: "Scalping V2 Spike Hunter" },
+  liquidityv2: { on: "border-purple-500/40 bg-purple-500/[0.10]", dot: "bg-purple-500", icon: "💧", desc: "Liquidity V2 Sweep M15" },
+  goldv2: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "🥇", desc: "Or Breakout Session" },
 };
 
 const MOBILE_CARD_TINTS = [

@@ -42,7 +42,7 @@ export const Route = createFileRoute("/portfolio")({
 });
 
 type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
-const PORTFOLIO_PRESETS = ["default", "boom", "vol75", "rb100", "crash", "crash500", "liquidity", "gold", "goldv2"] as const;
+const PORTFOLIO_PRESETS = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 interface PresetMeta {
   label: string;
@@ -69,17 +69,17 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
   },
   vol75: {
     label: "Volatility 75 (1s)",
-    badge: "📈 Vol75 (1s)",
-    color: "text-cyan-300",
-    borderColor: "border-cyan-500/30",
-    bgTone: "bg-cyan-500/10",
+    badge: "📈 Volatility 75 (1s)",
+    color: "text-lime-300",
+    borderColor: "border-lime-500/30",
+    bgTone: "bg-lime-500/10",
   },
   rb100: {
     label: "Range Break 100",
-    badge: "↔ RB100",
-    color: "text-indigo-300",
-    borderColor: "border-indigo-500/30",
-    bgTone: "bg-indigo-500/10",
+    badge: "↔ Range Break 100",
+    color: "text-amber-300",
+    borderColor: "border-amber-500/30",
+    bgTone: "bg-amber-500/10",
   },
   crash: {
     label: "Crash900",
@@ -359,11 +359,10 @@ export default function PortfolioPage() {
     return { count: closed.length, wins, losses, winRate, netPnl, totalWon, totalLost };
   }, [filteredBotTrades]);
 
-  // ── Compute Preset Breakdown ──
-  // The Portfolio is the permanent dashboard for the official preset set.
-  // Do not hide a card merely because a transient /api/bot request failed or
-  // because that engine is currently stopped: its zero-trade state matters.
-  const presetStats = ([...PORTFOLIO_PRESETS, "manual"] as const).map((key) => {
+  const keysToDisplay = activePresets
+    ? [...PORTFOLIO_PRESETS.filter((p) => activePresets.has(p)), "manual"]
+    : [...PORTFOLIO_PRESETS, "manual"];
+  const presetStats = keysToDisplay.map((key) => {
     const matching = visibleBotTrades.filter((t) => (key === "manual" ? !t.preset : t.preset === key));
     const closed = matching.filter((t) => t.status === "won" || t.status === "lost");
     const wins = closed.filter((t) => t.status === "won" || t.profit > 0).length;

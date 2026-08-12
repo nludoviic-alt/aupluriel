@@ -1,6 +1,6 @@
 import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
-import { loadBotConfig, type Preset } from "./bot-engine.server";
+import { getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer, fetchRecentTicksServer } from "./deriv.server";
@@ -553,13 +553,18 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
   pendingBuildPromise = (async () => {
     try {
       const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
-      const activePresets = new Set(
+      const activeBotPresets = new Set(
         (getDb()
           .prepare("SELECT preset FROM bot_state WHERE user_id = ? AND enabled = 1")
           .all(userId) as Array<{ preset: Preset }>)
           .map((row) => row.preset),
       );
-      const jobs = PRESETS.flatMap((preset) => {
+      const activePresets = activeBotPresets.size > 0
+        ? activeBotPresets
+        : new Set(getVisiblePresets(userId));
+      const targetPresets = PRESETS.filter((preset) => activePresets.has(preset));
+
+      const jobs = targetPresets.flatMap((preset) => {
         const config = configs.get(preset)!;
         const symbols = Array.isArray(config.symbols) ? config.symbols : [];
         return symbols.map((symbol) => ({ preset, symbol, config }));
@@ -597,7 +602,7 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
         .map((opportunity) => ({ ...opportunity, active: activePresets.has(opportunity.preset) }))
         .sort(sortOpportunities);
 
-      const avoidList: AvoidItem[] = PRESETS.flatMap((preset) => {
+      const avoidList: AvoidItem[] = targetPresets.flatMap((preset) => {
         const config = configs.get(preset)!;
         return (config.excludedSymbols ?? []).map((symbol) => {
           const meta = SYMBOL_LABELS.get(symbol);
@@ -621,7 +626,7 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
           take: opportunities.filter((o) => o.decision === "take").length,
           wait: opportunities.filter((o) => o.decision === "wait").length,
           avoid: opportunities.filter((o) => o.decision === "avoid").length + avoidList.length,
-          presets: PRESETS.length,
+          presets: targetPresets.length,
         },
       };
 

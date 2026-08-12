@@ -40,8 +40,7 @@ export const Route = createFileRoute("/api/admin/bot")({
                     COALESCE(us.auto_backtest_enabled, 0) AS autoBacktestEnabled
              FROM users u
              LEFT JOIN bot_state bs ON bs.user_id = u.id
-             LEFT JOIN user_settings us ON us.user_id = u.id
-             WHERE u.is_admin = 0`,
+             LEFT JOIN user_settings us ON us.user_id = u.id`,
           )
           .all() as { userId: number; preset: Preset | null; enabled: number | null; config: string | null; hasToken: number; autoBacktestEnabled: number }[];
 
