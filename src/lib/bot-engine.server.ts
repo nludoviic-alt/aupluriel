@@ -2431,7 +2431,18 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
   const needsDeriv = config.enableDeriv ?? true;
 
   if (needsDeriv && !derivToken) {
-    throw new Error("Deriv est activé mais aucun token enregistré — va dans Paramètres ou désactive Deriv.");
+    if (config.mode === "demo") {
+      const adminTokenRow = getDb().prepare(
+        "SELECT us.deriv_token FROM user_settings us JOIN users u ON u.id = us.user_id WHERE u.is_admin = 1 AND us.deriv_token IS NOT NULL AND us.deriv_token != '' LIMIT 1"
+      ).get() as { deriv_token?: string } | undefined;
+      if (adminTokenRow?.deriv_token) {
+        derivToken = adminTokenRow.deriv_token;
+      }
+    }
+  }
+
+  if (needsDeriv && !derivToken) {
+    throw new Error("Deriv est activé mais aucun token enregistré — renseigne ton Token Deriv dans les Paramètres.");
   }
 
   getDb().prepare(`

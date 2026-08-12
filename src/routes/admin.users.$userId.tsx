@@ -837,14 +837,13 @@ function BotStatusCell({ status, busy, onToggle }: { status?: BotStatus; busy: b
   const running = status?.running ?? false;
   const enabled = status?.enabled ?? false;
   const hasToken = status?.hasToken ?? false;
-  const noToken = !enabled && !hasToken;
   return (
     <div className="flex items-center gap-2.5">
       <span className={cn("flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider", running ? "bg-gradient-to-r from-emerald-500/20 to-emerald-600/10 text-emerald-400 border border-emerald-500/30" : enabled ? "bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30" : "bg-gradient-to-r from-slate-500/20 to-slate-600/10 text-slate-400 border border-slate-500/30")}>
         <span className={cn("h-1.5 w-1.5 rounded-full", running ? "bg-emerald-400 animate-pulse" : enabled ? "bg-amber-400" : "bg-slate-400")} />
         {running ? "live" : enabled ? "en attente" : "arrêté"}
       </span>
-      <Switch checked={enabled} disabled={busy || noToken} onCheckedChange={(v) => onToggle(v ? "start" : "stop")} title={noToken ? "Aucun token Deriv" : undefined} />
+      <Switch checked={enabled} disabled={busy} onCheckedChange={(v) => onToggle(v ? "start" : "stop")} title={!hasToken ? "Mode démo (Token système)" : undefined} />
     </div>
   );
 }

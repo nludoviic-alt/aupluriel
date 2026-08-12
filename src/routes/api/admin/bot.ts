@@ -35,38 +35,49 @@ export const Route = createFileRoute("/api/admin/bot")({
         const admin = await requireAdmin(request);
         if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
 
-        const rows = getDb()
+        const userRows = getDb()
           .prepare(
-            `SELECT u.id AS userId, bs.preset AS preset, bs.enabled AS enabled, bs.config AS config,
+            `SELECT u.id AS userId,
                     CASE WHEN us.deriv_token IS NOT NULL AND us.deriv_token != '' THEN 1 ELSE 0 END AS hasToken,
                     COALESCE(us.auto_backtest_enabled, 0) AS autoBacktestEnabled
              FROM users u
-             LEFT JOIN bot_state bs ON bs.user_id = u.id
              LEFT JOIN user_settings us ON us.user_id = u.id`,
           )
-          .all() as { userId: number; preset: Preset | null; enabled: number | null; config: string | null; hasToken: number; autoBacktestEnabled: number }[];
+          .all() as { userId: number; hasToken: number; autoBacktestEnabled: number }[];
 
-        const statuses = rows
-          .filter((r) => r.preset !== null) // LEFT JOIN: users who never started any bot have no bot_state row
-          .map((r) => {
-            const runtime = getBotRuntime(r.userId, r.preset!);
+        const botStateRows = getDb()
+          .prepare(`SELECT user_id AS userId, preset, enabled, config FROM bot_state`)
+          .all() as { userId: number; preset: Preset; enabled: number; config: string }[];
+
+        const botStateMap = new Map<string, { enabled: boolean; config: string }>();
+        for (const b of botStateRows) {
+          botStateMap.set(`${b.userId}:${b.preset}`, { enabled: !!b.enabled, config: b.config });
+        }
+
+        const statuses = [];
+        for (const u of userRows) {
+          for (const preset of ACTIVE_PRESETS) {
+            const key = `${u.userId}:${preset}`;
+            const bs = botStateMap.get(key);
+            const runtime = getBotRuntime(u.userId, preset);
             let mode: "demo" | "live" | null = null;
-            if (r.config) {
+            if (bs?.config) {
               try {
-                mode = (JSON.parse(r.config).mode === "live") ? "live" : "demo";
-              } catch { /* config malformé — mode inconnu, on n'affiche rien plutôt que de deviner. */ }
+                mode = (JSON.parse(bs.config).mode === "live") ? "live" : "demo";
+              } catch { /* config malformé */ }
             }
-            return {
-              userId: r.userId,
-              preset: r.preset,
-              enabled: !!r.enabled,
+            statuses.push({
+              userId: u.userId,
+              preset,
+              enabled: bs?.enabled ?? false,
               running: runtime.running,
-              hasToken: !!r.hasToken,
+              hasToken: !!u.hasToken,
               mode,
               lastError: runtime.lastError,
-              autoBacktestEnabled: !!r.autoBacktestEnabled,
-            };
-          });
+              autoBacktestEnabled: !!u.autoBacktestEnabled,
+            });
+          }
+        }
 
         return json({ statuses });
       },
