@@ -28,7 +28,7 @@ import {
   type Preset,
 } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET } from "@/lib/autotrader";
 
 const PRESETS: Preset[] = [...ACTIVE_PRESETS];
 const REPLACED_V1: Partial<Record<Preset, Preset>> = {
@@ -45,6 +45,8 @@ function isGoldPreset(preset: Preset): boolean {
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
   if (preset === "boom900") return BOOM900_PRESET;
+  if (preset === "vol75") return VOL75_PRESET;
+  if (preset === "rb100") return RB100_PRESET;
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "crash500") return CRASH500_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
@@ -162,7 +164,7 @@ export const Route = createFileRoute("/api/bot")({
           // (see SCALPING_PRESET's header comment), forced back to demo
           // server-side regardless of what's requested, not just defaulted
           // client-side where a stale draft could slip through.
-          const mode = preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : requested.mode === "live" ? "live" : "demo";
+          const mode = preset === "boom" || preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
@@ -208,7 +210,7 @@ export const Route = createFileRoute("/api/bot")({
           // client could still send "simulation" even though TradingMode no
           // longer allows it at compile time.
           if ((next.mode as string) === "simulation") next.mode = "demo";
-          if (preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2")) next.mode = "demo"; // experimental presets never use real money
+          if (preset === "boom" || preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2")) next.mode = "demo"; // experimental presets never use real money
           if (isGoldPreset(preset)) {
             next.newsFilter = true;
             next.broker = "oanda";
@@ -270,7 +272,7 @@ export const Route = createFileRoute("/api/bot")({
             // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET/GOLD_PRESET; the "start" and
             // "update" actions and /api/admin/user-config's resetToCanonical all gate
             // these presets the same way, this one had only checked scalping.
-            mode: preset === "boom" || preset === "boom900" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : mode,
+            mode: preset === "boom" || preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,
