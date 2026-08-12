@@ -118,7 +118,7 @@ export class ReplayEngine {
       const entryCandle = candles[i];
       const exitCandle = candles[Math.min(i + 5, candles.length - 1)];
 
-      const direction = signal.direction === "CALL" ? "CALL" : "PUT";
+      const direction = (signal.direction as string) === "BUY" || (signal.direction as string) === "CALL" ? "CALL" : "PUT";
       const won =
         direction === "CALL"
           ? exitCandle.close > entryCandle.close
