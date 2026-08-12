@@ -41,7 +41,7 @@ import { generateBoom500Signals } from "./boom500-signal.server";
 import { generateVol75Signal } from "./vol75-signal.server";
 import { generateRb100Signal } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
-import { getPresetRiskMetrics } from "./risk-manager.server";
+import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -1801,7 +1801,7 @@ class ServerBotEngine {
       // binary symbol, which keep reading the global config fields below.
       const multiplierOverride = isMultiplier ? getMultiplierOverride(symbol) : undefined;
       const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
-      const effectiveMinConfidence = config.minConfidence + riskMetrics.minConfidenceAdjustment;
+      let effectiveMinConfidence = config.minConfidence + riskMetrics.minConfidenceAdjustment;
       const thresholds = {
         minConfidence: effectiveMinConfidence,
         maxConfidence: config.maxConfidence,
@@ -1832,11 +1832,29 @@ class ServerBotEngine {
       // it for TypeScript's benefit, it can never actually continue here.
       if (!analysis.direction) continue;
 
-      // ── À partir d'ici : le conseiller dit "à prendre" — reste à vérifier
-      // qu'on PEUT exécuter maintenant (position corrélée, spread, plafond
-      // dynamique de confiance basé sur le payout, mise, durée, payout). Ce
-      // sont des contraintes d'exécution/compte, pas des questions de
-      // "est-ce une bonne opportunité". ──
+      // ── À partir d'ici : le conseiller dit "à prendre" — le Risk Manager V3 vérifie l'exposition et le risque monétaire ──
+      const riskCheck = evaluateRiskCheck({
+        userId: this.userId,
+        preset: this.preset,
+        strategyId: `${this.preset.toUpperCase()}_ENGINE`,
+        symbol,
+        direction: analysis.direction,
+        confidenceScore: analysis.confidence,
+        currentEquity: currentBalance || 1000,
+        currentBalance: currentBalance || 1000,
+      });
+
+      if (riskCheck.decision === "REJECTED") {
+        scanResults.push({
+          symbol,
+          action: "risk-pause",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          note: `Risk Manager [${riskCheck.reason}]: ${riskCheck.explanation}`,
+        });
+        continue;
+      }
+
       if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
         continue;
@@ -1873,14 +1891,13 @@ class ServerBotEngine {
       // durcissement optionnel AU-DESSUS du seuil déjà validé par le
       // conseiller (Math.max) — jamais plus permissif, sinon le bot pourrait
       // trader en dessous de ce que le conseiller aurait classé "à prendre".
-      let effectiveMinConfidence = config.minConfidence;
       if (config.dynamicMinConfidence && !isMultiplier && !useAltBroker) {
         // Pre-fetch payout to calibrate confidence threshold
         const prePayout = await this.conn.getPayoutRatio({
           symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: Math.max(analysis.suggestedDuration, minContractMinutes(symbol)),
         }).catch(() => null);
         if (prePayout !== null) {
-          effectiveMinConfidence = Math.max(config.minConfidence, computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence));
+          effectiveMinConfidence = Math.max(effectiveMinConfidence, computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence));
         }
       }
       if (analysis.confidence < effectiveMinConfidence) {
