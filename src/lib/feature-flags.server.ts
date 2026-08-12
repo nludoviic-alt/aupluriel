@@ -16,6 +16,18 @@ export interface FeatureFlags {
   RECONCILIATION_ENABLED: boolean;
   CIRCUIT_BREAKER_ENABLED: boolean;
   OBSERVATION_MODE: boolean;
+  // --- New P1-P7 Quant Architecture Flags ---
+  PERFORMANCE_DRIFT_ENABLED: boolean;
+  AUTO_SHADOW_ENABLED: boolean;
+  NEWS_GUARD_ENABLED: boolean;
+  KELLY_RESEARCH_ENABLED: boolean;
+  KELLY_LIVE_ENABLED: boolean; // Strictly FALSE
+  CROSS_ACCOUNT_EXPOSURE_ENABLED: boolean;
+  REPLAY_ENGINE_ENABLED: boolean;
+  WALK_FORWARD_ENABLED: boolean;
+  RESTART_RECOVERY_ENABLED: boolean;
+  CONFIG_REGISTRY_ENABLED: boolean;
+  CHANGE_IMPACT_TRACKER_ENABLED: boolean;
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
@@ -30,6 +42,18 @@ export const FEATURE_FLAGS: FeatureFlags = {
   RECONCILIATION_ENABLED: true,
   CIRCUIT_BREAKER_ENABLED: true,
   OBSERVATION_MODE: true,
+  // --- New P1-P7 Quant Architecture Flags ---
+  PERFORMANCE_DRIFT_ENABLED: true,
+  AUTO_SHADOW_ENABLED: true,
+  NEWS_GUARD_ENABLED: false, // Gold/Forex only
+  KELLY_RESEARCH_ENABLED: true,
+  KELLY_LIVE_ENABLED: false, // Strictly FALSE
+  CROSS_ACCOUNT_EXPOSURE_ENABLED: true, // Observation Mode
+  REPLAY_ENGINE_ENABLED: true,
+  WALK_FORWARD_ENABLED: true,
+  RESTART_RECOVERY_ENABLED: true,
+  CONFIG_REGISTRY_ENABLED: true,
+  CHANGE_IMPACT_TRACKER_ENABLED: true,
 };
 
 export function getFeatureFlags(): FeatureFlags {

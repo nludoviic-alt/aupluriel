@@ -550,6 +550,23 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_shadow_trades_query ON shadow_trades(symbol, strategy, strategy_version, time DESC);
 
+    -- Performance Drift & Auto-Shadow Tracking (P1 Quant Pillar)
+    CREATE TABLE IF NOT EXISTS strategy_performance_drift (
+      strategy TEXT NOT NULL,
+      strategy_version TEXT NOT NULL DEFAULT 'V1',
+      symbol TEXT NOT NULL,
+      drift_status TEXT NOT NULL DEFAULT 'NONE',
+      risk_state TEXT NOT NULL DEFAULT 'NORMAL',
+      risk_multiplier REAL NOT NULL DEFAULT 1.0,
+      last_30_json TEXT,
+      last_50_json TEXT,
+      last_100_json TEXT,
+      historical_json TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (strategy, strategy_version, symbol)
+    );
+    CREATE INDEX IF NOT EXISTS idx_perf_drift_lookup ON strategy_performance_drift(strategy, strategy_version, symbol);
+
     CREATE TABLE IF NOT EXISTS hourly_performance_stats (
       symbol TEXT NOT NULL,
       strategy TEXT NOT NULL,

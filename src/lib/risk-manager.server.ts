@@ -1,5 +1,7 @@
 import { getDb } from "./db.server";
 import type { Preset } from "./bot-engine.server";
+import { FEATURE_FLAGS } from "./feature-flags.server";
+import { getStrategyRiskMultiplier } from "./performance-drift.server";
 
 // ── Types & Contracts ────────────────────────────────────────────────────────
 
@@ -18,6 +20,7 @@ export type RiskRejectionReason =
   | "RISK_INVALID_POSITION_SIZE"
   | "RISK_MARGIN"
   | "RISK_STRATEGY_PAUSED"
+  | "STRATEGY_AUTO_SHADOW"
   | "RISK_ACCOUNT_LIMIT"
   | "RISK_EXECUTION_UNAVAILABLE";
 
@@ -235,6 +238,25 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     };
   }
 
+  // 1.5 Check Performance Drift & Auto-Shadow Status (P1 Quant Pillar)
+  let driftMultiplier = 1.0;
+  if (FEATURE_FLAGS.PERFORMANCE_DRIFT_ENABLED && input.strategyId) {
+    const drift = getStrategyRiskMultiplier(input.strategyId, "V1", input.symbol);
+    if (drift.isShadow || drift.riskMultiplier === 0) {
+      logRejection(input, "STRATEGY_AUTO_SHADOW", `Stratégie ${input.strategyId} en AUTO-SHADOW (PF/ExpectancyR dégradé)`, fingerprint);
+      return {
+        decision: "REJECTED",
+        riskPercent: 0,
+        stakeUsd: 0,
+        reason: "STRATEGY_AUTO_SHADOW",
+        explanation: `Stratégie ${input.strategyId} basculée en AUTO-SHADOW (mode observation)`,
+        fingerprint,
+        strategyStatus: "SHADOW",
+      };
+    }
+    driftMultiplier = drift.riskMultiplier;
+  }
+
   // 2. Check Daily Drawdown (Soft 1.5% / Hard 2.0%)
   const todayStart = new Date().setUTCHours(0, 0, 0, 0);
   const todayPnlRow = db.prepare(`
@@ -407,8 +429,8 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     baseRiskPct = baseRiskPct / 2;
   }
 
-  // Apply Strategy Metrics multiplier
-  baseRiskPct = baseRiskPct * metrics.stakeMultiplier;
+  // Apply Strategy Metrics multiplier & Performance Drift multiplier
+  baseRiskPct = baseRiskPct * metrics.stakeMultiplier * driftMultiplier;
 
   const finalRiskPct = Math.min(RISK_CONFIG.MAX_RISK_PER_TRADE_PCT, Math.max(0.05, baseRiskPct));
 
