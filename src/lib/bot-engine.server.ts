@@ -1514,6 +1514,19 @@ class ServerBotEngine {
       : config.symbols
     ).filter((s) => !excluded.has(s) && !isTradingSymbolDisabled(s));
 
+    const candleFetcher = async (symbol: string, granularity: number, count: number) => {
+      if (isKrakenSymbol(symbol) && this.krakenConn) {
+        return fetchKrakenCandles(symbol, granularity, count);
+      }
+      if (isBinanceSymbol(symbol) && this.binanceConn) {
+        return fetchBinanceCandles(symbol, granularity, count);
+      }
+      if (isOandaSymbol(symbol) && this.oandaConn) {
+        return fetchOandaCandles(symbol, granularity, count, this.oandaConn.apiKey, this.oandaConn.accountId, this.oandaConn.isPractice);
+      }
+      return fetchCandlesServer(symbol, granularity, count);
+    };
+
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
       if (isGoldPreset(this.preset) && hasOpenGoldExposure(this.userId, this.preset)) {
@@ -1655,19 +1668,6 @@ class ServerBotEngine {
     if (!toAnalyze.length) return finishScan();
 
     // ── Analysis (shared decision core + cross-user learned weights) ──
-    // Candle fetcher that routes symbols to the appropriate broker
-    const candleFetcher = async (symbol: string, granularity: number, count: number) => {
-      if (isKrakenSymbol(symbol) && this.krakenConn) {
-        return fetchKrakenCandles(symbol, granularity, count);
-      }
-      if (isBinanceSymbol(symbol) && this.binanceConn) {
-        return fetchBinanceCandles(symbol, granularity, count);
-      }
-      if (isOandaSymbol(symbol) && this.oandaConn) {
-        return fetchOandaCandles(symbol, granularity, count, this.oandaConn.apiKey, this.oandaConn.accountId, this.oandaConn.isPractice);
-      }
-      return fetchCandlesServer(symbol, granularity, count);
-    };
 
     // Scalping trades a completely different, finer-grained (M1/M5) signal —
     // see scalping-signal.server.ts's header for why it can't reuse
