@@ -16,6 +16,7 @@ import { getFeatureFlags } from "@/lib/feature-flags.server";
 import { getHourlyPerformanceHeatmap } from "@/lib/hourly-performance.server";
 import { getAllStrategyHealthMetrics } from "@/lib/strategy-health.server";
 import { executionMonitor } from "@/lib/execution-quality-monitor.server";
+import { circuitBreaker } from "@/lib/global-circuit-breaker.server";
 import {
   getAllTimeStats,
   getBotRuntime,
@@ -107,6 +108,7 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     hourlyPerformance: getHourlyPerformanceHeatmap(preset),
     strategyHealth: getAllStrategyHealthMetrics(),
     executionMetrics: executionMonitor.getMetrics(),
+    circuitBreaker: circuitBreaker.getState(),
   };
 }
 

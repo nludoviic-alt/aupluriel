@@ -600,6 +600,9 @@ function migrate(db: Database.Database) {
   if (!botTradeCols.has("strategy")) {
     db.exec("ALTER TABLE bot_trades ADD COLUMN strategy TEXT");
   }
+  if (!botTradeCols.has("exit_reason")) {
+    db.exec("ALTER TABLE bot_trades ADD COLUMN exit_reason TEXT");
+  }
 
   // --- Repair legacy bot-state symbol lists (idempotent) ---
   // A few early preset saves serialized `symbols` as strings such as
