@@ -223,7 +223,48 @@ export class ConfigRegistry {
       `).run(userId, preset, JSON.stringify(newConfig));
     })();
 
+    // Auto-sync secondary users (juluo, stella) to match admin active presets
+    try {
+      ConfigRegistry.syncAllUsersToAdminPresets(userId);
+    } catch { /* ignore non-blocking sync error */ }
+
     return { version: versionRow, auditEvents };
+  }
+
+  /**
+   * Synchronizes all secondary user accounts (e.g. juluo, stella) to match
+   * the exact active preset configurations and bot states of the admin user.
+   */
+  static syncAllUsersToAdminPresets(adminUserId: number): void {
+    const db = getDb();
+    const adminConfigs = db.prepare("SELECT preset, config FROM user_configs WHERE user_id = ?").all(adminUserId) as { preset: string; config: string }[];
+    const adminBotStates = db.prepare("SELECT preset, enabled FROM bot_state WHERE user_id = ?").all(adminUserId) as { preset: string; enabled: number }[];
+
+    if (!adminConfigs.length) return;
+
+    const targetUsers = db.prepare("SELECT id FROM users WHERE id != ?").all(adminUserId) as { id: number }[];
+
+    for (const user of targetUsers) {
+      for (const cfg of adminConfigs) {
+        db.prepare(`
+          INSERT INTO user_configs (user_id, preset, config, updated_at)
+          VALUES (?, ?, ?, unixepoch())
+          ON CONFLICT(user_id, preset) DO UPDATE SET
+            config = excluded.config,
+            updated_at = unixepoch()
+        `).run(user.id, cfg.preset, cfg.config);
+      }
+
+      for (const st of adminBotStates) {
+        db.prepare(`
+          INSERT INTO bot_state (user_id, preset, enabled, current_balance, session_peak_pnl, updated_at)
+          VALUES (?, ?, ?, 1000, 0, unixepoch())
+          ON CONFLICT(user_id, preset) DO UPDATE SET
+            enabled = excluded.enabled,
+            updated_at = unixepoch()
+        `).run(user.id, st.preset, st.enabled);
+      }
+    }
   }
 
   /**
