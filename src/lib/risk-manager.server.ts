@@ -112,8 +112,18 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
   `).all(userId, preset, targetStrat) as { status: "won" | "lost"; profit: number }[];
 
   const sample100 = rows.length;
+  const trades50 = rows.slice(0, 50);
+  const sample50 = trades50.length;
   const trades30 = rows.slice(0, 30);
   const sample30 = trades30.length;
+
+  // 50-trade rolling stats
+  let grossWin50 = 0, grossLoss50 = 0;
+  for (const t of trades50) {
+    if (t.status === "won") grossWin50 += t.profit || 0;
+    else if (t.status === "lost") grossLoss50 += Math.abs(t.profit || 0);
+  }
+  const profitFactor50 = grossLoss50 > 0 ? grossWin50 / grossLoss50 : grossWin50 > 0 ? 99 : 0;
 
   // 30-trade rolling stats
   let wins30 = 0, grossWin30 = 0, grossLoss30 = 0, netPnl30 = 0;
@@ -152,12 +162,12 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
   const profitFactor100 = grossLoss100 > 0 ? grossWin100 / grossLoss100 : grossWin100 > 0 ? 99 : 0;
 
   // Status Matrix: NORMAL, CAUTION, RESTRICTED, PAUSED
-  if (sample30 >= 50 && profitFactor30 < 0.70) {
+  if (sample50 >= 50 && profitFactor50 < 0.70) {
     return {
       status: "PAUSED",
       sample30, sample100, winRate30, profitFactor30, expectancy30, avgWin30, avgLoss30, lossToWinRatio30,
       winRate100, profitFactor100, expectancy100,
-      reason: `Profit Factor 50 trades (PF ${profitFactor30.toFixed(2)}) < 0.70 — Pause automatique de sécurité`,
+      reason: `Profit Factor 50 trades (PF ${profitFactor50.toFixed(2)}) < 0.70 — Pause automatique de sécurité`,
       stakeMultiplier: 0,
     };
   }

@@ -42,12 +42,13 @@ import { generateVol75Signal } from "./vol75-signal.server";
 import { generateRb100Signal } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
 import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
-import { evaluateTimeFilter, recordShadowTrade } from "./time-filter.server";
+import { evaluateTimeFilter } from "./time-filter.server";
 import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
 import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import { executionMonitor } from "./execution-quality-monitor.server";
+import { circuitBreaker } from "./global-circuit-breaker.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -298,8 +299,8 @@ export function logFromRow(r: BotTradeRow): TradeLog {
 
 function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, strategy, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
+    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, 'V1', @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -1347,6 +1348,15 @@ class ServerBotEngine {
       for (const symbol of config.symbols) scanResults.push({ symbol, action: "daily-limit" });
       return finishScan();
     }
+    if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+      const breaker = circuitBreaker.getState();
+      if (breaker.isActive) {
+        for (const symbol of config.symbols) {
+          scanResults.push({ symbol, action: "risk-pause", note: breaker.reason ?? "GLOBAL_KILL_SWITCH actif" });
+        }
+        return finishScan();
+      }
+    }
     // Global cap on TOTAL open positions — maxSimultaneousTrades only limits
     // NEW trades per tick, so successive ticks stacked positions without
     // bound (6 observed live on 2026-07-14) while only per-symbol/correlation
@@ -1466,9 +1476,31 @@ class ServerBotEngine {
       // ── Step 1: Data Quality Guard ──
       recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "scan");
       const dataQuality = evaluateDataQuality({ symbol, wsConnected: this.conn ? true : false });
-      if (dataQuality.isBlocked) {
+      if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+        circuitBreaker.updateAutoTriggers({
+          dataQualityFailure: FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED
+            && (dataQuality.status === "STALE" || dataQuality.status === "INVALID"),
+        });
+      }
+      if (FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED && dataQuality.isBlocked) {
         scanResults.push({ symbol, action: "session-closed", note: dataQuality.reason });
         continue;
+      }
+
+      if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+        const executionCooldown = executionMonitor.isSymbolInExecutionCooldown(symbol);
+        if (executionCooldown.blocked) {
+          scanResults.push({ symbol, action: "cooldown", note: executionCooldown.reason });
+          continue;
+        }
+        const executionHealth = executionMonitor.getMetrics().health;
+        if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+          circuitBreaker.updateAutoTriggers({ executionQualityCritical: executionHealth === "CRITICAL" });
+        }
+        if (executionHealth === "CRITICAL" && !FEATURE_FLAGS.OBSERVATION_MODE) {
+          scanResults.push({ symbol, action: "session-closed", note: "EXECUTION_HEALTH_CRITICAL" });
+          continue;
+        }
       }
 
       const cooldownUntil = this.symbolCooldowns.get(symbol) ?? 0;
@@ -1851,8 +1883,17 @@ class ServerBotEngine {
       // classifyOpportunity's "take" branch requires analysis.direction to be
       // non-null (see the "no-direction" check inside it) — this re-narrows
       // it for TypeScript's benefit, it can never actually continue here.
+      // Preserve the concrete strategy that generated this setup. Aggregating
+      // all variants under `${preset}_ENGINE` makes V1/V2 metrics, time
+      // filtering and risk pauses bleed into each other.
+      const strategyId = boom500Levels.get(symbol)?.strategy
+        ?? crash500Levels.get(symbol)?.strategy
+        ?? vol75Levels.get(symbol)?.strategy
+        ?? rb100Levels.get(symbol)?.strategy
+        ?? vol50Levels.get(symbol)?.strategy
+        ?? `${this.preset.toUpperCase()}_ENGINE`;
       // ── Step 2: Setup Detected & Market Regime Classification ──
-      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "setup");
+      recordFunnelStep(this.preset, strategyId, "setup");
       const regimeClassification = classifyMarketRegime({
         symbol,
         adx: analysis.volatilityRatio * 20,
@@ -1860,8 +1901,8 @@ class ServerBotEngine {
         trendAlignmentScore: analysis.trendAlignmentScore,
       });
 
-      const regimeRouting = isStrategyAllowedInRegime(`${this.preset.toUpperCase()}_ENGINE`, regimeClassification.regime);
-      if (!regimeRouting.allowed) {
+      const regimeRouting = isStrategyAllowedInRegime(strategyId, regimeClassification.regime);
+      if (FEATURE_FLAGS.MARKET_REGIME_ROUTER_ENABLED && !regimeRouting.allowed) {
         scanResults.push({
           symbol,
           action: "session-closed",
@@ -1873,30 +1914,16 @@ class ServerBotEngine {
       }
 
       // ── Step 3: Valid Signal Detected by Signal Engine ──
-      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "valid_signal");
+      recordFunnelStep(this.preset, strategyId, "valid_signal");
 
       // ── Step 4: Granular Time Performance Filter (SYMBOL + STRATEGY + VERSION + HOUR_UTC) ──
       const currentHourUtc = new Date().getUTCHours();
-      const timeFilter = evaluateTimeFilter(symbol, `${this.preset.toUpperCase()}_ENGINE`, "V1", currentHourUtc);
+      const timeFilter = evaluateTimeFilter(symbol, strategyId, "V1", currentHourUtc);
 
-      if (timeFilter.isBlocked && !timeFilter.observationMode) {
-        // Mode Shadow : Enregistrer le trade virtuel pour mesurer la récupération potentielle
-        recordShadowTrade({
-          userId: this.userId,
-          preset: this.preset,
-          strategy: `${this.preset.toUpperCase()}_ENGINE`,
-          strategyVersion: "V1",
-          symbol,
-          direction: analysis.direction,
-          entryPrice: analysis.analysisDetails?.rsi ?? 0,
-          score: analysis.confidence,
-          exitPrice: analysis.analysisDetails?.rsi ?? 0,
-          virtualPnL: 0,
-          rMultiple: 0,
-          status: "won",
-          exitReason: timeFilter.reason,
-        });
-
+      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.isBlocked && !timeFilter.observationMode) {
+        // Do not fabricate an already-closed shadow trade. A shadow result is
+        // only statistically usable once entry, exit and P&L have been tracked
+        // against live prices by the dedicated simulator.
         scanResults.push({
           symbol,
           action: "session-closed",
@@ -1907,13 +1934,13 @@ class ServerBotEngine {
         continue;
       }
 
-      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "time_approved");
+      recordFunnelStep(this.preset, strategyId, "time_approved");
 
       // ── Step 5: Institutional Risk Manager V3 ──
       const riskCheck = evaluateRiskCheck({
         userId: this.userId,
         preset: this.preset,
-        strategyId: `${this.preset.toUpperCase()}_ENGINE`,
+        strategyId,
         symbol,
         direction: analysis.direction,
         confidenceScore: analysis.confidence,
@@ -1921,7 +1948,7 @@ class ServerBotEngine {
         currentBalance: currentBalance || 1000,
       });
 
-      if (riskCheck.decision === "REJECTED") {
+      if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && riskCheck.decision === "REJECTED") {
         scanResults.push({
           symbol,
           action: "risk-pause",
@@ -1932,7 +1959,7 @@ class ServerBotEngine {
         continue;
       }
 
-      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "risk_approved");
+      recordFunnelStep(this.preset, strategyId, "risk_approved");
 
       if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
@@ -2027,7 +2054,9 @@ class ServerBotEngine {
       if (riskMetrics.stakeMultiplier > 0 && riskMetrics.stakeMultiplier < 1.0) {
         stakeForTrade = Math.max(1, Math.round(stakeForTrade * riskMetrics.stakeMultiplier * 100) / 100);
       }
-
+      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.riskMultiplier < 1) {
+        stakeForTrade = Math.max(1, Math.round(stakeForTrade * timeFilter.riskMultiplier * 100) / 100);
+      }
       // Gold presets are sized from the stop, not from an arbitrary stake.
       // With an ATR stop, the $ loss for a $1 multiplier position is
       // proportional to multiplier × ATR%; solve that relation backwards.
@@ -2050,6 +2079,13 @@ class ServerBotEngine {
           continue;
         }
         stakeForTrade = Math.round((riskTarget / perStakeRisk) * 100) / 100;
+      }
+
+      // The Risk Manager is the final authority on the maximum affordable
+      // exposure. Apply this after every strategy-specific sizing path,
+      // including the Gold stop-based calculation.
+      if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED) {
+        stakeForTrade = Math.min(stakeForTrade, riskCheck.stakeUsd);
       }
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
@@ -2183,7 +2219,7 @@ class ServerBotEngine {
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
         note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
-        strategy: boom500Level?.strategy ?? crash500Level?.strategy ?? vol75Level?.strategy ?? rb100Level?.strategy,
+        strategy: strategyId,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         ...(useAltBroker
@@ -2194,6 +2230,7 @@ class ServerBotEngine {
       };
       this.emit(pendingLog);
 
+      const executionStartedAt = Date.now();
       try {
         if (useKraken) {
           // Kraken spot: buy/sell the base asset at market price
@@ -2271,8 +2308,13 @@ class ServerBotEngine {
             symbol, amount: stakeForTrade, direction: analysis.direction,
             multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
           });
-          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "proposal_valid");
-          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "executed");
+          if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+            const latency = Date.now() - executionStartedAt;
+            executionMonitor.recordProposal(symbol, latency, true);
+            executionMonitor.recordBuy(symbol, latency, true);
+          }
+          recordFunnelStep(this.preset, strategyId, "proposal_valid");
+          recordFunnelStep(this.preset, strategyId, "executed");
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
           this.emit(openLog);
           this.trackMultiplierPosition(openLog);
@@ -2283,13 +2325,26 @@ class ServerBotEngine {
             contractType: analysis.direction,
             durationMinutes: tradeDuration,
           });
-          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "proposal_valid");
-          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "executed");
+          if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+            const latency = Date.now() - executionStartedAt;
+            executionMonitor.recordProposal(symbol, latency, true);
+            executionMonitor.recordBuy(symbol, latency, true);
+          }
+          recordFunnelStep(this.preset, strategyId, "proposal_valid");
+          recordFunnelStep(this.preset, strategyId, "executed");
           const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
           this.emit(openLog);
           this.trackContract(openLog);
         }
       } catch (e) {
+        if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED && !useAltBroker) {
+          const error = e instanceof DerivApiError
+            ? { code: e.code, message: e.message }
+            : { code: "EXECUTION_ERROR", message: (e as Error).message };
+          const latency = Date.now() - executionStartedAt;
+          executionMonitor.recordProposal(symbol, latency, false, error.code, error.message);
+          executionMonitor.recordBuy(symbol, latency, false, error.code, error.message);
+        }
         this.activeSymbols.delete(symbol); // release the reservation — no position was actually opened
         this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
         if (this.preset === "boom900") {

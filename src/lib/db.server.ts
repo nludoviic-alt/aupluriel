@@ -454,7 +454,7 @@ function migrate(db: Database.Database) {
   const botTradeCols = new Set(
     (db.prepare("PRAGMA table_info(bot_trades)").all() as { name: string }[]).map((c) => c.name),
   );
-  if (!botTradeCols.has("strategy_version")) db.exec("ALTER TABLE bot_trades ADD COLUMN strategy_version TEXT NOT NULL DEFAULT 'LEGACY'");
+  if (!botTradeCols.has("strategy_version")) db.exec("ALTER TABLE bot_trades ADD COLUMN strategy_version TEXT NOT NULL DEFAULT 'V1'");
   if (!botTradeCols.has("market_type")) db.exec("ALTER TABLE bot_trades ADD COLUMN market_type TEXT NOT NULL DEFAULT 'DERIV_SYNTHETIC'");
   if (!botTradeCols.has("execution_mode")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'LIVE'");
   if (!botTradeCols.has("r_multiple")) db.exec("ALTER TABLE bot_trades ADD COLUMN r_multiple REAL");
@@ -464,6 +464,9 @@ function migrate(db: Database.Database) {
   if (!botTradeCols.has("risk_manager_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_manager_status TEXT");
   if (!botTradeCols.has("execution_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_status TEXT");
   if (!botTradeCols.has("setup_id")) db.exec("ALTER TABLE bot_trades ADD COLUMN setup_id TEXT");
+
+  // Migration de rattrapage : s'assurer que les trades existants sans version sont rattachés à 'V1' pour le time filter
+  db.exec("UPDATE bot_trades SET strategy_version = 'V1' WHERE strategy_version = 'LEGACY' OR strategy_version IS NULL");
 
   // --- New Tables for Architecture V3 (Shadow Mode, Hourly Stats, Signal Funnel) ---
   db.exec(`

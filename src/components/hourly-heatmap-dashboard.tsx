@@ -78,19 +78,19 @@ export function HourlyHeatmapDashboard({ data, observationMode = true }: HourlyH
       <div className="flex flex-wrap items-center gap-4 text-xs bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/50">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-emerald-500/80 inline-block"></span>
-          <span className="text-slate-300">Vert : Profitable ($PF \ge 1.05$)</span>
+          <span className="text-slate-300">Vert : Profitable (PF &ge; 1.05)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-amber-500/80 inline-block"></span>
-          <span className="text-slate-300">Jaune : Caution ($PF < 0.80$, 30-49 trades, Risque x0.5)</span>
+          <span className="text-slate-300">Jaune : Caution (PF &lt; 0.80, 30-49 trades, Risque x0.5)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-rose-500/80 inline-block"></span>
-          <span className="text-slate-300">Rouge : Bloqué ($PF < 0.80$, 50+ trades, Mode Shadow)</span>
+          <span className="text-slate-300">Rouge : Bloqué (PF &lt; 0.80, 50+ trades, Mode Shadow)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-slate-700/60 inline-block"></span>
-          <span className="text-slate-400">Gris : Échantillon insuffisant (< 30 trades)</span>
+          <span className="text-slate-400">Gris : Échantillon insuffisant (&lt; 30 trades)</span>
         </div>
       </div>
 

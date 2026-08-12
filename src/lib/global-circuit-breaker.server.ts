@@ -62,6 +62,10 @@ class GlobalCircuitBreakerStore {
       this.trigger("Drawdown Quotidien Maximal Dépassé (-2.0%)");
     } else if (this.reconciliationDesync && !this.active) {
       this.trigger("Désynchronisation Grave détectée par le Reconciliation Engine");
+    } else if (this.executionQualityCritical && !this.active) {
+      this.trigger("Qualité d'exécution Deriv critique");
+    } else if (this.dataQualityFailure && !this.active) {
+      this.trigger("Qualité des données marché invalide ou périmée");
     }
   }
 
