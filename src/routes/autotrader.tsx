@@ -99,9 +99,9 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
 
-const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", vol75: "Volatility 75 (1s)", rb100: "Range Break 100", crash: "Crash900", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
+const presetLabels: Record<PresetKey, string> = { default: "Multi", boom: "Boom500", boom900: "Boom900", vol75: "Volatility 75 (1s)", rb100: "Range Break 100", vol50: "Volatility 50 (1s)", crash: "Crash900", crash500: "Crash500", scalping: "Scalping", liquidity: "GOLD LIQUIDITY SWEEP", gold: "GOLD TREND PULLBACK", crash900: "Crash900 V2", boomv2: "Boom V2", scalpingv2: "Scalping V2", liquidityv2: "Liquidity V2", goldv2: "GOLD BREAKOUT" };
 
 // These are presentation labels only. The actual instruments and execution
 // rules remain in the server-side config for each independent preset.
@@ -111,6 +111,7 @@ const PRESET_PRESENTATION: Record<PresetKey, { market: string; description: stri
   boom900: { market: "BOOM900 uniquement", description: "Démo · validation isolée", experimental: true },
   vol75: { market: "VOLATILITY 75 (1s) uniquement", description: "Démo · Trend Pullback + Breakout", experimental: true },
   rb100: { market: "RANGE BREAK 100 uniquement", description: "Démo · Range + Breakout Retest", experimental: true },
+  vol50: { market: "VOLATILITY 50 (1s) uniquement", description: "Démo · Trend Pullback & Retest", experimental: true },
   crash: { market: "CRASH900 uniquement", description: "Crash900" },
   crash500: { market: "CRASH500 uniquement", description: "Démo · Spike SELL + Drift BUY", experimental: true },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
@@ -128,6 +129,7 @@ const PRESET_META_MAP: Record<PresetKey, { label: string; badge: string; color: 
   boom900: { label: "Boom900", badge: "⚡ Boom900", color: "text-sky-300", borderColor: "border-sky-500/30", bgTone: "bg-sky-500/10" },
   vol75: { label: "Volatility 75 (1s)", badge: "📈 Volatility 75 (1s)", color: "text-lime-300", borderColor: "border-lime-500/30", bgTone: "bg-lime-500/10" },
   rb100: { label: "Range Break 100", badge: "↔ Range Break 100", color: "text-amber-300", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
+  vol50: { label: "Volatility 50 (1s)", badge: "📊 Volatility 50 (1s)", color: "text-emerald-300", borderColor: "border-emerald-500/30", bgTone: "bg-emerald-500/10" },
   crash: { label: "Crash900", badge: "📉 Crash900", color: "text-purple-400", borderColor: "border-purple-500/30", bgTone: "bg-purple-500/10" },
   crash500: { label: "Crash500", badge: "📉 Crash500", color: "text-violet-300", borderColor: "border-violet-500/30", bgTone: "bg-violet-500/10" },
   default: { label: "Preset Multi", badge: "📊 Multi", color: "text-amber-400", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
@@ -151,7 +153,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
+const PRESET_ORDER = ["default", "boom", "boom900", "vol75", "rb100", "vol50", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -379,7 +381,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [opportunitiesBusy, setOpportunitiesBusy] = useState(false);
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
-  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, vol75: false, rb100: false, crash: false, crash500: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
+  const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({ default: false, boom: false, boom900: false, vol75: false, rb100: false, vol50: false, crash: false, crash500: false, scalping: false, liquidity: false, gold: false, crash900: false, boomv2: false, scalpingv2: false, liquidityv2: false, goldv2: false });
 
   // The visible-preset list is an account-level display choice. Stopped
   // presets stay selectable so a newly added strategy (notably Gold V2 and
@@ -879,14 +881,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "boom" ? BOOM_PRESET : target === "boom900" ? BOOM900_PRESET : target === "vol75" ? VOL75_PRESET : target === "rb100" ? RB100_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "crash500" ? CRASH500_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
+    const presetFields = target === "boom" ? BOOM_PRESET : target === "boom900" ? BOOM900_PRESET : target === "vol75" ? VOL75_PRESET : target === "rb100" ? RB100_PRESET : target === "vol50" ? VOL50_PRESET : target === "boomv2" ? BOOM_V2_PRESET : target === "crash" ? CRASH_PRESET : target === "crash500" ? CRASH500_PRESET : target === "scalping" ? SCALPING_PRESET : target === "scalpingv2" ? SCALPING_V2_PRESET : target === "liquidity" ? LIQUIDITY_PRESET : target === "liquidityv2" ? LIQUIDITY_V2_PRESET : target === "gold" ? GOLD_PRESET : target === "goldv2" ? GOLD_V2_PRESET : target === "crash900" ? CRASH900_V2_PRESET : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
     const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
     const next: AutoTraderConfig = hasSavedOverride
       ? saved
-      : target === "boom900" || target === "scalping" || target === "liquidity" || target === "gold" || target.endsWith("v2")
+      : target === "boom900" || target === "vol75" || target === "rb100" || target === "vol50" || target === "crash500" || target === "scalping" || target === "liquidity" || target === "gold" || target.endsWith("v2")
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {
             ...DEFAULT_CONFIG, ...presetFields,

@@ -16,7 +16,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { updateConfigForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "@/lib/autotrader";
 
 interface PatchBody {
   userId?: number;
@@ -39,6 +39,7 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom900") return BOOM900_PRESET;
   if (preset === "vol75") return VOL75_PRESET;
   if (preset === "rb100") return RB100_PRESET;
+  if (preset === "vol50") return VOL50_PRESET;
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "crash500") return CRASH500_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
@@ -67,7 +68,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
         if (!body.userId || !Number.isFinite(body.userId)) {
           return json({ error: "userId requis." }, 400);
         }
-        if (!body.preset || !["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"].includes(body.preset)) {
+        if (!body.preset || !["default", "boom", "boom900", "vol75", "rb100", "vol50", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"].includes(body.preset)) {
           return json({ error: "Preset inconnu." }, 400);
         }
         if (body.symbols === undefined && body.minConfidence === undefined && body.maxConfidence === undefined && body.excludedSymbols === undefined && body.autoRollbackEnabled === undefined && !body.resetToCanonical && !body.configOverride) {
@@ -94,7 +95,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
           Object.assign(config, presetFieldsFor(body.preset), {
             stakeUsd, maxDailyLossUsd, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled,
-            mode: body.preset === "boom900" || body.preset === "vol75" || body.preset === "rb100" || body.preset === "crash500" || body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
+            mode: body.preset === "boom900" || body.preset === "vol75" || body.preset === "rb100" || body.preset === "vol50" || body.preset === "crash500" || body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
           });
         }
         if (body.symbols !== undefined) {

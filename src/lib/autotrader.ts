@@ -546,6 +546,19 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
   maxConsecutiveLosses: 3, cooldownMinutes: 3, newsFilter: false,
 };
 
+export const VOL50_PRESET: Partial<AutoTraderConfig> = {
+  ...VOL75_PRESET,
+  symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
+  minConfidence: 76, maxConfidence: 100, minTfAgreement: 3,
+  instrumentType: "multiplier", multiplierLevel: 50,
+  stakeMode: "percent", stakePercent: .25,
+  atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
+  maxDailyLossUsd: 2, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
+  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
+  maxVolatilityPct: 100, progressiveStakeReduction: true,
+};
+
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === BOOM_SYMBOLS.length
