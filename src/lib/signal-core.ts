@@ -161,6 +161,25 @@ export function isInTradingSession(sessions: TradingSession[], symbol: string, e
   return sessions.some((s) => isSessionActive(s, edgeMinutes));
 }
 
+/**
+ * Tranches horaires défavorables (03:00-04:59 UTC, 07:00-08:59 UTC et 16:00-16:59 UTC) identifiées par l'audit.
+ * Durant ces heures creuses, le marché présente du bruit aléatoire provoquant des réalignements trompeurs.
+ */
+export function isLowQualityHourWindow(nowDate?: Date): { blocked: boolean; reason?: string } {
+  const now = nowDate ?? new Date();
+  const h = now.getUTCHours();
+  if (h === 3 || h === 4) {
+    return { blocked: true, reason: "Pause horaire automatique (03:00-04:59 UTC — creux de liquidité / bruit)" };
+  }
+  if (h === 7 || h === 8) {
+    return { blocked: true, reason: "Pause horaire automatique (07:00-08:59 UTC — creux de liquidité / bruit)" };
+  }
+  if (h === 16) {
+    return { blocked: true, reason: "Pause horaire automatique (16:00-16:59 UTC — transition de session)" };
+  }
+  return { blocked: false };
+}
+
 // ─── News macro filter ───────────────────────────────────────────────────────
 // Event windows only apply on the days those events actually happen (Fed =
 // Wednesday, ECB = Thursday, NFP = first Friday); session-open windows apply

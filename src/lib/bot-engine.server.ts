@@ -62,6 +62,7 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   isHourBlocked,
+  isLowQualityHourWindow,
   getInstrumentForSymbol,
   minContractMinutes,
   riskLevelFor,
@@ -1449,6 +1450,11 @@ class ServerBotEngine {
       if (!is24x7Symbol(symbol) && (isGoldPreset(this.preset) || config.newsFilter !== false)) {
         const riskCheck = isHighRiskWindow();
         if (riskCheck.blocked) { scanResults.push({ symbol, action: "news-block", note: riskCheck.reason }); continue; }
+      }
+      const lowQualityCheck = isLowQualityHourWindow();
+      if (lowQualityCheck.blocked) {
+        scanResults.push({ symbol, action: "session-closed", note: lowQualityCheck.reason });
+        continue;
       }
       const cooldownUntil = this.symbolCooldowns.get(symbol) ?? 0;
       if (Date.now() < cooldownUntil) { scanResults.push({ symbol, action: "cooldown" }); continue; }
