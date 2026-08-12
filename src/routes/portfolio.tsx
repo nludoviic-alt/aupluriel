@@ -374,7 +374,7 @@ export default function PortfolioPage() {
 
     return {
       key,
-      meta: PRESET_META_MAP[key],
+      meta: PRESET_META_MAP[key as keyof typeof PRESET_META_MAP] ?? PRESET_META_MAP.default,
       tradesCount: closed.length,
       wins,
       losses,
