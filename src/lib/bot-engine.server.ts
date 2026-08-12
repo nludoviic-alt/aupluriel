@@ -47,6 +47,7 @@ import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
 import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
+import { executionMonitor } from "./execution-quality-monitor.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
