@@ -211,6 +211,9 @@ export function getVisiblePresets(userId: number): Preset[] {
     const parsed: unknown = JSON.parse(row.visible_presets);
     if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
     const clean = [...new Set(parsed.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset)))];
+    for (const p of ACTIVE_PRESETS) {
+      if (!clean.includes(p)) clean.push(p);
+    }
     return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
   } catch {
     return [...VISIBLE_PRESETS_DEFAULT];

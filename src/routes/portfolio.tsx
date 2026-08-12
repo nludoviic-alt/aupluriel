@@ -41,8 +41,8 @@ export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
 });
 
-type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
-const PORTFOLIO_PRESETS = ["default", "boom", "boom900", "vol75", "rb100", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
+type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
+const PORTFOLIO_PRESETS = ["default", "boom", "boom900", "vol75", "rb100", "vol50", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
 
 interface PresetMeta {
   label: string;
@@ -80,6 +80,13 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     color: "text-amber-300",
     borderColor: "border-amber-500/30",
     bgTone: "bg-amber-500/10",
+  },
+  vol50: {
+    label: "Volatility 50 (1s)",
+    badge: "📊 Volatility 50 (1s)",
+    color: "text-emerald-300",
+    borderColor: "border-emerald-500/30",
+    bgTone: "bg-emerald-500/10",
   },
   crash: {
     label: "Crash900",
