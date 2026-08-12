@@ -43,6 +43,10 @@ export function effectiveMultiplier(symbol: string, requestedMultiplier: number)
   return symbol.startsWith("cry") ? Math.min(requestedMultiplier, 10) : requestedMultiplier;
 }
 
+export type DerivPortfolioResult =
+  | { success: true; positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }> }
+  | { success: false; error: string };
+
 type Msg = Record<string, unknown>;
 export class DerivApiError extends Error {
   constructor(public code: string, message: string) { super(message); }
@@ -492,10 +496,6 @@ export class DerivTradingConnection {
       return [];
     }
   }
-
-export type DerivPortfolioResult =
-  | { success: true; positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }> }
-  | { success: false; error: string };
 
   async getOpenPositions(): Promise<DerivPortfolioResult> {
     try {
