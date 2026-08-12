@@ -345,132 +345,260 @@ function UserProfilePage() {
   const matchingStrategies = OFFICIAL_PRESET_STRATEGIES.filter((s) => s.targetPreset === profilePreset);
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto">
-      {/* ── Back button ── */}
-      <button
-        onClick={() => navigate({ to: "/admin" })}
-        className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" /> Retour à l'admin
-      </button>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1280px] mx-auto w-full max-w-full overflow-x-hidden">
+      {/* ── Top Navigation Bar ── */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate({ to: "/admin" })}
+          className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-muted-foreground hover:text-cyan-400 transition-colors bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] px-3.5 py-2 rounded-xl backdrop-blur-sm cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" /> Retour au Dashboard Admin
+        </button>
 
-      {/* ── Header ── */}
-      <div className="flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-neutral-900/80 p-5 backdrop-blur-md shadow-xl">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-lg font-bold border border-cyan-500/20">
-          {profileUser.username.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-black tracking-tight text-foreground">{profileUser.username}</h1>
-            {isAdmin && (
-              <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 text-[10px] text-cyan-400 font-bold uppercase tracking-wider">admin</span>
-            )}
-            {!isAdmin && (
-              <button onClick={() => { setEditingUsername(true); setUsernameDraft(profileUser.username); }} className="text-muted-foreground/50 hover:text-cyan-400 transition-colors">
-                <Pencil className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <div className="text-sm text-neutral-300 mt-1 flex items-center gap-2.5 flex-wrap">
-            {profileUser.email} · Inscrit le {new Date(profileUser.created_at * 1000).toLocaleDateString("fr-FR")}
-            <StatusBadge status={profileUser.status} />
-          </div>
-        </div>
+        <span className="text-[11px] font-mono text-muted-foreground/60 hidden sm:inline-block">
+          ID Utilisateur: <span className="text-foreground font-bold font-mono">#{profileUser.id}</span>
+        </span>
       </div>
 
-      {editingUsername && (
-        <form onSubmit={submitRename} className="flex items-center gap-2">
-          <Input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value)} autoFocus maxLength={32} className="h-9 text-sm max-w-xs" />
-          <Button type="submit" size="sm" disabled={renameBusy || !usernameDraft.trim()} className="h-9 px-3">
-            {renameBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => setEditingUsername(false)} disabled={renameBusy} className="h-9 px-3">
-            <X className="h-4 w-4" />
-          </Button>
-        </form>
-      )}
-
-      {/* ── Action buttons ── */}
-      {!isAdmin && (
-        <div className="flex flex-wrap gap-2">
-          {profileUser.status !== "approved" && (
-            <button onClick={() => act("approve")} disabled={busyId === profileUser.id} className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3.5 py-2 text-sm text-emerald-400 font-bold hover:bg-emerald-500/15 transition-colors disabled:opacity-50">
-              <Check className="h-4 w-4" /> Approuver
-            </button>
-          )}
-          {profileUser.status === "approved" && (
-            <button onClick={() => act("revoke")} disabled={busyId === profileUser.id} className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3.5 py-2 text-sm text-amber-400 font-bold hover:bg-amber-500/15 transition-colors disabled:opacity-50">
-              <ShieldOff className="h-4 w-4" /> Révoquer
-            </button>
-          )}
-          <button onClick={() => act("reset-password")} disabled={busyId === profileUser.id} className="flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.08] px-3.5 py-2 text-sm text-indigo-300 font-bold hover:bg-indigo-500/15 transition-colors disabled:opacity-50">
-            <KeyRound className="h-4 w-4" /> Réinitialiser le mot de passe
-          </button>
-          <button onClick={() => act("delete")} disabled={busyId === profileUser.id} className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50">
-            <Trash2 className="h-4 w-4" /> Supprimer le compte
-          </button>
-        </div>
-      )}
-
-      {/* ── Recap stats ── */}
-      {r && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
-            Solde <span className="text-orange-400 font-bold">{r.balance !== null && r.balance !== undefined ? `${r.currency} ${r.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</span>
-          </span>
-          <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
-            {r.trades} trade{r.trades > 1 ? "s" : ""} <span className="text-foreground font-semibold">{r.trades ? `${r.winRate}%` : "—"}</span>
-          </span>
-          <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
-            P&L <span className={cn("font-bold", r.netPnl > 0 ? "text-emerald-400" : r.netPnl < 0 ? "text-rose-400" : "text-neutral-400")}>{r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $</span>
-          </span>
-        </div>
-      )}
-
-      {/* ── Auto-Trader section ── */}
-      {!isAdmin && (
-        <div className="border-t border-white/[0.08] pt-5 space-y-3">
-          {/* Bot status + toggle */}
-          <div className="flex flex-col gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-                Auto-Trader — {PRESET_ICONS[profilePreset]} {presetLabels[profilePreset]}
-              </span>
-              {botStatus[`${profileUser.id}:${profilePreset}`]?.running && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Actif
+      {/* ── User Header Cockpit Card ── */}
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900/95 via-slate-900/90 to-black/95 p-6 backdrop-blur-xl shadow-2xl space-y-6 before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_top_right,rgba(6,182,212,0.12),transparent_60%)]">
+        <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4.5">
+            {/* Glowing Avatar */}
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 via-indigo-500 to-purple-600 text-white text-xl font-black shadow-[0_0_25px_rgba(6,182,212,0.35)] border border-white/20">
+              {profileUser.username.slice(0, 2).toUpperCase()}
+              {isAdmin && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)] text-[9px] font-black text-black">
+                  ★
                 </span>
               )}
             </div>
+
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-black tracking-tight text-foreground">{profileUser.username}</h1>
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-3 py-0.5 text-[10px] text-cyan-300 font-bold uppercase tracking-wider">
+                    Administrateur
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => { setEditingUsername(true); setUsernameDraft(profileUser.username); }}
+                    className="text-muted-foreground/50 hover:text-cyan-400 transition-colors p-1 rounded-md hover:bg-white/5"
+                    title="Modifier le nom d'utilisateur"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <StatusBadge status={profileUser.status} />
+              </div>
+
+              <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                <span className="text-neutral-300 font-medium">{profileUser.email}</span>
+                <span className="text-white/20">•</span>
+                <span>Inscrit le {new Date(profileUser.created_at * 1000).toLocaleDateString("fr-FR")}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Toolbar */}
+          {!isAdmin && (
+            <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0 border-t border-white/5 md:border-t-0">
+              {profileUser.status !== "approved" && (
+                <button
+                  onClick={() => act("approve")}
+                  disabled={busyId === profileUser.id}
+                  className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs text-emerald-300 font-bold hover:bg-emerald-500/20 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  <Check className="h-3.5 w-3.5" /> Approuver
+                </button>
+              )}
+              {profileUser.status === "approved" && (
+                <button
+                  onClick={() => act("revoke")}
+                  disabled={busyId === profileUser.id}
+                  className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-300 font-bold hover:bg-amber-500/20 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  <ShieldOff className="h-3.5 w-3.5" /> Révoquer
+                </button>
+              )}
+              <button
+                onClick={() => act("reset-password")}
+                disabled={busyId === profileUser.id}
+                className="flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-2 text-xs text-indigo-300 font-bold hover:bg-indigo-500/20 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <KeyRound className="h-3.5 w-3.5" /> Réinitialiser MDP
+              </button>
+              <button
+                onClick={() => act("delete")}
+                disabled={busyId === profileUser.id}
+                className="flex items-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/5 px-3.5 py-2 text-xs text-rose-300/70 hover:text-rose-200 hover:bg-rose-500/15 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Supprimer
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Rename Form Modal overlay inline */}
+        {editingUsername && (
+          <form onSubmit={submitRename} className="relative z-10 flex items-center gap-2 pt-2 border-t border-white/10">
+            <Input
+              value={usernameDraft}
+              onChange={(e) => setUsernameDraft(e.target.value)}
+              autoFocus
+              maxLength={32}
+              className="h-9 text-xs max-w-xs bg-black/40 border-cyan-500/40 text-foreground"
+            />
+            <Button type="submit" size="sm" disabled={renameBusy || !usernameDraft.trim()} className="h-9 px-3 bg-cyan-500 text-black hover:bg-cyan-400">
+              {renameBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setEditingUsername(false)} disabled={renameBusy} className="h-9 px-3">
+              <X className="h-4 w-4" />
+            </Button>
+          </form>
+        )}
+      </div>
+
+      {/* ── Financial & Metrics Cockpit (Stat Cards) ── */}
+      {r && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Solde Compte */}
+          <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-black/40 to-black/60 p-4 backdrop-blur-md flex flex-col justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400/80">Solde Compte</span>
+            <div className="text-xl font-black font-mono text-amber-300 mt-1">
+              {r.balance !== null && r.balance !== undefined
+                ? `${r.currency} ${r.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "—"}
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-2">Solde disponible courtier</span>
+          </div>
+
+          {/* P&L Total Net */}
+          <div className={cn(
+            "rounded-2xl border p-4 backdrop-blur-md flex flex-col justify-between",
+            r.netPnl >= 0 ? "border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-black/40 to-black/60" : "border-rose-500/20 bg-gradient-to-br from-rose-500/10 via-black/40 to-black/60"
+          )}>
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">P&L Net Total</span>
+            <div className={cn("text-xl font-black font-mono mt-1", r.netPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>
+              {r.netPnl >= 0 ? `+$${r.netPnl.toFixed(2)}` : `-$${Math.abs(r.netPnl).toFixed(2)}`}
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-2">Cumul des gains et pertes</span>
+          </div>
+
+          {/* Activity & Win Rate */}
+          <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-black/40 to-black/60 p-4 backdrop-blur-md flex flex-col justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400/80">Activité & Win Rate</span>
+            <div className="flex items-baseline justify-between mt-1">
+              <span className="text-xl font-black font-mono text-foreground">{r.trades} <span className="text-xs font-normal text-muted-foreground">trades</span></span>
+              <span className="text-lg font-black font-mono text-cyan-300">{r.trades ? `${r.winRate}%` : "—"}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-2">Taux de réussite clôturé</span>
+          </div>
+
+          {/* Confiance & Profit Factor */}
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 via-black/40 to-black/60 p-4 backdrop-blur-md flex flex-col justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-purple-400/80">Confiance & Profit Factor</span>
+            <div className="flex items-baseline justify-between mt-1">
+              <span className="text-xl font-black font-mono text-purple-300">{r.avgConfidence ? `${r.avgConfidence}%` : "—"}</span>
+              <span className="text-xs font-mono text-muted-foreground">PF: <span className="text-foreground font-bold">{r.profitFactor !== null ? r.profitFactor.toFixed(2) : "—"}</span></span>
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-2">Score moyen des signaux</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Auto-Trader Section ── */}
+      {!isAdmin && (
+        <div className="space-y-4 rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-white/5">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-cyan-400" />
+              <h2 className="text-sm font-black uppercase tracking-wider text-foreground">Gestionnaire Auto-Trader</h2>
+            </div>
+
+            <span className="text-xs font-mono text-muted-foreground">
+              Preset sélectionné : <span className="text-cyan-400 font-bold">{PRESET_ICONS[profilePreset]} {presetLabels[profilePreset]}</span>
+            </span>
+          </div>
+
+          {/* Bot Status Banner */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold shadow-md",
+                botStatus[`${profileUser.id}:${profilePreset}`]?.running
+                  ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]"
+                  : "border-white/10 bg-white/5 text-muted-foreground"
+              )}>
+                {PRESET_ICONS[profilePreset]}
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                    {presetLabels[profilePreset]}
+                  </span>
+                  {botStatus[`${profileUser.id}:${profilePreset}`]?.running && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-400 border border-emerald-500/30">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> BOT EN COURS
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Démarrer ou arrêter l'exécution automatique sur ce preset pour cet utilisateur.
+                </p>
+              </div>
+            </div>
+
             <BotStatusCell status={botStatus[`${profileUser.id}:${profilePreset}`]} busy={botBusyId === profileUser.id} onToggle={(action) => toggleBot(profilePreset, action)} />
           </div>
 
-          {/* Active presets overview summary */}
+          {/* Active Presets Reel */}
           {(() => {
             const activeList = PRESET_KEYS.filter((p) => botStatus[`${profileUser.id}:${p}`]?.running);
             return (
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground font-medium">Presets actifs chez l'utilisateur :</span>
+              <div className="rounded-2xl border border-white/5 bg-black/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                <span className="text-muted-foreground font-semibold text-xs shrink-0">Presets actifs en arrière-plan :</span>
                 {activeList.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {activeList.map((p) => (
-                      <span key={p} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                      <span key={p} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[10px] font-black text-emerald-300">
                         <span>{PRESET_ICONS[p]} {presetLabels[p]}</span>
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground/60 italic">Aucun bot actif</span>
+                  <span className="text-xs text-muted-foreground/50 italic">Aucun bot actif sur ce compte</span>
                 )}
               </div>
             );
           })()}
 
-          {/* Preset tabs */}
-          <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 shrink-0">Preset consulté</span>
-            <div className="flex w-full shrink-0 flex-wrap items-center rounded-lg border border-white/5 bg-white/[0.02] p-1 gap-1 sm:w-auto">
+          {/* Preset Tabs Bar */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Sélectionner le preset à administrer (15 presets disponibles)</span>
+              <button
+                disabled={presetBusy === profileUser.id}
+                onClick={async () => {
+                  const ok = await confirm({ title: `Réinitialiser ${presetLabels[profilePreset]} ?`, description: "Remet les valeurs par défaut du preset.", confirmLabel: "Réinitialiser", danger: true });
+                  if (!ok) return;
+                  setPresetBusy(profileUser.id);
+                  try {
+                    const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: profilePreset, resetToCanonical: true });
+                    setJournalConfig(res.config);
+                    toast.success(`${presetLabels[profilePreset]} réinitialisé ✓`);
+                  } catch (err) { toast.error(err instanceof Error ? err.message : "Erreur"); }
+                  finally { setPresetBusy(null); }
+                }}
+                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                Réinitialiser Preset
+              </button>
+            </div>
+
+            <div className="flex w-full flex-wrap items-center rounded-2xl border border-white/5 bg-black/40 p-1.5 gap-1">
               {PRESET_KEYS.map((p) => {
                 const isRunning = botStatus[`${profileUser.id}:${p}`]?.running;
                 const isSelected = profilePreset === p;
@@ -479,23 +607,23 @@ function UserProfilePage() {
                     key={p}
                     onClick={() => setProfilePreset(p)}
                     className={cn(
-                      "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none relative",
+                      "flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all relative cursor-pointer",
                       isSelected
                         ? p.startsWith("boom")
-                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/40"
+                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/40 shadow-sm"
                           : p.startsWith("crash")
-                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
                             : p.startsWith("liquidity") || p.startsWith("gold")
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
                               : p.startsWith("scalping")
-                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                                : "bg-violet-500/20 text-violet-300 border border-violet-500/40"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                                : "bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-sm"
                         : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/[0.04]",
                     )}
                   >
                     <span>{PRESET_ICONS[p]} {presetLabels[p]}</span>
                     {isRunning && (
-                      <span className="relative flex h-2 w-2" title="Bot actif pour ce preset">
+                      <span className="relative flex h-2 w-2" title="Bot actif">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                       </span>
@@ -504,33 +632,14 @@ function UserProfilePage() {
                 );
               })}
             </div>
-            <button
-              disabled={presetBusy === profileUser.id}
-              onClick={async () => {
-                const ok = await confirm({ title: `Réinitialiser ${presetLabels[profilePreset]} ?`, description: "Remet les valeurs par défaut du preset.", confirmLabel: "Réinitialiser", danger: true });
-                if (!ok) return;
-                setPresetBusy(profileUser.id);
-                try {
-                  const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: profilePreset, resetToCanonical: true });
-                  setJournalConfig(res.config);
-                  toast.success(`${presetLabels[profilePreset]} réinitialisé ✓`);
-                } catch (err) { toast.error(err instanceof Error ? err.message : "Erreur"); }
-                finally { setPresetBusy(null); }
-              }}
-              className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-40"
-            >
-              Réinitialiser
-            </button>
           </div>
 
-          {/* Strategy selector */}
+          {/* Strategy Selector */}
           {matchingStrategies.length > 0 && (
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
-                  <Dices className="h-3.5 w-3.5" /> Appliquer une stratégie
-                </span>
-              </div>
+            <div className="rounded-2xl border border-white/5 bg-black/20 p-4 space-y-2.5">
+              <span className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Dices className="h-3.5 w-3.5 text-amber-400" /> Appliquer une stratégie préconfigurée sur {presetLabels[profilePreset]}
+              </span>
               <div className="flex flex-wrap gap-2">
                 {matchingStrategies.map((strat) => (
                   <button
@@ -548,12 +657,12 @@ function UserProfilePage() {
                       finally { setStrategyBusy(null); }
                     }}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-bold transition-colors disabled:opacity-40",
-                      strat.verified ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15" : "border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white hover:bg-white/[0.06]",
+                      "flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-all disabled:opacity-40 cursor-pointer",
+                      strat.verified ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10",
                     )}
                   >
                     {strategyBusy === profileUser.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {strat.verified && <Check className="h-3 w-3" />}
+                    {strat.verified && <Check className="h-3.5 w-3.5 text-emerald-400" />}
                     {strat.name}
                   </button>
                 ))}
@@ -561,93 +670,119 @@ function UserProfilePage() {
             </div>
           )}
 
-          {/* Broker badges */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {/* Broker Integration Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
             {[
-              { label: "Deriv", active: profileUser.has_deriv, color: "red" },
-              { label: "Kraken", active: profileUser.has_kraken, color: "violet" },
-              { label: "Binance", active: profileUser.has_binance, color: "yellow" },
-              { label: "OANDA", active: profileUser.has_oanda, color: "emerald" },
+              { label: "Deriv", active: profileUser.has_deriv, color: "text-rose-400", border: "border-rose-500/30", bg: "bg-rose-500/10" },
+              { label: "Kraken", active: profileUser.has_kraken, color: "text-violet-400", border: "border-violet-500/30", bg: "bg-violet-500/10" },
+              { label: "Binance", active: profileUser.has_binance, color: "text-amber-400", border: "border-amber-500/30", bg: "bg-amber-500/10" },
+              { label: "OANDA", active: profileUser.has_oanda, color: "text-emerald-400", border: "border-emerald-500/30", bg: "bg-emerald-500/10" },
             ].map((b) => (
-              <div key={b.label} className={cn("flex flex-col items-center gap-1.5 rounded-xl border px-3 py-2.5", `border-${b.color}-500/30 bg-${b.color}-500/[0.08]`)}>
-                <span className={cn("text-[10px] font-bold uppercase tracking-wider", `text-${b.color}-400`)}>{b.label}</span>
-                <span className={cn("h-2.5 w-2.5 rounded-full", b.active ? `bg-${b.color}-500` : "bg-white/10")} />
+              <div key={b.label} className={cn("flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center backdrop-blur-md", b.border, b.bg)}>
+                <span className={cn("text-[11px] font-black uppercase tracking-wider", b.color)}>{b.label}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={cn("h-2 w-2 rounded-full", b.active ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-white/20")} />
+                  <span className="text-[10px] font-bold text-muted-foreground">{b.active ? "Connecté" : "Non lié"}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Admin note ── */}
-      <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
+      {/* ── Internal Admin Note ── */}
+      <div className="rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl space-y-3">
         <div className="flex items-center justify-between">
-          <label htmlFor="admin-note" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-300">
-            <StickyNote className="h-3.5 w-3.5" /> Note interne (admin uniquement)
+          <label htmlFor="admin-note" className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-muted-foreground">
+            <StickyNote className="h-4 w-4 text-amber-400" /> Note interne Admin (Confidentiel)
           </label>
           {noteSaving ? (
-            <span className="text-xs text-muted-foreground/50 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Enregistrement...</span>
+            <span className="text-xs text-muted-foreground/70 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin text-amber-400" /> Sauvegarde...</span>
           ) : noteSavedAt ? (
-            <span className="text-xs text-emerald-400 font-semibold">Enregistré ✓</span>
+            <span className="text-xs text-emerald-400 font-bold">Enregistré ✓</span>
           ) : null}
         </div>
-        <Textarea id="admin-note" value={noteDraft} onChange={(e) => { setNoteDraft(e.target.value); setNoteSavedAt(null); }} onBlur={saveNote} placeholder="Ex : client VIP, à recontacter..." rows={2} className="text-sm resize-none" />
+        <Textarea
+          id="admin-note"
+          value={noteDraft}
+          onChange={(e) => { setNoteDraft(e.target.value); setNoteSavedAt(null); }}
+          onBlur={saveNote}
+          placeholder="Renseigne des notes internes sur l'utilisateur (Ex : profil VIP, historique de contact, préférences...)"
+          rows={2}
+          className="text-xs bg-black/40 border-white/10 text-foreground resize-none rounded-xl"
+        />
       </div>
 
-      {/* ── Insights panel ── */}
+      {/* ── Insights & Analytics Panel ── */}
       {!journalLoading && journalInsights && (
         <UserInsightsPanel insights={journalInsights} config={journalConfig} mode={insightsMode} onModeChange={setInsightsMode} onApply={applyRecommendation} applyingRec={applyingRec} />
       )}
 
-      {/* ── Auto rollback ── */}
+      {/* ── Auto Rollback Protection ── */}
       {journalConfig && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-              <RefreshCw className="h-3.5 w-3.5 text-amber-400" /> Rollback automatique
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-neutral-900/60 p-4 backdrop-blur-xl">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-foreground">
+              <RefreshCw className="h-4 w-4 text-amber-400" /> Protections & Rollback Automatique
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Revient automatiquement aux anciennes valeurs si une dégradation est confirmée après un changement de config.</p>
+            <p className="text-xs text-muted-foreground">
+              Restaure automatiquement les paramètres précédents si le taux de gain chute après un changement de config.
+            </p>
           </div>
           <Switch checked={Boolean(journalConfig.autoRollbackEnabled)} disabled={autoRollbackBusy} onCheckedChange={toggleAutoRollback} />
         </div>
       )}
 
-      {/* ── Config changes ── */}
+      {/* ── Config Changes History ── */}
       <ConfigChangesPanel changes={configChanges} loading={configChangesLoading} />
 
-      {/* ── Mini journal ── */}
-      <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
-        <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Mini journal — Bot ({presetLabels[profilePreset]})</div>
+      {/* ── Mini Journal Bot ── */}
+      <div className="rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl space-y-3">
+        <div className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <BrainCircuit className="h-4 w-4 text-cyan-400" /> Mini journal Bot — {PRESET_ICONS[profilePreset]} {presetLabels[profilePreset]}
+        </div>
         {journalLoading ? (
-          <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" /></div>
+          <div className="py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-cyan-400" /></div>
         ) : (() => {
           const outcomeTrades = journalTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open");
           const shown = outcomeTrades.slice(0, 24);
           const hiddenCount = outcomeTrades.length - shown.length;
-          if (shown.length === 0) return <p className="text-sm text-muted-foreground font-semibold">Aucun trade bot enregistré.</p>;
+          if (shown.length === 0) return <p className="text-xs text-muted-foreground italic">Aucun trade bot enregistré sur ce preset.</p>;
           return (
             <div className="flex flex-wrap gap-1.5">
               {shown.map((t) => (
-                <span key={t.id} title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · Confiance ${t.confidence}%`} className={cn("rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono", t.status === "won" ? "bg-emerald-500/10 text-emerald-400" : t.status === "lost" ? "bg-rose-500/10 text-rose-400" : "bg-amber-500/10 text-amber-500")}>
-                  {t.status === "open" ? "…" : t.profit > 0 ? "+" : ""}{t.status === "open" ? "" : t.profit.toFixed(2)}
+                <span
+                  key={t.id}
+                  title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · Confiance ${t.confidence}%`}
+                  className={cn(
+                    "rounded-xl px-2.5 py-1.5 text-xs font-bold font-mono border shadow-sm",
+                    t.status === "won" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : t.status === "lost" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  )}
+                >
+                  {t.status === "open" ? "…" : t.profit > 0 ? "+" : ""}{t.status === "open" ? "" : t.profit.toFixed(2)} $
                 </span>
               ))}
-              {hiddenCount > 0 && <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02]">+{hiddenCount} autres</span>}
+              {hiddenCount > 0 && <span className="rounded-xl px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/5 border border-white/10">+{hiddenCount} autres</span>}
             </div>
           );
         })()}
       </div>
 
-      {/* ── Trades manuels (Prise Directe) ── */}
-      <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
-        <div className="flex items-center gap-2">
-          <Crosshair className="h-3.5 w-3.5 text-cyan-400" />
-          <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Trades manuels — Prise Directe</div>
+      {/* ── Trades Manuels (Prise Directe) ── */}
+      <div className="rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Crosshair className="h-4 w-4 text-cyan-400" />
+            <span className="text-xs font-black uppercase tracking-wider text-foreground">Historique Prise Directe Manuelle</span>
+          </div>
           {manualTrades.length > 0 && (
-            <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-400">{manualTrades.length}</span>
+            <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-0.5 text-[10px] font-bold text-cyan-300">
+              {manualTrades.length} trades
+            </span>
           )}
         </div>
         {journalLoading ? (
-          <div className="py-4 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-cyan-500" /></div>
+          <div className="py-4 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-cyan-400" /></div>
         ) : (() => {
           const outcomeManual = manualTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open" || t.status === "error" || t.status === "pending");
           const shown = outcomeManual.slice(0, 30);
@@ -655,28 +790,28 @@ function UserProfilePage() {
           const manualPnl = manualTrades.filter((t) => t.status === "won" || t.status === "lost").reduce((s, t) => s + t.profit, 0);
           const manualWins = manualTrades.filter((t) => t.status === "won").length;
           const manualLosses = manualTrades.filter((t) => t.status === "lost").length;
-          if (shown.length === 0) return <p className="text-sm text-muted-foreground font-semibold">Aucun trade manuel.</p>;
+          if (shown.length === 0) return <p className="text-xs text-muted-foreground italic">Aucun trade manuel enregistré.</p>;
           return (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 text-xs">
-                <span className="font-bold text-muted-foreground">P&L: <span className={manualPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>{manualPnl >= 0 ? "+" : ""}{manualPnl.toFixed(2)} $</span></span>
-                <span className="text-emerald-400 font-bold">{manualWins}G</span>
-                <span className="text-rose-400 font-bold">{manualLosses}P</span>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <span className="font-bold text-muted-foreground">P&L Manuel: <span className={manualPnl >= 0 ? "text-emerald-400 font-black" : "text-rose-400 font-black"}>{manualPnl >= 0 ? "+" : ""}{manualPnl.toFixed(2)} $</span></span>
+                <span className="text-emerald-400 font-bold">{manualWins} Gagnés</span>
+                <span className="text-rose-400 font-bold">{manualLosses} Perdus</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {shown.map((t) => (
-                  <span key={t.id} title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · ${t.stake}$`} className={cn("rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono border", t.status === "won" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : t.status === "lost" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : t.status === "error" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20")}>
-                    {t.symbol.replace("frx","").replace("cry","")} {t.direction === "MULTUP" ? "↑" : t.direction === "MULTDOWN" ? "↓" : t.direction === "CALL" ? "↑" : "↓"} {t.status === "open" || t.status === "pending" ? "…" : (t.profit > 0 ? "+" : "") + t.profit.toFixed(2)}
+                  <span key={t.id} title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · ${t.stake}$`} className={cn("rounded-xl px-2.5 py-1.5 text-xs font-bold font-mono border shadow-sm", t.status === "won" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : t.status === "lost" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : t.status === "error" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20")}>
+                    {t.symbol.replace("frx","").replace("cry","")} {t.direction === "MULTUP" ? "↑" : t.direction === "MULTDOWN" ? "↓" : t.direction === "CALL" ? "↑" : "↓"} {t.status === "open" || t.status === "pending" ? "…" : (t.profit > 0 ? "+" : "") + t.profit.toFixed(2)} $
                   </span>
                 ))}
-                {hiddenCount > 0 && <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02] border border-white/[0.04]">+{hiddenCount} autres</span>}
+                {hiddenCount > 0 && <span className="rounded-xl px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/5 border border-white/10">+{hiddenCount} autres</span>}
               </div>
             </div>
           );
         })()}
       </div>
 
-      {/* ── Prise Directe (manual trading) ── */}
+      {/* ── Console d'exécution Prise Directe (Manual Trading) ── */}
       {!isAdmin && (
         <ManualTradeSection userId={profileUser.id} preset={profilePreset} botRunning={botStatus[`${profileUser.id}:${profilePreset}`]?.running ?? false} />
       )}
@@ -743,48 +878,48 @@ function UserInsightsPanel({ insights, config, mode, onModeChange, onApply, appl
 }) {
   const current = insights[mode];
   return (
-    <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-          <BrainCircuit className="h-4 w-4 text-violet-400" /> Analyse & réglages
+    <div className="space-y-4 rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl">
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/5">
+        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-violet-400">
+          <BrainCircuit className="h-4 w-4" /> Analyse & Conseils IA
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
+        <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/40 p-1">
           {(["demo", "live"] as const).map((m) => (
-            <button key={m} type="button" onClick={() => onModeChange(m)} className={cn("px-3 py-1.5 text-xs font-bold uppercase tracking-wide rounded-md transition-colors cursor-pointer", mode === m ? "bg-amber-500/15 text-amber-400" : "text-muted-foreground/50 hover:text-foreground")}>
-              {m === "demo" ? "Démo" : "Live"}
+            <button key={m} type="button" onClick={() => onModeChange(m)} className={cn("px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer", mode === m ? "bg-violet-500/20 text-violet-300 border border-violet-500/30" : "text-muted-foreground hover:text-foreground")}>
+              {m === "demo" ? "Mode Démo" : "Mode Live"}
             </button>
           ))}
         </div>
       </div>
       {config && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">Mise <span className="text-foreground font-semibold">{config.stakeUsd}$</span></span>
-          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">Confiance min <span className="text-foreground font-semibold">{config.minConfidence}%</span></span>
-          <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">{config.symbols?.length ?? 0} symbole{(config.symbols?.length ?? 0) > 1 ? "s" : ""}</span>
+        <div className="flex flex-wrap gap-2 text-xs font-mono">
+          <span className="rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-muted-foreground">Mise: <span className="text-emerald-400 font-bold">{config.stakeUsd}$</span></span>
+          <span className="rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-muted-foreground">Confiance Min: <span className="text-cyan-300 font-bold">{config.minConfidence}%</span></span>
+          <span className="rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-muted-foreground">{config.symbols?.length ?? 0} symbole{(config.symbols?.length ?? 0) > 1 ? "s" : ""}</span>
         </div>
       )}
       <div className="space-y-2">
         {(current.recommendations ?? []).map((rec) => (
-          <div key={rec.message} className={cn("flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm", rec.type === "small-sample" ? "border-white/[0.05] bg-white/[0.01] text-muted-foreground/60" : "border-amber-500/15 bg-amber-500/[0.04] text-foreground/85")}>
-            <span className="flex-1">{rec.message}</span>
+          <div key={rec.message} className={cn("flex items-start justify-between gap-3 rounded-2xl border p-3 text-xs backdrop-blur-md", rec.type === "small-sample" ? "border-white/5 bg-black/20 text-muted-foreground" : "border-amber-500/20 bg-amber-500/10 text-amber-200")}>
+            <span className="flex-1 font-medium">{rec.message}</span>
             {rec.type !== "small-sample" && (
-              <button type="button" onClick={() => onApply(rec)} disabled={applyingRec === rec.message} className="shrink-0 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-                {applyingRec === rec.message ? "..." : "Appliquer"}
+              <button type="button" onClick={() => onApply(rec)} disabled={applyingRec === rec.message} className="shrink-0 rounded-xl border border-amber-500/30 bg-amber-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-300 hover:bg-amber-500/30 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
+                {applyingRec === rec.message ? "Application..." : "Appliquer"}
               </button>
             )}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <BreakdownTable rows={current.bySymbol} title="Par symbole" />
-        <BreakdownTable rows={current.byConfidence} title="Par confiance" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <BreakdownTable rows={current.bySymbol} title="Répartition par Symbole" />
+        <BreakdownTable rows={current.byConfidence} title="Répartition par Confiance" />
       </div>
     </div>
   );
 }
 
 function ConfigChangesPanel({ changes, loading }: { changes: ConfigChangeEntry[]; loading: boolean }) {
-  if (loading) return <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 py-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" /></div>;
+  if (loading) return <div className="rounded-3xl border border-white/10 bg-neutral-900/60 p-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-cyan-400" /></div>;
   if (!changes || changes.length === 0) return null;
   function fmt(v: unknown): string {
     if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
@@ -793,21 +928,21 @@ function ConfigChangesPanel({ changes, loading }: { changes: ConfigChangeEntry[]
     return String(v);
   }
   return (
-    <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-        <RefreshCw className="h-4 w-4 text-cyan-400" /> Historique des changements — avant / après
+    <div className="space-y-3 rounded-3xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl">
+      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-muted-foreground pb-2 border-b border-white/5">
+        <RefreshCw className="h-4 w-4 text-cyan-400" /> Historique des Modifications de Config
       </div>
       <div className="space-y-3">
         {[...changes].reverse().map((x) => (
-          <div key={x.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
+          <div key={x.id} className="rounded-2xl border border-white/5 bg-black/30 p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">{new Date(x.changedAt).toLocaleString("fr-FR")} · par <span className="font-semibold text-foreground">{x.changedBy}</span></span>
-              {x.source === "auto-rollback" && <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">⏪ Rollback automatique</span>}
+              <span className="text-muted-foreground">{new Date(x.changedAt).toLocaleString("fr-FR")} · Modifié par <span className="font-bold text-foreground">{x.changedBy}</span></span>
+              {x.source === "auto-rollback" && <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-300">⏪ Rollback Automatique</span>}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(x.fields).map(([k, { from, to }]) => (
-                <span key={k} className="rounded-md border border-cyan-500/20 bg-cyan-500/[0.06] px-2 py-1 text-[11px] text-cyan-200">
-                  <span className="font-semibold">{CONFIG_FIELD_LABELS[k] ?? k}</span> <span className="text-muted-foreground line-through">{fmt(from)}</span> → <span className="font-bold text-cyan-100">{fmt(to)}</span>
+                <span key={k} className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-200">
+                  <span className="font-semibold">{CONFIG_FIELD_LABELS[k] ?? k}</span> <span className="text-muted-foreground line-through">{fmt(from)}</span> → <span className="font-black text-cyan-300">{fmt(to)}</span>
                 </span>
               ))}
             </div>
@@ -876,51 +1011,50 @@ function ManualTradeSection({ userId, preset, botRunning }: { userId: number; pr
   }
 
   return (
-    <div className="border-t border-white/[0.08] pt-5 space-y-4">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-300">
-        <Crosshair className="h-4 w-4 text-amber-400" /> Prise Directe — Trade manuel admin
-      </div>
-
-      {!botRunning && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5 text-xs text-amber-400">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Le bot {presetLabels[preset as PresetKey]} n'est pas actif — le trade ne peut pas être exécuté. Démarrez le bot d'abord.
+    <div className="rounded-3xl border border-amber-500/20 bg-neutral-900/60 p-5 backdrop-blur-xl shadow-xl space-y-4">
+      <div className="flex items-center justify-between pb-2 border-b border-white/5">
+        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
+          <Crosshair className="h-4 w-4" /> Prise Directe — Ordre Manuel Admin
         </div>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        <button onClick={sniperCrash900} className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/15 transition-colors">
+        <button onClick={sniperCrash900} className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all cursor-pointer">
           <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      {!botRunning && (
+        <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 font-medium">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          Le bot {presetLabels[preset as PresetKey]} n'est pas actif pour cet utilisateur. Démarrez le bot avant d'exécuter un ordre.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 rounded-2xl border border-white/5 bg-black/30 p-4">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Symbole</label>
-          <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-foreground">
+          <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Symbole</label>
+          <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-foreground font-mono">
             {TRADE_SYMBOLS.map((s) => (<option key={s.value} value={s.value}>{s.label}</option>))}
           </select>
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Direction</label>
+          <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Direction</label>
           <div className="flex gap-1.5">
             {isMultiplier ? (
               <>
-                <button onClick={() => setDirection("MULTUP")} className={cn("flex-1 rounded-lg border px-3 py-2 text-sm font-bold transition-colors", direction === "MULTUP" ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400" : "border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:text-foreground")}>
-                  <TrendingUp className="h-4 w-4 inline mr-1" /> HAUT
+                <button onClick={() => setDirection("MULTUP")} className={cn("flex-1 rounded-xl border px-3 py-2 text-xs font-black transition-all cursor-pointer", direction === "MULTUP" ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 shadow-sm" : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground")}>
+                  <TrendingUp className="h-3.5 w-3.5 inline mr-1" /> HAUT
                 </button>
-                <button onClick={() => setDirection("MULTDOWN")} className={cn("flex-1 rounded-lg border px-3 py-2 text-sm font-bold transition-colors", direction === "MULTDOWN" ? "border-rose-500/40 bg-rose-500/15 text-rose-400" : "border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:text-foreground")}>
-                  <TrendingDown className="h-4 w-4 inline mr-1" /> BAS
+                <button onClick={() => setDirection("MULTDOWN")} className={cn("flex-1 rounded-xl border px-3 py-2 text-xs font-black transition-all cursor-pointer", direction === "MULTDOWN" ? "border-rose-500/40 bg-rose-500/20 text-rose-300 shadow-sm" : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground")}>
+                  <TrendingDown className="h-3.5 w-3.5 inline mr-1" /> BAS
                 </button>
               </>
             ) : (
               <>
-                <button onClick={() => setDirection("CALL")} className={cn("flex-1 rounded-lg border px-3 py-2 text-sm font-bold transition-colors", direction === "CALL" ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400" : "border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:text-foreground")}>
-                  <TrendingUp className="h-4 w-4 inline mr-1" /> CALL
+                <button onClick={() => setDirection("CALL")} className={cn("flex-1 rounded-xl border px-3 py-2 text-xs font-black transition-all cursor-pointer", direction === "CALL" ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 shadow-sm" : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground")}>
+                  <TrendingUp className="h-3.5 w-3.5 inline mr-1" /> CALL
                 </button>
-                <button onClick={() => setDirection("PUT")} className={cn("flex-1 rounded-lg border px-3 py-2 text-sm font-bold transition-colors", direction === "PUT" ? "border-rose-500/40 bg-rose-500/15 text-rose-400" : "border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:text-foreground")}>
-                  <TrendingDown className="h-4 w-4 inline mr-1" /> PUT
+                <button onClick={() => setDirection("PUT")} className={cn("flex-1 rounded-xl border px-3 py-2 text-xs font-black transition-all cursor-pointer", direction === "PUT" ? "border-rose-500/40 bg-rose-500/20 text-rose-300 shadow-sm" : "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground")}>
+                  <TrendingDown className="h-3.5 w-3.5 inline mr-1" /> PUT
                 </button>
               </>
             )}
@@ -928,13 +1062,13 @@ function ManualTradeSection({ userId, preset, botRunning }: { userId: number; pr
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Mise ($)</label>
-          <Input type="number" min={0.5} step={0.5} value={stake} onChange={(e) => setStake(Math.max(0.5, parseFloat(e.target.value) || 0))} className="text-sm" />
+          <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Mise ($)</label>
+          <Input type="number" min={0.5} step={0.5} value={stake} onChange={(e) => setStake(Math.max(0.5, parseFloat(e.target.value) || 0))} className="text-xs bg-black/50 border-white/10 font-mono" />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">Durée (min){isMultiplier && " — N/A"}</label>
-          <Input type="number" min={1} step={1} value={duration} onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value) || 1))} disabled={isMultiplier} className="text-sm" />
+          <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Durée (min){isMultiplier && " — N/A"}</label>
+          <Input type="number" min={1} step={1} value={duration} onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value) || 1))} disabled={isMultiplier} className="text-xs bg-black/50 border-white/10 font-mono" />
         </div>
       </div>
 
@@ -942,12 +1076,12 @@ function ManualTradeSection({ userId, preset, botRunning }: { userId: number; pr
         onClick={executeTrade}
         disabled={!botRunning || executing}
         className={cn(
-          "w-full flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold uppercase tracking-wider transition-colors disabled:opacity-40",
-          direction.includes("UP") || direction === "CALL" ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15" : "border-rose-500/30 bg-rose-500/[0.08] text-rose-400 hover:bg-rose-500/15",
+          "w-full flex items-center justify-center gap-2 rounded-2xl border px-4 py-3.5 text-xs font-black uppercase tracking-wider transition-all disabled:opacity-40 cursor-pointer shadow-lg",
+          direction.includes("UP") || direction === "CALL" ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" : "border-rose-500/40 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30",
         )}
       >
         {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-        {executing ? "Exécution..." : `Exécuter ${symbol} ${direction} $${stake}`}
+        {executing ? "Exécution en cours..." : `Exécuter ${symbol} ${direction} $${stake}`}
       </button>
     </div>
   );
