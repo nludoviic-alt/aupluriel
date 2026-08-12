@@ -23,7 +23,7 @@ export function generateBoom500Signals(m15: ServerCandle[], m5: ServerCandle[], 
   const range = Math.max(current.high - current.low, Number.EPSILON);
   const bullishReject = current.close > current.open && Math.min(current.open, current.close) - current.low > range * .35;
   const bearishReject = current.close < current.open && current.high - Math.max(current.open, current.close) > range * .35;
-  const postSpike = m1.slice(-4).some(c => c.close - c.open >= atrValue * 2.2);
+  const postSpike = m1.slice(-6).some(c => c.high - c.low >= atrValue * 2.0);
   const tail = ticks.slice(-24), tickMomentum = tail.length >= 12 ? tail.at(-1)! - tail[0] : 0;
   const tickUp = tickMomentum > atrValue * .03, tickDown = tickMomentum < -atrValue * .03;
   const out: Boom500Signal[] = [];
@@ -35,10 +35,11 @@ export function generateBoom500Signals(m15: ServerCandle[], m5: ServerCandle[], 
   if (width < .003) spike += 10;
   if (bullishReject) spike += 10;
   if (current.close > recentHigh) spike += 15;
-  if ((r1 as number) > 50) spike += 10;
+  if ((r1 as number) >= 42 && (r1 as number) <= 62) spike += 10;
+  if ((r1 as number) > 65) spike -= 35; // Penalize overbought RSI M1 to avoid buying at post-spike peak
   if (hist > 0 && hist > previousHist) spike += 10;
   if (tickUp) spike += 5;
-  if (!postSpike && spike >= 88) out.push({ strategy: "BOOM500_SPIKE_HUNTER_BUY", direction: "CALL", confidence: Math.min(100, spike), volatilityPct: atrValue / current.close * 100, riskAbs: atrValue * 1.1, rewardAbs: atrValue * 1.8, reason: `Boom500 Spike BUY score ${spike}/100, compression et structure haussière` });
+  if (!postSpike && spike >= 85) out.push({ strategy: "BOOM500_SPIKE_HUNTER_BUY", direction: "CALL", confidence: Math.min(100, spike), volatilityPct: atrValue / current.close * 100, riskAbs: atrValue * 1.1, rewardAbs: atrValue * 1.8, reason: `Boom500 Spike BUY score ${spike}/100, compression et structure haussière (RSI M1 ${(r1 as number).toFixed(1)})` });
 
   let drift = 0;
   if ((e5_20 as number) < (e5_50 as number)) drift += 20;
