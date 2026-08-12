@@ -974,7 +974,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
 
   return (
-    <div className="w-full space-y-3 px-2 py-3 sm:px-6 sm:py-4 lg:px-8 lg:space-y-5">
+    <div className="w-full max-w-full overflow-x-hidden space-y-3 px-2 py-3 sm:px-6 sm:py-4 lg:px-8 lg:space-y-5">
 
       {/* ── Header & Navigation ── */}
       {/* Mobile: clean modern header */}
@@ -1171,7 +1171,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   key={p}
                   onClick={() => selectPresetView(p)}
                   className={cn(
-                    "rounded-xl border p-4 flex flex-col justify-between gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer",
+                    "rounded-xl border p-2.5 sm:p-4 flex flex-col justify-between gap-2.5 sm:gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer min-w-0 overflow-hidden",
                     meta.borderColor,
                     isSelected
                       ? cn("ring-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]", meta.borderColor, meta.bgTone)
@@ -1179,50 +1179,51 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   )}
                 >
                   {/* Top: Pill Badge + Status Dot & Trades Count */}
-                  <div className="flex items-start justify-between gap-2 w-full">
-                    <span className={cn("text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shadow-sm shrink-0 whitespace-nowrap", meta.borderColor, meta.bgTone, meta.color)}>
-                      {meta.badge}
+                  <div className="flex items-start justify-between gap-1.5 w-full min-w-0">
+                    <span className={cn("text-[9px] sm:text-xs font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md border shadow-sm shrink min-w-0 truncate", meta.borderColor, meta.bgTone, meta.color)}>
+                      <span className="sm:hidden">{meta.badge.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2300}-\u{23FF}]/gu, "").trim()}</span>
+                      <span className="hidden sm:inline">{meta.badge}</span>
                     </span>
-                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                    <div className="flex items-center gap-1 shrink-0 pt-0.5">
                       <span
                         className={cn(
-                          "h-2 w-2 rounded-full",
+                          "h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full shrink-0",
                           isOnline
                             ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"
                             : "bg-white/20"
                         )}
                         title={isOnline ? "Bot actif" : "Bot inactif"}
                       />
-                      <span className="text-[10px] font-mono text-muted-foreground font-bold">{st?.todayCount ?? 0} trades</span>
+                      <span className="text-[9px] sm:text-[10px] font-mono text-muted-foreground font-bold whitespace-nowrap">{st?.todayCount ?? 0} trades</span>
                     </div>
                   </div>
 
                   {/* Center: P&L Net du Jour */}
-                  <div>
-                    <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">P&L du Jour</div>
-                    <div className={cn("text-xl font-black font-mono mt-0.5", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                  <div className="min-w-0">
+                    <div className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-muted-foreground truncate">P&L du Jour</div>
+                    <div className={cn("text-base sm:text-xl font-black font-mono mt-0.5 truncate", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
                       {pnlVal >= 0 ? `+$${pnlVal.toFixed(2)}` : `-$${Math.abs(pnlVal).toFixed(2)}`}
                     </div>
                   </div>
 
                   {/* Middle Stats Bar: Gagné & Win Rate */}
-                  <div className="pt-2 border-t border-white/5 grid grid-cols-2 gap-2 text-[10px] font-mono">
-                    <div>
-                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">Gagné : </span>
+                  <div className="pt-1.5 sm:pt-2 border-t border-white/5 grid grid-cols-2 gap-1 sm:gap-2 text-[9px] sm:text-[10px] font-mono min-w-0">
+                    <div className="min-w-0 truncate">
+                      <span className="text-muted-foreground font-sans text-[8px] sm:text-[9px] uppercase font-semibold">Gagné : </span>
                       <span className="text-emerald-400 font-bold">+${todayWon.toFixed(2)}</span>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">Win Rate : </span>
+                    <div className="min-w-0 truncate text-right sm:text-left">
+                      <span className="text-muted-foreground font-sans text-[8px] sm:text-[9px] uppercase font-semibold">WR : </span>
                       <span className="text-foreground font-bold">{winRate.toFixed(0)}%</span>
                     </div>
                   </div>
 
                   {/* Bottom Bar: Indice en bas + Statut Actif / Prêt */}
-                  <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-2 text-[10px] font-mono">
-                    <span className="font-semibold text-muted-foreground truncate" title={configuredMarkets}>
+                  <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-1.5 text-[9px] sm:text-[10px] font-mono min-w-0">
+                    <span className="font-semibold text-muted-foreground truncate min-w-0" title={configuredMarkets}>
                       {configuredMarkets}
                     </span>
-                    <span className={cn("font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-[9px] shrink-0", isOnline ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" : "bg-white/5 text-muted-foreground border border-white/10")}>
+                    <span className={cn("font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] shrink-0", isOnline ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" : "bg-white/5 text-muted-foreground border border-white/10")}>
                       {isOnline ? "Actif" : "Prêt"}
                     </span>
                   </div>
