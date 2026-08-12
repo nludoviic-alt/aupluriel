@@ -4,8 +4,19 @@ import { classifyMarketRegime, isStrategyAllowedInRegime } from "../src/lib/mark
 console.log("=== TEST ÉTAPE 1 : DATA QUALITY GUARD & MARKET REGIME ROUTER ===");
 
 // 1. Data Quality Guard
-const dqHealthy = evaluateDataQuality({ symbol: "CRASH900", wsConnected: true, lastTickTimestamp: Date.now() });
+const sampleCandles = Array(20).fill({ open: 100, high: 105, low: 99, close: 104, epoch: Math.floor(Date.now() / 1000) });
+const dqHealthy = evaluateDataQuality({
+  symbol: "CRASH900",
+  wsConnected: true,
+  lastTickTimestamp: Date.now(),
+  m1Candles: sampleCandles,
+  m5Candles: sampleCandles,
+  m15Candles: sampleCandles,
+});
 console.log(`[Data Quality Healthy] Status: ${dqHealthy.status}, Blocked: ${dqHealthy.isBlocked}`);
+
+const dqDegraded = evaluateDataQuality({ symbol: "CRASH900", wsConnected: true, lastTickTimestamp: Date.now() });
+console.log(`[Data Quality Degraded (Sans Bougies)] Status: ${dqDegraded.status}, Reason: ${dqDegraded.reason}`);
 
 const dqStale = evaluateDataQuality({ symbol: "BOOM500", wsConnected: true, lastTickTimestamp: Date.now() - 240000 });
 console.log(`[Data Quality Stale] Status: ${dqStale.status}, Reason: ${dqStale.reason}, Blocked (ObsMode): ${dqStale.isBlocked}`);
