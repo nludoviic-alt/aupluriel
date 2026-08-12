@@ -493,7 +493,11 @@ export class DerivTradingConnection {
     }
   }
 
-  async getOpenPositions(): Promise<Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }>> {
+export type DerivPortfolioResult =
+  | { success: true; positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }> }
+  | { success: false; error: string };
+
+  async getOpenPositions(): Promise<DerivPortfolioResult> {
     try {
       const res = await this.socket.request<{
         portfolio?: {
@@ -504,14 +508,15 @@ export class DerivTradingConnection {
           }>;
         };
       }>({ portfolio: 1 });
-      return (res.portfolio?.contracts ?? []).map((c) => ({
+      const positions = (res.portfolio?.contracts ?? []).map((c) => ({
         contractId: c.contract_id,
         symbol: c.symbol,
         buyPrice: Number(c.buy_price || 0),
         profit: 0,
       }));
-    } catch {
-      return [];
+      return { success: true, positions };
+    } catch (e) {
+      return { success: false, error: (e as Error).message ?? "Failed to fetch portfolio" };
     }
   }
 

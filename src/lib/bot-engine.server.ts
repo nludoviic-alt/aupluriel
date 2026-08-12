@@ -1353,15 +1353,19 @@ class ServerBotEngine {
         `).all(this.userId, this.preset) as any[];
 
         if (dbOpenTrades.length > 0) {
-          const livePositions = await this.conn.getOpenPositions();
-          const derivPositions = livePositions.map((c) => ({
-            contract_id: String(c.contractId),
-            symbol: c.symbol,
-            buy_price: c.buyPrice,
-            profit: c.profit,
-          }));
+          const liveRes = await this.conn.getOpenPositions();
+          if (!liveRes.success) {
+            console.warn(`[reconciliation] Annulée : échec de lecture du portefeuille Deriv (${liveRes.error})`);
+          } else {
+            const derivPositions = liveRes.positions.map((c) => ({
+              contract_id: String(c.contractId),
+              symbol: c.symbol,
+              buy_price: c.buyPrice,
+              profit: c.profit,
+            }));
 
-          reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+            reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+          }
         }
       } catch { /* ignore reconciliation error */ }
     }
@@ -1575,10 +1579,15 @@ class ServerBotEngine {
         ]);
       } catch { /* handled by Data Quality Guard */ }
 
+      const latestEpoch = m1Candles[m1Candles.length - 1]?.epoch 
+        ?? m5Candles[m5Candles.length - 1]?.epoch 
+        ?? m15Candles[m15Candles.length - 1]?.epoch;
+      const lastTickTimestamp = latestEpoch ? latestEpoch * 1000 : undefined;
+
       const dataQuality = evaluateDataQuality({
         symbol,
         wsConnected: this.conn ? true : false,
-        lastTickTimestamp: Date.now(),
+        lastTickTimestamp,
         m1Candles,
         m5Candles,
         m15Candles,
