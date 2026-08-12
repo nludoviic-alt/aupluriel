@@ -367,16 +367,6 @@ function UserProfilePage() {
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-neutral-900/95 via-slate-900/90 to-black/95 p-6 backdrop-blur-xl shadow-2xl space-y-6 before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_top_right,rgba(6,182,212,0.12),transparent_60%)]">
         <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4.5">
-            {/* Glowing Avatar */}
-            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 via-indigo-500 to-purple-600 text-white text-xl font-black shadow-[0_0_25px_rgba(6,182,212,0.35)] border border-white/20">
-              {profileUser.username.slice(0, 2).toUpperCase()}
-              {isAdmin && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)] text-[9px] font-black text-black">
-                  ★
-                </span>
-              )}
-            </div>
-
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-black tracking-tight text-foreground">{profileUser.username}</h1>
@@ -601,39 +591,41 @@ function UserProfilePage() {
               </button>
             </div>
 
-            <div className="flex w-full flex-wrap items-center rounded-2xl border border-white/5 bg-black/40 p-1.5 gap-1">
-              {PRESET_KEYS.map((p) => {
-                const isRunning = botStatus[`${profileUser.id}:${p}`]?.running;
-                const isSelected = profilePreset === p;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setProfilePreset(p)}
-                    className={cn(
-                      "flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all relative cursor-pointer",
-                      isSelected
-                        ? p.startsWith("boom")
-                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/40 shadow-sm"
-                          : p.startsWith("crash")
-                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
-                            : p.startsWith("liquidity") || p.startsWith("gold")
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-                              : p.startsWith("scalping")
-                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                                : "bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-sm"
-                        : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/[0.04]",
-                    )}
-                  >
-                    <span>{PRESET_ICONS[p]} {presetLabels[p]}</span>
-                    {isRunning && (
-                      <span className="relative flex h-2 w-2" title="Bot actif">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+            <div className="flex w-full flex-wrap items-center rounded-2xl border border-white/5 bg-black/40 p-1.5 gap-1 sm:gap-1">
+              <div className="grid grid-cols-3 sm:flex sm:flex-wrap w-full gap-1.5 sm:gap-1">
+                {PRESET_KEYS.map((p) => {
+                  const isRunning = botStatus[`${profileUser.id}:${p}`]?.running;
+                  const isSelected = profilePreset === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setProfilePreset(p)}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 sm:px-3 sm:py-1.5 text-[11px] sm:text-[10px] font-black uppercase tracking-wider transition-all relative cursor-pointer",
+                        isSelected
+                          ? p.startsWith("boom")
+                            ? "bg-orange-500/20 text-orange-300 border border-orange-500/40 shadow-sm"
+                            : p.startsWith("crash")
+                              ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
+                              : p.startsWith("liquidity") || p.startsWith("gold")
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                                : p.startsWith("scalping")
+                                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                                  : "bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-sm"
+                          : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/[0.04]",
+                      )}
+                    >
+                      <span className="truncate">{PRESET_ICONS[p]} {presetLabels[p]}</span>
+                      {isRunning && (
+                        <span className="relative flex h-2 w-2 shrink-0" title="Bot actif">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

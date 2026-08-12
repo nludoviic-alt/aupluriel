@@ -1173,59 +1173,100 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   key={p}
                   onClick={() => selectPresetView(p)}
                   className={cn(
-                    "rounded-xl border p-2.5 sm:p-4 flex flex-col justify-between gap-2.5 sm:gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer min-w-0 overflow-hidden",
+                    "rounded-xl border p-3 sm:p-4 flex flex-col justify-between gap-3 sm:gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer min-w-0 overflow-hidden",
                     meta.borderColor,
                     isSelected
                       ? cn("ring-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]", meta.borderColor, meta.bgTone)
                       : "hover:bg-white/[0.04] hover:border-white/20 opacity-85 hover:opacity-100"
                   )}
                 >
-                  {/* Top: Pill Badge + Status Dot & Trades Count */}
-                  <div className="flex items-start justify-between gap-1.5 w-full min-w-0">
-                    <span className={cn("text-[9px] sm:text-xs font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md border shadow-sm shrink min-w-0 truncate", meta.borderColor, meta.bgTone, meta.color)}>
-                      <span className="sm:hidden">{meta.badge.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2300}-\u{23FF}]/gu, "").trim()}</span>
-                      <span className="hidden sm:inline">{meta.badge}</span>
+                  {/* Mobile: Compact Header Row */}
+                  <div className="flex items-center justify-between gap-2 w-full min-w-0 sm:hidden">
+                    <span className={cn("text-[12px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border shadow-sm shrink-0", meta.borderColor, meta.bgTone, meta.color)}>
+                      {meta.badge.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{2300}-\u{23FF}]/gu, "").trim()}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full shrink-0",
+                        isOnline
+                          ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse"
+                          : "bg-white/20"
+                      )}
+                      title={isOnline ? "Bot actif" : "Bot inactif"}
+                    />
+                  </div>
+
+                  {/* Desktop: Original Header */}
+                  <div className="hidden sm:flex items-start justify-between gap-1.5 w-full min-w-0">
+                    <span className={cn("text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shadow-sm shrink min-w-0 truncate", meta.borderColor, meta.bgTone, meta.color)}>
+                      {meta.badge}
                     </span>
                     <div className="flex items-center gap-1 shrink-0 pt-0.5">
                       <span
                         className={cn(
-                          "h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full shrink-0",
+                          "h-2 w-2 rounded-full shrink-0",
                           isOnline
                             ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"
                             : "bg-white/20"
                         )}
                         title={isOnline ? "Bot actif" : "Bot inactif"}
                       />
-                      <span className="text-[9px] sm:text-[10px] font-mono text-muted-foreground font-bold whitespace-nowrap">{st?.todayCount ?? 0} trades</span>
+                      <span className="text-[10px] font-mono text-muted-foreground font-bold whitespace-nowrap">{st?.todayCount ?? 0} trades</span>
                     </div>
                   </div>
 
-                  {/* Center: P&L Net du Jour */}
-                  <div className="min-w-0">
-                    <div className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-muted-foreground truncate">P&L du Jour</div>
-                    <div className={cn("text-base sm:text-xl font-black font-mono mt-0.5 truncate", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                  {/* Mobile: Large P&L Display */}
+                  <div className="sm:hidden min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">P&L</span>
+                      <div className={cn("text-2xl font-black font-mono", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                        {pnlVal >= 0 ? `+$${pnlVal.toFixed(2)}` : `-$${Math.abs(pnlVal).toFixed(2)}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop: Original P&L */}
+                  <div className="hidden sm:block min-w-0">
+                    <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground truncate">P&L du Jour</div>
+                    <div className={cn("text-xl font-black font-mono mt-0.5 truncate", pnlVal >= 0 ? "text-emerald-400" : "text-rose-400")}>
                       {pnlVal >= 0 ? `+$${pnlVal.toFixed(2)}` : `-$${Math.abs(pnlVal).toFixed(2)}`}
                     </div>
                   </div>
 
-                  {/* Middle Stats Bar: Gagné & Win Rate */}
-                  <div className="pt-1.5 sm:pt-2 border-t border-white/5 grid grid-cols-2 gap-1 sm:gap-2 text-[9px] sm:text-[10px] font-mono min-w-0">
+                  {/* Mobile: Stats Row */}
+                  <div className="sm:hidden flex items-center justify-between gap-3 py-2 border-t border-white/5">
+                    <div className="flex flex-col">
+                      <span className="text-[9px] uppercase font-semibold text-muted-foreground">Gagné</span>
+                      <span className="text-[13px] font-bold font-mono text-emerald-400">+${todayWon.toFixed(2)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] uppercase font-semibold text-muted-foreground">WR</span>
+                      <span className="text-[13px] font-bold font-mono text-foreground">{winRate.toFixed(0)}%</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] uppercase font-semibold text-muted-foreground">Trades</span>
+                      <span className="text-[13px] font-bold font-mono text-muted-foreground">{st?.todayCount ?? 0}</span>
+                    </div>
+                  </div>
+
+                  {/* Desktop: Original Stats */}
+                  <div className="hidden sm:pt-2 sm:border-t sm:border-white/5 sm:grid sm:grid-cols-2 sm:gap-2 text-[10px] font-mono min-w-0">
                     <div className="min-w-0 truncate">
-                      <span className="text-muted-foreground font-sans text-[8px] sm:text-[9px] uppercase font-semibold">Gagné : </span>
+                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">Gagné : </span>
                       <span className="text-emerald-400 font-bold">+${todayWon.toFixed(2)}</span>
                     </div>
                     <div className="min-w-0 truncate text-right sm:text-left">
-                      <span className="text-muted-foreground font-sans text-[8px] sm:text-[9px] uppercase font-semibold">WR : </span>
+                      <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">WR : </span>
                       <span className="text-foreground font-bold">{winRate.toFixed(0)}%</span>
                     </div>
                   </div>
 
-                  {/* Bottom Bar: Indice en bas + Statut Actif / Prêt */}
-                  <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-1.5 text-[9px] sm:text-[10px] font-mono min-w-0">
+                  {/* Desktop: Original Footer */}
+                  <div className="hidden sm:pt-1.5 sm:border-t sm:border-white/5 sm:flex sm:items-center sm:justify-between sm:gap-1.5 sm:text-[10px] sm:font-mono sm:min-w-0">
                     <span className="font-semibold text-muted-foreground truncate min-w-0" title={configuredMarkets}>
                       {configuredMarkets}
                     </span>
-                    <span className={cn("font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] shrink-0", isOnline ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" : "bg-white/5 text-muted-foreground border border-white/10")}>
+                    <span className={cn("font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-[9px] shrink-0", isOnline ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" : "bg-white/5 text-muted-foreground border border-white/10")}>
                       {isOnline ? "Actif" : "Prêt"}
                     </span>
                   </div>
