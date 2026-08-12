@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { db } from "./db.server";
+import { getDb } from "./db.server";
 
 export interface VersionedConfigRow {
   id: string;
@@ -82,7 +82,7 @@ export class ConfigRegistry {
    * Retrieves the current active config version for a given user & preset.
    */
   static getLatestVersion(userId: number, preset: string): VersionedConfigRow | null {
-    const row = db
+    const row = getDb()
       .prepare(
         "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT 1"
       )
@@ -159,9 +159,9 @@ export class ConfigRegistry {
     const auditEvents: AuditEventRow[] = [];
 
     // Transaction for atomic insertion of version + audit events + user_configs sync
-    db.transaction(() => {
+    getDb().transaction(() => {
       // 1. Insert config_versions row
-      db.prepare(`
+      getDb().prepare(`
         INSERT INTO config_versions (id, user_id, preset, version_tag, version_hash, config_json, created_at, created_by, source, change_summary)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -178,7 +178,7 @@ export class ConfigRegistry {
       );
 
       // 2. Insert audit events for every single changed field
-      const auditStmt = db.prepare(`
+      const auditStmt = getDb().prepare(`
         INSERT INTO config_audit_events (id, version_id, user_id, preset, field_name, old_value, new_value, timestamp, source, metadata)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
@@ -214,7 +214,7 @@ export class ConfigRegistry {
       }
 
       // 3. Keep legacy user_configs table synchronized
-      db.prepare(`
+      getDb().prepare(`
         INSERT INTO user_configs (user_id, preset, config, updated_at)
         VALUES (?, ?, ?, unixepoch())
         ON CONFLICT(user_id, preset) DO UPDATE SET
@@ -230,7 +230,7 @@ export class ConfigRegistry {
    * Retrieves full version history for a given user & preset.
    */
   static getVersionHistory(userId: number, preset: string, limit = 50): VersionedConfigRow[] {
-    return db
+    return getDb()
       .prepare(
         "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT ?"
       )
@@ -241,7 +241,7 @@ export class ConfigRegistry {
    * Retrieves audit events for a specific version or preset.
    */
   static getAuditEvents(userId: number, preset: string, limit = 100): AuditEventRow[] {
-    return db
+    return getDb()
       .prepare(
         "SELECT * FROM config_audit_events WHERE user_id = ? AND preset = ? ORDER BY timestamp DESC LIMIT ?"
       )
@@ -257,7 +257,7 @@ export class ConfigRegistry {
     targetVersionId: string,
     revertedBy?: number | null
   ): { version: VersionedConfigRow; auditEvents: AuditEventRow[] } {
-    const target = db
+    const target = getDb()
       .prepare("SELECT * FROM config_versions WHERE id = ? AND user_id = ? AND preset = ?")
       .get(targetVersionId, userId, preset) as VersionedConfigRow | undefined;
 
