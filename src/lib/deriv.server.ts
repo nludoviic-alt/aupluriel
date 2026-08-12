@@ -8,6 +8,8 @@
 //
 // Requires Node ≥ 22 (global WebSocket).
 
+import { FEATURE_FLAGS } from "./feature-flags.server";
+
 const DERIV_APP_ID = 1089;
 const PUBLIC_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
@@ -369,13 +371,14 @@ export class DerivTradingConnection {
     takeProfitUsd: number;
   }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
-    // Mandatory contract gate: for BOOM900 this performs active_symbols →
-    // contracts_for → proposal before any order can reach `buy`.
-    if (params.symbol === "BOOM900") {
+    // Mandatory contract gate: when DERIV_PROPOSAL_VALIDATION_ENABLED is active
+    // (or for BOOM900), perform active_symbols → contracts_for → proposal before
+    // any order can reach `buy`.
+    if (FEATURE_FLAGS.DERIV_PROPOSAL_VALIDATION_ENABLED || params.symbol === "BOOM900") {
       const validation = await this.validateMultiplierContract(params);
       if (validation.status !== "AVAILABLE") {
         const detail = validation.error;
-        throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `BOOM900 ${validation.status}`);
+        throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `${params.symbol} ${validation.status}`);
       }
     }
     let lastError: Error | null = null;

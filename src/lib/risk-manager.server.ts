@@ -106,11 +106,17 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
   const db = getDb();
   const targetStrat = strategyId || preset;
 
-  const rows = db.prepare(`
-    SELECT status, profit FROM bot_trades
-    WHERE user_id = ? AND (preset = ? OR strategy = ?) AND status IN ('won', 'lost')
-    ORDER BY time DESC LIMIT 100
-  `).all(userId, preset, targetStrat) as { status: "won" | "lost"; profit: number }[];
+  const rows = strategyId
+    ? db.prepare(`
+        SELECT status, profit FROM bot_trades
+        WHERE user_id = ? AND strategy = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 100
+      `).all(userId, strategyId) as { status: "won" | "lost"; profit: number }[]
+    : db.prepare(`
+        SELECT status, profit FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 100
+      `).all(userId, preset) as { status: "won" | "lost"; profit: number }[];
 
   const sample100 = rows.length;
   const trades50 = rows.slice(0, 50);
@@ -230,7 +236,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   }
 
   // 2. Check Daily Drawdown (Soft 1.5% / Hard 2.0%)
-  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const todayStart = new Date().setUTCHours(0, 0, 0, 0);
   const todayPnlRow = db.prepare(`
     SELECT SUM(profit) as pnl FROM bot_trades
     WHERE user_id = ? AND time >= ? AND status IN ('won', 'lost')
@@ -254,11 +260,17 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   }
 
   // 3. Check Consecutive Loss Streak (per strategy)
-  const recentTrades = db.prepare(`
-    SELECT status FROM bot_trades
-    WHERE user_id = ? AND (preset = ? OR strategy = ?) AND status IN ('won', 'lost')
-    ORDER BY time DESC LIMIT 5
-  `).all(input.userId, input.preset, input.strategyId) as { status: "won" | "lost" }[];
+  const recentTrades = input.strategyId
+    ? db.prepare(`
+        SELECT status FROM bot_trades
+        WHERE user_id = ? AND strategy = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 5
+      `).all(input.userId, input.strategyId) as { status: "won" | "lost" }[]
+    : db.prepare(`
+        SELECT status FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 5
+      `).all(input.userId, input.preset) as { status: "won" | "lost" }[];
 
   let streak = 0;
   for (const t of recentTrades) {

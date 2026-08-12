@@ -84,6 +84,7 @@ import {
   type TradeLog,
   type TradingSession,
 } from "./signal-core";
+import { reconcileUserPositions } from "./trade-reconciliation-engine.server";
 
 // Maps a rejected classifyOpportunity() verdict onto the scan-log vocabulary
 // this file already used before the two decision engines were unified — so
@@ -1343,6 +1344,27 @@ class ServerBotEngine {
     const scanResults: ScanSymbolResult[] = [];
     const finishScan = () => { this.lastScan = { time: Date.now(), results: scanResults }; };
 
+    // ── Trade Reconciliation Pass ──
+    if (FEATURE_FLAGS.RECONCILIATION_ENABLED && this.conn) {
+      try {
+        const dbOpenTrades = getDb().prepare(`
+          SELECT id, symbol, contract_id as derivContractId, entry_price as openPrice
+          FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
+        `).all(this.userId, this.preset) as any[];
+
+        const derivPositions = this.activeContracts.size > 0
+          ? Array.from(this.activeContracts.values()).map((c) => ({
+              contract_id: String(c.contractId),
+              symbol: c.symbol,
+              buy_price: c.stake,
+              profit: 0,
+            }))
+          : [];
+
+        reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+      } catch { /* ignore reconciliation error */ }
+    }
+
     // ── Trailing stop / daily limits (pause-with-auto-resume) ──
     if (pnl > this.sessionPeakPnl) this.sessionPeakPnl = pnl;
     if (config.trailingStopUsd > 0 && this.sessionPeakPnl > 0 && pnl < this.sessionPeakPnl - config.trailingStopUsd) {
@@ -1528,7 +1550,16 @@ class ServerBotEngine {
       }
       // ── Step 1: Data Quality Guard ──
       recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "scan");
-      const dataQuality = evaluateDataQuality({ symbol, wsConnected: this.conn ? true : false });
+      let symbolCandles: any[] = [];
+      try {
+        symbolCandles = await candleFetcher(symbol, 900, 20);
+      } catch { /* handled by Data Quality Guard */ }
+
+      const dataQuality = evaluateDataQuality({
+        symbol,
+        wsConnected: this.conn ? true : false,
+        m15Candles: symbolCandles,
+      });
       if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
         circuitBreaker.updateAutoTriggers({
           dataQualityFailure: FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED
@@ -1970,13 +2001,19 @@ class ServerBotEngine {
       recordFunnelStep(this.preset, strategyId, "valid_signal");
 
       // ── Step 4: Granular Time Performance Filter (SYMBOL + STRATEGY + VERSION + HOUR_UTC) ──
+      const currentStrategyVersion = ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "V1";
       const currentHourUtc = new Date().getUTCHours();
-      const timeFilter = evaluateTimeFilter(symbol, strategyId, "V1", currentHourUtc);
+      const timeFilter = evaluateTimeFilter(symbol, strategyId, currentStrategyVersion, currentHourUtc);
 
       if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.isBlocked && !timeFilter.observationMode) {
-        // Do not fabricate an already-closed shadow trade. A shadow result is
-        // only statistically usable once entry, exit and P&L have been tracked
-        // against live prices by the dedicated simulator.
+        if (FEATURE_FLAGS.TIME_SHADOW_MODE_ENABLED && timeFilter.observationMode) {
+          try {
+            getDb().prepare(`
+              INSERT OR IGNORE INTO shadow_trades (id, user_id, preset, strategy, strategy_version, symbol, direction, entry_price, time)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(`shad_${Date.now()}_${symbol}`, this.userId, this.preset, strategyId, currentStrategyVersion, symbol, direction, analysis.entryPrice || 0, Date.now());
+          } catch { /* ignore shadow write failure */ }
+        }
         scanResults.push({
           symbol,
           action: "session-closed",
@@ -1988,6 +2025,20 @@ class ServerBotEngine {
       }
 
       recordFunnelStep(this.preset, strategyId, "time_approved");
+
+      if (FEATURE_FLAGS.STRATEGY_HEALTH_ENABLED) {
+        const stratHealth = getPresetRiskMetrics(this.userId, this.preset, strategyId);
+        if (stratHealth.status === "PAUSED") {
+          scanResults.push({
+            symbol,
+            action: "risk-pause",
+            direction,
+            confidence: analysis.confidence,
+            note: `Santé Stratégie [PAUSED]: ${stratHealth.reason}`,
+          });
+          continue;
+        }
+      }
 
       // ── Step 5: Institutional Risk Manager V3 ──
       const riskCheck = evaluateRiskCheck({
@@ -2337,8 +2388,6 @@ class ServerBotEngine {
         consecutiveLosses: presetConsecutiveLosses,
         activePositionsCount: this.activeSymbols.size,
       };
-
-      const currentStrategyVersion = ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "v1.0.0";
 
       const brokerLabel = useKraken ? "Kraken" : useBinance ? "Binance" : useOanda ? "OANDA" : "serveur";
       const pendingLog: TradeLog = {

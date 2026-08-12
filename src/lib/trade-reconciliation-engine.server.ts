@@ -52,7 +52,7 @@ export function reconcileUserPositions(
       try {
         db.prepare(`
           UPDATE bot_trades
-          SET status = 'won', profit = 0.0, exit_reason = 'RECONCILED_CLOSED_BY_BROKER'
+          SET status = 'closed', profit = 0.0, exit_reason = 'RECONCILED_CLOSED_BY_BROKER'
           WHERE id = ? AND user_id = ?
         `).run(localTrade.id, userId);
       } catch (e) {

@@ -35,24 +35,47 @@ export function evaluateDataQuality(params: {
   const now = Date.now();
 
   const wsConnected = params.wsConnected ?? true;
-  const lastTickTimestamp = params.lastTickTimestamp ?? now;
-  const lastTickAgeMs = now - lastTickTimestamp;
 
-  const m1Count = params.m1Candles?.length ?? 50;
-  const m5Count = params.m5Candles?.length ?? 50;
-  const m15Count = params.m15Candles?.length ?? 50;
+  // Determine tick/candle age
+  let lastTickAgeMs = params.lastTickTimestamp ? (now - params.lastTickTimestamp) : 0;
+  
+  // Inspect latest candle timestamp if candles are provided
+  const latestCandle = params.m15Candles?.[params.m15Candles.length - 1] 
+    ?? params.m5Candles?.[params.m5Candles.length - 1] 
+    ?? params.m1Candles?.[params.m1Candles.length - 1];
+  
+  if (latestCandle && latestCandle.epoch) {
+    const candleAgeMs = now - (latestCandle.epoch * 1000);
+    if (!params.lastTickTimestamp || candleAgeMs > lastTickAgeMs) {
+      lastTickAgeMs = Math.max(lastTickAgeMs, candleAgeMs);
+    }
+  }
+
+  const m1Count = params.m1Candles?.length ?? (params.m1Candles === undefined ? 50 : 0);
+  const m5Count = params.m5Candles?.length ?? (params.m5Candles === undefined ? 50 : 0);
+  const m15Count = params.m15Candles?.length ?? (params.m15Candles === undefined ? 50 : 0);
 
   let status: DataStatus = "HEALTHY";
   let reason: string | undefined;
+
+  // Check flat-line / zero variance (stuck feed)
+  let isFlatLine = false;
+  if (params.m15Candles && params.m15Candles.length >= 5) {
+    const recent = params.m15Candles.slice(-5);
+    isFlatLine = recent.every((c) => c.high === c.low);
+  }
 
   // 1. Contrôle connexion & fraîcheur ticks
   if (!wsConnected) {
     status = "INVALID";
     reason = "DATA_QUALITY_BLOCK: WebSocket déconnecté";
-  } else if (lastTickAgeMs > 60000) {
+  } else if (isFlatLine) {
     status = "STALE";
-    reason = `DATA_QUALITY_BLOCK: Ticks périmés (${Math.round(lastTickAgeMs / 1000)}s > 60s)`;
-  } else if (m1Count < 20 || m5Count < 20 || m15Count < 20) {
+    reason = "DATA_QUALITY_BLOCK: Flux de prix figé (variation zéro sur 5 bougies)";
+  } else if (lastTickAgeMs > 180000) {
+    status = "STALE";
+    reason = `DATA_QUALITY_BLOCK: Données de marché périmées (${Math.round(lastTickAgeMs / 1000)}s > 180s)`;
+  } else if (m1Count < 15 || m5Count < 15 || m15Count < 15) {
     status = "DEGRADED";
     reason = `Historique de bougies incomplet (M1:${m1Count}, M5:${m5Count}, M15:${m15Count})`;
   }
