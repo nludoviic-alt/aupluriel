@@ -68,9 +68,62 @@ interface UserRecap {
   tradesLive: number; netPnlLive: number;
 }
 
-const presetLabels = { default: "Multi", boom: "Boom500", crash: "Crash900", scalping: "Scalping", liquidity: "Reversal liquidité", gold: "Or Trend", crash900: "Crash900 V2" } as const;
-type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
-const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"];
+const presetLabels = {
+  default: "Multi",
+  boom: "Boom500",
+  boom900: "Boom900",
+  vol75: "Volatility 75 (1s)",
+  rb100: "Range Break 100",
+  crash: "Crash900",
+  crash500: "Crash500",
+  scalping: "Scalping",
+  liquidity: "GOLD LIQUIDITY SWEEP",
+  gold: "GOLD TREND PULLBACK",
+  crash900: "Crash900 V2",
+  boomv2: "Boom V2",
+  scalpingv2: "Scalping V2",
+  liquidityv2: "Liquidity V2",
+  goldv2: "GOLD BREAKOUT",
+} as const;
+
+type PresetKey = keyof typeof presetLabels;
+
+const PRESET_KEYS: readonly PresetKey[] = [
+  "default",
+  "boom",
+  "boom900",
+  "vol75",
+  "rb100",
+  "crash",
+  "crash500",
+  "scalping",
+  "liquidity",
+  "gold",
+  "crash900",
+  "boomv2",
+  "scalpingv2",
+  "liquidityv2",
+  "goldv2",
+];
+
+const PRESET_ICONS: Record<PresetKey, string> = {
+  default: "🌐",
+  boom: "🚀",
+  boom900: "⚡",
+  vol75: "📈",
+  rb100: "↔",
+  crash: "📉",
+  crash500: "💥",
+  scalping: "⏱️",
+  liquidity: "◌",
+  gold: "🥇",
+  crash900: "⚡",
+  boomv2: "🚀",
+  scalpingv2: "⚡",
+  liquidityv2: "💧",
+  goldv2: "✨",
+};
+
 
 const CONFIG_FIELD_LABELS: Record<string, string> = {
   stakeUsd: "Mise", maxDailyLossUsd: "Limite perte/jour", maxDailyProfitUsd: "Objectif gain/jour",
@@ -378,29 +431,78 @@ function UserProfilePage() {
       {!isAdmin && (
         <div className="border-t border-white/[0.08] pt-5 space-y-3">
           {/* Bot status + toggle */}
-          <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader — {presetLabels[profilePreset]}</span>
+          <div className="flex flex-col gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                Auto-Trader — {PRESET_ICONS[profilePreset]} {presetLabels[profilePreset]}
+              </span>
+              {botStatus[`${profileUser.id}:${profilePreset}`]?.running && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Actif
+                </span>
+              )}
+            </div>
             <BotStatusCell status={botStatus[`${profileUser.id}:${profilePreset}`]} busy={botBusyId === profileUser.id} onToggle={(action) => toggleBot(profilePreset, action)} />
           </div>
 
+          {/* Active presets overview summary */}
+          {(() => {
+            const activeList = PRESET_KEYS.filter((p) => botStatus[`${profileUser.id}:${p}`]?.running);
+            return (
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground font-medium">Presets actifs chez l'utilisateur :</span>
+                {activeList.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeList.map((p) => (
+                      <span key={p} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                        <span>{PRESET_ICONS[p]} {presetLabels[p]}</span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground/60 italic">Aucun bot actif</span>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Preset tabs */}
           <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset consulté</span>
-            <div className="flex w-full shrink-0 flex-wrap items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5 sm:w-auto">
-              {PRESET_KEYS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setProfilePreset(p)}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
-                    profilePreset === p
-                      ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : p === "liquidity" ? "bg-violet-500/15 text-violet-300" : p === "gold" ? "bg-amber-500/15 text-amber-400" : "bg-cyan-500/15 text-cyan-400"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : p === "scalping" ? "⏱️ Scalping" : p === "liquidity" ? "◌ Liquidité" : p === "gold" ? "🥇 Or" : "Multi"}
-                </button>
-              ))}
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 shrink-0">Preset consulté</span>
+            <div className="flex w-full shrink-0 flex-wrap items-center rounded-lg border border-white/5 bg-white/[0.02] p-1 gap-1 sm:w-auto">
+              {PRESET_KEYS.map((p) => {
+                const isRunning = botStatus[`${profileUser.id}:${p}`]?.running;
+                const isSelected = profilePreset === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setProfilePreset(p)}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none relative",
+                      isSelected
+                        ? p.startsWith("boom")
+                          ? "bg-orange-500/20 text-orange-300 border border-orange-500/40"
+                          : p.startsWith("crash")
+                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                            : p.startsWith("liquidity") || p.startsWith("gold")
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                              : p.startsWith("scalping")
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                                : "bg-violet-500/20 text-violet-300 border border-violet-500/40"
+                        : "text-muted-foreground hover:text-foreground border border-transparent hover:bg-white/[0.04]",
+                    )}
+                  >
+                    <span>{PRESET_ICONS[p]} {presetLabels[p]}</span>
+                    {isRunning && (
+                      <span className="relative flex h-2 w-2" title="Bot actif pour ce preset">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <button
               disabled={presetBusy === profileUser.id}
