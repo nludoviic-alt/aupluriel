@@ -45,6 +45,8 @@ import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
 import { evaluateTimeFilter, recordShadowTrade } from "./time-filter.server";
 import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
+import { evaluateDataQuality } from "./data-quality-guard.server";
+import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -1460,6 +1462,14 @@ class ServerBotEngine {
         scanResults.push({ symbol, action: "session-closed", note: granularHourCheck.reason });
         continue;
       }
+      // ── Step 1: Data Quality Guard ──
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "scan");
+      const dataQuality = evaluateDataQuality({ symbol, wsConnected: this.conn ? true : false });
+      if (dataQuality.isBlocked) {
+        scanResults.push({ symbol, action: "session-closed", note: dataQuality.reason });
+        continue;
+      }
+
       const cooldownUntil = this.symbolCooldowns.get(symbol) ?? 0;
       if (Date.now() < cooldownUntil) { scanResults.push({ symbol, action: "cooldown" }); continue; }
       if (cooldownUntil > 0) this.symbolCooldowns.delete(symbol);
@@ -1840,7 +1850,26 @@ class ServerBotEngine {
       // classifyOpportunity's "take" branch requires analysis.direction to be
       // non-null (see the "no-direction" check inside it) — this re-narrows
       // it for TypeScript's benefit, it can never actually continue here.
-      if (!analysis.direction) continue;
+      // ── Step 2: Setup Detected & Market Regime Classification ──
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "setup");
+      const regimeClassification = classifyMarketRegime({
+        symbol,
+        adx: analysis.volatilityRatio * 20,
+        atrRatio: analysis.volatilityRatio,
+        trendAlignmentScore: analysis.trendAlignmentScore,
+      });
+
+      const regimeRouting = isStrategyAllowedInRegime(`${this.preset.toUpperCase()}_ENGINE`, regimeClassification.regime);
+      if (!regimeRouting.allowed) {
+        scanResults.push({
+          symbol,
+          action: "session-closed",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          note: regimeRouting.reason,
+        });
+        continue;
+      }
 
       // ── Step 3: Valid Signal Detected by Signal Engine ──
       recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "valid_signal");

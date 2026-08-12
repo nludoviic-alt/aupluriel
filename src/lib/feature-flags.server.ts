@@ -5,6 +5,8 @@
  */
 
 export interface FeatureFlags {
+  DATA_QUALITY_GUARD_ENABLED: boolean;
+  MARKET_REGIME_ROUTER_ENABLED: boolean;
   GRANULAR_TIME_FILTER_ENABLED: boolean;
   TIME_SHADOW_MODE_ENABLED: boolean;
   STRATEGY_HEALTH_ENABLED: boolean;
@@ -14,13 +16,13 @@ export interface FeatureFlags {
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
+  DATA_QUALITY_GUARD_ENABLED: true,
+  MARKET_REGIME_ROUTER_ENABLED: true,
   GRANULAR_TIME_FILTER_ENABLED: true,
   TIME_SHADOW_MODE_ENABLED: true,
   STRATEGY_HEALTH_ENABLED: true,
   RISK_MANAGER_V2_ENABLED: true,
   DERIV_PROPOSAL_VALIDATION_ENABLED: true,
-  // OBSERVATION_MODE = true : Calcule toutes les métriques, statuts et Shadow trades,
-  // mais n'applique AUCUN blocage réel tant que les données n'ont pas été observées et validées.
   OBSERVATION_MODE: true,
 };
 
