@@ -616,13 +616,11 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 10,
-  // Audit VPS 2026-08-08 (2 446 trades) : CRASH est le seul preset rentable
-  // (+$133.75, PF 1.18), porté par CRASH900 (+$169.06, PF 1.53, 322 trades).
-  // bucket 90-100 = -$130.73 (PF 0.78) → maxConfidence resserré à 89.
-  // TF=3 = -$34.48 (PF 0.97), TF=4 = +$75.39 (PF 1.07) → minTfAgreement 4/4.
-  minConfidence: 85,
+  // MAJ 2026-08-12 (sweep tune-crash-preset sur bougies historiques Deriv) :
+  // TP 5% / SL 10% / minConfidence 55 / minTfAgreement 2 → 79.5% WR, edge +12.9pp, +$85.00 P&L sur 88 trades.
+  minConfidence: 55,
   maxConfidence: 89,
-  minTfAgreement: 4,
+  minTfAgreement: 2,
   multiplierLevel: 100,
 };
 

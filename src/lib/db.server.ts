@@ -510,6 +510,10 @@ function migrate(db: Database.Database) {
   if (!botTradeCols.has("risk_manager_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_manager_status TEXT");
   if (!botTradeCols.has("execution_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_status TEXT");
   if (!botTradeCols.has("setup_id")) db.exec("ALTER TABLE bot_trades ADD COLUMN setup_id TEXT");
+  if (!botTradeCols.has("config_snapshot")) db.exec("ALTER TABLE bot_trades ADD COLUMN config_snapshot TEXT");
+  if (!botTradeCols.has("indicator_values")) db.exec("ALTER TABLE bot_trades ADD COLUMN indicator_values TEXT");
+  if (!botTradeCols.has("time_filter_decision")) db.exec("ALTER TABLE bot_trades ADD COLUMN time_filter_decision TEXT");
+  if (!botTradeCols.has("risk_manager_decision")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_manager_decision TEXT");
 
   // Migration de rattrapage : s'assurer que les trades existants sans version sont rattachés à 'V1' pour le time filter
   db.exec("UPDATE bot_trades SET strategy_version = 'V1' WHERE strategy_version = 'LEGACY' OR strategy_version IS NULL");

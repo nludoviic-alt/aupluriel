@@ -71,9 +71,9 @@ export class ChangeImpactTracker {
 
     const deltaWinRate = afterStats.winRate - beforeStats.winRate;
     const deltaPF = afterStats.profitFactor - beforeStats.profitFactor;
-    const deltaExp = afterStats.expectancyUsd - beforeStats.expectancyUsd;
-    const deltaDD = afterStats.maxDrawdownUsd - beforeStats.maxDrawdownUsd;
-    const deltaPnl = afterStats.totalPnlUsd - beforeStats.totalPnlUsd;
+    const deltaExp = afterStats.expectancy - beforeStats.expectancy;
+    const deltaDD = afterStats.worstTrade - beforeStats.worstTrade;
+    const deltaPnl = afterStats.netPnl - beforeStats.netPnl;
 
     let verdict: "IMPROVED" | "DEGRADED" | "NEUTRAL" | "INSUFFICIENT_DATA" = "NEUTRAL";
     if (tradesAfter.length < 5) {

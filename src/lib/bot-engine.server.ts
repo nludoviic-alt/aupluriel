@@ -262,6 +262,7 @@ interface BotTradeRow {
   closed_at: number | null;
   note: string | null;
   strategy: string | null;
+  strategy_version: string | null;
   entry_price: number | null;
   duration_minutes: number | null;
   expiry: number | null;
@@ -271,6 +272,10 @@ interface BotTradeRow {
   take_profit: number | null;
   mode: "demo" | "live" | null;
   preset: Preset | null;
+  config_snapshot: string | null;
+  indicator_values: string | null;
+  time_filter_decision: string | null;
+  risk_manager_decision: string | null;
 }
 
 function parseComponents(json: string | null): SignalComponent[] | undefined {
@@ -283,31 +288,70 @@ function parseComponents(json: string | null): SignalComponent[] | undefined {
   }
 }
 
+function parseJsonObject(json: string | null | undefined): Record<string, unknown> | undefined {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function logFromRow(r: BotTradeRow): TradeLog {
   return {
     id: r.id, time: r.time, symbol: r.symbol, direction: r.direction, stake: r.stake,
     payout: r.payout, status: r.status, profit: r.profit, confidence: r.confidence,
     tfAgreement: r.tf_agreement, contractId: r.contract_id ?? undefined,
     closedAt: r.closed_at ?? undefined, note: r.note ?? undefined, strategy: r.strategy ?? undefined,
+    strategyVersion: r.strategy_version ?? undefined,
     entryPrice: r.entry_price ?? undefined, durationMinutes: r.duration_minutes ?? undefined,
     expiry: r.expiry ?? undefined,
     components: parseComponents(r.components),
     multiplier: r.multiplier ?? undefined, stopLossUsd: r.stop_loss ?? undefined, takeProfitUsd: r.take_profit ?? undefined,
     preset: r.preset ?? undefined,
     mode: r.mode ?? undefined,
+    configSnapshot: parseJsonObject(r.config_snapshot),
+    indicatorValues: parseJsonObject(r.indicator_values),
+    timeFilterDecision: parseJsonObject(r.time_filter_decision),
+    riskManagerDecision: parseJsonObject(r.risk_manager_decision),
   };
 }
 
 function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
   const latestVer = ConfigRegistry.getLatestVersion(userId, preset);
-  const strategyVersion = latestVer?.version_tag ?? "v1.0.0";
+  const strategyVersion = log.strategyVersion ?? latestVer?.version_tag ?? "v1.0.0";
+
+  const configSnapshotJson = typeof log.configSnapshot === "string" ? log.configSnapshot : log.configSnapshot ? JSON.stringify(log.configSnapshot) : null;
+  const indicatorValuesJson = typeof log.indicatorValues === "string" ? log.indicatorValues : log.indicatorValues ? JSON.stringify(log.indicatorValues) : null;
+  const timeFilterDecisionJson = typeof log.timeFilterDecision === "string" ? log.timeFilterDecision : log.timeFilterDecision ? JSON.stringify(log.timeFilterDecision) : null;
+  const riskManagerDecisionJson = typeof log.riskManagerDecision === "string" ? log.riskManagerDecision : log.riskManagerDecision ? JSON.stringify(log.riskManagerDecision) : null;
 
   getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, @strategy_version, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
+    INSERT INTO bot_trades (
+      id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement,
+      contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry,
+      components, multiplier, stop_loss, take_profit, mode, preset,
+      config_snapshot, indicator_values, time_filter_decision, risk_manager_decision
+    )
+    VALUES (
+      @id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement,
+      @contract_id, @closed_at, @note, @strategy, @strategy_version, @entry_price, @duration_minutes, @expiry,
+      @components, @multiplier, @stop_loss, @take_profit, @mode, @preset,
+      @config_snapshot, @indicator_values, @time_filter_decision, @risk_manager_decision
+    )
     ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status, payout = excluded.payout, profit = excluded.profit,
-      contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
+      status = excluded.status,
+      payout = excluded.payout,
+      profit = excluded.profit,
+      contract_id = excluded.contract_id,
+      closed_at = excluded.closed_at,
+      note = excluded.note,
+      config_snapshot = COALESCE(excluded.config_snapshot, bot_trades.config_snapshot),
+      indicator_values = COALESCE(excluded.indicator_values, bot_trades.indicator_values),
+      time_filter_decision = COALESCE(excluded.time_filter_decision, bot_trades.time_filter_decision),
+      risk_manager_decision = COALESCE(excluded.risk_manager_decision, bot_trades.risk_manager_decision),
+      strategy_version = COALESCE(excluded.strategy_version, bot_trades.strategy_version)
   `).run({
     id: log.id, user_id: userId, time: log.time, symbol: log.symbol, direction: log.direction,
     stake: log.stake, payout: log.payout, status: log.status, profit: log.profit,
@@ -318,6 +362,10 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
     mode, preset,
+    config_snapshot: configSnapshotJson,
+    indicator_values: indicatorValuesJson,
+    time_filter_decision: timeFilterDecisionJson,
+    risk_manager_decision: riskManagerDecisionJson,
   });
 }
 
@@ -1885,9 +1933,9 @@ class ServerBotEngine {
         });
         continue;
       }
-      // classifyOpportunity's "take" branch requires analysis.direction to be
-      // non-null (see the "no-direction" check inside it) — this re-narrows
-      // it for TypeScript's benefit, it can never actually continue here.
+      if (!analysis.direction) continue;
+      const direction: "CALL" | "PUT" = analysis.direction;
+
       // Preserve the concrete strategy that generated this setup. Aggregating
       // all variants under `${preset}_ENGINE` makes V1/V2 metrics, time
       // filtering and risk pauses bleed into each other.
@@ -1911,7 +1959,7 @@ class ServerBotEngine {
         scanResults.push({
           symbol,
           action: "session-closed",
-          direction: analysis.direction,
+          direction,
           confidence: analysis.confidence,
           note: regimeRouting.reason,
         });
@@ -1932,7 +1980,7 @@ class ServerBotEngine {
         scanResults.push({
           symbol,
           action: "session-closed",
-          direction: analysis.direction,
+          direction,
           confidence: analysis.confidence,
           note: timeFilter.reason,
         });
@@ -1947,7 +1995,7 @@ class ServerBotEngine {
         preset: this.preset,
         strategyId,
         symbol,
-        direction: analysis.direction,
+        direction,
         confidenceScore: analysis.confidence,
         currentEquity: currentBalance || 1000,
         currentBalance: currentBalance || 1000,
@@ -1957,7 +2005,7 @@ class ServerBotEngine {
         scanResults.push({
           symbol,
           action: "risk-pause",
-          direction: analysis.direction,
+          direction,
           confidence: analysis.confidence,
           note: `Risk Manager [${riskCheck.reason}]: ${riskCheck.explanation}`,
         });
@@ -1966,7 +2014,7 @@ class ServerBotEngine {
 
       recordFunnelStep(this.preset, strategyId, "risk_approved");
 
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
+      if (config.blockCorrelated && isCorrelatedWithActive(symbol, direction, this.activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
         continue;
       }
@@ -2211,12 +2259,93 @@ class ServerBotEngine {
             takeProfitUsd: Math.round(stakeForTrade * ((multiplierOverride?.takeProfitPctOfStake ?? config.takeProfitPctOfStake) / 100) * 100) / 100,
           };
 
+      const configSnapshot = {
+        preset: this.preset,
+        mode: this.config.mode ?? "demo",
+        broker: this.config.broker ?? "deriv",
+        stakeUsd: this.config.stakeUsd,
+        stakeMode: this.config.stakeMode,
+        stakePercent: this.config.stakePercent,
+        adaptiveStake: this.config.adaptiveStake,
+        progressiveStakeReduction: this.config.progressiveStakeReduction,
+        kellyFraction: this.config.kellyFraction,
+        minConfidence: this.config.minConfidence,
+        maxConfidence: this.config.maxConfidence,
+        minTfAgreement: this.config.minTfAgreement,
+        maxVolatilityPct: this.config.maxVolatilityPct,
+        premiumOnly: this.config.premiumOnly,
+        dynamicMinConfidence: this.config.dynamicMinConfidence,
+        maxDailyLossUsd: this.config.maxDailyLossUsd,
+        maxDailyProfitUsd: this.config.maxDailyProfitUsd,
+        maxTradesPerDay: this.config.maxTradesPerDay,
+        maxOpenPositions: this.config.maxOpenPositions,
+        maxSimultaneousTrades: this.config.maxSimultaneousTrades,
+        maxConsecutiveLosses: this.config.maxConsecutiveLosses,
+        cooldownMinutes: this.config.cooldownMinutes,
+        stopOnRisk: this.config.stopOnRisk,
+        trailingStopUsd: this.config.trailingStopUsd,
+        trailingStopPct: this.config.trailingStopPct,
+        tradingSessions: this.config.tradingSessions,
+        sessionEdgeMinutes: this.config.sessionEdgeMinutes,
+        hourlyEdgeFilter: this.config.hourlyEdgeFilter,
+        newsFilter: this.config.newsFilter,
+        multiplierLevel: this.config.multiplierLevel,
+        stopLossPctOfStake: this.config.stopLossPctOfStake,
+        takeProfitPctOfStake: this.config.takeProfitPctOfStake,
+        atrStopMultiple: this.config.atrStopMultiple,
+        riskRewardRatio: this.config.riskRewardRatio,
+        symbols: this.config.symbols,
+        symbolMode: this.config.symbolMode,
+        timestamp: Date.now(),
+      };
+
+      const indicatorValues = {
+        confidence: Math.round(analysis.confidence),
+        tfAgreement: analysis.agreement,
+        volatilityPct: analysis.volatilityPct,
+        volatilityRatio: analysis.volatilityRatio,
+        trendAlignmentScore: analysis.trendAlignmentScore,
+        premiumCount: analysis.premiumCount,
+        dominantTf: analysis.dominantTf,
+        suggestedDuration: analysis.suggestedDuration,
+        patternBonus: analysis.patternBonus,
+        components: analysis.components ?? [],
+        structuralLevel: structuralLevel ? {
+          riskAbs: "riskAbs" in structuralLevel ? structuralLevel.riskAbs : undefined,
+          rewardAbs: "rewardAbs" in structuralLevel ? structuralLevel.rewardAbs : undefined,
+          reason: "reason" in structuralLevel ? structuralLevel.reason : undefined,
+        } : undefined,
+      };
+
+      const timeFilterDecision = {
+        status: timeFilter.isBlocked ? "BLOCKED" : "APPROVED",
+        isBlocked: timeFilter.isBlocked,
+        reason: timeFilter.reason,
+        riskMultiplier: timeFilter.riskMultiplier,
+        observationMode: timeFilter.observationMode,
+        hourUtc: currentHourUtc,
+      };
+
+      const riskManagerDecision = {
+        decision: riskCheck.decision,
+        reason: riskCheck.reason,
+        explanation: riskCheck.explanation,
+        stakeUsd: riskCheck.stakeUsd,
+        finalStakeCalculated: stakeForTrade,
+        dailyPnl: pnl,
+        sessionPeakPnl: this.sessionPeakPnl,
+        consecutiveLosses: presetConsecutiveLosses,
+        activePositionsCount: this.activeSymbols.size,
+      };
+
+      const currentStrategyVersion = ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "v1.0.0";
+
       const brokerLabel = useKraken ? "Kraken" : useBinance ? "Binance" : useOanda ? "OANDA" : "serveur";
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),
         symbol,
-        direction: useAltBroker ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction),
+        direction: useAltBroker ? (direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (direction === "CALL" ? "MULTUP" : "MULTDOWN") : direction),
         stake: stakeForTrade,
         payout: 0,
         status: "pending",
@@ -2225,8 +2354,15 @@ class ServerBotEngine {
         tfAgreement: analysis.agreement,
         note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         strategy: strategyId,
+        strategyVersion: currentStrategyVersion,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
+        preset: this.preset,
+        mode: this.config.mode === "live" ? "live" : "demo",
+        configSnapshot,
+        indicatorValues,
+        timeFilterDecision,
+        riskManagerDecision,
         ...(useAltBroker
           ? { multiplier: 1, stopLossUsd, takeProfitUsd }
           : isMultiplier
@@ -2240,16 +2376,16 @@ class ServerBotEngine {
         if (useKraken) {
           // Kraken spot: buy/sell the base asset at market price
           const volume = stakeForTrade / (entryPrice || 1);
-          const slPrice = analysis.direction === "CALL"
+          const slPrice = direction === "CALL"
             ? entryPrice * (1 - stopLossUsd / stakeForTrade)
             : entryPrice * (1 + stopLossUsd / stakeForTrade);
-          const tpPrice = analysis.direction === "CALL"
+          const tpPrice = direction === "CALL"
             ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
             : entryPrice * (1 - takeProfitUsd / stakeForTrade);
 
           const bought = await this.krakenConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             volume,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
@@ -2261,18 +2397,18 @@ class ServerBotEngine {
         } else if (useBinance) {
           // Binance spot: buy with USD amount or sell base amount
           const baseAmount = stakeForTrade / (entryPrice || 1);
-          const slPrice = analysis.direction === "CALL"
+          const slPrice = direction === "CALL"
             ? entryPrice * (1 - stopLossUsd / stakeForTrade)
             : entryPrice * (1 + stopLossUsd / stakeForTrade);
-          const tpPrice = analysis.direction === "CALL"
+          const tpPrice = direction === "CALL"
             ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
             : entryPrice * (1 - takeProfitUsd / stakeForTrade);
 
           const bought = await this.binanceConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             quoteAmount: stakeForTrade,
-            baseAmount: analysis.direction === "PUT" ? baseAmount : undefined,
+            baseAmount: direction === "PUT" ? baseAmount : undefined,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
@@ -2289,16 +2425,16 @@ class ServerBotEngine {
           // instead (audit finding).
           const leveredNotional = stakeForTrade * effMultiplier;
           const units = Math.round((leveredNotional / entryPrice) * 1000) / 1000;
-          const slPrice = analysis.direction === "CALL"
+          const slPrice = direction === "CALL"
             ? entryPrice * (1 - stopLossUsd / leveredNotional)
             : entryPrice * (1 + stopLossUsd / leveredNotional);
-          const tpPrice = analysis.direction === "CALL"
+          const tpPrice = direction === "CALL"
             ? entryPrice * (1 + takeProfitUsd / leveredNotional)
             : entryPrice * (1 - takeProfitUsd / leveredNotional);
 
           const bought = await this.oandaConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             units,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
@@ -2310,7 +2446,7 @@ class ServerBotEngine {
           this.trackOandaPosition(openLog, bought.orderId, bought.units);
         } else if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
-            symbol, amount: stakeForTrade, direction: analysis.direction,
+            symbol, amount: stakeForTrade, direction,
             multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
           });
           if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
@@ -2327,7 +2463,7 @@ class ServerBotEngine {
           const bought = await this.conn.proposeAndBuy({
             symbol,
             amount: stakeForTrade,
-            contractType: analysis.direction,
+            contractType: direction,
             durationMinutes: tradeDuration,
           });
           if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {

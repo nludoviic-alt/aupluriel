@@ -255,19 +255,74 @@ export function exceptionalDayImpact(logs: TradeLog[]): ExceptionalDayImpact | n
 
 export function exportToCsv(logs: TradeLog[]): void {
   const closed = closedTrades(logs).slice().sort((a, b) => a.time - b.time);
-  const header = ["Date", "Heure", "Paire", "Direction", "Mise ($)", "P&L ($)", "Résultat", "Confiance (%)", "TF Agreement", "Note"];
+  const header = [
+    "Date",
+    "Heure",
+    "Preset",
+    "Stratégie",
+    "Version",
+    "Mode",
+    "Paire",
+    "Direction",
+    "Prix Entrée",
+    "Durée (min)",
+    "Mise ($)",
+    "Payout ($)",
+    "P&L ($)",
+    "Résultat",
+    "Confiance (%)",
+    "TF Agreement",
+    "Valeurs Indicateurs",
+    "Décision Time Filter",
+    "Décision Risk Manager",
+    "Snapshot Config Preset",
+    "Note / Justification",
+  ];
+
   const rows = closed.map((l) => {
     const d = new Date(l.time);
+    const indicatorStr = typeof l.indicatorValues === "string"
+      ? l.indicatorValues
+      : l.indicatorValues
+        ? JSON.stringify(l.indicatorValues)
+        : "";
+    const timeFilterStr = typeof l.timeFilterDecision === "string"
+      ? l.timeFilterDecision
+      : l.timeFilterDecision
+        ? JSON.stringify(l.timeFilterDecision)
+        : "";
+    const riskManagerStr = typeof l.riskManagerDecision === "string"
+      ? l.riskManagerDecision
+      : l.riskManagerDecision
+        ? JSON.stringify(l.riskManagerDecision)
+        : "";
+    const configSnapshotStr = typeof l.configSnapshot === "string"
+      ? l.configSnapshot
+      : l.configSnapshot
+        ? JSON.stringify(l.configSnapshot)
+        : "";
+
     return [
       d.toLocaleDateString("fr-FR"),
-      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      l.preset ?? "",
+      l.strategy ?? "",
+      l.strategyVersion ?? "V1",
+      l.mode ?? "demo",
       l.symbol,
       l.direction,
+      l.entryPrice != null ? String(l.entryPrice) : "",
+      l.durationMinutes != null ? String(l.durationMinutes) : "",
       l.stake.toFixed(2),
+      l.payout.toFixed(2),
       l.profit.toFixed(2),
-      l.status === "won" ? "Gagné" : "Perdu",
+      l.status === "won" ? "Gagné" : l.status === "lost" ? "Perdu" : l.status,
       String(l.confidence),
       String(l.tfAgreement),
+      indicatorStr,
+      timeFilterStr,
+      riskManagerStr,
+      configSnapshotStr,
       l.note ?? "",
     ];
   });

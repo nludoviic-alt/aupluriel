@@ -91,7 +91,7 @@ export class ReplayEngine {
       high: r.high,
       low: r.low,
       close: r.close,
-      time: r.epoch * 1000,
+      epoch: r.epoch,
     }));
 
     const trades: ReplayTradeResult[] = [];
@@ -118,7 +118,7 @@ export class ReplayEngine {
       const entryCandle = candles[i];
       const exitCandle = candles[Math.min(i + 5, candles.length - 1)];
 
-      const direction = signal.bias === "BULLISH" ? "CALL" : "PUT";
+      const direction = signal.direction === "CALL" ? "CALL" : "PUT";
       const won =
         direction === "CALL"
           ? exitCandle.close > entryCandle.close
@@ -132,9 +132,10 @@ export class ReplayEngine {
       const dd = peakEquity - currentEquity;
       if (dd > maxDrawdown) maxDrawdown = dd;
 
+      const candleTime = candles[i].epoch * 1000;
       trades.push({
-        tradeId: `rtrade_${i}_${candles[i].time}`,
-        time: candles[i].time,
+        tradeId: `rtrade_${i}_${candleTime}`,
+        time: candleTime,
         symbol,
         direction,
         entryPrice: entryCandle.close,
@@ -144,7 +145,7 @@ export class ReplayEngine {
         won,
         confidence: signal.confidence,
         tfAgreement: 100,
-        decisionReason: `Signal bias ${signal.bias} (conf: ${signal.confidence}%)`,
+        decisionReason: `Signal direction ${signal.direction} (conf: ${signal.confidence}%)`,
       });
     }
 

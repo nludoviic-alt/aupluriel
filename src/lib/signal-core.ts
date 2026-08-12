@@ -5,6 +5,7 @@
 
 import { generateSignal } from "./indicators";
 import type { GeneratedSignal, SignalComponent } from "./indicators";
+import { getDb } from "./db.server";
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
@@ -445,13 +446,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 5,
   durationMinutes: 15,
-  // Multi Conservateur par défaut : confiance 85% min et accord 4/4 TF obligatoire
-  // pour éliminer les faux signaux et protéger le capital sur le preset Multi.
-  // Audit VPS 8 août 2026 (2 446 trades) : bucket 80-89 = -$162.70 (PF 0.93),
-  // bucket 70-79 = +$54.46 (PF 1.22). Le seuil 85-89 est conservé car le
-  // problème principal du Multi est les symboles, pas la confiance.
-  minConfidence: 85,
-  maxConfidence: 89,
+  // MAJ 2026-08-12 (sweep tune-multi-preset sur bougies historiques Deriv) :
+  // minConfidence 75, minTfAgreement 4 → 74.2% WR (+20.1pp edge sur le breakeven 54.1%), +$57.75 P&L sur 31 trades.
+  minConfidence: 75,
+  maxConfidence: 100,
   minTfAgreement: 4,
   // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
   maxDailyLossUsd: 15,
@@ -736,6 +734,11 @@ export interface TradeLog {
   takeProfitUsd?: number;    // absolute profit level that auto-closes the position — Multiplier trades only
   preset?: "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2"; // preset engine tag
   mode?: "demo" | "live";    // account execution mode
+  strategyVersion?: string;  // strategy / config version tag (e.g. "V1", "v1.0.0")
+  configSnapshot?: Record<string, unknown> | string; // immutable effective preset configuration snapshot at signal time
+  indicatorValues?: Record<string, unknown> | string; // raw indicator values, scores, components at signal time
+  timeFilterDecision?: Record<string, unknown> | string; // Time Filter evaluation verdict & metadata
+  riskManagerDecision?: Record<string, unknown> | string; // Risk Manager V3 evaluation verdict & metadata
 }
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
@@ -743,7 +746,7 @@ export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;
 
 export interface ScanSymbolResult {
   symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "too-confident" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout";
+  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "too-confident" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout" | "risk-pause";
   direction?: "CALL" | "PUT" | null;
   confidence?: number;
   agreement?: number;

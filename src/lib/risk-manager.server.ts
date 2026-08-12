@@ -64,6 +64,7 @@ export interface PresetRiskMetrics {
   expectancy100: number;
   reason?: string;
   stakeMultiplier: number;
+  minConfidenceAdjustment: number;
 }
 
 // ── Default Thresholds & Constants ──────────────────────────────────────────
@@ -169,6 +170,7 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
       winRate100, profitFactor100, expectancy100,
       reason: `Profit Factor 50 trades (PF ${profitFactor50.toFixed(2)}) < 0.70 — Pause automatique de sécurité`,
       stakeMultiplier: 0,
+      minConfidenceAdjustment: 0,
     };
   }
 
@@ -181,6 +183,7 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
         ? `Profit Factor (PF ${profitFactor30.toFixed(2)}) < 0.80 sur 30 trades — Risque réduit (50%)`
         : `Perte moyenne (${avgLoss30.toFixed(2)}$) > 2.0x gain moyen (${avgWin30.toFixed(2)}$) — Risque réduit (50%)`,
       stakeMultiplier: 0.50,
+      minConfidenceAdjustment: 5,
     };
   }
 
@@ -191,6 +194,7 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
       winRate100, profitFactor100, expectancy100,
       reason: `Win rate récent (${(winRate30 * 100).toFixed(0)}%) en baisse — Attention (75% risque)`,
       stakeMultiplier: 0.75,
+      minConfidenceAdjustment: 2,
     };
   }
 
@@ -200,6 +204,7 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
     winRate100, profitFactor100, expectancy100,
     reason: sample30 < 30 ? `Phase d'apprentissage (${sample30}/30 trades)` : `Équilibre validé (PF ${profitFactor30.toFixed(2)})`,
     stakeMultiplier: 1.0,
+    minConfidenceAdjustment: 0,
   };
 }
 
