@@ -16,6 +16,7 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
+import { ConfigRegistry } from "./config-registry.server";
 import { DerivApiError, DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, fetchRecentTicksServer, closePublicSocket } from "./deriv.server";
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
@@ -298,9 +299,12 @@ export function logFromRow(r: BotTradeRow): TradeLog {
 }
 
 function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
+  const latestVer = ConfigRegistry.getLatestVersion(userId, preset);
+  const strategyVersion = latestVer?.version_tag ?? "v1.0.0";
+
   getDb().prepare(`
     INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, 'V1', @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
+    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @strategy, @strategy_version, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status, payout = excluded.payout, profit = excluded.profit,
       contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
@@ -309,6 +313,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
     stake: log.stake, payout: log.payout, status: log.status, profit: log.profit,
     confidence: log.confidence, tf_agreement: log.tfAgreement,
     contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null, strategy: log.strategy ?? null,
+    strategy_version: strategyVersion,
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
@@ -2472,6 +2477,20 @@ export function updateConfigForUser(userId: number, preset: Preset, config: Auto
   db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?")
     .run(JSON.stringify(config), userId, preset);
   logConfigChange(userId, preset, oldConfig, config, changedBy, source ?? (changedBy ? "admin" : "user"));
+
+  // Quant Engine Phase 1: Immutable Strategy Versioning & Zero Silent Changes Audit Log
+  try {
+    ConfigRegistry.saveConfigVersion({
+      userId,
+      preset,
+      newConfig: config as Record<string, any>,
+      createdBy: changedBy ?? null,
+      source: (source === "auto-rollback" ? "rollback" : (source ?? (changedBy ? "admin" : "user"))) as any
+    });
+  } catch (err) {
+    console.error("[ConfigRegistry] Failed to save strategy version snapshot:", err);
+  }
+
   engines.get(engineKey(userId, preset))?.updateConfig(config);
 }
 

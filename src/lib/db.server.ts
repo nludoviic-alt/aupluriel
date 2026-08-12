@@ -162,6 +162,52 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_config_changes_user_preset_time ON config_changes(user_id, preset, changed_at);
 
+    -- Centralized & Versioned Strategy Registry (Phase 1 Quant Pillar)
+    -- Every preset edit generates an immutable version row with semantic versioning
+    -- (v1.0.0, v1.0.1) and a SHA-256 canonical hash of the full config JSON state.
+    CREATE TABLE IF NOT EXISTS config_versions (
+      id             TEXT    PRIMARY KEY,
+      user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset         TEXT    NOT NULL,               -- 'default' | 'boom' | 'crash' | 'scalping'
+      version_tag    TEXT    NOT NULL,               -- e.g. 'v1.0.0'
+      version_hash   TEXT    NOT NULL,               -- SHA-256 hex string
+      config_json    TEXT    NOT NULL,               -- Full JSON snapshot
+      created_at     INTEGER NOT NULL,               -- epoch ms
+      created_by     INTEGER,                        -- admin/user ID
+      source         TEXT    NOT NULL DEFAULT 'user', -- 'user' | 'admin' | 'auto-tuner' | 'rollback'
+      change_summary TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_config_versions_lookup ON config_versions(user_id, preset, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_config_versions_tag ON config_versions(user_id, preset, version_tag);
+
+    -- Audit log for fine-grained parameter changes (Zero Silent Parameter Changes Rule)
+    CREATE TABLE IF NOT EXISTS config_audit_events (
+      id          TEXT    PRIMARY KEY,
+      version_id  TEXT    NOT NULL REFERENCES config_versions(id) ON DELETE CASCADE,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset      TEXT    NOT NULL,
+      field_name  TEXT    NOT NULL,                  -- e.g. 'stake', 'min_confidence', 'take_profit'
+      old_value   TEXT,
+      new_value   TEXT,
+      timestamp   INTEGER NOT NULL,                  -- epoch ms
+      source      TEXT    NOT NULL DEFAULT 'user',
+      metadata    TEXT                               -- Optional JSON extra context
+    );
+    CREATE INDEX IF NOT EXISTS idx_config_audit_events_lookup ON config_audit_events(user_id, preset, timestamp DESC);
+
+    -- Automated Daily / Weekly Performance Review Reports (Phase 4 Quant Pillar)
+    CREATE TABLE IF NOT EXISTS performance_reviews (
+      id            TEXT    PRIMARY KEY,
+      period_type   TEXT    NOT NULL,               -- 'daily' | 'weekly'
+      period_start  INTEGER NOT NULL,               -- epoch ms
+      period_end    INTEGER NOT NULL,               -- epoch ms
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset        TEXT    NOT NULL,
+      summary_json  TEXT    NOT NULL,               -- Full metrics JSON snapshot
+      created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_perf_reviews_lookup ON performance_reviews(user_id, preset, period_type, period_start DESC);
+
     -- Big Data historical candles store for backtesting & machine learning sweeps
     CREATE TABLE IF NOT EXISTS historical_candles (
       symbol      TEXT    NOT NULL,

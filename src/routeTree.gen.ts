@@ -74,11 +74,15 @@ import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
 import { Route as ApiAdminRunSkillRouteImport } from './routes/api/admin/run-skill'
+import { Route as ApiAdminReviewReportsRouteImport } from './routes/api/admin/review-reports'
+import { Route as ApiAdminReplayRouteImport } from './routes/api/admin/replay'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
 import { Route as ApiAdminForceTradeRouteImport } from './routes/api/admin/force-trade'
+import { Route as ApiAdminConfigRegistryRouteImport } from './routes/api/admin/config-registry'
 import { Route as ApiAdminConfigChangesRouteImport } from './routes/api/admin/config-changes'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
+import { Route as ApiAdminChangeImpactRouteImport } from './routes/api/admin/change-impact'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
 import { Route as AdminUsersUserIdRouteImport } from './routes/admin.users.$userId'
 import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/groups/members'
@@ -409,6 +413,16 @@ const ApiAdminRunSkillRoute = ApiAdminRunSkillRouteImport.update({
   path: '/api/admin/run-skill',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminReviewReportsRoute = ApiAdminReviewReportsRouteImport.update({
+  id: '/api/admin/review-reports',
+  path: '/api/admin/review-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminReplayRoute = ApiAdminReplayRouteImport.update({
+  id: '/api/admin/replay',
+  path: '/api/admin/replay',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminInvitesRoute = ApiAdminInvitesRouteImport.update({
   id: '/api/admin/invites',
   path: '/api/admin/invites',
@@ -424,6 +438,11 @@ const ApiAdminForceTradeRoute = ApiAdminForceTradeRouteImport.update({
   path: '/api/admin/force-trade',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminConfigRegistryRoute = ApiAdminConfigRegistryRouteImport.update({
+  id: '/api/admin/config-registry',
+  path: '/api/admin/config-registry',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminConfigChangesRoute = ApiAdminConfigChangesRouteImport.update({
   id: '/api/admin/config-changes',
   path: '/api/admin/config-changes',
@@ -432,6 +451,11 @@ const ApiAdminConfigChangesRoute = ApiAdminConfigChangesRouteImport.update({
 const ApiAdminChangelogRoute = ApiAdminChangelogRouteImport.update({
   id: '/api/admin/changelog',
   path: '/api/admin/changelog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminChangeImpactRoute = ApiAdminChangeImpactRouteImport.update({
+  id: '/api/admin/change-impact',
+  path: '/api/admin/change-impact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminBotRoute = ApiAdminBotRouteImport.update({
@@ -499,11 +523,15 @@ export interface FileRoutesByFullPath {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
+  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/replay': typeof ApiAdminReplayRoute
+  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
   '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
@@ -574,11 +602,15 @@ export interface FileRoutesByTo {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
+  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/replay': typeof ApiAdminReplayRoute
+  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
   '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
@@ -650,11 +682,15 @@ export interface FileRoutesById {
   '/api/transcribe': typeof ApiTranscribeRoute
   '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
+  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
+  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
   '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
+  '/api/admin/replay': typeof ApiAdminReplayRoute
+  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
   '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
@@ -727,11 +763,15 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/admin/users/$userId'
     | '/api/admin/bot'
+    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/config-registry'
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/replay'
+    | '/api/admin/review-reports'
     | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
@@ -802,11 +842,15 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/admin/users/$userId'
     | '/api/admin/bot'
+    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/config-registry'
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/replay'
+    | '/api/admin/review-reports'
     | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
@@ -877,11 +921,15 @@ export interface FileRouteTypes {
     | '/api/transcribe'
     | '/admin/users/$userId'
     | '/api/admin/bot'
+    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
+    | '/api/admin/config-registry'
     | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
+    | '/api/admin/replay'
+    | '/api/admin/review-reports'
     | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
@@ -952,11 +1000,15 @@ export interface RootRouteChildren {
   ApiTradesRoute: typeof ApiTradesRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminBotRoute: typeof ApiAdminBotRoute
+  ApiAdminChangeImpactRoute: typeof ApiAdminChangeImpactRoute
   ApiAdminChangelogRoute: typeof ApiAdminChangelogRoute
   ApiAdminConfigChangesRoute: typeof ApiAdminConfigChangesRoute
+  ApiAdminConfigRegistryRoute: typeof ApiAdminConfigRegistryRoute
   ApiAdminForceTradeRoute: typeof ApiAdminForceTradeRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
+  ApiAdminReplayRoute: typeof ApiAdminReplayRoute
+  ApiAdminReviewReportsRoute: typeof ApiAdminReviewReportsRoute
   ApiAdminRunSkillRoute: typeof ApiAdminRunSkillRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
@@ -1435,6 +1487,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminRunSkillRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/review-reports': {
+      id: '/api/admin/review-reports'
+      path: '/api/admin/review-reports'
+      fullPath: '/api/admin/review-reports'
+      preLoaderRoute: typeof ApiAdminReviewReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/replay': {
+      id: '/api/admin/replay'
+      path: '/api/admin/replay'
+      fullPath: '/api/admin/replay'
+      preLoaderRoute: typeof ApiAdminReplayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/invites': {
       id: '/api/admin/invites'
       path: '/api/admin/invites'
@@ -1456,6 +1522,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminForceTradeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/config-registry': {
+      id: '/api/admin/config-registry'
+      path: '/api/admin/config-registry'
+      fullPath: '/api/admin/config-registry'
+      preLoaderRoute: typeof ApiAdminConfigRegistryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/config-changes': {
       id: '/api/admin/config-changes'
       path: '/api/admin/config-changes'
@@ -1468,6 +1541,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/changelog'
       fullPath: '/api/admin/changelog'
       preLoaderRoute: typeof ApiAdminChangelogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/change-impact': {
+      id: '/api/admin/change-impact'
+      path: '/api/admin/change-impact'
+      fullPath: '/api/admin/change-impact'
+      preLoaderRoute: typeof ApiAdminChangeImpactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/bot': {
@@ -1564,11 +1644,15 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTradesRoute: ApiTradesRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminBotRoute: ApiAdminBotRoute,
+  ApiAdminChangeImpactRoute: ApiAdminChangeImpactRoute,
   ApiAdminChangelogRoute: ApiAdminChangelogRoute,
   ApiAdminConfigChangesRoute: ApiAdminConfigChangesRoute,
+  ApiAdminConfigRegistryRoute: ApiAdminConfigRegistryRoute,
   ApiAdminForceTradeRoute: ApiAdminForceTradeRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
+  ApiAdminReplayRoute: ApiAdminReplayRoute,
+  ApiAdminReviewReportsRoute: ApiAdminReviewReportsRoute,
   ApiAdminRunSkillRoute: ApiAdminRunSkillRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
