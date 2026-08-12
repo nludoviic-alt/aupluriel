@@ -41,6 +41,7 @@ import { generateBoom500Signals } from "./boom500-signal.server";
 import { generateVol75Signal } from "./vol75-signal.server";
 import { generateRb100Signal } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
+import { getPresetRiskMetrics } from "./risk-manager.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -1387,6 +1388,15 @@ class ServerBotEngine {
       // the first "won") and this branch stops matching entirely.
     }
 
+    // ── Auto-Adaptive Risk Manager Check (Rolling Window 30/100) ──
+    const riskMetrics = getPresetRiskMetrics(this.userId, this.preset);
+    if (riskMetrics.status === "PAUSED") {
+      for (const symbol of config.symbols) {
+        scanResults.push({ symbol, action: "cooldown", note: riskMetrics.reason });
+      }
+      return finishScan();
+    }
+
     // ── Stake ──
     const balance = await this.conn.getBalance();
     // Gold presets routed to OANDA must size from the OANDA Practice equity,
@@ -1791,8 +1801,9 @@ class ServerBotEngine {
       // binary symbol, which keep reading the global config fields below.
       const multiplierOverride = isMultiplier ? getMultiplierOverride(symbol) : undefined;
       const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
+      const effectiveMinConfidence = config.minConfidence + riskMetrics.minConfidenceAdjustment;
       const thresholds = {
-        minConfidence: config.minConfidence,
+        minConfidence: effectiveMinConfidence,
         maxConfidence: config.maxConfidence,
         minTfAgreement: effectiveMinTfAgreement,
         maxVolatilityPct: config.maxVolatilityPct,
@@ -1917,6 +1928,9 @@ class ServerBotEngine {
       }
       if (rb100Level && currentBalance && currentBalance > 0) stakeForTrade = Math.max(1, Math.round(currentBalance * (rb100Level.riskPct / 100) * 100) / 100);
       if (vol50Level && currentBalance && currentBalance > 0) stakeForTrade = Math.max(1, Math.round(currentBalance * (vol50Level.riskPct / 100) * 100) / 100);
+      if (riskMetrics.stakeMultiplier > 0 && riskMetrics.stakeMultiplier < 1.0) {
+        stakeForTrade = Math.max(1, Math.round(stakeForTrade * riskMetrics.stakeMultiplier * 100) / 100);
+      }
 
       // Gold presets are sized from the stop, not from an arbitrary stake.
       // With an ATR stop, the $ loss for a $1 multiplier position is
