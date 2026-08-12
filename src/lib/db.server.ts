@@ -450,6 +450,81 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE notes ADD COLUMN tag TEXT");
   }
 
+  // --- Additive column migrations on `bot_trades` (Architecture V3 - 2026-08-12) ---
+  const botTradeCols = new Set(
+    (db.prepare("PRAGMA table_info(bot_trades)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!botTradeCols.has("strategy_version")) db.exec("ALTER TABLE bot_trades ADD COLUMN strategy_version TEXT NOT NULL DEFAULT 'LEGACY'");
+  if (!botTradeCols.has("market_type")) db.exec("ALTER TABLE bot_trades ADD COLUMN market_type TEXT NOT NULL DEFAULT 'DERIV_SYNTHETIC'");
+  if (!botTradeCols.has("execution_mode")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'LIVE'");
+  if (!botTradeCols.has("r_multiple")) db.exec("ALTER TABLE bot_trades ADD COLUMN r_multiple REAL");
+  if (!botTradeCols.has("mae")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae REAL");
+  if (!botTradeCols.has("mfe")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe REAL");
+  if (!botTradeCols.has("time_filter_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN time_filter_status TEXT");
+  if (!botTradeCols.has("risk_manager_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_manager_status TEXT");
+  if (!botTradeCols.has("execution_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_status TEXT");
+  if (!botTradeCols.has("setup_id")) db.exec("ALTER TABLE bot_trades ADD COLUMN setup_id TEXT");
+
+  // --- New Tables for Architecture V3 (Shadow Mode, Hourly Stats, Signal Funnel) ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shadow_trades (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      strategy_version TEXT NOT NULL DEFAULT 'V1',
+      symbol TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      stop_loss REAL,
+      take_profit REAL,
+      virtual_exit_price REAL,
+      virtual_pnl REAL NOT NULL DEFAULT 0,
+      r_multiple REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open',
+      score INTEGER NOT NULL DEFAULT 0,
+      time INTEGER NOT NULL,
+      closed_at INTEGER,
+      exit_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_shadow_trades_query ON shadow_trades(symbol, strategy, strategy_version, time DESC);
+
+    CREATE TABLE IF NOT EXISTS hourly_performance_stats (
+      symbol TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      strategy_version TEXT NOT NULL,
+      hour_utc INTEGER NOT NULL,
+      trades INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      win_rate REAL NOT NULL DEFAULT 0,
+      gross_profit REAL NOT NULL DEFAULT 0,
+      gross_loss REAL NOT NULL DEFAULT 0,
+      net_pnl REAL NOT NULL DEFAULT 0,
+      profit_factor REAL NOT NULL DEFAULT 0,
+      expectancy_r REAL NOT NULL DEFAULT 0,
+      average_r REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'INSUFFICIENT_DATA',
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (symbol, strategy, strategy_version, hour_utc)
+    );
+
+    CREATE TABLE IF NOT EXISTS signal_funnel_stats (
+      date_utc TEXT NOT NULL,
+      preset TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      scans INTEGER NOT NULL DEFAULT 0,
+      setups INTEGER NOT NULL DEFAULT 0,
+      valid_signals INTEGER NOT NULL DEFAULT 0,
+      time_approved INTEGER NOT NULL DEFAULT 0,
+      risk_approved INTEGER NOT NULL DEFAULT 0,
+      proposal_valid INTEGER NOT NULL DEFAULT 0,
+      executed_trades INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (date_utc, preset, strategy)
+    );
+  `);
+
   // --- Additive column migrations on `alerts` (idempotent) ---
   // The API/table existed but was never wired to the UI (alerts.tsx and
   // use-price-alerts.ts both ran on localStorage instead) — now that alerts
@@ -482,9 +557,6 @@ function migrate(db: Database.Database) {
   }
 
   // --- Additive column migrations on `bot_trades` (idempotent) ---
-  const botTradeCols = new Set(
-    (db.prepare("PRAGMA table_info(bot_trades)").all() as { name: string }[]).map((c) => c.name),
-  );
   if (!botTradeCols.has("components")) {
     // JSON [{name, bias}] — the signal components that drove this trade,
     // credited/blamed against indicator_stats when the contract resolves.

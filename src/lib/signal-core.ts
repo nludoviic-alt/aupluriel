@@ -162,21 +162,40 @@ export function isInTradingSession(sessions: TradingSession[], symbol: string, e
 }
 
 /**
- * Tranches horaires défavorables (03:00-04:59 UTC, 07:00-08:59 UTC et 16:00-16:59 UTC) identifiées par l'audit.
- * Durant ces heures creuses, le marché présente du bruit aléatoire provoquant des réalignements trompeurs.
+ * Filtre granulaire SYMBOL + STRATEGY + HOUR_UTC.
+ * Ne bloque JAMAIS un symbole ou un synthétique de manière globale/aveugle.
+ * Exige un échantillon statistique suffisant (sample >= 30 trades sur ce combiné exact)
+ * ET un Profit Factor < 0.80 avant d'appliquer une pause horaire ciblée.
  */
-export function isLowQualityHourWindow(nowDate?: Date): { blocked: boolean; reason?: string } {
-  const now = nowDate ?? new Date();
-  const h = now.getUTCHours();
-  if (h === 3 || h === 4) {
-    return { blocked: true, reason: "Pause horaire automatique (03:00-04:59 UTC — creux de liquidité / bruit)" };
-  }
-  if (h === 7 || h === 8) {
-    return { blocked: true, reason: "Pause horaire automatique (07:00-08:59 UTC — creux de liquidité / bruit)" };
-  }
-  if (h === 16) {
-    return { blocked: true, reason: "Pause horaire automatique (16:00-16:59 UTC — transition de session)" };
-  }
+export function isGranularHourBlocked(preset: string, symbol: string, hourUtc: number, minSample = 30): { blocked: boolean; reason?: string } {
+  try {
+    const row = getDb().prepare(`
+      SELECT COUNT(*) as count,
+             SUM(CASE WHEN status='won' THEN 1 ELSE 0 END) as wins,
+             SUM(CASE WHEN status='lost' THEN 1 ELSE 0 END) as losses,
+             SUM(CASE WHEN status='won' THEN profit ELSE 0 END) as gross_win,
+             SUM(CASE WHEN status='lost' THEN ABS(profit) ELSE 0 END) as gross_loss
+      FROM bot_trades
+      WHERE (preset = ? OR strategy = ?) AND symbol = ?
+        AND CAST(strftime('%H', datetime(time/1000, 'unixepoch')) AS INTEGER) = ?
+        AND status IN ('won', 'lost')
+    `).get(preset, preset, symbol, hourUtc) as {
+      count: number; wins: number; losses: number; gross_win: number; gross_loss: number;
+    } | undefined;
+
+    if (!row || row.count < minSample) {
+      return { blocked: false };
+    }
+
+    const pf = row.gross_loss > 0 ? row.gross_win / row.gross_loss : row.gross_win > 0 ? 99 : 0;
+    if (pf < 0.80) {
+      return {
+        blocked: true,
+        reason: `Pause horaire ciblée : ${symbol} (${preset}) à ${hourUtc}h UTC — PF ${pf.toFixed(2)} sur ${row.count} trades (échantillon validé)`,
+      };
+    }
+  } catch { /* fallback to unblocked on DB read error */ }
+
   return { blocked: false };
 }
 

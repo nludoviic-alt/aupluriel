@@ -42,6 +42,9 @@ import { generateVol75Signal } from "./vol75-signal.server";
 import { generateRb100Signal } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
 import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
+import { evaluateTimeFilter, recordShadowTrade } from "./time-filter.server";
+import { recordFunnelStep } from "./signal-funnel.server";
+import { FEATURE_FLAGS } from "./feature-flags.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -62,7 +65,7 @@ import {
   isHighRiskWindow,
   isInTradingSession,
   isHourBlocked,
-  isLowQualityHourWindow,
+  isGranularHourBlocked,
   getInstrumentForSymbol,
   minContractMinutes,
   riskLevelFor,
@@ -1451,9 +1454,10 @@ class ServerBotEngine {
         const riskCheck = isHighRiskWindow();
         if (riskCheck.blocked) { scanResults.push({ symbol, action: "news-block", note: riskCheck.reason }); continue; }
       }
-      const lowQualityCheck = isLowQualityHourWindow();
-      if (lowQualityCheck.blocked) {
-        scanResults.push({ symbol, action: "session-closed", note: lowQualityCheck.reason });
+      const currentHourUtc = new Date().getUTCHours();
+      const granularHourCheck = isGranularHourBlocked(this.preset, symbol, currentHourUtc, 30);
+      if (granularHourCheck.blocked) {
+        scanResults.push({ symbol, action: "session-closed", note: granularHourCheck.reason });
         continue;
       }
       const cooldownUntil = this.symbolCooldowns.get(symbol) ?? 0;
@@ -1838,7 +1842,44 @@ class ServerBotEngine {
       // it for TypeScript's benefit, it can never actually continue here.
       if (!analysis.direction) continue;
 
-      // ── À partir d'ici : le conseiller dit "à prendre" — le Risk Manager V3 vérifie l'exposition et le risque monétaire ──
+      // ── Step 3: Valid Signal Detected by Signal Engine ──
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "valid_signal");
+
+      // ── Step 4: Granular Time Performance Filter (SYMBOL + STRATEGY + VERSION + HOUR_UTC) ──
+      const currentHourUtc = new Date().getUTCHours();
+      const timeFilter = evaluateTimeFilter(symbol, `${this.preset.toUpperCase()}_ENGINE`, "V1", currentHourUtc);
+
+      if (timeFilter.isBlocked && !timeFilter.observationMode) {
+        // Mode Shadow : Enregistrer le trade virtuel pour mesurer la récupération potentielle
+        recordShadowTrade({
+          userId: this.userId,
+          preset: this.preset,
+          strategy: `${this.preset.toUpperCase()}_ENGINE`,
+          strategyVersion: "V1",
+          symbol,
+          direction: analysis.direction,
+          entryPrice: analysis.analysisDetails?.rsi ?? 0,
+          score: analysis.confidence,
+          exitPrice: analysis.analysisDetails?.rsi ?? 0,
+          virtualPnL: 0,
+          rMultiple: 0,
+          status: "won",
+          exitReason: timeFilter.reason,
+        });
+
+        scanResults.push({
+          symbol,
+          action: "session-closed",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          note: timeFilter.reason,
+        });
+        continue;
+      }
+
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "time_approved");
+
+      // ── Step 5: Institutional Risk Manager V3 ──
       const riskCheck = evaluateRiskCheck({
         userId: this.userId,
         preset: this.preset,
@@ -1860,6 +1901,8 @@ class ServerBotEngine {
         });
         continue;
       }
+
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "risk_approved");
 
       if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
@@ -2198,6 +2241,8 @@ class ServerBotEngine {
             symbol, amount: stakeForTrade, direction: analysis.direction,
             multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
           });
+          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "proposal_valid");
+          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "executed");
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
           this.emit(openLog);
           this.trackMultiplierPosition(openLog);
@@ -2208,6 +2253,8 @@ class ServerBotEngine {
             contractType: analysis.direction,
             durationMinutes: tradeDuration,
           });
+          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "proposal_valid");
+          recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "executed");
           const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
           this.emit(openLog);
           this.trackContract(openLog);

@@ -11,6 +11,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { getDb } from "@/lib/db.server";
 import { getPresetRiskMetrics } from "@/lib/risk-manager.server";
+import { getFunnelStats } from "@/lib/signal-funnel.server";
+import { getFeatureFlags } from "@/lib/feature-flags.server";
 import {
   getAllTimeStats,
   getBotRuntime,
@@ -97,6 +99,8 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     openTrades: getOpenBotTrades(userId, preset),
     allTimeStats: allTime,
     riskMetrics: getPresetRiskMetrics(userId, preset),
+    funnelStats: getFunnelStats(preset),
+    featureFlags: getFeatureFlags(),
   };
 }
 
