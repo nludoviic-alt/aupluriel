@@ -2030,7 +2030,7 @@ class ServerBotEngine {
             getDb().prepare(`
               INSERT OR IGNORE INTO shadow_trades (id, user_id, preset, strategy, strategy_version, symbol, direction, entry_price, time)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(`shad_${Date.now()}_${symbol}`, this.userId, this.preset, strategyId, currentStrategyVersion, symbol, direction, analysis.entryPrice || 0, Date.now());
+            `).run(`shad_${Date.now()}_${symbol}`, this.userId, this.preset, strategyId, currentStrategyVersion, symbol, direction, (analysis as any).entryPrice || 0, Date.now());
           } catch { /* ignore shadow write failure */ }
         }
         if (!timeFilter.observationMode) {
