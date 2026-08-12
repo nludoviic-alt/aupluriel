@@ -1352,16 +1352,17 @@ class ServerBotEngine {
           FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
         `).all(this.userId, this.preset) as any[];
 
-        const derivPositions = this.activeContracts.size > 0
-          ? Array.from(this.activeContracts.values()).map((c) => ({
-              contract_id: String(c.contractId),
-              symbol: c.symbol,
-              buy_price: c.stake,
-              profit: 0,
-            }))
-          : [];
+        if (dbOpenTrades.length > 0) {
+          const livePositions = await this.conn.getOpenPositions();
+          const derivPositions = livePositions.map((c) => ({
+            contract_id: String(c.contractId),
+            symbol: c.symbol,
+            buy_price: c.buyPrice,
+            profit: c.profit,
+          }));
 
-        reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+          reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+        }
       } catch { /* ignore reconciliation error */ }
     }
 
@@ -1550,15 +1551,24 @@ class ServerBotEngine {
       }
       // ── Step 1: Data Quality Guard ──
       recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "scan");
-      let symbolCandles: any[] = [];
+      let m1Candles: any[] = [];
+      let m5Candles: any[] = [];
+      let m15Candles: any[] = [];
       try {
-        symbolCandles = await candleFetcher(symbol, 900, 20);
+        [m1Candles, m5Candles, m15Candles] = await Promise.all([
+          candleFetcher(symbol, 60, 20),
+          candleFetcher(symbol, 300, 20),
+          candleFetcher(symbol, 900, 20),
+        ]);
       } catch { /* handled by Data Quality Guard */ }
 
       const dataQuality = evaluateDataQuality({
         symbol,
         wsConnected: this.conn ? true : false,
-        m15Candles: symbolCandles,
+        lastTickTimestamp: Date.now(),
+        m1Candles,
+        m5Candles,
+        m15Candles,
       });
       if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
         circuitBreaker.updateAutoTriggers({
@@ -2005,8 +2015,8 @@ class ServerBotEngine {
       const currentHourUtc = new Date().getUTCHours();
       const timeFilter = evaluateTimeFilter(symbol, strategyId, currentStrategyVersion, currentHourUtc);
 
-      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.isBlocked && !timeFilter.observationMode) {
-        if (FEATURE_FLAGS.TIME_SHADOW_MODE_ENABLED && timeFilter.observationMode) {
+      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.isBlocked) {
+        if (FEATURE_FLAGS.TIME_SHADOW_MODE_ENABLED) {
           try {
             getDb().prepare(`
               INSERT OR IGNORE INTO shadow_trades (id, user_id, preset, strategy, strategy_version, symbol, direction, entry_price, time)
@@ -2014,14 +2024,16 @@ class ServerBotEngine {
             `).run(`shad_${Date.now()}_${symbol}`, this.userId, this.preset, strategyId, currentStrategyVersion, symbol, direction, analysis.entryPrice || 0, Date.now());
           } catch { /* ignore shadow write failure */ }
         }
-        scanResults.push({
-          symbol,
-          action: "session-closed",
-          direction,
-          confidence: analysis.confidence,
-          note: timeFilter.reason,
-        });
-        continue;
+        if (!timeFilter.observationMode) {
+          scanResults.push({
+            symbol,
+            action: "session-closed",
+            direction,
+            confidence: analysis.confidence,
+            note: timeFilter.reason,
+          });
+          continue;
+        }
       }
 
       recordFunnelStep(this.preset, strategyId, "time_approved");

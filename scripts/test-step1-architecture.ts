@@ -7,7 +7,7 @@ console.log("=== TEST ÉTAPE 1 : DATA QUALITY GUARD & MARKET REGIME ROUTER ===")
 const dqHealthy = evaluateDataQuality({ symbol: "CRASH900", wsConnected: true, lastTickTimestamp: Date.now() });
 console.log(`[Data Quality Healthy] Status: ${dqHealthy.status}, Blocked: ${dqHealthy.isBlocked}`);
 
-const dqStale = evaluateDataQuality({ symbol: "BOOM500", wsConnected: true, lastTickTimestamp: Date.now() - 120000 });
+const dqStale = evaluateDataQuality({ symbol: "BOOM500", wsConnected: true, lastTickTimestamp: Date.now() - 240000 });
 console.log(`[Data Quality Stale] Status: ${dqStale.status}, Reason: ${dqStale.reason}, Blocked (ObsMode): ${dqStale.isBlocked}`);
 
 // 2. Market Regime Router

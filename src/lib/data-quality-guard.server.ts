@@ -51,9 +51,9 @@ export function evaluateDataQuality(params: {
     }
   }
 
-  const m1Count = params.m1Candles?.length ?? (params.m1Candles === undefined ? 50 : 0);
-  const m5Count = params.m5Candles?.length ?? (params.m5Candles === undefined ? 50 : 0);
-  const m15Count = params.m15Candles?.length ?? (params.m15Candles === undefined ? 50 : 0);
+  const m1Count = params.m1Candles?.length ?? 0;
+  const m5Count = params.m5Candles?.length ?? 0;
+  const m15Count = params.m15Candles?.length ?? 0;
 
   let status: DataStatus = "HEALTHY";
   let reason: string | undefined;

@@ -39,6 +39,14 @@ function migrate(db: Database.Database) {
       default_stake_usd REAL DEFAULT 5
     );
 
+    CREATE TABLE IF NOT EXISTS user_configs (
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      preset     TEXT NOT NULL,
+      config     TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (user_id, preset)
+    );
+
     CREATE TABLE IF NOT EXISTS strategies (
       id             TEXT    PRIMARY KEY,
       user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -493,6 +493,28 @@ export class DerivTradingConnection {
     }
   }
 
+  async getOpenPositions(): Promise<Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }>> {
+    try {
+      const res = await this.socket.request<{
+        portfolio?: {
+          contracts?: Array<{
+            contract_id: number;
+            symbol: string;
+            buy_price: number;
+          }>;
+        };
+      }>({ portfolio: 1 });
+      return (res.portfolio?.contracts ?? []).map((c) => ({
+        contractId: c.contract_id,
+        symbol: c.symbol,
+        buyPrice: Number(c.buy_price || 0),
+        profit: 0,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   close() {
     this.socket.close();
   }

@@ -348,9 +348,14 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     };
   }
 
-  const activeStrategyCount = (db.prepare(`
-    SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND (preset = ? OR strategy = ?) AND status = 'open'
-  `).get(input.userId, input.preset, input.strategyId) as { c: number }).c;
+  const activeStrategyCount = (input.strategyId
+    ? db.prepare(`
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND strategy = ? AND status = 'open'
+      `).get(input.userId, input.strategyId)
+    : db.prepare(`
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
+      `).get(input.userId, input.preset)
+  ) as { c: number };
 
   if (activeStrategyCount >= RISK_CONFIG.MAX_ACTIVE_PER_STRATEGY) {
     logRejection(input, "RISK_MAX_POSITIONS", `Limite de position pour la stratégie ${input.strategyId} (${activeStrategyCount}/${RISK_CONFIG.MAX_ACTIVE_PER_STRATEGY}) atteinte`, fingerprint);
