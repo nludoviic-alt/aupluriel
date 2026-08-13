@@ -375,18 +375,15 @@ export class DerivTradingConnection {
     takeProfitUsd: number;
   }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
-    // Mandatory contract gate: when DERIV_PROPOSAL_VALIDATION_ENABLED is active
-    // (or for BOOM900), perform active_symbols → contracts_for → proposal before
-    // any order can reach `buy`.
-    if (FEATURE_FLAGS.DERIV_PROPOSAL_VALIDATION_ENABLED || params.symbol === "BOOM900") {
-      const validation = await this.validateMultiplierContract(params);
-      if (validation.status !== "AVAILABLE") {
-        const detail = validation.error;
-        throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `${params.symbol} ${validation.status}`);
-      }
+    // Every multiplier order, irrespective of feature flags or symbol, must
+    // receive a current valid proposal before it can reach `buy`.
+    const validation = await this.validateMultiplierContract(params);
+    if (validation.status !== "AVAILABLE") {
+      const detail = validation.error;
+      throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `${params.symbol} ${validation.status}`);
     }
     let lastError: Error | null = null;
-    let currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
+    const currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -413,41 +410,7 @@ export class DerivTradingConnection {
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
       } catch (e) {
         lastError = e as Error;
-        const errMsg = lastError.message;
-        
-        // Auto-guérison : si le multiplicateur ou la limit_order est invalide
-        if (errMsg.toLowerCase().includes("multiplier") || errMsg.toLowerCase().includes("limit_order")) {
-          // Extraction des multiplicateurs autorisés dans le message d'erreur
-          const numbers = errMsg.match(/\b\d+\b/g)?.map(Number).filter(n => n >= 1 && n <= 1000);
-          if (numbers && numbers.length > 0) {
-            const closest = numbers.reduce((prev, curr) => 
-              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
-            );
-            if (closest !== currentMultiplier) {
-              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via message d'erreur)`);
-              currentMultiplier = closest;
-              continue; // Réessayer immédiatement
-            }
-          } else {
-            // Fallback en dur si aucun chiffre n'est extrait
-            let fallbackMultipliers = [20, 50, 100];
-            if (params.symbol.startsWith("cry")) {
-              fallbackMultipliers = [10, 20, 50, 100];
-            } else if (!params.symbol.startsWith("frx")) {
-              fallbackMultipliers = [100, 200, 500];
-            }
-            const closest = fallbackMultipliers.reduce((prev, curr) => 
-              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
-            );
-            if (closest !== currentMultiplier) {
-              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via fallback)`);
-              currentMultiplier = closest;
-              continue; // Réessayer immédiatement
-            }
-          }
-        }
-        
-        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) {
+        if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) {
           break;
         }
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));

@@ -125,6 +125,15 @@ const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
 export type Preset = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+
+/** A cooldown can be considered served after restart only when its journal
+ * entry is newer than the last closed trade that formed the streak. */
+export function isCooldownAlreadyServedAfterRestart(
+  lastClosed: { id: string; time: number } | undefined,
+  servedPause: { time: number } | undefined,
+): lastClosed is { id: string; time: number } {
+  return !!lastClosed && !!servedPause && servedPause.time >= lastClosed.time;
+}
 /** Gold strategies may never opt out of the macro-news safety block. */
 function isGoldPreset(preset: Preset): boolean {
   return preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2";
@@ -810,7 +819,49 @@ class ServerBotEngine {
     this.binanceConn = binanceConn;
     this.oandaConn = oandaConn;
     this.logs = loadRecentTrades(userId, preset);
+    this.restoreCooldownMarkers();
     this.lastActiveSessions = currentActiveSessions();
+  }
+
+  /**
+   * A restart must not make an already-served losing streak look new. The
+   * marker is derived from the immutable journal rather than held only in a
+   * process-local Map, so deployments cannot cause a pause → resume → same
+   * pause loop without a new losing trade.
+   */
+  private restoreCooldownMarkers() {
+    const db = getDb();
+    const latestPresetLoss = db.prepare(`
+      SELECT id, time FROM bot_trades
+      WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+      ORDER BY time DESC LIMIT 1
+    `).get(this.userId, this.preset) as { id: string; time: number } | undefined;
+    const servedPresetPause = db.prepare(`
+      SELECT time FROM bot_trades
+      WHERE user_id = ? AND preset = ? AND status = 'risk-stop'
+        AND note LIKE '%pertes consécutives (tous symboles confondus)%'
+      ORDER BY time DESC LIMIT 1
+    `).get(this.userId, this.preset) as { time: number } | undefined;
+    if (isCooldownAlreadyServedAfterRestart(latestPresetLoss, servedPresetPause)) {
+      this.presetServedCooldownFor = latestPresetLoss.id;
+    }
+
+    for (const symbol of this.config.symbols) {
+      const latestSymbolLoss = db.prepare(`
+        SELECT id, time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND symbol = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 1
+      `).get(this.userId, this.preset, symbol) as { id: string; time: number } | undefined;
+      const servedSymbolPause = db.prepare(`
+        SELECT time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND symbol = ? AND status = 'cooldown'
+          AND note LIKE '%pertes consécutives%'
+        ORDER BY time DESC LIMIT 1
+      `).get(this.userId, this.preset, symbol) as { time: number } | undefined;
+      if (isCooldownAlreadyServedAfterRestart(latestSymbolLoss, servedSymbolPause)) {
+        this.servedCooldownFor.set(symbol, latestSymbolLoss.id);
+      }
+    }
   }
 
   // Hot-swaps the config an in-flight engine reads on its next tick — used by
