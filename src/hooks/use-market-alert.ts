@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchCandles, GRANULARITY, SYMBOLS } from "@/lib/deriv";
 import { generateSignal } from "@/lib/indicators";
 import { mapWithConcurrency } from "@/lib/utils";
@@ -64,7 +64,7 @@ export function useMarketAlert(enabled = true) {
     }
   }, []);
 
-  async function requestPermission() {
+  const requestPermission = useCallback(async () => {
     const granted = await requestNotificationPermission();
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotifPermission(Notification.permission);
@@ -74,7 +74,7 @@ export function useMarketAlert(enabled = true) {
       try { await subscribeToPush(); } catch { /* VAPID key missing or SW not ready — silent */ }
     }
     return granted;
-  }
+  }, []);
 
   async function checkSignals() {
     const now = Date.now();

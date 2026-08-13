@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 import appCss from "../styles.css?url";
@@ -16,7 +16,6 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
-import { useMarketAlert } from "@/hooks/use-market-alert";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
@@ -45,6 +44,15 @@ import { BottomNav } from "@/components/bottom-nav";
 import { MobileMenu } from "@/components/mobile-menu";
 import { TickerBar } from "@/components/ticker-bar";
 import { cn } from "@/lib/utils";
+import type { MarketAlertState } from "@/components/market-alert-runtime";
+
+const MarketAlertRuntime = lazy(() =>
+  import("@/components/market-alert-runtime").then((module) => ({ default: module.MarketAlertRuntime })),
+);
+
+const SESSION_ROUTES = new Set(["/", "/portfolio", "/autotrader"]);
+const MARKET_DATA_ROUTES = new Set(["/", "/markets", "/signals", "/autotrader", "/backtest"]);
+const ALERT_ROUTES = new Set(["/", "/signals"]);
 
 function NotFoundComponent() {
   return (
@@ -224,6 +232,11 @@ function RootComponent() {
   // Auth gate: send signed-out visitors to the login page, except on public auth routes.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, loading: authLoading } = useAuth();
+  const [marketAlertState, setMarketAlertState] = useState<MarketAlertState>({
+    activeAlerts: [],
+    notifPermission: "default",
+    requestPermission: async () => false,
+  });
 
   // Register Service Worker for PWA. Registering inside a "load" listener
   // never fired when hydration finished after window.load (common) — register
@@ -249,12 +262,16 @@ function RootComponent() {
     window.location.href = "/login";
   }, [authLoading, isPublicRoute, user]);
 
-  // Only run heavy hooks on authenticated routes to avoid blocking mobile UI
-  const { activeAlerts, notifPermission, requestPermission } = useMarketAlert(!isPublicRoute && !!user);
+  // Restrict expensive market services to the pages that actually show them.
+  const showMarketAlerts = !isPublicRoute && !!user && ALERT_ROUTES.has(pathname);
+  const needsTradingSession = !isPublicRoute && !!user && SESSION_ROUTES.has(pathname);
+  const showTicker = !isPublicRoute && !!user && MARKET_DATA_ROUTES.has(pathname);
+  const updateMarketAlerts = useCallback((state: MarketAlertState) => setMarketAlertState(state), []);
+  const { activeAlerts, notifPermission, requestPermission } = marketAlertState;
   const hasAlerts = useMemo(() => activeAlerts.length > 0, [activeAlerts]);
   const pageMeta = useMemo(() => getPageMeta(pathname), [pathname]);
   const PageIcon = pageMeta.icon;
-  useMarketOpenNotify(!isPublicRoute && !!user);
+  useMarketOpenNotify(needsTradingSession);
   useHeartbeat(!isPublicRoute && !!user);
   // Messenger-only: bind the shell to the visual viewport height on mobile
   // so the chat never grows taller than the visible area (iOS keyboard
@@ -267,7 +284,7 @@ function RootComponent() {
     isMessenger && vv.height != null
       ? { height: vv.height }
       : undefined;
-  const deriv = useDerivSession(!isPublicRoute && !!user);
+  const deriv = useDerivSession(needsTradingSession);
 
   // Public auth pages (and the pre-redirect state for signed-out users) render
   // full-screen without the app sidebar/header chrome.
@@ -297,6 +314,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
+        {showMarketAlerts && (
+          <Suspense fallback={null}>
+            <MarketAlertRuntime onChange={updateMarketAlerts} />
+          </Suspense>
+        )}
         <MobileMenu />
         <div
           className={cn(
@@ -375,7 +397,7 @@ function RootComponent() {
                     </span>
                   </Link>
                 )}
-                {notifPermission === "default" && (
+                {showMarketAlerts && notifPermission === "default" && (
                   <button
                     onClick={requestPermission}
                     className="hidden sm:flex h-10 items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3.5 text-xs text-muted-foreground hover:text-foreground hover:bg-white/[0.08] hover:border-white/10 transition-all duration-300"
@@ -405,7 +427,7 @@ function RootComponent() {
                     </span>
                   </Link>
                 )}
-                <span className={cn(
+                {deriv.accountType && <span className={cn(
                   "flex h-10 items-center gap-1.5 rounded-xl border px-2.5 sm:px-3.5 font-bold text-[10px] tracking-widest uppercase transition-all duration-300",
                   deriv.accountType === "live"
                     ? "border-down/30 bg-down/5 text-down shadow-[0_0_10px_rgba(239,68,68,0.1)] hover:bg-down/10 hover:border-down/40"
@@ -413,7 +435,7 @@ function RootComponent() {
                 )}>
                   <span className={cn("h-1.5 w-1.5 rounded-full", deriv.accountType === "live" ? "bg-down animate-pulse" : "bg-up animate-pulse")} />
                   {deriv.accountType === "live" ? "LIVE" : "DEMO"}
-                </span>
+                </span>}
               </div>
             </header>
 
@@ -423,7 +445,7 @@ function RootComponent() {
 
             {/* Strong signal banner — hidden on the messenger page: it eats into the
                 chat panel's carefully-budgeted viewport height and is irrelevant there */}
-            {hasAlerts && !isMessenger && (
+            {showMarketAlerts && hasAlerts && !isMessenger && (
               <div className="hidden md:flex border-b border-up/20 bg-gradient-to-r from-up/5 to-up/10 px-6 py-3 backdrop-blur-sm">
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <span className="font-semibold text-up flex items-center gap-2">
@@ -450,9 +472,7 @@ function RootComponent() {
 
             {/* Live price ticker is a nice-to-have, not core to using the app —
                 desktop-only, keeps the mobile header/main area focused. */}
-            <div className="hidden md:block">
-              <TickerBar />
-            </div>
+            {showTicker && <div className="hidden md:block"><TickerBar /></div>}
             <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
               isMessenger
