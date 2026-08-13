@@ -170,7 +170,9 @@ export function getAllStrategyHealthMetrics(): StrategyHealthMetrics[] {
   const db = getDb();
   try {
     const rows = db.prepare(`
-      SELECT DISTINCT symbol, COALESCE(strategy, preset || '_ENGINE') as strategy, COALESCE(strategy_version, 'V1') as version
+      SELECT DISTINCT symbol,
+             COALESCE(NULLIF(trim(strategy), ''), NULLIF(trim(preset), ''), 'UNKNOWN') as strategy,
+             COALESCE(NULLIF(trim(strategy_version), ''), 'V1') as version
       FROM bot_trades
     `).all() as { symbol: string; strategy: string; version: string }[];
 

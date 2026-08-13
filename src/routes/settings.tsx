@@ -46,7 +46,7 @@ const KEYS = {
 
 type CategoryTab = "all" | "brokers" | "risk" | "automation" | "notifications";
 
-export function SettingsPage() {
+function SettingsPage() {
   const { user, refresh: refreshAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<CategoryTab>("all");
   

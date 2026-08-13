@@ -540,10 +540,28 @@ export const VOL75_PRESET: Partial<AutoTraderConfig> = {
 };
 
 export const RB100_PRESET: Partial<AutoTraderConfig> = {
-  ...VOL75_PRESET, symbolMode: "watchlist", symbols: ["RB100"],
-  minConfidence: 72, multiplierLevel: 20, stakePercent: .20,
-  atrStopMultiple: 1.1, riskRewardRatio: 1.5, maxTradesPerDay: 7,
-  maxConsecutiveLosses: 3, cooldownMinutes: 3, newsFilter: false,
+  symbolMode: "watchlist",
+  symbols: ["RB100"],
+  mode: "demo",
+  minConfidence: 72,
+  maxConfidence: 100,
+  minTfAgreement: 1,
+  instrumentType: "multiplier",
+  multiplierLevel: 20,
+  stakeMode: "percent",
+  stakePercent: 0.20,
+  atrStopMode: true,
+  atrStopMultiple: 1.1,
+  riskRewardRatio: 1.5,
+  maxDailyLossUsd: 2,
+  maxTradesPerDay: 7,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 3,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  newsFilter: false,
+  maxVolatilityPct: 100,
+  progressiveStakeReduction: true,
 };
 
 export const VOL50_PRESET: Partial<AutoTraderConfig> = {

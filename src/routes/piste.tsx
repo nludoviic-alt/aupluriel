@@ -61,7 +61,7 @@ function metric(value: number | undefined, fallback = "—") {
   return Number.isFinite(value) ? value!.toFixed(2) : fallback;
 }
 
-export function PistePage() {
+function PistePage() {
   const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<"cards" | "matrix">("cards");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");

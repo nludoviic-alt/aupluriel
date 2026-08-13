@@ -277,6 +277,23 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_signal_rejections_preset_time ON signal_rejections(user_id, preset, time DESC);
 
+    CREATE TABLE IF NOT EXISTS rb100_diagnostic_snapshots (
+      id TEXT PRIMARY KEY,
+      time INTEGER NOT NULL,
+      symbol TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      strategy_version TEXT NOT NULL,
+      market_state TEXT NOT NULL,
+      raw_score INTEGER NOT NULL,
+      final_score INTEGER NOT NULL,
+      required_score INTEGER NOT NULL,
+      hard_filters_passed INTEGER NOT NULL,
+      primary_reason TEXT NOT NULL,
+      no_trade_final_reason TEXT NOT NULL,
+      snapshot TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_rb100_snapshots_strategy_time ON rb100_diagnostic_snapshots(strategy, time DESC);
+
     -- Apprentissage partagé : stats win/loss par (symbole, composant de signal),
     -- agrégées sur les trades réels de TOUS les utilisateurs. Le symbole
     -- '_global' sert de prior inter-symboles pour lisser les petits échantillons.
@@ -525,6 +542,17 @@ function migrate(db: Database.Database) {
 
   // Migration de rattrapage : s'assurer que les trades existants sans version sont rattachés à 'V1' pour le time filter
   db.exec("UPDATE bot_trades SET strategy_version = 'V1' WHERE strategy_version = 'LEGACY' OR strategy_version IS NULL");
+
+  // Nettoyer les valeurs historiques NULL/vides sur strategy et strategy_version pour éviter les erreurs de stats et de health.
+  db.exec(`
+    UPDATE bot_trades
+    SET strategy = COALESCE(NULLIF(trim(strategy), ''), NULLIF(trim(preset), ''), 'UNKNOWN'),
+        strategy_version = COALESCE(NULLIF(trim(strategy_version), ''), 'V1')
+    WHERE strategy IS NULL
+       OR trim(COALESCE(strategy, '')) = ''
+       OR strategy_version IS NULL
+       OR trim(COALESCE(strategy_version, '')) = '';
+  `);
 
   // --- New Tables for Architecture V3 (Shadow Mode, Hourly Stats, Signal Funnel) ---
   db.exec(`

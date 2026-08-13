@@ -31,7 +31,7 @@ export interface FeatureFlags {
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
-  DATA_QUALITY_GUARD_ENABLED: true,
+  DATA_QUALITY_GUARD_ENABLED: false,
   MARKET_REGIME_ROUTER_ENABLED: true,
   GRANULAR_TIME_FILTER_ENABLED: true,
   TIME_SHADOW_MODE_ENABLED: true,

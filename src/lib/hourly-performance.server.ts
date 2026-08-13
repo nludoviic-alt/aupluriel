@@ -43,7 +43,7 @@ export function syncHourlyPerformanceStats(): void {
   try {
     const rows = db.prepare(`
       SELECT symbol,
-             COALESCE(strategy, preset || '_ENGINE') as strategy,
+             COALESCE(strategy, preset, 'UNKNOWN') as strategy,
              COALESCE(strategy_version, 'V1') as strategy_version,
              CAST(strftime('%H', datetime(time/1000, 'unixepoch')) AS INTEGER) as hour_utc,
              COUNT(*) as trades,

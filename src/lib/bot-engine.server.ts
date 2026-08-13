@@ -1758,11 +1758,84 @@ class ServerBotEngine {
         })
       : this.preset === "rb100"
       ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
-          const [m15, m5, m1, ticks] = await Promise.all([candleFetcher(symbol,900,70), candleFetcher(symbol,300,70), candleFetcher(symbol,60,60), fetchRecentTicksServer(symbol,180).catch(()=>[])]);
-          const decision = generateRb100Signal(m15,m5,m1,ticks), sig=decision.signal;
-          if(sig) rb100Levels.set(symbol,{...sig});
-          if(decision.rejection) getDb().prepare(`INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`).run(`rb100_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,this.userId,"rb100",symbol,Date.now(),Math.round(decision.rejection.score),decision.rejection.reason,JSON.stringify(decision.rejection.diagnostics));
-          return {symbol,analysis:{direction:sig?.direction??null,confidence:sig?.confidence??decision.rejection?.score??0,agreement:sig?4:0,premiumCount:sig&&sig.confidence>=92?1:0,volatilityPct:sig?.volatilityPct??0,volatilityRatio:1,blockers:sig?[]:[decision.rejection?.reason??"NO_TRADE"],dominantTf:"M15/M5/M1",suggestedDuration:0,trendAlignmentScore:sig?4:0,patternBonus:sig&&sig.confidence>=92?10:0,components:undefined}};
+          const [m15, m5, m1, ticks] = await Promise.all([
+            candleFetcher(symbol, 900, 70),
+            candleFetcher(symbol, 300, 70),
+            candleFetcher(symbol, 60, 60),
+            fetchRecentTicksServer(symbol, 180).catch(() => []),
+          ]);
+          const diagnosticMode = process.env.RB100_DIAGNOSTIC_MODE === "true" || true;
+          const decision = generateRb100Signal(m15, m5, m1, ticks, { symbol, diagnosticMode });
+          const sig = decision.signal;
+          if (sig) rb100Levels.set(symbol, { ...sig });
+          
+          const snapshot = sig?.snapshot ?? decision.rejection?.snapshot;
+          if (snapshot) {
+            try {
+              getDb()
+                .prepare(
+                  `INSERT INTO rb100_diagnostic_snapshots (id, time, symbol, strategy, strategy_version, market_state, raw_score, final_score, required_score, hard_filters_passed, primary_reason, no_trade_final_reason, snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                )
+                .run(
+                  snapshot.snapshotId,
+                  snapshot.timestamp,
+                  symbol,
+                  snapshot.strategy,
+                  snapshot.strategyVersion,
+                  snapshot.marketState,
+                  snapshot.rawScore,
+                  snapshot.finalScore,
+                  snapshot.requiredScore,
+                  snapshot.hardFiltersPassed ? 1 : 0,
+                  snapshot.primaryReason,
+                  snapshot.noTradeFinalReason,
+                  JSON.stringify(snapshot)
+                );
+            } catch {
+              // ignore duplicate snapshot insert error
+            }
+          }
+
+          if (decision.rejection) {
+            const diagPayload = {
+              ...decision.rejection.diagnostics,
+              primaryReason: decision.rejection.primaryReason,
+              allRejectionReasons: decision.rejection.allRejectionReasons,
+              filterStatuses: decision.rejection.filterStatuses,
+              snapshot: decision.rejection.snapshot,
+            };
+            getDb()
+              .prepare(
+                `INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`
+              )
+              .run(
+                `rb100_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                this.userId,
+                "rb100",
+                symbol,
+                Date.now(),
+                Math.round(decision.rejection.score),
+                decision.rejection.reason,
+                JSON.stringify(diagPayload)
+              );
+          }
+          return {
+            symbol,
+            analysis: {
+              direction: sig?.direction ?? null,
+              confidence: sig?.confidence ?? decision.rejection?.score ?? 0,
+              agreement: sig ? 4 : 0,
+              premiumCount: sig && sig.confidence >= 92 ? 1 : 0,
+              volatilityPct: sig?.volatilityPct ?? 0,
+              volatilityRatio: 1,
+              blockers: sig ? [] : [decision.rejection?.reason ?? "NO_TRADE"],
+              dominantTf: "M15/M5/M1",
+              suggestedDuration: 0,
+              trendAlignmentScore: sig ? 4 : 0,
+              patternBonus: sig && sig.confidence >= 92 ? 10 : 0,
+              components: undefined,
+            },
+          };
         })
       : this.preset === "crash500"
       ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
