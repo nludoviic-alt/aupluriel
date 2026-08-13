@@ -251,7 +251,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
         reason: "STRATEGY_AUTO_SHADOW",
         explanation: `Stratégie ${input.strategyId} basculée en AUTO-SHADOW (mode observation)`,
         fingerprint,
-        strategyStatus: "SHADOW",
+        strategyStatus: "RESTRICTED",
       };
     }
     driftMultiplier = drift.riskMultiplier;

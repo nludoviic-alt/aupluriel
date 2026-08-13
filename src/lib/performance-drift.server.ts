@@ -258,12 +258,12 @@ export function evaluatePerformanceDrift(
     }
   }
 
-  // 5. Persist drift report in SQLite
+  const nowSec = Math.floor(Date.now() / 1000);
   db.prepare(`
     INSERT INTO strategy_performance_drift (
       strategy, strategy_version, symbol, drift_status, risk_state, risk_multiplier,
       last_30_json, last_50_json, last_100_json, historical_json, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(strategy, strategy_version, symbol) DO UPDATE SET
       drift_status = excluded.drift_status,
       risk_state = excluded.risk_state,
@@ -272,7 +272,7 @@ export function evaluatePerformanceDrift(
       last_50_json = excluded.last_50_json,
       last_100_json = excluded.last_100_json,
       historical_json = excluded.historical_json,
-      updated_at = unixepoch()
+      updated_at = excluded.updated_at
   `).run(
     strategy,
     strategyVersion,
@@ -283,7 +283,8 @@ export function evaluatePerformanceDrift(
     JSON.stringify(m30),
     JSON.stringify(m50),
     JSON.stringify(m100),
-    JSON.stringify(mHist)
+    JSON.stringify(mHist),
+    nowSec
   );
 
   return {

@@ -2,7 +2,7 @@ import {
   generateRb100Signal,
   detectMarketState,
   STRATEGY_VERSION,
-  PRESET_CONFIG_HASH,
+  RB100_CONFIG_HASH,
   getActiveBreakoutEvent,
   clearActiveBreakoutEvent,
 } from "../rb100-signal.server";
@@ -17,7 +17,7 @@ function generateCandles(count: number, base = 50000): ServerCandle[] {
     const o = p;
     p += change;
     res.push({
-      time: Date.now() / 1000 - (count - i) * 60,
+      epoch: Date.now() / 1000 - (count - i) * 60,
       open: o,
       high: Math.max(o, p) + 2,
       low: Math.min(o, p) - 2,
@@ -31,7 +31,7 @@ console.log("=== RUNNING RB100 SPECIFICATION V2 AUDIT SUITE (20 POINTS) ===");
 
 // 1. Versioning & Preset Hash Verification
 console.log("1. Strategy Version:", STRATEGY_VERSION);
-console.log("   Preset Config Hash:", PRESET_CONFIG_HASH);
+console.log("   Preset Config Hash:", RB100_CONFIG_HASH);
 
 // 2. Market State Confidence Detector Test
 const stateRes = detectMarketState({
@@ -56,7 +56,7 @@ const hi = Math.max(...m5.slice(-12, -1).map((x) => x.high));
 
 // Simulate Breakout candle
 m1[m1.length - 1] = {
-  time: Date.now() / 1000,
+  epoch: Date.now() / 1000,
   open: hi + 2,
   high: hi + 20,
   low: hi + 1,
@@ -72,7 +72,7 @@ console.log("3b. Active Stateful Breakout Event Created:", activeEv ? `ID: ${act
 
 // Simulate Retest candle touching level
 m1[m1.length - 1] = {
-  time: Date.now() / 1000 + 60,
+  epoch: Date.now() / 1000 + 60,
   open: hi + 10,
   high: hi + 12,
   low: hi - 1, // touch retest level

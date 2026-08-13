@@ -256,7 +256,9 @@ function migrate(db: Database.Database) {
       entry_price      REAL,
       duration_minutes INTEGER,
       expiry           INTEGER,
-      preset           TEXT    -- 'default' | 'boom' | 'crash' | 'scalping' — set explicitly at insert (see upsertTrade in bot-engine.server.ts), never inferred from symbol (two presets can share a symbol, e.g. Scalping trading BOOM500 alongside Boom itself — 2026-08-02)
+      preset           TEXT,   -- 'default' | 'boom' | 'crash' | 'scalping' — set explicitly at insert (see upsertTrade in bot-engine.server.ts), never inferred from symbol (two presets can share a symbol, e.g. Scalping trading BOOM500 alongside Boom itself — 2026-08-02)
+      risk_version     TEXT    DEFAULT 'R4',
+      execution_version TEXT   DEFAULT 'E2'
     );
     CREATE INDEX IF NOT EXISTS idx_bot_trades_user_time ON bot_trades(user_id, time DESC);
 
@@ -293,6 +295,20 @@ function migrate(db: Database.Database) {
       snapshot TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_rb100_snapshots_strategy_time ON rb100_diagnostic_snapshots(strategy, time DESC);
+
+    -- SQLite persistence for RB100 Breakout Memory (Stateful Retest Window)
+    CREATE TABLE IF NOT EXISTS rb100_active_breakouts (
+      symbol TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      breakout_level REAL NOT NULL,
+      breakout_time INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      strategy_version TEXT NOT NULL,
+      config_hash TEXT NOT NULL,
+      retest_status TEXT NOT NULL,
+      snapshot TEXT
+    );
 
     -- Apprentissage partagé : stats win/loss par (symbole, composant de signal),
     -- agrégées sur les trades réels de TOUS les utilisateurs. Le symbole
@@ -539,9 +555,165 @@ function migrate(db: Database.Database) {
   if (!botTradeCols.has("indicator_values")) db.exec("ALTER TABLE bot_trades ADD COLUMN indicator_values TEXT");
   if (!botTradeCols.has("time_filter_decision")) db.exec("ALTER TABLE bot_trades ADD COLUMN time_filter_decision TEXT");
   if (!botTradeCols.has("risk_manager_decision")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_manager_decision TEXT");
+  if (!botTradeCols.has("risk_version")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_version TEXT NOT NULL DEFAULT 'R4'");
+  if (!botTradeCols.has("execution_version")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_version TEXT NOT NULL DEFAULT 'E2'");
+  if (!botTradeCols.has("requested_stake")) db.exec("ALTER TABLE bot_trades ADD COLUMN requested_stake REAL");
+  if (!botTradeCols.has("max_risk_allowed")) db.exec("ALTER TABLE bot_trades ADD COLUMN max_risk_allowed REAL");
+  if (!botTradeCols.has("deriv_max_allowed")) db.exec("ALTER TABLE bot_trades ADD COLUMN deriv_max_allowed REAL");
+  if (!botTradeCols.has("final_stake")) db.exec("ALTER TABLE bot_trades ADD COLUMN final_stake REAL");
+  if (!botTradeCols.has("stake_percent")) db.exec("ALTER TABLE bot_trades ADD COLUMN stake_percent REAL");
+  if (!botTradeCols.has("stake_mode")) db.exec("ALTER TABLE bot_trades ADD COLUMN stake_mode TEXT");
+  if (!botTradeCols.has("effective_risk_pct")) db.exec("ALTER TABLE bot_trades ADD COLUMN effective_risk_pct REAL");
+  if (!botTradeCols.has("consecutive_losses")) db.exec("ALTER TABLE bot_trades ADD COLUMN consecutive_losses INTEGER");
+  if (!botTradeCols.has("risk_decision")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_decision TEXT");
+  if (!botTradeCols.has("config_hash")) db.exec("ALTER TABLE bot_trades ADD COLUMN config_hash TEXT");
+  if (!botTradeCols.has("risk_stop_reason")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_stop_reason TEXT");
+  if (!botTradeCols.has("daily_drawdown")) db.exec("ALTER TABLE bot_trades ADD COLUMN daily_drawdown REAL");
+  if (!botTradeCols.has("current_exposure")) db.exec("ALTER TABLE bot_trades ADD COLUMN current_exposure REAL");
+  // 2026-08-13 stake sizing audit trail — reconstructs the full
+  // requestedStake -> strategyRiskSuggestedStake -> maxRiskAllowed ->
+  // derivMaxAllowed -> finalStake chain per trade (max_risk_allowed already
+  // exists above and serves as risk_manager_cap).
+  if (!botTradeCols.has("strategy_suggested_stake")) db.exec("ALTER TABLE bot_trades ADD COLUMN strategy_suggested_stake REAL");
+  if (!botTradeCols.has("stake_source")) db.exec("ALTER TABLE bot_trades ADD COLUMN stake_source TEXT");
+
+  // 2026-08-13 exit-mechanism observability (Zero Tweak — additive only, no
+  // trading decision reads any of these columns). Real exit_reason set by
+  // the engine at the moment of closing (never reconstructed later from
+  // P&L) — see finalize() in trackMultiplierPosition/trackContract/
+  // trackOandaPosition. Values: TAKE_PROFIT, STOP_LOSS, MAX_HOLD_TIMEOUT,
+  // MANUAL_EXIT, BROKER_EXIT, ERROR_EXIT, OTHER — PARTIAL_TAKE_PROFIT and
+  // BREAKEVEN are deliberately never written for Deriv multiplier trades:
+  // partialTakeProfitPct/moveSlToBreakeven are configured but not executed
+  // by the engine there (see partial_tp_mechanism_active/
+  // breakeven_mechanism_active below).
+  // NOTE: `exit_reason` already existed as an unwired column (always NULL,
+  // added before this session) — reused here rather than duplicated.
+  if (!botTradeCols.has("entry_time")) db.exec("ALTER TABLE bot_trades ADD COLUMN entry_time INTEGER");
+  if (!botTradeCols.has("exit_time")) db.exec("ALTER TABLE bot_trades ADD COLUMN exit_time INTEGER");
+  if (!botTradeCols.has("hold_duration_seconds")) db.exec("ALTER TABLE bot_trades ADD COLUMN hold_duration_seconds REAL");
+  if (!botTradeCols.has("configured_max_hold_seconds")) db.exec("ALTER TABLE bot_trades ADD COLUMN configured_max_hold_seconds REAL");
+
+  // Continuous MFE/MAE (Position Monitor updates these while the trade is
+  // open; final values frozen at close).
+  if (!botTradeCols.has("mfe_usd")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe_usd REAL");
+  if (!botTradeCols.has("mfe_r")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe_r REAL");
+  if (!botTradeCols.has("mae_usd")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae_usd REAL");
+  if (!botTradeCols.has("mae_r")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae_r REAL");
+  if (!botTradeCols.has("peak_unrealized_profit")) db.exec("ALTER TABLE bot_trades ADD COLUMN peak_unrealized_profit REAL");
+  if (!botTradeCols.has("worst_unrealized_loss")) db.exec("ALTER TABLE bot_trades ADD COLUMN worst_unrealized_loss REAL");
+  if (!botTradeCols.has("profit_given_back")) db.exec("ALTER TABLE bot_trades ADD COLUMN profit_given_back REAL");
+
+  // MAX_HOLD_TIMEOUT-specific
+  if (!botTradeCols.has("profit_at_timeout")) db.exec("ALTER TABLE bot_trades ADD COLUMN profit_at_timeout REAL");
+  if (!botTradeCols.has("r_at_timeout")) db.exec("ALTER TABLE bot_trades ADD COLUMN r_at_timeout REAL");
+  if (!botTradeCols.has("mfe_before_timeout")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe_before_timeout REAL");
+  if (!botTradeCols.has("mae_before_timeout")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae_before_timeout REAL");
+  if (!botTradeCols.has("distance_to_tp_at_exit")) db.exec("ALTER TABLE bot_trades ADD COLUMN distance_to_tp_at_exit REAL");
+  if (!botTradeCols.has("distance_to_sl_at_exit")) db.exec("ALTER TABLE bot_trades ADD COLUMN distance_to_sl_at_exit REAL");
+
+  // TAKE_PROFIT-specific
+  if (!botTradeCols.has("time_to_tp_seconds")) db.exec("ALTER TABLE bot_trades ADD COLUMN time_to_tp_seconds REAL");
+  if (!botTradeCols.has("mfe_before_tp")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe_before_tp REAL");
+  if (!botTradeCols.has("mae_before_tp")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae_before_tp REAL");
+  if (!botTradeCols.has("max_progress_toward_tp_pct")) db.exec("ALTER TABLE bot_trades ADD COLUMN max_progress_toward_tp_pct REAL");
+
+  // STOP_LOSS-specific
+  if (!botTradeCols.has("time_to_sl_seconds")) db.exec("ALTER TABLE bot_trades ADD COLUMN time_to_sl_seconds REAL");
+  if (!botTradeCols.has("mfe_before_sl")) db.exec("ALTER TABLE bot_trades ADD COLUMN mfe_before_sl REAL");
+  if (!botTradeCols.has("mae_before_sl")) db.exec("ALTER TABLE bot_trades ADD COLUMN mae_before_sl REAL");
+  if (!botTradeCols.has("was_profitable_before_sl")) db.exec("ALTER TABLE bot_trades ADD COLUMN was_profitable_before_sl INTEGER");
+  if (!botTradeCols.has("max_profit_before_sl")) db.exec("ALTER TABLE bot_trades ADD COLUMN max_profit_before_sl REAL");
+
+  // Dead-mechanism documentation (2026-08-13 discovery: partialTakeProfitPct
+  // and moveSlToBreakeven are configured on every Deriv multiplier preset
+  // but never executed by trackMultiplierPosition — Deriv's multiplier API
+  // has no partial-sell endpoint, and moveSlToBreakeven has zero readers
+  // anywhere in bot-engine.server.ts). *_configured reflects what the saved
+  // config says; *_mechanism_active reflects what the engine actually did —
+  // FALSE here means "does not exist in execution", not "never triggered".
+  if (!botTradeCols.has("partial_tp_configured")) db.exec("ALTER TABLE bot_trades ADD COLUMN partial_tp_configured INTEGER");
+  if (!botTradeCols.has("partial_tp_mechanism_active")) db.exec("ALTER TABLE bot_trades ADD COLUMN partial_tp_mechanism_active INTEGER");
+  if (!botTradeCols.has("breakeven_configured")) db.exec("ALTER TABLE bot_trades ADD COLUMN breakeven_configured INTEGER");
+  if (!botTradeCols.has("breakeven_mechanism_active")) db.exec("ALTER TABLE bot_trades ADD COLUMN breakeven_mechanism_active INTEGER");
+  if (!botTradeCols.has("execution_capabilities")) db.exec("ALTER TABLE bot_trades ADD COLUMN execution_capabilities TEXT");
+
+  // Legacy-data marker (point 13/14 of the 2026-08-13 audit): trades placed
+  // before this instrumentation existed must never be used to prove an
+  // exit-mechanism effect — they lack config_snapshot/exit_reason ground
+  // truth entirely. LEGACY_INCOMPLETE = 1 lets every future query exclude
+  // them explicitly instead of silently mixing eras.
+  if (!botTradeCols.has("data_quality")) db.exec("ALTER TABLE bot_trades ADD COLUMN data_quality TEXT");
+
+  // Shadow post-exit market observation (analytical only — never feeds back
+  // into live trading). Populated for MAX_HOLD_TIMEOUT exits by 4 deferred
+  // setTimeout checks; shadow_capture_status tracks partial progress across
+  // a server restart (see restoreShadowObservations in bot-engine.server.ts).
+  if (!botTradeCols.has("post_exit_price_5m")) db.exec("ALTER TABLE bot_trades ADD COLUMN post_exit_price_5m REAL");
+  if (!botTradeCols.has("post_exit_price_10m")) db.exec("ALTER TABLE bot_trades ADD COLUMN post_exit_price_10m REAL");
+  if (!botTradeCols.has("post_exit_price_20m")) db.exec("ALTER TABLE bot_trades ADD COLUMN post_exit_price_20m REAL");
+  if (!botTradeCols.has("post_exit_price_30m")) db.exec("ALTER TABLE bot_trades ADD COLUMN post_exit_price_30m REAL");
+  if (!botTradeCols.has("hypothetical_pnl_5m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_5m REAL");
+  if (!botTradeCols.has("hypothetical_pnl_10m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_10m REAL");
+  if (!botTradeCols.has("hypothetical_pnl_20m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_20m REAL");
+  if (!botTradeCols.has("hypothetical_pnl_30m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_30m REAL");
+  if (!botTradeCols.has("shadow_capture_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN shadow_capture_status TEXT");
+
+  db.exec(`
+    -- Deliberately no FK on user_id: this table must never silently drop an
+    -- alert. Some callers log system-wide alerts with a synthetic id (e.g.
+    -- checkVersioningIntegrity uses userId 0 for "system"/"GLOBAL"), and a
+    -- strict FK + logSafetyAlert's own try/catch combined to silently
+    -- swallow every such insert (found 2026-08-13: caught by
+    -- r4-e2-audit.test.ts's "Safety alert logger" test failing with no
+    -- inserted row, root-caused to a FOREIGN KEY constraint failure).
+    CREATE TABLE IF NOT EXISTS safety_alerts (
+      id TEXT PRIMARY KEY,
+      time INTEGER NOT NULL,
+      alert_type TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      preset TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_safety_alerts_lookup ON safety_alerts(time DESC, alert_type);
+  `);
+
+  // One-time rebuild for DBs where safety_alerts was already created with the
+  // old strict FK (2026-08-13 same-day fix — see comment above).
+  const safetyAlertsFk = db.prepare("PRAGMA foreign_key_list(safety_alerts)").all() as unknown[];
+  if (safetyAlertsFk.length > 0) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE safety_alerts_new (
+          id TEXT PRIMARY KEY,
+          time INTEGER NOT NULL,
+          alert_type TEXT NOT NULL,
+          user_id INTEGER NOT NULL,
+          preset TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          details TEXT NOT NULL,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        INSERT INTO safety_alerts_new SELECT id, time, alert_type, user_id, preset, symbol, details, created_at FROM safety_alerts;
+        DROP TABLE safety_alerts;
+        ALTER TABLE safety_alerts_new RENAME TO safety_alerts;
+        CREATE INDEX IF NOT EXISTS idx_safety_alerts_lookup ON safety_alerts(time DESC, alert_type);
+      `);
+    })();
+  }
 
   // Migration de rattrapage : s'assurer que les trades existants sans version sont rattachés à 'V1' pour le time filter
   db.exec("UPDATE bot_trades SET strategy_version = 'V1' WHERE strategy_version = 'LEGACY' OR strategy_version IS NULL");
+
+  // 2026-08-13 exit-mechanism observability: mark every already-CLOSED trade
+  // predating this instrumentation as LEGACY_INCOMPLETE — it has no
+  // ground-truth exit_reason/config_snapshot/MFE-MAE and must never be used
+  // to prove a maxHoldMinutes/partial-TP/breakeven effect (still fine for
+  // P&L/WR/PF). Scoped to won/lost only so a still-OPEN position isn't
+  // pre-emptively tainted before it gets a real chance to close instrumented.
+  db.exec("UPDATE bot_trades SET data_quality = 'LEGACY_INCOMPLETE' WHERE data_quality IS NULL AND status IN ('won', 'lost')");
 
   // Nettoyer les valeurs historiques NULL/vides sur strategy et strategy_version pour éviter les erreurs de stats et de health.
   db.exec(`

@@ -1,8 +1,64 @@
+import { getDb } from "./db.server";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import type { ServerCandle } from "./deriv.server";
+import { hashConfig } from "./config-registry.server";
 
-export const STRATEGY_VERSION = "RB100_V3.1_DIAGNOSTIC";
-export const PRESET_CONFIG_HASH = "rb100_sha256_v3_default";
+export const STRATEGY_VERSION = "V3.1";
+export const RISK_VERSION = "R4";
+export const EXECUTION_VERSION = "E2";
+
+/**
+ * Every decision-relevant constant read by generateRb100Signal(), centralized
+ * so a real SHA-256 can be computed over it (see RB100_CONFIG_HASH below).
+ * Keep this in sync whenever a route's MIN_SCORE, riskPct, SL/TP coefficient,
+ * or filter threshold changes — that's the entire point: a value drifting
+ * out of sync with the code (like the 2026-08-13 stakePercent/riskPct unit
+ * bug) must change this hash, not silently keep the old one.
+ */
+export const RB100_EFFECTIVE_CONFIG = {
+  strategyVersion: STRATEGY_VERSION,
+  multiplierLevel: 20, // RB100_PRESET.multiplierLevel (autotrader.ts)
+  routes: {
+    RB100_BREAKOUT_RETEST: {
+      minScore: 76,
+      riskPct: 0.25,
+      riskAbsMultiple: 1.1,
+      rewardAbsMultiple: 1.8,
+      atrRatioMaxFilter: 1.7,
+      retestToleranceAtrMultiple: 0.35,
+      breakoutWindowMinutes: 10,
+    },
+    RB100_BREAKOUT_DIRECT: {
+      minScore: 88,
+      riskPct: 0.15,
+      riskAbsMultiple: 1.1,
+      rewardAbsMultiple: 1.8,
+      atrRatioMaxFilter: 1.7,
+    },
+    RB100_RANGE_TRADER: {
+      minScore: 72,
+      riskPct: 0.20,
+      riskAbsMultiple: 1.25,
+      rewardAbsAtrMultiple: 1.63,
+      rewardAbsWidthMultiple: 0.45,
+      adxMaxFilter: 33,
+      rangeWidthMinAtrMultiple: 2.0,
+      wickMinPct: 0.15,
+      midZoneLow: 0.30,
+      midZoneHigh: 0.70,
+    },
+  },
+} as const;
+
+/**
+ * Real SHA-256 over RB100_EFFECTIVE_CONFIG — replaces the old static literal
+ * "rb100_sha256_v3_default", which never changed regardless of what riskPct,
+ * MIN_SCORE, or SL/TP values actually did. Any edit to a value above
+ * automatically produces a new hash, so a config-drift audit that trusts
+ * this value can no longer be fooled the way the 2026-08-13 riskPct bug
+ * fooled the old static string.
+ */
+export const RB100_CONFIG_HASH = hashConfig(RB100_EFFECTIVE_CONFIG as unknown as Record<string, unknown>);
 
 export type Rb100Strategy = "RB100_RANGE_TRADER" | "RB100_BREAKOUT_RETEST" | "RB100_BREAKOUT_DIRECT";
 export type MarketState = "RANGE" | "BREAKOUT" | "RETEST" | "NO_STATE";
@@ -126,15 +182,77 @@ export interface Rb100Decision {
 const last = <T,>(x: T[]) => x[x.length - 1];
 const num = (x: number | null | undefined) => x ?? NaN;
 
-/** In-memory stateful breakout memory (symbol -> BreakoutEvent) */
+/** In-memory stateful breakout memory (symbol -> BreakoutEvent) with SQLite persistence */
 const activeBreakouts = new Map<string, BreakoutEvent>();
 
+function saveBreakoutToDb(event: BreakoutEvent): void {
+  try {
+    getDb().prepare(`
+      INSERT INTO rb100_active_breakouts (symbol, event_id, direction, breakout_level, breakout_time, expires_at, strategy_version, config_hash, retest_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(symbol) DO UPDATE SET
+        event_id = excluded.event_id,
+        direction = excluded.direction,
+        breakout_level = excluded.breakout_level,
+        breakout_time = excluded.breakout_time,
+        expires_at = excluded.expires_at,
+        strategy_version = excluded.strategy_version,
+        config_hash = excluded.config_hash,
+        retest_status = excluded.retest_status
+    `).run(
+      event.symbol,
+      event.eventId,
+      event.direction,
+      event.level,
+      event.timestamp,
+      event.expiresAt,
+      STRATEGY_VERSION,
+      RB100_CONFIG_HASH,
+      event.retestStatus
+    );
+  } catch { /* ignore db write error */ }
+}
+
+function removeBreakoutFromDb(symbol: string): void {
+  try {
+    getDb().prepare("DELETE FROM rb100_active_breakouts WHERE symbol = ?").run(symbol);
+  } catch { /* ignore db delete error */ }
+}
+
+let breakoutsRestored = false;
+function restoreBreakoutsFromDb(): void {
+  if (breakoutsRestored) return;
+  breakoutsRestored = true;
+  try {
+    const now = Date.now();
+    const rows = getDb().prepare(`
+      SELECT symbol, event_id, direction, breakout_level, breakout_time, expires_at, retest_status
+      FROM rb100_active_breakouts
+      WHERE expires_at > ?
+    `).all(now) as any[];
+
+    for (const r of rows) {
+      activeBreakouts.set(r.symbol, {
+        eventId: r.event_id,
+        symbol: r.symbol,
+        level: r.breakout_level,
+        direction: r.direction,
+        timestamp: r.breakout_time,
+        retestStatus: r.retest_status,
+        expiresAt: r.expires_at,
+      });
+    }
+  } catch { /* ignore db read error */ }
+}
+
 export function getActiveBreakoutEvent(symbol: string): BreakoutEvent | undefined {
+  restoreBreakoutsFromDb();
   const ev = activeBreakouts.get(symbol);
   if (!ev) return undefined;
   if (Date.now() > ev.expiresAt) {
     ev.retestStatus = "EXPIRED";
     activeBreakouts.delete(symbol);
+    removeBreakoutFromDb(symbol);
     return undefined;
   }
   return ev;
@@ -142,6 +260,7 @@ export function getActiveBreakoutEvent(symbol: string): BreakoutEvent | undefine
 
 export function clearActiveBreakoutEvent(symbol: string): void {
   activeBreakouts.delete(symbol);
+  removeBreakoutFromDb(symbol);
 }
 
 /**
@@ -233,7 +352,7 @@ export function generateRb100Signal(
       symbol,
       strategy: "UNROUTED",
       strategyVersion: STRATEGY_VERSION,
-      presetConfigHash: PRESET_CONFIG_HASH,
+      presetConfigHash: RB100_CONFIG_HASH,
       marketState: "NO_STATE",
       marketStateScore: 0,
       marketStateScores: { RANGE: 0, BREAKOUT: 0, RETEST: 0, NO_STATE: 0 },
@@ -339,7 +458,7 @@ export function generateRb100Signal(
       symbol,
       strategy: "UNROUTED",
       strategyVersion: STRATEGY_VERSION,
-      presetConfigHash: PRESET_CONFIG_HASH,
+      presetConfigHash: RB100_CONFIG_HASH,
       marketState: marketStateRes.state,
       marketStateScore: marketStateRes.confidence,
       marketStateScores: marketStateRes.scores,
@@ -393,6 +512,7 @@ export function generateRb100Signal(
       expiresAt: now + 10 * 60 * 1000, // 10 M1 candles window (600s)
     };
     activeBreakouts.set(symbol, currentEvent);
+    saveBreakoutToDb(currentEvent);
   }
 
   // ── ROUTE 1: BREAKOUT / RETEST ENGINE ──
@@ -468,7 +588,7 @@ export function generateRb100Signal(
       symbol,
       strategy: targetStrategy,
       strategyVersion: STRATEGY_VERSION,
-      presetConfigHash: PRESET_CONFIG_HASH,
+      presetConfigHash: RB100_CONFIG_HASH,
       marketState: isRetestConfirmed ? "RETEST" : "BREAKOUT",
       marketStateScore: isRetestConfirmed ? 85 : 80,
       marketStateScores: marketStateRes.scores,
@@ -619,7 +739,7 @@ export function generateRb100Signal(
     symbol,
     strategy: "RB100_RANGE_TRADER",
     strategyVersion: STRATEGY_VERSION,
-    presetConfigHash: PRESET_CONFIG_HASH,
+    presetConfigHash: RB100_CONFIG_HASH,
     marketState: "RANGE",
     marketStateScore: marketStateRes.scores.RANGE,
     marketStateScores: marketStateRes.scores,

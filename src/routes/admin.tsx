@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { OFFICIAL_PRESET_STRATEGIES, type PresetStrategyDef } from "@/lib/preset-strategies";
+import { R4E2PerformanceDashboard } from "@/components/r4-e2-performance-dashboard";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
@@ -1079,6 +1080,9 @@ function AdminPage() {
           </>
         )}
       </CollapsibleBlock>
+
+      {/* ── POST R4/E2 PERFORMANCE MATRIX ── */}
+      <R4E2PerformanceDashboard />
 
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock

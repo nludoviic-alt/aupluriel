@@ -740,7 +740,104 @@ export interface TradeLog {
   indicatorValues?: Record<string, unknown> | string; // raw indicator values, scores, components at signal time
   timeFilterDecision?: Record<string, unknown> | string; // Time Filter evaluation verdict & metadata
   riskManagerDecision?: Record<string, unknown> | string; // Risk Manager V3 evaluation verdict & metadata
+  riskVersion?: string;        // risk engine version tag (e.g. "R4")
+  executionVersion?: string;   // execution pipeline version tag (e.g. "E2")
+  configHash?: string;         // real SHA-256 of the effective config used at execution (hashConfig(), not a static label)
+  // Full stake-sizing audit trail (2026-08-13) — lets any trade's sizing
+  // decision be reconstructed end to end: requestedStake -> strategy
+  // suggestion -> Risk Manager cap -> Deriv broker cap -> what was actually
+  // sent. See the Priority 2 MIN() in bot-engine.server.ts.
+  requestedStake?: number;          // user's own configured ceiling (fixed $ or equity x stakePercent)
+  strategySuggestedStake?: number;  // accumulated output of Kelly/Level/drift/time-filter/Gold-ATR sizing, pre-ceiling
+  riskManagerCap?: number;          // Risk Manager V2's maxRiskAllowed for this trade
+  derivMaxAllowedStake?: number;    // broker-specific hard cap (e.g. Boom900's $0.90), Infinity if none
+  stakeSource?: string;             // which term won the final MIN(): FIXED_USER_CAP | PERCENT_USER_CAP | KELLY | PROGRESSIVE_REDUCTION | BOOM500_LEVEL | VOL75_LEVEL | RB100_LEVEL | VOL50_LEVEL | DRIFT_MULTIPLIER | TIME_FILTER | GOLD_ATR | RISK_MANAGER | DERIV_CAP
+
+  // ── Exit-mechanism observability (2026-08-13) ──
+  // Set by the engine AT THE MOMENT of closing (never reconstructed later
+  // from stored P&L). TAKE_PROFIT/STOP_LOSS classification for Deriv
+  // multiplier trades compares realized profit against the ORIGINAL
+  // stopLossUsd/takeProfitUsd captured at placement (Deriv's API exposes no
+  // direct "closed because of X" field — verified against the official
+  // proposal_open_contract schema); MAX_HOLD_TIMEOUT is control-flow ground
+  // truth (the engine's own timer fired the sell). PARTIAL_TAKE_PROFIT and
+  // BREAKEVEN are never written for Deriv multiplier trades — see
+  // partialTpMechanismActive/breakevenMechanismActive below.
+  exitReason?: "TAKE_PROFIT" | "STOP_LOSS" | "PARTIAL_TAKE_PROFIT" | "BREAKEVEN" | "MAX_HOLD_TIMEOUT" | "MANUAL_EXIT" | "TRAILING_STOP" | "RISK_EXIT" | "CONTRACT_EXPIRY" | "BROKER_EXIT" | "ERROR_EXIT" | "OTHER";
+  entryTimeMs?: number;
+  exitTimeMs?: number;
+  holdDurationSeconds?: number;
+  configuredMaxHoldSeconds?: number;
+
+  // Continuous MFE/MAE, updated by the Position Monitor on every open-tick;
+  // frozen at close. R is relative to the position's own stopLossUsd (risk
+  // unit), null when no stop was set for that trade.
+  mfeUsd?: number;
+  mfeR?: number | null;
+  maeUsd?: number;
+  maeR?: number | null;
+  peakUnrealizedProfit?: number;
+  worstUnrealizedLoss?: number;
+  profitGivenBack?: number; // peakUnrealizedProfit - finalProfit
+
+  // MAX_HOLD_TIMEOUT-specific
+  profitAtTimeout?: number;
+  rAtTimeout?: number | null;
+  mfeBeforeTimeout?: number;
+  maeBeforeTimeout?: number;
+  distanceToTpAtExit?: number | null;
+  distanceToSlAtExit?: number | null;
+
+  // TAKE_PROFIT-specific
+  timeToTpSeconds?: number;
+  mfeBeforeTp?: number;
+  maeBeforeTp?: number;
+  maxProgressTowardTpPct?: number | null; // for trades that never reach TP
+
+  // STOP_LOSS-specific
+  timeToSlSeconds?: number;
+  mfeBeforeSl?: number;
+  maeBeforeSl?: number;
+  wasProfitableBeforeSl?: boolean;
+  maxProfitBeforeSl?: number;
+
+  // Dead-mechanism documentation (2026-08-13 discovery): *Configured
+  // reflects the saved config; *MechanismActive reflects what the engine
+  // actually executed. False here means "does not exist in execution", not
+  // "condition never triggered" — see execution_capabilities below.
+  partialTpConfigured?: boolean;
+  partialTpMechanismActive?: boolean;
+  breakevenConfigured?: boolean;
+  breakevenMechanismActive?: boolean;
+  /** What this specific broker/instrument combo actually supported at trade time. */
+  executionCapabilities?: {
+    partialClose: boolean;
+    moveSlAfterEntry: boolean;
+    breakeven: boolean;
+    trailingStop: boolean;
+    maxHoldExit: boolean;
+    fullTp: boolean;
+    fullSl: boolean;
+  };
+
+  /** LEGACY_INCOMPLETE for any trade placed before this instrumentation —
+   * never use such a trade to prove an exit-mechanism effect (no ground-truth
+   * exit_reason/config_snapshot exists for it). Usable for P&L/WR/PF only. */
+  dataQuality?: "INSTRUMENTED" | "LEGACY_INCOMPLETE";
+
+  // Shadow post-exit market observation — analytical only, never read by any
+  // trading decision. Populated (when possible) for MAX_HOLD_TIMEOUT exits.
+  postExitPrice5m?: number;
+  postExitPrice10m?: number;
+  postExitPrice20m?: number;
+  postExitPrice30m?: number;
+  hypotheticalPnl5m?: number;
+  hypotheticalPnl10m?: number;
+  hypotheticalPnl20m?: number;
+  hypotheticalPnl30m?: number;
+  shadowCaptureStatus?: "PENDING" | "PARTIAL" | "COMPLETE" | "NOT_APPLICABLE";
 }
+
 
 export type TradeEventHandler = (log: TradeLog, meta?: { cooldownUntil?: number }) => void;
 export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;

@@ -16,7 +16,7 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { ConfigRegistry } from "./config-registry.server";
+import { ConfigRegistry, hashConfig } from "./config-registry.server";
 import { DerivApiError, DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, fetchRecentTicksServer, closePublicSocket } from "./deriv.server";
 import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
 import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
@@ -40,12 +40,13 @@ import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
 import { generateCrash500Signals } from "./crash500-signal.server";
 import { generateBoom500Signals } from "./boom500-signal.server";
 import { generateVol75Signal } from "./vol75-signal.server";
-import { generateRb100Signal } from "./rb100-signal.server";
+import { generateRb100Signal, STRATEGY_VERSION as RB100_ENGINE_VERSION, RB100_CONFIG_HASH } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
 import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
 import { evaluateTimeFilter } from "./time-filter.server";
 import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
+import { logSafetyAlert } from "./r4-e2-audit.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
 import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import { executionMonitor } from "./execution-quality-monitor.server";
@@ -194,6 +195,26 @@ const PRESET_LABEL: Record<Preset, string> = {
   goldv2: "GOLD BREAKOUT",
 };
 
+/**
+ * PERMANENT REGRESSION GUARD (2026-08-13, verify-trading-code audit):
+ * canonical stakePercent baseline for every preset that trades in "percent"
+ * stakeMode, expressed as % of balance per trade — the historical convention
+ * (1.00 = 1%, 0.25 = 0.25%) that stays authoritative. An uncommitted R4/E2
+ * rewrite briefly changed several presets to a whole-percent convention
+ * (25 = 25%, a 100x sizing increase) without updating every call site; that
+ * rewrite was rolled back (2026-08-13) and this guard is what now stands
+ * between a future accidental reintroduction of that bug and a live trade.
+ * Only presets with a demonstrated legacy baseline are listed — "default" is
+ * deliberately absent because its stakePercent is user-adjustable across
+ * three risk profiles (1/1.5/2%), so no single baseline can be asserted for it.
+ */
+const LEGACY_STAKE_PCT_BASELINE: Partial<Record<Preset, number>> = {
+  boom: 0.25, boom900: 0.25, vol75: 0.25, vol50: 0.25, crash: 0.25,
+  crash500: 0.25, scalping: 0.25, boomv2: 0.25, scalpingv2: 0.25,
+  crash900: 0.25, rb100: 0.20, gold: 0.25, liquidity: 0.25,
+  goldv2: 0.25, liquidityv2: 0.25,
+};
+
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
  * 3 (five tabs squeezed into a phone-width strip was unreadable), but that
  * blocked users from running/viewing every preset on mobile at once — removed
@@ -277,6 +298,14 @@ interface BotTradeRow {
   indicator_values: string | null;
   time_filter_decision: string | null;
   risk_manager_decision: string | null;
+  risk_version: string | null;
+  execution_version: string | null;
+  config_hash: string | null;
+  requested_stake: number | null;
+  strategy_suggested_stake: number | null;
+  max_risk_allowed: number | null;
+  deriv_max_allowed: number | null;
+  stake_source: string | null;
 }
 
 function parseComponents(json: string | null): SignalComponent[] | undefined {
@@ -316,6 +345,14 @@ export function logFromRow(r: BotTradeRow): TradeLog {
     indicatorValues: parseJsonObject(r.indicator_values),
     timeFilterDecision: parseJsonObject(r.time_filter_decision),
     riskManagerDecision: parseJsonObject(r.risk_manager_decision),
+    riskVersion: r.risk_version ?? undefined,
+    executionVersion: r.execution_version ?? undefined,
+    configHash: r.config_hash ?? undefined,
+    requestedStake: r.requested_stake ?? undefined,
+    strategySuggestedStake: r.strategy_suggested_stake ?? undefined,
+    riskManagerCap: r.max_risk_allowed ?? undefined,
+    derivMaxAllowedStake: r.deriv_max_allowed ?? undefined,
+    stakeSource: r.stake_source ?? undefined,
   };
 }
 
@@ -328,18 +365,44 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
   const timeFilterDecisionJson = typeof log.timeFilterDecision === "string" ? log.timeFilterDecision : log.timeFilterDecision ? JSON.stringify(log.timeFilterDecision) : null;
   const riskManagerDecisionJson = typeof log.riskManagerDecision === "string" ? log.riskManagerDecision : log.riskManagerDecision ? JSON.stringify(log.riskManagerDecision) : null;
 
+  // SQLite/better-sqlite3 can't bind Infinity — derivMaxAllowedStake is
+  // Infinity for every preset except Boom900, meaning "no broker cap",
+  // which NULL represents naturally.
+  const derivMaxAllowedForDb = typeof log.derivMaxAllowedStake === "number" && Number.isFinite(log.derivMaxAllowedStake)
+    ? log.derivMaxAllowedStake : null;
+  const boolToDb = (b: boolean | undefined): number | null => b === undefined ? null : (b ? 1 : 0);
+  const executionCapabilitiesJson = log.executionCapabilities ? JSON.stringify(log.executionCapabilities) : null;
+
   getDb().prepare(`
     INSERT INTO bot_trades (
       id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement,
       contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry,
       components, multiplier, stop_loss, take_profit, mode, preset,
-      config_snapshot, indicator_values, time_filter_decision, risk_manager_decision
+      config_snapshot, indicator_values, time_filter_decision, risk_manager_decision,
+      risk_version, execution_version, config_hash,
+      requested_stake, strategy_suggested_stake, max_risk_allowed, deriv_max_allowed, final_stake, stake_source,
+      exit_reason, entry_time, exit_time, hold_duration_seconds, configured_max_hold_seconds,
+      mfe_usd, mfe_r, mae_usd, mae_r, peak_unrealized_profit, worst_unrealized_loss, profit_given_back,
+      profit_at_timeout, r_at_timeout, mfe_before_timeout, mae_before_timeout, distance_to_tp_at_exit, distance_to_sl_at_exit,
+      time_to_tp_seconds, mfe_before_tp, mae_before_tp, max_progress_toward_tp_pct,
+      time_to_sl_seconds, mfe_before_sl, mae_before_sl, was_profitable_before_sl, max_profit_before_sl,
+      partial_tp_configured, partial_tp_mechanism_active, breakeven_configured, breakeven_mechanism_active,
+      execution_capabilities, data_quality
     )
     VALUES (
       @id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement,
       @contract_id, @closed_at, @note, @strategy, @strategy_version, @entry_price, @duration_minutes, @expiry,
       @components, @multiplier, @stop_loss, @take_profit, @mode, @preset,
-      @config_snapshot, @indicator_values, @time_filter_decision, @risk_manager_decision
+      @config_snapshot, @indicator_values, @time_filter_decision, @risk_manager_decision,
+      @risk_version, @execution_version, @config_hash,
+      @requested_stake, @strategy_suggested_stake, @max_risk_allowed, @deriv_max_allowed, @final_stake, @stake_source,
+      @exit_reason, @entry_time, @exit_time, @hold_duration_seconds, @configured_max_hold_seconds,
+      @mfe_usd, @mfe_r, @mae_usd, @mae_r, @peak_unrealized_profit, @worst_unrealized_loss, @profit_given_back,
+      @profit_at_timeout, @r_at_timeout, @mfe_before_timeout, @mae_before_timeout, @distance_to_tp_at_exit, @distance_to_sl_at_exit,
+      @time_to_tp_seconds, @mfe_before_tp, @mae_before_tp, @max_progress_toward_tp_pct,
+      @time_to_sl_seconds, @mfe_before_sl, @mae_before_sl, @was_profitable_before_sl, @max_profit_before_sl,
+      @partial_tp_configured, @partial_tp_mechanism_active, @breakeven_configured, @breakeven_mechanism_active,
+      @execution_capabilities, @data_quality
     )
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
@@ -352,13 +415,64 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       indicator_values = COALESCE(excluded.indicator_values, bot_trades.indicator_values),
       time_filter_decision = COALESCE(excluded.time_filter_decision, bot_trades.time_filter_decision),
       risk_manager_decision = COALESCE(excluded.risk_manager_decision, bot_trades.risk_manager_decision),
-      strategy_version = COALESCE(excluded.strategy_version, bot_trades.strategy_version)
+      strategy_version = COALESCE(excluded.strategy_version, bot_trades.strategy_version),
+      risk_version = COALESCE(excluded.risk_version, bot_trades.risk_version),
+      execution_version = COALESCE(excluded.execution_version, bot_trades.execution_version),
+      config_hash = COALESCE(excluded.config_hash, bot_trades.config_hash),
+      requested_stake = COALESCE(excluded.requested_stake, bot_trades.requested_stake),
+      strategy_suggested_stake = COALESCE(excluded.strategy_suggested_stake, bot_trades.strategy_suggested_stake),
+      max_risk_allowed = COALESCE(excluded.max_risk_allowed, bot_trades.max_risk_allowed),
+      deriv_max_allowed = COALESCE(excluded.deriv_max_allowed, bot_trades.deriv_max_allowed),
+      final_stake = COALESCE(excluded.final_stake, bot_trades.final_stake),
+      stake_source = COALESCE(excluded.stake_source, bot_trades.stake_source),
+      exit_reason = COALESCE(excluded.exit_reason, bot_trades.exit_reason),
+      entry_time = COALESCE(excluded.entry_time, bot_trades.entry_time),
+      exit_time = COALESCE(excluded.exit_time, bot_trades.exit_time),
+      hold_duration_seconds = COALESCE(excluded.hold_duration_seconds, bot_trades.hold_duration_seconds),
+      configured_max_hold_seconds = COALESCE(excluded.configured_max_hold_seconds, bot_trades.configured_max_hold_seconds),
+      mfe_usd = COALESCE(excluded.mfe_usd, bot_trades.mfe_usd),
+      mfe_r = COALESCE(excluded.mfe_r, bot_trades.mfe_r),
+      mae_usd = COALESCE(excluded.mae_usd, bot_trades.mae_usd),
+      mae_r = COALESCE(excluded.mae_r, bot_trades.mae_r),
+      peak_unrealized_profit = COALESCE(excluded.peak_unrealized_profit, bot_trades.peak_unrealized_profit),
+      worst_unrealized_loss = COALESCE(excluded.worst_unrealized_loss, bot_trades.worst_unrealized_loss),
+      profit_given_back = COALESCE(excluded.profit_given_back, bot_trades.profit_given_back),
+      profit_at_timeout = COALESCE(excluded.profit_at_timeout, bot_trades.profit_at_timeout),
+      r_at_timeout = COALESCE(excluded.r_at_timeout, bot_trades.r_at_timeout),
+      mfe_before_timeout = COALESCE(excluded.mfe_before_timeout, bot_trades.mfe_before_timeout),
+      mae_before_timeout = COALESCE(excluded.mae_before_timeout, bot_trades.mae_before_timeout),
+      distance_to_tp_at_exit = COALESCE(excluded.distance_to_tp_at_exit, bot_trades.distance_to_tp_at_exit),
+      distance_to_sl_at_exit = COALESCE(excluded.distance_to_sl_at_exit, bot_trades.distance_to_sl_at_exit),
+      time_to_tp_seconds = COALESCE(excluded.time_to_tp_seconds, bot_trades.time_to_tp_seconds),
+      mfe_before_tp = COALESCE(excluded.mfe_before_tp, bot_trades.mfe_before_tp),
+      mae_before_tp = COALESCE(excluded.mae_before_tp, bot_trades.mae_before_tp),
+      max_progress_toward_tp_pct = COALESCE(excluded.max_progress_toward_tp_pct, bot_trades.max_progress_toward_tp_pct),
+      time_to_sl_seconds = COALESCE(excluded.time_to_sl_seconds, bot_trades.time_to_sl_seconds),
+      mfe_before_sl = COALESCE(excluded.mfe_before_sl, bot_trades.mfe_before_sl),
+      mae_before_sl = COALESCE(excluded.mae_before_sl, bot_trades.mae_before_sl),
+      was_profitable_before_sl = COALESCE(excluded.was_profitable_before_sl, bot_trades.was_profitable_before_sl),
+      max_profit_before_sl = COALESCE(excluded.max_profit_before_sl, bot_trades.max_profit_before_sl),
+      partial_tp_configured = COALESCE(excluded.partial_tp_configured, bot_trades.partial_tp_configured),
+      partial_tp_mechanism_active = COALESCE(excluded.partial_tp_mechanism_active, bot_trades.partial_tp_mechanism_active),
+      breakeven_configured = COALESCE(excluded.breakeven_configured, bot_trades.breakeven_configured),
+      breakeven_mechanism_active = COALESCE(excluded.breakeven_mechanism_active, bot_trades.breakeven_mechanism_active),
+      execution_capabilities = COALESCE(excluded.execution_capabilities, bot_trades.execution_capabilities),
+      data_quality = COALESCE(excluded.data_quality, bot_trades.data_quality)
   `).run({
     id: log.id, user_id: userId, time: log.time, symbol: log.symbol, direction: log.direction,
     stake: log.stake, payout: log.payout, status: log.status, profit: log.profit,
     confidence: log.confidence, tf_agreement: log.tfAgreement,
     contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null, strategy: log.strategy ?? null,
     strategy_version: strategyVersion,
+    risk_version: log.riskVersion ?? "R4",
+    execution_version: log.executionVersion ?? "E3",
+    config_hash: log.configHash ?? null,
+    requested_stake: log.requestedStake ?? null,
+    strategy_suggested_stake: log.strategySuggestedStake ?? null,
+    max_risk_allowed: log.riskManagerCap ?? null,
+    deriv_max_allowed: derivMaxAllowedForDb,
+    final_stake: log.stake,
+    stake_source: log.stakeSource ?? null,
     entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
     components: log.components?.length ? JSON.stringify(log.components) : null,
     multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
@@ -367,7 +481,57 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
     indicator_values: indicatorValuesJson,
     time_filter_decision: timeFilterDecisionJson,
     risk_manager_decision: riskManagerDecisionJson,
+    exit_reason: log.exitReason ?? null,
+    entry_time: log.entryTimeMs ?? null,
+    exit_time: log.exitTimeMs ?? null,
+    hold_duration_seconds: log.holdDurationSeconds ?? null,
+    configured_max_hold_seconds: log.configuredMaxHoldSeconds ?? null,
+    mfe_usd: log.mfeUsd ?? null, mfe_r: log.mfeR ?? null, mae_usd: log.maeUsd ?? null, mae_r: log.maeR ?? null,
+    peak_unrealized_profit: log.peakUnrealizedProfit ?? null,
+    worst_unrealized_loss: log.worstUnrealizedLoss ?? null,
+    profit_given_back: log.profitGivenBack ?? null,
+    profit_at_timeout: log.profitAtTimeout ?? null,
+    r_at_timeout: log.rAtTimeout ?? null,
+    mfe_before_timeout: log.mfeBeforeTimeout ?? null,
+    mae_before_timeout: log.maeBeforeTimeout ?? null,
+    distance_to_tp_at_exit: log.distanceToTpAtExit ?? null,
+    distance_to_sl_at_exit: log.distanceToSlAtExit ?? null,
+    time_to_tp_seconds: log.timeToTpSeconds ?? null,
+    mfe_before_tp: log.mfeBeforeTp ?? null,
+    mae_before_tp: log.maeBeforeTp ?? null,
+    max_progress_toward_tp_pct: log.maxProgressTowardTpPct ?? null,
+    time_to_sl_seconds: log.timeToSlSeconds ?? null,
+    mfe_before_sl: log.mfeBeforeSl ?? null,
+    mae_before_sl: log.maeBeforeSl ?? null,
+    was_profitable_before_sl: boolToDb(log.wasProfitableBeforeSl),
+    max_profit_before_sl: log.maxProfitBeforeSl ?? null,
+    partial_tp_configured: boolToDb(log.partialTpConfigured),
+    partial_tp_mechanism_active: boolToDb(log.partialTpMechanismActive),
+    breakeven_configured: boolToDb(log.breakevenConfigured),
+    breakeven_mechanism_active: boolToDb(log.breakevenMechanismActive),
+    execution_capabilities: executionCapabilitiesJson,
+    data_quality: log.dataQuality ?? null,
   });
+}
+
+/** Best-effort write of one shadow post-exit horizon snapshot (2026-08-13,
+ * analytical only). Never touches any column read by a trading decision. */
+function recordShadowObservation(
+  tradeId: string,
+  horizon: "5m" | "10m" | "20m" | "30m",
+  price: number,
+  hypotheticalPnl: number,
+  status: "PARTIAL" | "COMPLETE",
+): void {
+  try {
+    getDb().prepare(`
+      UPDATE bot_trades SET
+        post_exit_price_${horizon} = ?,
+        hypothetical_pnl_${horizon} = ?,
+        shadow_capture_status = ?
+      WHERE id = ?
+    `).run(price, hypotheticalPnl, status, tradeId);
+  } catch { /* best-effort analytics only */ }
 }
 
 function loadRecentTrades(userId: number, preset: Preset, limit = 50): TradeLog[] {
@@ -889,6 +1053,27 @@ class ServerBotEngine {
     let resolved = false;
     let partialTaken = false;
 
+    // ── Exit-mechanism observability (2026-08-13, Zero Tweak: read-only,
+    // never influences any decision below) ──
+    // partialTakeProfitPct/moveSlToBreakeven are configured on this preset
+    // but Deriv's multiplier API has no partial-sell endpoint and nothing in
+    // this file ever reads moveSlToBreakeven — both are dead configuration
+    // here. Documented explicitly per trade so FALSE below means "mechanism
+    // does not exist in execution", never "condition didn't trigger".
+    const executionCapabilities = {
+      partialClose: false, moveSlAfterEntry: false, breakeven: false,
+      trailingStop: false, maxHoldExit: true, fullTp: true, fullSl: true,
+    };
+    const partialTpConfigured = this.config.partialTakeProfitPct > 0;
+    const breakevenConfigured = this.config.moveSlToBreakeven;
+
+    let peakUnrealizedProfit = 0;
+    let worstUnrealizedLoss = 0;
+    let timeoutTriggered = false;
+    const stopLossUsd = openLog.stopLossUsd;
+    const takeProfitUsd = openLog.takeProfitUsd;
+    const toR = (usd: number) => (stopLossUsd && stopLossUsd > 0 ? Math.round((usd / stopLossUsd) * 1000) / 1000 : null);
+
     const finalize = (profit: number) => {
       if (resolved) return;
       resolved = true;
@@ -897,13 +1082,73 @@ class ServerBotEngine {
       this.contractUnsubs.get(contractId)?.();
       this.contractUnsubs.delete(contractId);
       this.activeSymbols.delete(openLog.symbol);
-      this.emit({ ...openLog, status: profit > 0 ? "won" : "lost", profit, closedAt: Date.now() });
+
+      const exitTimeMs = Date.now();
+      const holdDurationSeconds = Math.round((exitTimeMs - openLog.time) / 1000);
+      const nearTp = takeProfitUsd ? profit >= 0.95 * takeProfitUsd : false;
+      const nearSl = stopLossUsd ? profit <= -0.95 * stopLossUsd : false;
+      // MAX_HOLD_TIMEOUT is control-flow ground truth: we know for certain
+      // when it's our own timer that triggered the sell. Otherwise, Deriv's
+      // proposal_open_contract API exposes no direct "closed because of X"
+      // field (status is just sold/won/lost/open regardless of cause), so
+      // TAKE_PROFIT/STOP_LOSS are classified by comparing realized profit
+      // against the ORIGINAL stopLossUsd/takeProfitUsd set at placement —
+      // the most information the broker actually provides.
+      const exitReason: TradeLog["exitReason"] = timeoutTriggered
+        ? "MAX_HOLD_TIMEOUT"
+        : nearTp ? "TAKE_PROFIT"
+        : nearSl ? "STOP_LOSS"
+        : "OTHER";
+
+      const mfeUsd = peakUnrealizedProfit;
+      const maeUsd = worstUnrealizedLoss;
+      const profitGivenBack = peakUnrealizedProfit > profit ? Math.round((peakUnrealizedProfit - profit) * 100) / 100 : 0;
+
+      const extra: Partial<TradeLog> = {
+        exitReason,
+        entryTimeMs: openLog.time,
+        exitTimeMs,
+        holdDurationSeconds,
+        configuredMaxHoldSeconds: this.config.maxHoldMinutes * 60,
+        mfeUsd, mfeR: toR(mfeUsd), maeUsd, maeR: toR(maeUsd),
+        peakUnrealizedProfit, worstUnrealizedLoss, profitGivenBack,
+        partialTpConfigured, partialTpMechanismActive: false,
+        breakevenConfigured, breakevenMechanismActive: false,
+        executionCapabilities,
+        dataQuality: "INSTRUMENTED",
+      };
+      if (exitReason === "MAX_HOLD_TIMEOUT") {
+        extra.profitAtTimeout = profit;
+        extra.rAtTimeout = toR(profit);
+        extra.mfeBeforeTimeout = mfeUsd;
+        extra.maeBeforeTimeout = maeUsd;
+        extra.distanceToTpAtExit = takeProfitUsd ? Math.round((takeProfitUsd - profit) * 100) / 100 : null;
+        extra.distanceToSlAtExit = stopLossUsd ? Math.round((profit + stopLossUsd) * 100) / 100 : null;
+      } else if (exitReason === "TAKE_PROFIT") {
+        extra.timeToTpSeconds = holdDurationSeconds;
+        extra.mfeBeforeTp = mfeUsd;
+        extra.maeBeforeTp = maeUsd;
+      } else if (exitReason === "STOP_LOSS") {
+        extra.timeToSlSeconds = holdDurationSeconds;
+        extra.mfeBeforeSl = mfeUsd;
+        extra.maeBeforeSl = maeUsd;
+        extra.wasProfitableBeforeSl = peakUnrealizedProfit > 0;
+        extra.maxProfitBeforeSl = peakUnrealizedProfit;
+      }
+      if (takeProfitUsd) {
+        extra.maxProgressTowardTpPct = Math.round((peakUnrealizedProfit / takeProfitUsd) * 1000) / 10;
+      }
+
+      this.emit({ ...openLog, ...extra, status: profit > 0 ? "won" : "lost", profit, closedAt: exitTimeMs });
       try { recordComponentOutcomesServer(openLog.symbol, openLog.components, profit > 0); } catch { /* never break resolution */ }
+      if (exitReason === "MAX_HOLD_TIMEOUT") this.scheduleShadowObservation({ ...openLog, ...extra, profit, closedAt: exitTimeMs });
     };
 
     const unsub = this.conn.subscribeContract(contractId, (u) => {
       if (u.status === "open") {
         this.emit({ ...openLog, status: "open", profit: u.profit });
+        if (u.profit > peakUnrealizedProfit) peakUnrealizedProfit = u.profit;
+        if (u.profit < worstUnrealizedLoss) worstUnrealizedLoss = u.profit;
 
         // ── Partial profit taking ──
         // When floating profit reaches 50% of the take-profit target, we
@@ -941,6 +1186,7 @@ class ServerBotEngine {
     const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
     const maxHoldTimer = setTimeout(async () => {
       if (resolved || this.stopped) return;
+      timeoutTriggered = true;
       try {
         await this.conn.sellContract(contractId);
         // The subscription's next "is_sold" update calls finalize with the real profit.
@@ -951,6 +1197,43 @@ class ServerBotEngine {
       }
     }, remainingMs);
     this.fallbackTimers.add(maxHoldTimer);
+  }
+
+  /**
+   * Shadow post-exit market observation (2026-08-13) — analytical only,
+   * never read by any trading decision. For a MAX_HOLD_TIMEOUT exit,
+   * schedules 4 lightweight price checks (+5/10/20/30 min) to see whether
+   * the trade would have become favorable had it stayed open longer. This
+   * is exactly the question point 16 of the audit needs answered before any
+   * maxHoldMinutes sweep is worth running.
+   */
+  private scheduleShadowObservation(closedLog: TradeLog & { closedAt: number }) {
+    if (closedLog.direction !== "MULTUP" && closedLog.direction !== "MULTDOWN") return;
+    const entryPrice = closedLog.entryPrice;
+    const multiplier = closedLog.multiplier;
+    if (!entryPrice || !multiplier) return;
+    const bias = closedLog.direction === "MULTUP" ? 1 : -1;
+    const horizons: Array<{ label: "5m" | "10m" | "20m" | "30m"; ms: number }> = [
+      { label: "5m", ms: 5 * 60_000 }, { label: "10m", ms: 10 * 60_000 },
+      { label: "20m", ms: 20 * 60_000 }, { label: "30m", ms: 30 * 60_000 },
+    ];
+    horizons.forEach(({ label, ms }, idx) => {
+      const dueAt = closedLog.closedAt + ms;
+      const delay = Math.max(0, dueAt - Date.now());
+      const isLast = idx === horizons.length - 1;
+      const timer = setTimeout(async () => {
+        this.fallbackTimers.delete(timer);
+        if (this.stopped) return;
+        try {
+          const ticks = await fetchRecentTicksServer(closedLog.symbol, 1);
+          const price = ticks[ticks.length - 1];
+          if (!Number.isFinite(price)) return;
+          const hypotheticalPnl = Math.round(closedLog.stake * multiplier * bias * ((price - entryPrice) / entryPrice) * 100) / 100;
+          recordShadowObservation(closedLog.id!, label, price, hypotheticalPnl, isLast ? "COMPLETE" : "PARTIAL");
+        } catch { /* best-effort analytics only — never affects trading */ }
+      }, delay);
+      this.fallbackTimers.add(timer);
+    });
   }
 
   /**
@@ -1503,7 +1786,7 @@ class ServerBotEngine {
       : null;
     const currentBalance = oandaBalance?.balance ?? balance?.balance;
     const baseStake = config.stakeMode === "percent" && currentBalance && currentBalance > 0
-      ? Math.max(1, (currentBalance * config.stakePercent) / 100)
+      ? (currentBalance * config.stakePercent) / 100
       : config.stakeUsd;
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(baseStake, logs) : baseStake;
 
@@ -2093,7 +2376,15 @@ class ServerBotEngine {
       recordFunnelStep(this.preset, strategyId, "valid_signal");
 
       // ── Step 4: Granular Time Performance Filter (SYMBOL + STRATEGY + VERSION + HOUR_UTC) ──
-      const currentStrategyVersion = ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "V1";
+      // Presets with their own dedicated signal engine (currently only RB100)
+      // are the real source of truth for their version tag — the engine's
+      // code IS the strategy, so its own exported constant is authoritative.
+      // Everything else falls back to ConfigRegistry's auto-incrementing
+      // config version tag (still "V1" until a real config change is saved
+      // through updateConfigForUser — see the ConfigRegistry fix below).
+      const currentStrategyVersion = this.preset === "rb100"
+        ? RB100_ENGINE_VERSION
+        : (ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "V1");
       const currentHourUtc = new Date().getUTCHours();
       const timeFilter = evaluateTimeFilter(symbol, strategyId, currentStrategyVersion, currentHourUtc);
 
@@ -2209,6 +2500,38 @@ class ServerBotEngine {
         continue;
       }
 
+      // REGRESSION GUARD (2026-08-13): block before any sizing math runs if
+      // this preset's live stakePercent has drifted >=10x from its canonical
+      // baseline (see LEGACY_STAKE_PCT_BASELINE above). Fires regardless of
+      // what the Risk Manager cap would have absorbed downstream, so a
+      // config-level anomaly (e.g. a future accidental x100 unit change) is
+      // never silently masked by that cap.
+      const legacyBaselinePct = LEGACY_STAKE_PCT_BASELINE[this.preset];
+      if (config.stakeMode === "percent" && legacyBaselinePct && config.stakePercent >= legacyBaselinePct * 10) {
+        logSafetyAlert({
+          alertType: "STAKE_MIGRATION_ANOMALY",
+          userId: this.userId,
+          preset: this.preset,
+          symbol,
+          details: `STAKE_MIGRATION_ANOMALY: config.stakePercent (${config.stakePercent}) >= 10x last known-good baseline (${legacyBaselinePct}) for preset ${this.preset}`,
+        });
+        scanResults.push({ symbol, action: "risk-pause", note: "STAKE_MIGRATION_ANOMALY" });
+        continue;
+      }
+
+      // ── requestedStake: the user's own configured ceiling (fixed $ or
+      // equity × stakePercent). This is the ROOT authority on maximum stake
+      // — no specialized engine, risk multiplier, or drift adjustment below
+      // may ever cause the FINAL stake to exceed it. Enforced structurally
+      // by including it in the Priority 2 MIN() below (2026-08-13 fix: it
+      // used to be computed but never actually applied as a ceiling, which
+      // let vol75Level's own risk-based sizing silently replace a user's
+      // fixed $5 stake with $23.18 — caught by the STAKE_SAFETY_VIOLATION
+      // assertion further down, which correctly blocked the trade but left
+      // the bot paused with no way to size correctly until this was fixed).
+      const requestedStake = effectiveStake;
+      let stakeSource: string = config.stakeMode === "percent" ? "PERCENT_USER_CAP" : "FIXED_USER_CAP";
+
       // Stake for THIS trade: Kelly (per-symbol measured edge from this user's
       // own bot_trades history) when enabled and enough of a sample exists,
       // otherwise the fixed/percent/adaptive stake already computed above.
@@ -2224,6 +2547,7 @@ class ServerBotEngine {
         );
         if (kellyStake !== null) {
           stakeForTrade = config.adaptiveStake ? computeAdaptiveStake(kellyStake, logs) : kellyStake;
+          stakeSource = "KELLY";
         }
       }
 
@@ -2232,28 +2556,44 @@ class ServerBotEngine {
         const consecLosses = countConsecutiveLosses(logs, symbol);
         if (consecLosses > 0) {
           stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
+          stakeSource = "PROGRESSIVE_REDUCTION";
         }
       }
 
       // Boom500's two strategies have independent risk budgets. This is
       // calculated from balance, never from a martingale or tick count.
+      // NOTE: every *Level.riskPct below is a RISK SUGGESTION / internal cap
+      // from that engine's own signal — never an authorization to exceed
+      // requestedStake. That ceiling is enforced once, uniformly, at
+      // Priority 2 below, regardless of which branch here last wrote to
+      // stakeForTrade.
       const boom500Level = this.preset === "boom" ? boom500Levels.get(symbol) : undefined;
       const vol75Level = this.preset === "vol75" ? vol75Levels.get(symbol) : undefined;
       const rb100Level = this.preset === "rb100" ? rb100Levels.get(symbol) : undefined;
       const vol50Level = this.preset === "vol50" ? vol50Levels.get(symbol) : undefined;
       if (boom500Level && currentBalance && currentBalance > 0) {
-        stakeForTrade = Math.max(1, Math.round(currentBalance * (boom500Level.riskPct / 100) * 100) / 100);
+        stakeForTrade = Math.round(currentBalance * (boom500Level.riskPct / 100) * 100) / 100;
+        stakeSource = "BOOM500_LEVEL";
       }
       if (vol75Level && currentBalance && currentBalance > 0) {
-        stakeForTrade = Math.max(1, Math.round(currentBalance * (vol75Level.riskPct / 100) * 100) / 100);
+        stakeForTrade = Math.round(currentBalance * (vol75Level.riskPct / 100) * 100) / 100;
+        stakeSource = "VOL75_LEVEL";
       }
-      if (rb100Level && currentBalance && currentBalance > 0) stakeForTrade = Math.max(1, Math.round(currentBalance * (rb100Level.riskPct / 100) * 100) / 100);
-      if (vol50Level && currentBalance && currentBalance > 0) stakeForTrade = Math.max(1, Math.round(currentBalance * (vol50Level.riskPct / 100) * 100) / 100);
+      if (rb100Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (rb100Level.riskPct / 100) * 100) / 100;
+        stakeSource = "RB100_LEVEL";
+      }
+      if (vol50Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (vol50Level.riskPct / 100) * 100) / 100;
+        stakeSource = "VOL50_LEVEL";
+      }
       if (riskMetrics.stakeMultiplier > 0 && riskMetrics.stakeMultiplier < 1.0) {
-        stakeForTrade = Math.max(1, Math.round(stakeForTrade * riskMetrics.stakeMultiplier * 100) / 100);
+        stakeForTrade = Math.round(stakeForTrade * riskMetrics.stakeMultiplier * 100) / 100;
+        stakeSource = "DRIFT_MULTIPLIER";
       }
       if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.riskMultiplier < 1) {
-        stakeForTrade = Math.max(1, Math.round(stakeForTrade * timeFilter.riskMultiplier * 100) / 100);
+        stakeForTrade = Math.round(stakeForTrade * timeFilter.riskMultiplier * 100) / 100;
+        stakeSource = "TIME_FILTER";
       }
       // Gold presets are sized from the stop, not from an arbitrary stake.
       // With an ATR stop, the $ loss for a $1 multiplier position is
@@ -2277,13 +2617,67 @@ class ServerBotEngine {
           continue;
         }
         stakeForTrade = Math.round((riskTarget / perStakeRisk) * 100) / 100;
+        stakeSource = "GOLD_ATR";
       }
 
-      // The Risk Manager is the final authority on the maximum affordable
-      // exposure. Apply this after every strategy-specific sizing path,
-      // including the Gold stop-based calculation.
+      // strategyRiskSuggestedStake: the accumulated output of every engine
+      // above (Kelly / progressive-reduction / Boom500-Vol75-RB100-Vol50
+      // Level / drift-multiplier / time-filter / Gold ATR), captured right
+      // before the hard ceilings below are applied.
+      const strategyRiskSuggestedStake = stakeForTrade;
+
+      // Priority 2: FINAL_STAKE = MIN(requestedStake, strategyRiskSuggestedStake, maxRiskAllowed, derivMaxAllowed)
+      // Nothing above this line — no specialized engine, no risk multiplier
+      // — can ever INCREASE the stake past what the user's own config
+      // (requestedStake) or the broker (derivMaxAllowed) allow. Only this
+      // MIN and the Risk Manager cap can reduce it further.
+      const derivMaxAllowed = this.preset === "boom900" ? 0.90 : Infinity;
+      const maxRiskAllowed = riskCheck.stakeUsd;
+
       if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED) {
-        stakeForTrade = Math.min(stakeForTrade, riskCheck.stakeUsd);
+        stakeForTrade = Math.min(strategyRiskSuggestedStake, requestedStake, maxRiskAllowed, derivMaxAllowed);
+      } else {
+        stakeForTrade = Math.min(strategyRiskSuggestedStake, requestedStake, derivMaxAllowed);
+      }
+      // Attribute the binding constraint for the audit trail (stake_source),
+      // in order of authority: broker limit, then Risk Manager, then the
+      // user's own config ceiling, else the strategy suggestion computed
+      // above already labeled stakeSource correctly.
+      if (Math.abs(stakeForTrade - derivMaxAllowed) < 0.005 && derivMaxAllowed < strategyRiskSuggestedStake - 0.005) {
+        stakeSource = "DERIV_CAP";
+      } else if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && Math.abs(stakeForTrade - maxRiskAllowed) < 0.005 && maxRiskAllowed < strategyRiskSuggestedStake - 0.005) {
+        stakeSource = "RISK_MANAGER";
+      } else if (Math.abs(stakeForTrade - requestedStake) < 0.005 && requestedStake < strategyRiskSuggestedStake - 0.005) {
+        stakeSource = config.stakeMode === "percent" ? "PERCENT_USER_CAP" : "FIXED_USER_CAP";
+      }
+
+      // Pre-order stake invariant assertion (0 Violation Guard)
+      if (stakeForTrade > requestedStake + 0.01 || stakeForTrade > maxRiskAllowed + 0.01 || stakeForTrade > derivMaxAllowed + 0.01) {
+        logSafetyAlert({
+          alertType: "STAKE_SAFETY_VIOLATION",
+          userId: this.userId,
+          preset: this.preset,
+          symbol,
+          details: `STAKE_SAFETY_VIOLATION: finalStake ($${stakeForTrade.toFixed(2)}) > MIN(requested $${requestedStake.toFixed(2)}, maxRisk $${maxRiskAllowed.toFixed(2)}, derivMax $${derivMaxAllowed})`,
+        });
+        scanResults.push({ symbol, action: "risk-pause", note: "STAKE_SAFETY_VIOLATION" });
+        continue;
+      }
+
+      // Priority 3: Deriv Minimum Check (NO SILENT ESCALATION)
+      // Boom900 is exempt: its multiplier contract is broker-capped at
+      // $0.90 (derivMaxAllowed above), below the generic $1 floor, so this
+      // check would reject every single Boom900 trade.
+      const DERIV_MINIMUM_STAKE = 1.00;
+      if (this.preset !== "boom900" && stakeForTrade < DERIV_MINIMUM_STAKE) {
+        scanResults.push({
+          symbol,
+          action: "risk-pause",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          note: `STAKE_BELOW_DERIV_MINIMUM: Stake calculé ($${stakeForTrade.toFixed(2)}) inférieur au minimum Deriv ($${DERIV_MINIMUM_STAKE.toFixed(2)})`,
+        });
+        continue;
       }
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
@@ -2443,6 +2837,16 @@ class ServerBotEngine {
         symbolMode: this.config.symbolMode,
         timestamp: Date.now(),
       };
+      // RB100 has its own dedicated signal engine — its route-specific
+      // MIN_SCORE/riskPct/SL-TP constants live in RB100_EFFECTIVE_CONFIG,
+      // not in AutoTraderConfig, so RB100_CONFIG_HASH is the real fingerprint
+      // for it. Every other preset hashes its own configSnapshot (minus the
+      // per-call timestamp, which would otherwise make every trade produce a
+      // different hash regardless of whether the config actually changed).
+      const { timestamp: _configSnapshotTimestamp, ...configSnapshotForHash } = configSnapshot;
+      const configHash = this.preset === "rb100"
+        ? RB100_CONFIG_HASH
+        : hashConfig(configSnapshotForHash as unknown as Record<string, unknown>);
 
       const indicatorValues = {
         confidence: Math.round(analysis.confidence),
@@ -2498,6 +2902,14 @@ class ServerBotEngine {
         note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         strategy: strategyId,
         strategyVersion: currentStrategyVersion,
+        riskVersion: "R4",
+        executionVersion: "E3",
+        configHash,
+        requestedStake,
+        strategySuggestedStake: strategyRiskSuggestedStake,
+        riskManagerCap: maxRiskAllowed,
+        derivMaxAllowedStake: derivMaxAllowed,
+        stakeSource,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
         preset: this.preset,
@@ -2767,7 +3179,20 @@ export function updateConfigForUser(userId: number, preset: Preset, config: Auto
       source: (source === "auto-rollback" ? "rollback" : (source ?? (changedBy ? "admin" : "user"))) as any
     });
   } catch (err) {
+    // Was previously swallowed into server stdout only — a failure here
+    // means this config change has NO version row, NO hash, and NO audit
+    // trail (config_versions/config_audit_events), exactly the "Zero Silent
+    // Changes" guarantee this system exists to provide. Surface it into
+    // safety_alerts so it's visible in the R4/E2 admin dashboard instead of
+    // requiring someone to grep server logs to notice.
     console.error("[ConfigRegistry] Failed to save strategy version snapshot:", err);
+    logSafetyAlert({
+      alertType: "CONFIG_HASH_MISSING",
+      userId,
+      preset,
+      symbol: "N/A",
+      details: `ConfigRegistry.saveConfigVersion failed for preset ${preset}: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 
   engines.get(engineKey(userId, preset))?.updateConfig(config);

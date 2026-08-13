@@ -5,7 +5,7 @@ function createFakeCandle(close: number, high?: number, low?: number, open?: num
   const o = open ?? close;
   const h = high ?? Math.max(o, close) + 1;
   const l = low ?? Math.min(o, close) - 1;
-  return { time: Date.now() / 1000, open: o, high: h, low: l, close };
+  return { epoch: Date.now() / 1000, open: o, high: h, low: l, close };
 }
 
 function generateHistory(count: number, basePrice = 50000): ServerCandle[] {
@@ -17,7 +17,7 @@ function generateHistory(count: number, basePrice = 50000): ServerCandle[] {
     price += change;
     const high = Math.max(open, price) + 2;
     const low = Math.min(open, price) - 2;
-    candles.push({ time: (Date.now() / 1000) - (count - i) * 60, open, high, low, close: price });
+    candles.push({ epoch: (Date.now() / 1000) - (count - i) * 60, open, high, low, close: price });
   }
   return candles;
 }
@@ -37,7 +37,7 @@ const m1 = generateHistory(60, 50000);
 const rangeBars = m5.slice(-12, -1);
 const lo = Math.min(...rangeBars.map((x) => x.low));
 m1[m1.length - 1] = {
-  time: Date.now() / 1000,
+  epoch: Date.now() / 1000,
   open: lo + 1,
   high: lo + 3,
   low: lo - 2, // 20% lower wick
@@ -53,7 +53,7 @@ console.log("Test 2 Decision:", decision.signal ? `SIGNAL: ${decision.signal.str
 const m1Breakout = generateHistory(60, 50000);
 const hi = Math.max(...m5.slice(-12, -1).map((x) => x.high));
 m1Breakout[m1Breakout.length - 1] = {
-  time: Date.now() / 1000,
+  epoch: Date.now() / 1000,
   open: hi + 1,
   high: hi + 15,
   low: hi - 1, // retest boundary
