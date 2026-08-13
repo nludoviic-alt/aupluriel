@@ -802,6 +802,16 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (date_utc, preset, strategy)
     );
   `);
+  // Shadow observations created when a valid signal is blocked by a safety
+  // control. These fields are analytics-only: no execution or risk decision
+  // reads them.
+  const shadowTradeCols = new Set(
+    (db.prepare("PRAGMA table_info(shadow_trades)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!shadowTradeCols.has("block_reason")) db.exec("ALTER TABLE shadow_trades ADD COLUMN block_reason TEXT");
+  if (!shadowTradeCols.has("evaluation_at")) db.exec("ALTER TABLE shadow_trades ADD COLUMN evaluation_at INTEGER");
+  if (!shadowTradeCols.has("notional_stake")) db.exec("ALTER TABLE shadow_trades ADD COLUMN notional_stake REAL");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_shadow_trades_pending ON shadow_trades(status, evaluation_at)");
 
   // --- Additive column migrations on `alerts` (idempotent) ---
   // The API/table existed but was never wired to the UI (alerts.tsx and

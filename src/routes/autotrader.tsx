@@ -240,6 +240,12 @@ interface PresetStatus {
   allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
   /** Configuration réellement chargée par le moteur serveur pour ce preset. */
   savedConfig: AutoTraderConfig | null;
+  operationalStatus?: "ACTIVE" | "PAUSED" | "COOLDOWN" | "AUTO_SHADOW" | "BROKER_CONFIGURATION_REQUIRED" | "DISABLED";
+  blockReason?: string | null;
+  blockedSince?: number | null;
+  expectedReleaseAt?: number | null;
+  signalsBlockedCount?: number;
+  shadowMetrics?: { trades: number; hypotheticalPnl: number; profitFactor: number | null; expectancyR: number };
 }
 
 interface CloudStatus {
@@ -2858,6 +2864,31 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         {/* The operational dashboard remains available, but stays out of the
             decision flow until the user explicitly asks for the detail. */}
         <div className={cn(mobileTab === "dashboard" || mobileTab === "data" ? "block" : "hidden", "md:block space-y-5 min-w-0")}>
+          {cloud?.presets && (
+            <section className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.03] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-foreground">Why no trade now?</h2>
+                  <p className="text-xs text-muted-foreground">Observation uniquement — aucun filtre n’est modifié.</p>
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {shownPresets.map((preset) => {
+                  const state = cloud.presets[preset];
+                  if (!state) return null;
+                  const blocked = state.operationalStatus !== "ACTIVE";
+                  return (
+                    <div key={preset} className={cn("rounded-xl border p-3", blocked ? "border-amber-500/25 bg-amber-500/[0.06]" : "border-emerald-500/20 bg-emerald-500/[0.04]")}>
+                      <div className="flex items-center justify-between gap-2"><span className="text-xs font-black uppercase">{presetLabels[preset]}</span><span className={cn("text-[10px] font-black", blocked ? "text-amber-300" : "text-emerald-300")}>{state.operationalStatus ?? "ACTIVE"}</span></div>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{state.blockReason ?? "NO_VALID_SIGNAL"}</p>
+                      <p className="mt-2 text-[10px] text-muted-foreground">Rejets 24h: {state.signalsBlockedCount ?? 0}{state.blockedSince ? ` · depuis ${new Date(state.blockedSince).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}` : ""}{state.expectedReleaseAt ? ` · reprise ${new Date(state.expectedReleaseAt).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}` : ""}</p>
+                      {state.shadowMetrics && state.shadowMetrics.trades > 0 && <p className="mt-1 text-[10px] text-muted-foreground">Shadow: {state.shadowMetrics.trades} · P&L ${state.shadowMetrics.hypotheticalPnl.toFixed(2)} · PF {state.shadowMetrics.profitFactor === null ? "∞" : state.shadowMetrics.profitFactor.toFixed(2)} · Exp. R {state.shadowMetrics.expectancyR.toFixed(2)}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           <details className="group rounded-2xl border border-border/60 bg-card/20">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-bold text-muted-foreground marker:content-none hover:text-foreground">
               <span>

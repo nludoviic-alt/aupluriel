@@ -44,6 +44,7 @@ import { generateRb100Signal, STRATEGY_VERSION as RB100_ENGINE_VERSION, RB100_CO
 import { generateVol50Signal } from "./vol50-signal.server";
 import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
 import { evaluateTimeFilter } from "./time-filter.server";
+import { recordRiskShadowObservation, settleDueRiskShadowObservations, shouldObserveRiskRejection } from "./risk-shadow-observation.server";
 import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { logSafetyAlert } from "./r4-e2-audit.server";
@@ -1564,6 +1565,9 @@ class ServerBotEngine {
 
   private async tick() {
     if (this.stopped || this.ticking) return;
+    // Pending analytical observations must still close while the trading
+    // engine is paused; this has no execution side effect.
+    void settleDueRiskShadowObservations();
     if (Date.now() < this.pausedUntil) return;
     this.ticking = true;
     try {
@@ -2438,6 +2442,23 @@ class ServerBotEngine {
       });
 
       if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && riskCheck.decision === "REJECTED") {
+        // Keep observing only the user-approved safety blocks. The rejected
+        // signal is never passed to proposal/buy and its notional is recorded
+        // solely for comparable hypothetical P&L reporting.
+        if (shouldObserveRiskRejection(riskCheck.reason)) {
+          void recordRiskShadowObservation({
+            userId: this.userId,
+            preset: this.preset,
+            strategy: strategyId,
+            strategyVersion: currentStrategyVersion,
+            symbol,
+            direction,
+            score: analysis.confidence,
+            reason: riskCheck.reason!,
+            notionalStake: effectiveStake,
+            holdMinutes: analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
+          });
+        }
         scanResults.push({
           symbol,
           action: "risk-pause",

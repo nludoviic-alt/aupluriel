@@ -82,6 +82,42 @@ function loadStatusForPreset(userId: number, preset: Preset) {
   // All-time record — shown before a live-mode start so that decision is
   // informed by this preset's actual track record, not a guess.
   const allTime = getAllTimeStats(userId, preset, mode);
+  const now = Date.now();
+  const lastBlock = getDb().prepare(`
+    SELECT status, note, time FROM bot_trades
+    WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error')
+    ORDER BY time DESC LIMIT 1
+  `).get(userId, preset) as { status: string; note: string | null; time: number } | undefined;
+  const blockedSignals = (getDb().prepare(`
+    SELECT COUNT(*) AS count FROM signal_rejections
+    WHERE user_id = ? AND preset = ? AND time >= ?
+  `).get(userId, preset, now - 24 * 60 * 60_000) as { count: number }).count;
+  const autoShadow = getDb().prepare(`
+    SELECT 1 FROM strategy_performance_drift
+    WHERE risk_state = 'SHADOW' AND strategy LIKE ? LIMIT 1
+  `).get(`${preset.toUpperCase()}%`);
+  const shadowMetrics = getDb().prepare(`
+    SELECT COUNT(*) AS trades,
+      COALESCE(SUM(CASE WHEN status = 'won' THEN virtual_pnl ELSE 0 END), 0) AS grossWin,
+      COALESCE(SUM(CASE WHEN status = 'lost' THEN ABS(virtual_pnl) ELSE 0 END), 0) AS grossLoss,
+      COALESCE(AVG(CASE WHEN status IN ('won', 'lost') THEN r_multiple END), 0) AS expectancyR,
+      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl
+    FROM shadow_trades
+    WHERE user_id = ? AND preset = ?
+      AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')
+  `).get(userId, preset) as { trades: number; grossWin: number; grossLoss: number; expectancyR: number; hypotheticalPnl: number };
+  const brokerRequired = preset === "liquidity" && !!state?.enabled && !runtime.running;
+  const operationalStatus = !state?.enabled
+    ? "DISABLED"
+    : brokerRequired
+      ? "BROKER_CONFIGURATION_REQUIRED"
+      : autoShadow
+        ? "AUTO_SHADOW"
+      : runtime.pausedUntil && runtime.pausedUntil > now
+        ? "PAUSED"
+        : lastBlock?.status === "cooldown"
+          ? "COOLDOWN"
+          : "ACTIVE";
 
   return {
     enabled: !!state?.enabled,
@@ -109,6 +145,17 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     strategyHealth: getAllStrategyHealthMetrics(),
     executionMetrics: executionMonitor.getMetrics(),
     circuitBreaker: circuitBreaker.getState(),
+    operationalStatus,
+    blockReason: brokerRequired ? "OANDA_NOT_CONFIGURED" : autoShadow ? "STRATEGY_AUTO_SHADOW" : lastBlock?.note ?? null,
+    blockedSince: lastBlock?.time ?? null,
+    expectedReleaseAt: runtime.pausedUntil && runtime.pausedUntil > now ? runtime.pausedUntil : null,
+    signalsBlockedCount: blockedSignals,
+    shadowMetrics: {
+      trades: shadowMetrics.trades,
+      hypotheticalPnl: shadowMetrics.hypotheticalPnl,
+      profitFactor: shadowMetrics.grossLoss > 0 ? shadowMetrics.grossWin / shadowMetrics.grossLoss : shadowMetrics.grossWin > 0 ? null : 0,
+      expectancyR: shadowMetrics.expectancyR,
+    },
   };
 }
 
