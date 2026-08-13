@@ -50,6 +50,7 @@ import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
+import { Route as ApiDailyRiskSimulationRouteImport } from './routes/api/daily-risk-simulation'
 import { Route as ApiCustomPresetsRouteImport } from './routes/api/custom-presets'
 import { Route as ApiBotTradesRouteImport } from './routes/api/bot-trades'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
@@ -293,6 +294,11 @@ const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   path: '/api/deriv-session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDailyRiskSimulationRoute = ApiDailyRiskSimulationRouteImport.update({
+  id: '/api/daily-risk-simulation',
+  path: '/api/daily-risk-simulation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCustomPresetsRoute = ApiCustomPresetsRouteImport.update({
   id: '/api/custom-presets',
   path: '/api/custom-presets',
@@ -510,6 +516,7 @@ export interface FileRoutesByFullPath {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
+  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -590,6 +597,7 @@ export interface FileRoutesByTo {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
+  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -671,6 +679,7 @@ export interface FileRoutesById {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
+  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
@@ -753,6 +762,7 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
+    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -833,6 +843,7 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
+    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -913,6 +924,7 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
+    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
@@ -994,6 +1006,7 @@ export interface RootRouteChildren {
   ApiBotRoute: typeof ApiBotRoute
   ApiBotTradesRoute: typeof ApiBotTradesRoute
   ApiCustomPresetsRoute: typeof ApiCustomPresetsRoute
+  ApiDailyRiskSimulationRoute: typeof ApiDailyRiskSimulationRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
@@ -1332,6 +1345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDerivSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/daily-risk-simulation': {
+      id: '/api/daily-risk-simulation'
+      path: '/api/daily-risk-simulation'
+      fullPath: '/api/daily-risk-simulation'
+      preLoaderRoute: typeof ApiDailyRiskSimulationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/custom-presets': {
       id: '/api/custom-presets'
       path: '/api/custom-presets'
@@ -1646,6 +1666,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBotRoute: ApiBotRoute,
   ApiBotTradesRoute: ApiBotTradesRoute,
   ApiCustomPresetsRoute: ApiCustomPresetsRoute,
+  ApiDailyRiskSimulationRoute: ApiDailyRiskSimulationRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,

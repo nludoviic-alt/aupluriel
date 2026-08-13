@@ -2507,7 +2507,7 @@ class ServerBotEngine {
           reason: observationBlockReason,
           notionalStake: effectiveStake,
           holdMinutes: analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
-          riskObservation: { ...riskObservation, RISK_DECISION: "SHADOW_ONLY", RISK_REJECTION_REASON: observationBlockReason, TRAILING_PROTECTION_STATE: { ...riskObservation.TRAILING_PROTECTION_STATE, active: observationBlockReason === "RISK_TRAILING_PROTECTION" }, COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null, active: true } },
+          riskObservation: { ...riskObservation, COHORT: { strategy_version: currentStrategyVersion, risk_version: "R4", execution_version: "E3", config_hash: hashConfig(this.config as unknown as Record<string, unknown>) }, RISK_DECISION: "SHADOW_ONLY", RISK_REJECTION_REASON: observationBlockReason, TRAILING_PROTECTION_STATE: { ...riskObservation.TRAILING_PROTECTION_STATE, active: observationBlockReason === "RISK_TRAILING_PROTECTION" }, COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null, active: true } },
         });
         scanResults.push({ symbol, action: "risk-pause", direction, confidence: analysis.confidence, note: observationBlockReason });
         continue;
@@ -2555,7 +2555,7 @@ class ServerBotEngine {
             reason: riskCheck.reason!,
             notionalStake: effectiveStake,
             holdMinutes: analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
-            riskObservation: { ...riskObservation, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
+            riskObservation: { ...riskObservation, COHORT: { strategy_version: currentStrategyVersion, risk_version: "R4", execution_version: "E3", config_hash: hashConfig(this.config as unknown as Record<string, unknown>) }, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
           });
         }
         scanResults.push({
@@ -3038,7 +3038,7 @@ class ServerBotEngine {
         indicatorValues,
         timeFilterDecision,
         riskManagerDecision,
-        riskObservation: { ...riskObservation, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
+        riskObservation: { ...riskObservation, COHORT: { strategy_version: currentStrategyVersion, risk_version: "R4", execution_version: "E3", config_hash: hashConfig(this.config as unknown as Record<string, unknown>) }, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
         ...(useAltBroker
           ? { multiplier: 1, stopLossUsd, takeProfitUsd }
           : isMultiplier
