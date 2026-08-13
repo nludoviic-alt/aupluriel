@@ -658,6 +658,7 @@ function migrate(db: Database.Database) {
   if (!botTradeCols.has("hypothetical_pnl_20m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_20m REAL");
   if (!botTradeCols.has("hypothetical_pnl_30m")) db.exec("ALTER TABLE bot_trades ADD COLUMN hypothetical_pnl_30m REAL");
   if (!botTradeCols.has("shadow_capture_status")) db.exec("ALTER TABLE bot_trades ADD COLUMN shadow_capture_status TEXT");
+  if (!botTradeCols.has("risk_observation")) db.exec("ALTER TABLE bot_trades ADD COLUMN risk_observation TEXT");
 
   db.exec(`
     -- Deliberately no FK on user_id: this table must never silently drop an
@@ -811,6 +812,9 @@ function migrate(db: Database.Database) {
   if (!shadowTradeCols.has("block_reason")) db.exec("ALTER TABLE shadow_trades ADD COLUMN block_reason TEXT");
   if (!shadowTradeCols.has("evaluation_at")) db.exec("ALTER TABLE shadow_trades ADD COLUMN evaluation_at INTEGER");
   if (!shadowTradeCols.has("notional_stake")) db.exec("ALTER TABLE shadow_trades ADD COLUMN notional_stake REAL");
+  if (!shadowTradeCols.has("risk_observation")) db.exec("ALTER TABLE shadow_trades ADD COLUMN risk_observation TEXT");
+  if (!shadowTradeCols.has("shadow_mae")) db.exec("ALTER TABLE shadow_trades ADD COLUMN shadow_mae REAL NOT NULL DEFAULT 0");
+  if (!shadowTradeCols.has("shadow_mfe")) db.exec("ALTER TABLE shadow_trades ADD COLUMN shadow_mfe REAL NOT NULL DEFAULT 0");
   db.exec("CREATE INDEX IF NOT EXISTS idx_shadow_trades_pending ON shadow_trades(status, evaluation_at)");
 
   // --- Additive column migrations on `alerts` (idempotent) ---

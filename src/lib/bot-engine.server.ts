@@ -374,6 +374,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
   const indicatorValuesJson = typeof log.indicatorValues === "string" ? log.indicatorValues : log.indicatorValues ? JSON.stringify(log.indicatorValues) : null;
   const timeFilterDecisionJson = typeof log.timeFilterDecision === "string" ? log.timeFilterDecision : log.timeFilterDecision ? JSON.stringify(log.timeFilterDecision) : null;
   const riskManagerDecisionJson = typeof log.riskManagerDecision === "string" ? log.riskManagerDecision : log.riskManagerDecision ? JSON.stringify(log.riskManagerDecision) : null;
+  const riskObservationJson = typeof log.riskObservation === "string" ? log.riskObservation : log.riskObservation ? JSON.stringify(log.riskObservation) : null;
 
   // SQLite/better-sqlite3 can't bind Infinity — derivMaxAllowedStake is
   // Infinity for every preset except Boom900, meaning "no broker cap",
@@ -522,6 +523,9 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
     execution_capabilities: executionCapabilitiesJson,
     data_quality: log.dataQuality ?? null,
   });
+  if (riskObservationJson) {
+    getDb().prepare("UPDATE bot_trades SET risk_observation = ? WHERE id = ?").run(riskObservationJson, log.id);
+  }
 }
 
 /** Best-effort write of one shadow post-exit horizon snapshot (2026-08-13,
@@ -1619,22 +1623,25 @@ class ServerBotEngine {
     // Pending analytical observations must still close while the trading
     // engine is paused; this has no execution side effect.
     void settleDueRiskShadowObservations();
-    if (Date.now() < this.pausedUntil) return;
+    const observationOnly = Date.now() < this.pausedUntil;
     this.ticking = true;
     try {
-      await this.runScan();
+      // A paused preset continues to evaluate only qualified signals in
+      // Shadow. Execution is blocked below before proposal/buy.
+      await this.runScan(observationOnly);
       this.lastError = null;
     } finally {
       this.ticking = false;
     }
   }
 
-  private async runScan() {
+  private async runScan(observationOnly = false) {
     const config = this.config;
     const logs = this.logs;
     // SQL over all of today's rows — the in-memory log is a capped window, so
     // computing daily P&L/count from it drops early wins as events accumulate.
     const { pnl, count } = getTodayStats(this.userId, this.preset);
+    let observationBlockReason: "RISK_PRESET_PAUSED" | "RISK_TRAILING_PROTECTION" | "RISK_DAILY_DD" | null = observationOnly ? "RISK_PRESET_PAUSED" : null;
 
     // Check for session open/close changes
     const currentSessions = currentActiveSessions();
@@ -1714,7 +1721,8 @@ class ServerBotEngine {
       // Même raisonnement que le trailing stop proportionnel plus bas :
       // protéger un pic n'est pas constater une perte définitive.
       this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextShortResume());
-      return finishScan();
+      if (!observationOnly) return finishScan();
+      observationBlockReason = "RISK_TRAILING_PROTECTION";
     }
     // Proportional trailing stop: the allowed giveback scales with the size
     // of today's peak gain (e.g. 10% of +$100 = $10) instead of a flat $
@@ -1732,7 +1740,8 @@ class ServerBotEngine {
         this.riskPause([
           `Trailing stop % — pic +$${this.sessionPeakPnl.toFixed(2)}, perte max autorisée ${(config.trailingStopPct * 100).toFixed(0)}% (-$${maxDrawdown.toFixed(2)}), maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
         ], this.nextShortResume());
-        return finishScan();
+        if (!observationOnly) return finishScan();
+        observationBlockReason = "RISK_TRAILING_PROTECTION";
       }
     }
     // Realized-only pnl let the bot keep opening positions while already deep
@@ -1756,7 +1765,8 @@ class ServerBotEngine {
           realizedAloneTriggers ? this.nextUtcMidnight() : this.nextShortResume(),
         );
       }
-      return finishScan();
+      if (!observationOnly) return finishScan();
+      observationBlockReason = "RISK_DAILY_DD";
     }
     if (config.maxDailyProfitUsd > 0 && pnl >= config.maxDailyProfitUsd) {
       if (config.stopOnRisk) this.riskPause([`Objectif journalier atteint : +$${pnl.toFixed(2)}`], this.nextUtcMidnight());
@@ -1844,6 +1854,25 @@ class ServerBotEngine {
       ? (currentBalance * config.stakePercent) / 100
       : config.stakeUsd;
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(baseStake, logs) : baseStake;
+    // Phase 1 observation snapshot. `baseDailyLossLimit` and
+    // `effectiveDailyLossLimit` deliberately remain identical: this records
+    // current behavior and never derives a limit from a temporarily reduced
+    // stake, avoiding an accidental double sanction after a loss streak.
+    const riskObservation = {
+      equity_at_signal: currentBalance ?? null,
+      BASE_DAILY_LOSS_LIMIT: config.maxDailyLossUsd,
+      EFFECTIVE_DAILY_LOSS_LIMIT: config.maxDailyLossUsd,
+      DAILY_LOSS_USED: Math.max(0, -riskPnl),
+      DAILY_LOSS_REMAINING: Math.max(0, config.maxDailyLossUsd - Math.max(0, -riskPnl)),
+      NOMINAL_RISK_PER_TRADE: baseStake,
+      EFFECTIVE_RISK_PER_TRADE: effectiveStake,
+      LOSS_STREAK_STATE: { preset: presetConsecutiveLosses, threshold: config.maxConsecutiveLosses },
+      TRAILING_PROTECTION_STATE: { peakPnl: this.sessionPeakPnl, trailingStopUsd: config.trailingStopUsd, trailingStopPct: config.trailingStopPct },
+      AUTO_SHADOW_STATE: false,
+      COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null },
+      RISK_DECISION: "PENDING",
+      RISK_REJECTION_REASON: null,
+    };
 
     // ── Candidates + cheap pre-filters ──
     // Synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR) are excluded even
@@ -2466,6 +2495,24 @@ class ServerBotEngine {
 
       recordFunnelStep(this.preset, strategyId, "time_approved");
 
+      if (observationBlockReason) {
+        void recordRiskShadowObservation({
+          userId: this.userId,
+          preset: this.preset,
+          strategy: strategyId,
+          strategyVersion: currentStrategyVersion,
+          symbol,
+          direction,
+          score: analysis.confidence,
+          reason: observationBlockReason,
+          notionalStake: effectiveStake,
+          holdMinutes: analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
+          riskObservation: { ...riskObservation, RISK_DECISION: "SHADOW_ONLY", RISK_REJECTION_REASON: observationBlockReason, TRAILING_PROTECTION_STATE: { ...riskObservation.TRAILING_PROTECTION_STATE, active: observationBlockReason === "RISK_TRAILING_PROTECTION" }, COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null, active: true } },
+        });
+        scanResults.push({ symbol, action: "risk-pause", direction, confidence: analysis.confidence, note: observationBlockReason });
+        continue;
+      }
+
       if (FEATURE_FLAGS.STRATEGY_HEALTH_ENABLED) {
         const stratHealth = getPresetRiskMetrics(this.userId, this.preset, strategyId);
         if (stratHealth.status === "PAUSED") {
@@ -2508,6 +2555,7 @@ class ServerBotEngine {
             reason: riskCheck.reason!,
             notionalStake: effectiveStake,
             holdMinutes: analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
+            riskObservation: { ...riskObservation, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
           });
         }
         scanResults.push({
@@ -2990,6 +3038,7 @@ class ServerBotEngine {
         indicatorValues,
         timeFilterDecision,
         riskManagerDecision,
+        riskObservation: { ...riskObservation, RISK_DECISION: riskCheck.decision, RISK_REJECTION_REASON: riskCheck.reason ?? null, AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW" },
         ...(useAltBroker
           ? { multiplier: 1, stopLossUsd, takeProfitUsd }
           : isMultiplier

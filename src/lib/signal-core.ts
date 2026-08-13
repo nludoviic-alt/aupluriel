@@ -719,6 +719,8 @@ export interface TradeLog {
   indicatorValues?: Record<string, unknown> | string; // raw indicator values, scores, components at signal time
   timeFilterDecision?: Record<string, unknown> | string; // Time Filter evaluation verdict & metadata
   riskManagerDecision?: Record<string, unknown> | string; // Risk Manager V3 evaluation verdict & metadata
+  /** Accounting-only snapshot of daily-risk and protection states at signal time. */
+  riskObservation?: Record<string, unknown> | string;
   riskVersion?: string;        // risk engine version tag (e.g. "R4")
   executionVersion?: string;   // execution pipeline version tag (e.g. "E2")
   configHash?: string;         // real SHA-256 of the effective config used at execution (hashConfig(), not a static label)

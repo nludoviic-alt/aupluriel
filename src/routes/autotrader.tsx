@@ -245,7 +245,7 @@ interface PresetStatus {
   blockedSince?: number | null;
   expectedReleaseAt?: number | null;
   signalsBlockedCount?: number;
-  shadowMetrics?: { trades: number; hypotheticalPnl: number; profitFactor: number | null; expectancyR: number };
+  shadowMetrics?: { trades: number; hypotheticalPnl: number; profitFactor: number | null; expectancyR: number; mae: number; mfe: number };
 }
 
 interface CloudStatus {
@@ -2882,7 +2882,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                       <div className="flex items-center justify-between gap-2"><span className="text-xs font-black uppercase">{presetLabels[preset]}</span><span className={cn("text-[10px] font-black", blocked ? "text-amber-300" : "text-emerald-300")}>{state.operationalStatus ?? "ACTIVE"}</span></div>
                       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{state.blockReason ?? "NO_VALID_SIGNAL"}</p>
                       <p className="mt-2 text-[10px] text-muted-foreground">Rejets 24h: {state.signalsBlockedCount ?? 0}{state.blockedSince ? ` · depuis ${new Date(state.blockedSince).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}` : ""}{state.expectedReleaseAt ? ` · reprise ${new Date(state.expectedReleaseAt).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}` : ""}</p>
-                      {state.shadowMetrics && state.shadowMetrics.trades > 0 && <p className="mt-1 text-[10px] text-muted-foreground">Shadow: {state.shadowMetrics.trades} · P&L ${state.shadowMetrics.hypotheticalPnl.toFixed(2)} · PF {state.shadowMetrics.profitFactor === null ? "∞" : state.shadowMetrics.profitFactor.toFixed(2)} · Exp. R {state.shadowMetrics.expectancyR.toFixed(2)}</p>}
+                      {state.shadowMetrics && state.shadowMetrics.trades > 0 && <p className="mt-1 text-[10px] text-muted-foreground">Shadow: {state.shadowMetrics.trades} · P&L ${state.shadowMetrics.hypotheticalPnl.toFixed(2)} · PF {state.shadowMetrics.profitFactor === null ? "∞" : state.shadowMetrics.profitFactor.toFixed(2)} · Exp. R {state.shadowMetrics.expectancyR.toFixed(2)} · MAE ${state.shadowMetrics.mae.toFixed(2)} · MFE ${state.shadowMetrics.mfe.toFixed(2)}</p>}
                     </div>
                   );
                 })}

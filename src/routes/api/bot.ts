@@ -108,11 +108,13 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
       COALESCE(SUM(CASE WHEN status = 'won' THEN virtual_pnl ELSE 0 END), 0) AS grossWin,
       COALESCE(SUM(CASE WHEN status = 'lost' THEN ABS(virtual_pnl) ELSE 0 END), 0) AS grossLoss,
       COALESCE(AVG(CASE WHEN status IN ('won', 'lost') THEN r_multiple END), 0) AS expectancyR,
-      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl
+      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl,
+      COALESCE(AVG(shadow_mae), 0) AS mae,
+      COALESCE(AVG(shadow_mfe), 0) AS mfe
     FROM shadow_trades
     WHERE user_id = ? AND preset = ?
       AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')
-  `).get(userId, preset) as { trades: number; grossWin: number; grossLoss: number; expectancyR: number; hypotheticalPnl: number };
+  `).get(userId, preset) as { trades: number; grossWin: number; grossLoss: number; expectancyR: number; hypotheticalPnl: number; mae: number; mfe: number };
   const brokerRequired = preset === "liquidity" && !!state?.enabled && !runtime.running;
   const operationalStatus = !state?.enabled
     ? "DISABLED"
@@ -162,6 +164,8 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
       hypotheticalPnl: shadowMetrics.hypotheticalPnl,
       profitFactor: shadowMetrics.grossLoss > 0 ? shadowMetrics.grossWin / shadowMetrics.grossLoss : shadowMetrics.grossWin > 0 ? null : 0,
       expectancyR: shadowMetrics.expectancyR,
+      mae: shadowMetrics.mae,
+      mfe: shadowMetrics.mfe,
     },
   };
 }
