@@ -158,6 +158,62 @@ class DerivSocket {
 
 let publicSocket: DerivSocket | null = null;
 
+// All server engines share one public Deriv socket. A per-engine concurrency
+// cap is not enough: several users/presets can otherwise burst dozens of
+// ticks_history requests together. Serialize, coalesce, and briefly cache.
+const PUBLIC_HISTORY_SPACING_MS = 300;
+const PUBLIC_HISTORY_CACHE_MS = 8_000;
+const PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS = 5_000;
+const PUBLIC_HISTORY_MAX_ATTEMPTS = 3;
+let publicHistoryQueue: Promise<void> = Promise.resolve();
+let nextPublicHistoryAt = 0;
+const publicHistoryCache = new Map<string, { expiresAt: number; value: unknown }>();
+const publicHistoryInflight = new Map<string, Promise<unknown>>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const apiError = error instanceof DerivApiError ? `${error.code} ${error.message}` : String(error);
+  return /rate[ _-]?limit|too many requests/i.test(apiError);
+}
+
+function queuePublicHistoryRequest<T>(request: () => Promise<T>): Promise<T> {
+  const run = publicHistoryQueue.then(async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < PUBLIC_HISTORY_MAX_ATTEMPTS; attempt++) {
+      const waitMs = Math.max(0, nextPublicHistoryAt - Date.now());
+      if (waitMs > 0) await sleep(waitMs);
+      nextPublicHistoryAt = Date.now() + PUBLIC_HISTORY_SPACING_MS;
+      try {
+        return await request();
+      } catch (error) {
+        lastError = error;
+        if (!isRateLimitError(error) || attempt === PUBLIC_HISTORY_MAX_ATTEMPTS - 1) throw error;
+        // Deriv limits the shared public socket, not one user or preset.
+        nextPublicHistoryAt = Math.max(nextPublicHistoryAt, Date.now() + PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS * (attempt + 1));
+      }
+    }
+    throw lastError;
+  });
+  publicHistoryQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function getPublicHistory<T>(key: string, request: () => Promise<T>, cacheMs = PUBLIC_HISTORY_CACHE_MS): Promise<T> {
+  const cached = publicHistoryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T);
+  const inflight = publicHistoryInflight.get(key);
+  if (inflight) return inflight as Promise<T>;
+  const pending = queuePublicHistoryRequest(request).then((value) => {
+    publicHistoryCache.set(key, { value, expiresAt: Date.now() + cacheMs });
+    return value;
+  }).finally(() => publicHistoryInflight.delete(key));
+  publicHistoryInflight.set(key, pending);
+  return pending;
+}
+
 function getPublicSocket(): DerivSocket {
   if (!publicSocket) publicSocket = new DerivSocket(async () => PUBLIC_WS_URL, "deriv-public");
   return publicSocket;
@@ -168,34 +224,42 @@ function getPublicSocket(): DerivSocket {
 export function closePublicSocket(): void {
   publicSocket?.close();
   publicSocket = null;
+  publicHistoryCache.clear();
+  publicHistoryInflight.clear();
+  nextPublicHistoryAt = 0;
 }
 
 export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number, end: number | "latest" = "latest"): Promise<ServerCandle[]> {
-  const res = await getPublicSocket().request<{
-    candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
-  }>({
-    ticks_history: symbol,
-    style: "candles",
-    granularity: granularitySeconds,
-    count,
-    end,
-  });
-  return (res.candles ?? []).map((c) => ({
-    epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
-  }));
+  const key = `candles:${symbol}:${granularitySeconds}:${count}:${end}`;
+  return getPublicHistory(key, async () => {
+    const res = await getPublicSocket().request<{
+      candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
+    }>({
+      ticks_history: symbol,
+      style: "candles",
+      granularity: granularitySeconds,
+      count,
+      end,
+    });
+    return (res.candles ?? []).map((c) => ({
+      epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
+    }));
+  }, end === "latest" ? PUBLIC_HISTORY_CACHE_MS : 60_000);
 }
 
 /** Recent tick prices for micro-momentum confirmation.  Consumers must not
  * infer a spike from the number of ticks returned: the count is transport
  * metadata, not a market signal. */
 export async function fetchRecentTicksServer(symbol: string, count = 120): Promise<number[]> {
-  const res = await getPublicSocket().request<{ history?: { prices?: Array<string | number> } }>({
-    ticks_history: symbol,
-    style: "ticks",
-    count,
-    end: "latest",
+  return getPublicHistory(`ticks:${symbol}:${count}`, async () => {
+    const res = await getPublicSocket().request<{ history?: { prices?: Array<string | number> } }>({
+      ticks_history: symbol,
+      style: "ticks",
+      count,
+      end: "latest",
+    });
+    return (res.history?.prices ?? []).map(Number).filter(Number.isFinite);
   });
-  return (res.history?.prices ?? []).map(Number).filter(Number.isFinite);
 }
 
 // ─── Per-user authenticated trading connection ────────────────────────────────

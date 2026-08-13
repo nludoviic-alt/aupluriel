@@ -2405,6 +2405,11 @@ class ServerBotEngine {
         maxVolatilityPct: config.maxVolatilityPct,
         premiumOnly: config.premiumOnly,
       };
+      const marketDataBlocker = analysis.blockers.find((blocker) => blocker === "MARKET_DATA_RATE_LIMIT" || blocker === "MARKET_DATA_UNAVAILABLE");
+      if (marketDataBlocker) {
+        scanResults.push({ symbol, action: "no-signal", note: marketDataBlocker });
+        continue;
+      }
       const verdict = classifyOpportunity(analysis, thresholds);
       if (verdict.decision !== "take") {
         const note = verdict.reasonCode === "confidence-low" ? `Seuil: ${config.minConfidence}`

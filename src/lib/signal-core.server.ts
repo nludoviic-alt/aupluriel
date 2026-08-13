@@ -1513,6 +1513,7 @@ export async function analyzeSymbolCore(
   let volatilityPct = 0;
   let volatilityRatio = 1;
   let candles15m: CandleBar[] | null = null;
+  let marketDataBlocker: "MARKET_DATA_RATE_LIMIT" | "MARKET_DATA_UNAVAILABLE" | null = null;
 
   for (const tf of TIMEFRAMES) {
     try {
@@ -1545,8 +1546,16 @@ export async function analyzeSymbolCore(
       }
 
       tfSignals[tf] = generateSignal(candles, { weights: opts.weights });
-    } catch { /* ignore */ }
+    } catch (error) {
+      // A partial multi-timeframe analysis must never become executable.
+      const diagnostic = `${(error as { code?: string }).code ?? ""} ${(error as Error).message ?? ""}`;
+      marketDataBlocker = /rate[ _-]?limit|too many requests/i.test(diagnostic)
+        ? "MARKET_DATA_RATE_LIMIT"
+        : "MARKET_DATA_UNAVAILABLE";
+    }
   }
+
+  if (marketDataBlocker) return { analysis: EMPTY_ANALYSIS([marketDataBlocker]), candles15m: null };
 
   // Daily bias is fetched separately from the TIMEFRAMES loop above — it's a
   // veto-only input (off by default), never a candidate for dominantTf, since
@@ -1556,7 +1565,13 @@ export async function analyzeSymbolCore(
     try {
       const daily = await fetchCandlesFn(symbolDeriv, 86_400, 250);
       if (daily.length) dailySignal = generateSignal(daily, { weights: opts.weights });
-    } catch { /* ignore — veto simply doesn't apply this scan */ }
+    } catch (error) {
+      const diagnostic = `${(error as { code?: string }).code ?? ""} ${(error as Error).message ?? ""}`;
+      const blocker = /rate[ _-]?limit|too many requests/i.test(diagnostic)
+        ? "MARKET_DATA_RATE_LIMIT"
+        : "MARKET_DATA_UNAVAILABLE";
+      return { analysis: EMPTY_ANALYSIS([blocker]), candles15m: null };
+    }
   }
 
   const analysis = aggregateTfSignals(
