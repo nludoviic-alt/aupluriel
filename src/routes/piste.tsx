@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, CircleDashed, Eye, EyeOff, Filter, FlaskConical, Layers, Search, ShieldCheck, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { toast } from "sonner";
@@ -62,6 +62,7 @@ function metric(value: number | undefined, fallback = "—") {
 }
 
 function PistePage() {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<"cards" | "matrix">("cards");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -92,6 +93,10 @@ function PistePage() {
   useEffect(() => {
     if (user?.is_admin) void refresh();
   }, [user?.is_admin]);
+
+  const preloadExecutionScreen = (to: "/autotrader" | "/portfolio") => {
+    void router.preloadRoute({ to });
+  };
 
   const toggleTrack = async (key: PresetKey) => {
     setChanging(key);
@@ -165,9 +170,19 @@ function PistePage() {
           <div className="flex items-center gap-3 shrink-0">
             <Link
               to="/autotrader"
+              onMouseEnter={() => preloadExecutionScreen("/autotrader")}
+              onFocus={() => preloadExecutionScreen("/autotrader")}
               className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-xs font-bold text-amber-200 transition-all hover:bg-amber-500/25 hover:border-amber-500/60 shadow-lg"
             >
               <Zap className="h-4 w-4 text-amber-400" /> Ouvrir l'Auto-Trader →
+            </Link>
+            <Link
+              to="/portfolio"
+              onMouseEnter={() => preloadExecutionScreen("/portfolio")}
+              onFocus={() => preloadExecutionScreen("/portfolio")}
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2.5 text-xs font-bold text-cyan-100 transition-all hover:bg-cyan-500/20"
+            >
+              Portfolio →
             </Link>
           </div>
         </div>

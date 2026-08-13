@@ -199,14 +199,19 @@ function usePortfolio() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [pos, prof, trades] = await Promise.all([
+      // Performance cards depend only on the local bot journal. Do not make
+      // them wait for the slower authenticated Deriv portfolio/profit calls.
+      // This is especially visible when arriving from Piste on mobile.
+      const botTradesRequest = api.get<TradeLog[]>("/api/bot-trades").catch(() => []);
+      const derivRequest = Promise.all([
         getOpenPositions().catch(() => []),
         getProfitTable(50).catch(() => []),
-        api.get<TradeLog[]>("/api/bot-trades").catch(() => []),
       ]);
+      const trades = await botTradesRequest;
+      setBotTrades(trades);
+      const [pos, prof] = await derivRequest;
       setPositions(pos);
       setProfits(prof);
-      setBotTrades(trades);
 
       // Subscribe to live P&L for each open position
       pos.forEach((p) => {

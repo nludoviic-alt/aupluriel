@@ -68,7 +68,14 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   return DEFAULT_CONFIG;
 }
 
-function loadStatusForPreset(userId: number, preset: Preset) {
+type SharedStatusData = {
+  featureFlags: ReturnType<typeof getFeatureFlags>;
+  strategyHealth: ReturnType<typeof getAllStrategyHealthMetrics>;
+  executionMetrics: ReturnType<typeof executionMonitor.getMetrics>;
+  circuitBreaker: ReturnType<typeof circuitBreaker.getState>;
+};
+
+function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatusData) {
   const state = getDb()
     .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?")
     .get(userId, preset) as { enabled: number; config: string } | undefined;
@@ -140,11 +147,11 @@ function loadStatusForPreset(userId: number, preset: Preset) {
     allTimeStats: allTime,
     riskMetrics: getPresetRiskMetrics(userId, preset),
     funnelStats: getFunnelStats(preset),
-    featureFlags: getFeatureFlags(),
+    featureFlags: shared.featureFlags,
     hourlyPerformance: getHourlyPerformanceHeatmap(preset),
-    strategyHealth: getAllStrategyHealthMetrics(),
-    executionMetrics: executionMonitor.getMetrics(),
-    circuitBreaker: circuitBreaker.getState(),
+    strategyHealth: shared.strategyHealth,
+    executionMetrics: shared.executionMetrics,
+    circuitBreaker: shared.circuitBreaker,
     operationalStatus,
     blockReason: brokerRequired ? "OANDA_NOT_CONFIGURED" : autoShadow ? "STRATEGY_AUTO_SHADOW" : lastBlock?.note ?? null,
     blockedSince: lastBlock?.time ?? null,
@@ -167,7 +174,13 @@ export const Route = createFileRoute("/api/bot")({
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
 
-        const presets = Object.fromEntries(PRESETS.map((p) => [p, loadStatusForPreset(user.id, p)]));
+        const shared: SharedStatusData = {
+          featureFlags: getFeatureFlags(),
+          strategyHealth: getAllStrategyHealthMetrics(),
+          executionMetrics: executionMonitor.getMetrics(),
+          circuitBreaker: circuitBreaker.getState(),
+        };
+        const presets = Object.fromEntries(PRESETS.map((p) => [p, loadStatusForPreset(user.id, p, shared)]));
         const brokerBalances = await getBrokerBalances(user.id);
 
         // Every preset's status is still returned in full above, whatever
