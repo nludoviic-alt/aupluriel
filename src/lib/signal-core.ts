@@ -10,7 +10,6 @@ export { currentActiveSessions, SESSION_HOURS, type TradingSession } from "./tra
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
-
 // ─── Contract availability on the Deriv Options Trading API ──────────────────
 // - crypto (cry*): MULTIPLIER contracts only — CALL/PUT rise/fall unavailable
 // - Boom/Crash (BOOM*/CRASH*): no CALL/PUT either
@@ -37,7 +36,10 @@ export function isTradingSymbolDisabled(symbol: string): boolean {
  * Crypto symbols default to multiplier, everything else defaults to the global
  * instrumentType — unless an explicit override is set.
  */
-export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig): "binary" | "multiplier" {
+export function getInstrumentForSymbol(
+  symbol: string,
+  config: AutoTraderConfig,
+): "binary" | "multiplier" {
   if (config.symbolInstrumentOverrides && config.symbolInstrumentOverrides[symbol]) {
     return config.symbolInstrumentOverrides[symbol];
   }
@@ -45,8 +47,8 @@ export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig)
   // on Deriv for either — confirmed live for Boom 1000, whose Rise/Fall tab
   // doesn't even exist, only Multipliers), forex/commodity can be either.
   if (
-    (symbol.startsWith("cry") || symbol.startsWith("BOOM") || symbol.startsWith("CRASH"))
-    && config.instrumentType === "binary"
+    (symbol.startsWith("cry") || symbol.startsWith("BOOM") || symbol.startsWith("CRASH")) &&
+    config.instrumentType === "binary"
   ) {
     return "multiplier";
   }
@@ -70,10 +72,14 @@ export function getInstrumentForSymbol(symbol: string, config: AutoTraderConfig)
  * of falling through to isCallPutAvailable(), which would say "not
  * tradeable" for either mode.
  */
-export function isSymbolTradeable(symbol: string, instrumentType: "binary" | "multiplier"): boolean {
+export function isSymbolTradeable(
+  symbol: string,
+  instrumentType: "binary" | "multiplier",
+): boolean {
   if (isTradingSymbolDisabled(symbol)) return false;
   if (symbol.startsWith("cry")) return instrumentType === "multiplier";
-  if (symbol.startsWith("BOOM") || symbol.startsWith("CRASH")) return instrumentType === "multiplier";
+  if (symbol.startsWith("BOOM") || symbol.startsWith("CRASH"))
+    return instrumentType === "multiplier";
   if (symbol.startsWith("OTC_") && instrumentType === "multiplier") return false;
   return isCallPutAvailable(symbol);
 }
@@ -92,10 +98,18 @@ export function is24x7Symbol(symbol: string): boolean {
 // by the matching forex session window (backstop: Deriv rejects with
 // MarketIsClosed if we're off).
 export const INDEX_HOME_SESSION: Record<string, TradingSession> = {
-  OTC_N225: "asia", OTC_HSI: "asia", OTC_AS51: "asia",
-  OTC_FTSE: "london", OTC_GDAXI: "london", OTC_FCHI: "london",
-  OTC_AEX: "london", OTC_SSMI: "london", OTC_SX5E: "london",
-  OTC_SPC: "newyork", OTC_DJI: "newyork", OTC_NDX: "newyork",
+  OTC_N225: "asia",
+  OTC_HSI: "asia",
+  OTC_AS51: "asia",
+  OTC_FTSE: "london",
+  OTC_GDAXI: "london",
+  OTC_FCHI: "london",
+  OTC_AEX: "london",
+  OTC_SSMI: "london",
+  OTC_SX5E: "london",
+  OTC_SPC: "newyork",
+  OTC_DJI: "newyork",
+  OTC_NDX: "newyork",
 };
 
 /**
@@ -118,7 +132,11 @@ function isWithinUtcHours(open: number, close: number): boolean {
   return utcMins >= open * 60 && utcMins < close * 60;
 }
 
-export function isInTradingSession(sessions: TradingSession[], symbol: string, edgeMinutes = 0): boolean {
+export function isInTradingSession(
+  sessions: TradingSession[],
+  symbol: string,
+  edgeMinutes = 0,
+): boolean {
   // Crypto MARKETS trade 24/7, but this bot's crypto edge doesn't: live
   // results split sharply by session — trades opened 21h-02h UTC (forex
   // sessions closed, thin flow, indicator signals over noise) account for
@@ -133,8 +151,11 @@ export function isInTradingSession(sessions: TradingSession[], symbol: string, e
   const home = INDEX_HOME_SESSION[symbol];
   if (home) {
     const hours = INDEX_UTC_HOURS[symbol];
-    return sessions.includes(home) && isSessionActive(home, edgeMinutes)
-      && (!hours || isWithinUtcHours(hours.open, hours.close));
+    return (
+      sessions.includes(home) &&
+      isSessionActive(home, edgeMinutes) &&
+      (!hours || isWithinUtcHours(hours.open, hours.close))
+    );
   }
 
   return sessions.some((s) => isSessionActive(s, edgeMinutes));
@@ -146,11 +167,18 @@ export function isInTradingSession(sessions: TradingSession[], symbol: string, e
  * Exige un échantillon statistique suffisant (sample >= 30 trades sur ce combiné exact)
  * ET un Profit Factor < 0.80 avant d'appliquer une pause horaire ciblée.
  */
-export function isGranularHourBlocked(preset: string, symbol: string, hourUtc: number, minSample = 30): { blocked: boolean; reason?: string } {
+export function isGranularHourBlocked(
+  preset: string,
+  symbol: string,
+  hourUtc: number,
+  minSample = 30,
+): { blocked: boolean; reason?: string } {
   try {
     // Import lazy pour éviter que signal-core ne soit pas bundlable en client
     const { getDb } = require("./db.server") as typeof import("./db.server");
-    const row = getDb().prepare(`
+    const row = getDb()
+      .prepare(
+        `
       SELECT COUNT(*) as count,
              SUM(CASE WHEN status='won' THEN 1 ELSE 0 END) as wins,
              SUM(CASE WHEN status='lost' THEN 1 ELSE 0 END) as losses,
@@ -160,22 +188,32 @@ export function isGranularHourBlocked(preset: string, symbol: string, hourUtc: n
       WHERE (preset = ? OR strategy = ?) AND symbol = ?
         AND CAST(strftime('%H', datetime(time/1000, 'unixepoch')) AS INTEGER) = ?
         AND status IN ('won', 'lost')
-    `).get(preset, preset, symbol, hourUtc) as {
-      count: number; wins: number; losses: number; gross_win: number; gross_loss: number;
-    } | undefined;
+    `,
+      )
+      .get(preset, preset, symbol, hourUtc) as
+      | {
+          count: number;
+          wins: number;
+          losses: number;
+          gross_win: number;
+          gross_loss: number;
+        }
+      | undefined;
 
     if (!row || row.count < minSample) {
       return { blocked: false };
     }
 
     const pf = row.gross_loss > 0 ? row.gross_win / row.gross_loss : row.gross_win > 0 ? 99 : 0;
-    if (pf < 0.80) {
+    if (pf < 0.8) {
       return {
         blocked: true,
         reason: `Pause horaire ciblée : ${symbol} (${preset}) à ${hourUtc}h UTC — PF ${pf.toFixed(2)} sur ${row.count} trades (échantillon validé)`,
       };
     }
-  } catch { /* fallback to unblocked on DB read error */ }
+  } catch {
+    /* fallback to unblocked on DB read error */
+  }
 
   return { blocked: false };
 }
@@ -197,13 +235,13 @@ interface RiskWindow {
 }
 
 const HIGH_RISK_WINDOWS: RiskWindow[] = [
-  { utcHour: 7,  utcMinute: 55, durationMinutes: 20, label: "Ouverture Londres" },
+  { utcHour: 7, utcMinute: 55, durationMinutes: 20, label: "Ouverture Londres" },
   { utcHour: 13, utcMinute: 25, durationMinutes: 20, label: "Ouverture NY" },
   { utcHour: 17, utcMinute: 55, durationMinutes: 15, label: "Fix Londres" },
   { utcHour: 23, utcMinute: 55, durationMinutes: 15, label: "Ouverture Asie" },
   { utcHour: 12, utcMinute: 15, durationMinutes: 30, label: "NFP", utcDay: 5, firstOfMonth: true },
   { utcHour: 12, utcMinute: 15, durationMinutes: 30, label: "ECB", utcDay: 4 },
-  { utcHour: 18, utcMinute: 0,  durationMinutes: 20, label: "Zone Fed", utcDay: 3 },
+  { utcHour: 18, utcMinute: 0, durationMinutes: 20, label: "Zone Fed", utcDay: 3 },
 ];
 
 export function isHighRiskWindow(): { blocked: boolean; reason?: string } {
@@ -235,6 +273,10 @@ export interface AutoTraderConfig {
   enabled: boolean;
   mode: TradingMode; // demo = Deriv demo account, live = Deriv real money
   stakeUsd: number;
+  // Deliberately absent for every existing configuration. A tier is only
+  // written by the server-side stake-scaling activation workflow after its
+  // evidence checks pass; it never changes stakeUsd by itself.
+  stakeScalingApprovedTier?: number;
   durationMinutes: number;
   minConfidence: number;
   // Plafond optionnel (100 = désactivé). Ajouté après analyse du journal réel
@@ -267,47 +309,47 @@ export interface AutoTraderConfig {
   // only restore already-intended state, so it must be explicitly enabled
   // per preset rather than assumed safe for every account.
   autoRollbackEnabled: boolean;
-  initialCapital: number;          // starting capital for virtual P&L tracking
+  initialCapital: number; // starting capital for virtual P&L tracking
   // --- Risk protection ---
-  maxConsecutiveLosses: number;   // pause the SYMBOL after N consecutive losses on it
-  cooldownMinutes: number;        // per-symbol pause length after a losing streak
+  maxConsecutiveLosses: number; // pause the SYMBOL after N consecutive losses on it
+  cooldownMinutes: number; // per-symbol pause length after a losing streak
   tradingSessions: TradingSession[]; // only trade during these sessions
-  adaptiveStake: boolean;         // reduce stake automatically when losing
-  premiumOnly: boolean;           // only trade PREMIUM-grade signals
-  stopOnRisk: boolean;            // pause engine (with auto-resume) when a daily risk limit hits
-  maxVolatilityPct: number;       // skip a symbol when ATR% above this
-  maxDailyProfitUsd: number;     // pause bot for the day when daily profit >= this (0 = disabled)
+  adaptiveStake: boolean; // reduce stake automatically when losing
+  premiumOnly: boolean; // only trade PREMIUM-grade signals
+  stopOnRisk: boolean; // pause engine (with auto-resume) when a daily risk limit hits
+  maxVolatilityPct: number; // skip a symbol when ATR% above this
+  maxDailyProfitUsd: number; // pause bot for the day when daily profit >= this (0 = disabled)
   stakeMode: "fixed" | "percent" | "kelly"; // fixed USD, % of balance, or measured-edge Kelly sizing
-  stakePercent: number;           // % of balance per trade (used when stakeMode = "percent")
-  kellyFraction: number;          // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
-  sessionEdgeMinutes: number;     // skip N minutes at session open/close (avoids fake breakouts)
-  trailingStopUsd: number;        // pause for the day if P&L drops this much below session peak (0 = disabled)
+  stakePercent: number; // % of balance per trade (used when stakeMode = "percent")
+  kellyFraction: number; // fractional Kelly safety multiplier (0.5 = half-Kelly) when stakeMode = "kelly"
+  sessionEdgeMinutes: number; // skip N minutes at session open/close (avoids fake breakouts)
+  trailingStopUsd: number; // pause for the day if P&L drops this much below session peak (0 = disabled)
   // Same idea as trailingStopUsd but proportional: the allowed giveback grows
   // with the size of the day's peak gain instead of being a flat $ amount
   // (e.g. 0.10 = never give back more than 10% of the peak). Only starts
   // once the peak clears trailingStopMinPeakUsd, so an early $2 gain doesn't
   // pause the bot for the rest of the day over a $0.20 wobble.
-  trailingStopPct: number;        // 0 = disabled
+  trailingStopPct: number; // 0 = disabled
   trailingStopMinPeakUsd: number; // peak daily gain required before trailingStopPct starts protecting it
-  blockCorrelated: boolean;       // skip correlated pairs when one is already active
+  blockCorrelated: boolean; // skip correlated pairs when one is already active
   symbolMode: "watchlist" | "all-markets"; // trade only config.symbols, or rank+trade across every eligible market
-  maxSimultaneousTrades: number;  // cap on how many NEW trades a single scan tick can open
-  maxOpenPositions: number;       // hard cap on TOTAL concurrently open positions (across all scan ticks) — maxSimultaneousTrades is per-tick only, so successive ticks used to stack positions without bound
-  newsFilter: boolean;            // block session-open / macro-event windows on session-bound markets
-  veto4h: Veto4hMode;             // how strictly a contrarian 4H cancels a trade
-  minPayoutRatio: number;         // skip a trade if the live quoted payout (profit/stake) is below this — a thin payout raises the win rate needed to break even, independent of signal confidence
-  vetoDaily: Veto4hMode;          // how strictly a contrarian Daily trend cancels a trade ("off" = Daily bias not fetched at all)
-  minSymbolWinRate: number;       // pause a SYMBOL when its rolling win rate drops below this (0 = disabled)
-  symbolWinRateLookback: number;  // how many of the symbol's last closed trades the rolling win rate above is computed over
+  maxSimultaneousTrades: number; // cap on how many NEW trades a single scan tick can open
+  maxOpenPositions: number; // hard cap on TOTAL concurrently open positions (across all scan ticks) — maxSimultaneousTrades is per-tick only, so successive ticks used to stack positions without bound
+  newsFilter: boolean; // block session-open / macro-event windows on session-bound markets
+  veto4h: Veto4hMode; // how strictly a contrarian 4H cancels a trade
+  minPayoutRatio: number; // skip a trade if the live quoted payout (profit/stake) is below this — a thin payout raises the win rate needed to break even, independent of signal confidence
+  vetoDaily: Veto4hMode; // how strictly a contrarian Daily trend cancels a trade ("off" = Daily bias not fetched at all)
+  minSymbolWinRate: number; // pause a SYMBOL when its rolling win rate drops below this (0 = disabled)
+  symbolWinRateLookback: number; // how many of the symbol's last closed trades the rolling win rate above is computed over
   // --- Instrument: binary (CALL/PUT, fixed expiry) or Multiplier (MULTUP/MULTDOWN, no expiry) ---
   instrumentType: "binary" | "multiplier";
   // Override par symbole : permet de trader l'or en binaire et BTC en multiplicateur
   // simultanément. Si un symbole n'est pas dans la map, instrumentType global est utilisé.
   symbolInstrumentOverrides?: Record<string, "binary" | "multiplier">;
-  multiplierLevel: number;        // leverage level for Multiplier trades
-  stopLossPctOfStake: number;     // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary) — used when atrStopMode is off
-  takeProfitPctOfStake: number;   // Multiplier take-profit, as % of the stake — used when atrStopMode is off
-  maxHoldMinutes: number;         // force-close a Multiplier position after this long even if neither stop-loss nor take-profit triggered (avoids swap fees / stuck positions)
+  multiplierLevel: number; // leverage level for Multiplier trades
+  stopLossPctOfStake: number; // Multiplier stop-loss, as % of the stake (100 = capped at losing the full stake, same max-loss-per-trade as binary) — used when atrStopMode is off
+  takeProfitPctOfStake: number; // Multiplier take-profit, as % of the stake — used when atrStopMode is off
+  maxHoldMinutes: number; // force-close a Multiplier position after this long even if neither stop-loss nor take-profit triggered (avoids swap fees / stuck positions)
   // --- ATR-based dynamic stop-loss/take-profit (Multiplier only) ---
   // A flat % of stake is blind to how much the instrument actually moves: at
   // 10x leverage, losing 100% of the stake needs a ~10% price move — on major
@@ -315,37 +357,37 @@ export interface AutoTraderConfig {
   // happens from normal price action, so the "stop-loss" rarely does its job.
   // ATR mode ties the stop distance to the symbol's OWN current volatility
   // instead, so it tightens on calm markets and widens on volatile ones.
-  atrStopMode: boolean;           // off by default — backtest before enabling on a live account
-  atrStopMultiple: number;        // stop distance = this many multiples of the 15m ATR%
-  riskRewardRatio: number;        // take-profit distance = stop distance × this ratio
+  atrStopMode: boolean; // off by default — backtest before enabling on a live account
+  atrStopMultiple: number; // stop distance = this many multiples of the 15m ATR%
+  riskRewardRatio: number; // take-profit distance = stop distance × this ratio
   // --- Broker: which exchange executes the trades ---
-  broker: "deriv" | "kraken" | "binance" | "oanda";     // deriv = forex/or binaire+multiplier, kraken/binance = crypto spot, oanda = forex spot
+  broker: "deriv" | "kraken" | "binance" | "oanda"; // deriv = forex/or binaire+multiplier, kraken/binance = crypto spot, oanda = forex spot
   // --- Broker enable/disable toggles (independent of API key storage) ---
-  enableDeriv: boolean;                         // toggle Deriv without clearing token
-  enableKraken: boolean;                        // toggle Kraken without clearing API keys
-  enableBinance: boolean;                       // toggle Binance without clearing API keys
-  enableOanda: boolean;                         // toggle OANDA without clearing API keys
+  enableDeriv: boolean; // toggle Deriv without clearing token
+  enableKraken: boolean; // toggle Kraken without clearing API keys
+  enableBinance: boolean; // toggle Binance without clearing API keys
+  enableOanda: boolean; // toggle OANDA without clearing API keys
   // --- Regime detection (ADX-based) ---
-  adxFilterMode: "off" | "penalize" | "block";  // block = hard reject when ADX < threshold, penalize = confidence penalty
-  adxBlockThreshold: number;                    // ADX below this = ranging market (default 20)
-  adxStrongThreshold: number;                   // ADX above this = strong trend, confidence boost (default 25)
+  adxFilterMode: "off" | "penalize" | "block"; // block = hard reject when ADX < threshold, penalize = confidence penalty
+  adxBlockThreshold: number; // ADX below this = ranging market (default 20)
+  adxStrongThreshold: number; // ADX above this = strong trend, confidence boost (default 25)
   // --- Spread/slippage protection ---
-  maxSpreadPct: number;                         // skip trade if bid/ask spread > this % of price (0 = disabled)
+  maxSpreadPct: number; // skip trade if bid/ask spread > this % of price (0 = disabled)
   // --- Time-of-day edge detection ---
-  hourlyEdgeFilter: boolean;                   // auto-disable UTC hours with negative P&L over recent trades
-  hourlyEdgeLookback: number;                   // how many trades per hour to track before activating the filter
+  hourlyEdgeFilter: boolean; // auto-disable UTC hours with negative P&L over recent trades
+  hourlyEdgeLookback: number; // how many trades per hour to track before activating the filter
   // --- Confluence scoring ---
-  confluenceMode: "vote" | "weighted";          // vote = binary majority, weighted = quality-weighted score
+  confluenceMode: "vote" | "weighted"; // vote = binary majority, weighted = quality-weighted score
   // --- Dynamic duration ---
-  dynamicDuration: boolean;                    // adjust contract duration based on ATR (faster on volatile symbols)
+  dynamicDuration: boolean; // adjust contract duration based on ATR (faster on volatile symbols)
   // --- Partial profit taking (Multiplier only) ---
-  partialTakeProfitPct: number;                // close this % of position when profit reaches 50% of TP (0 = disabled)
-  moveSlToBreakeven: boolean;                  // after partial TP, move stop-loss to entry price
+  partialTakeProfitPct: number; // close this % of position when profit reaches 50% of TP (0 = disabled)
+  moveSlToBreakeven: boolean; // after partial TP, move stop-loss to entry price
   // --- Dynamic confidence threshold ---
-  dynamicMinConfidence: boolean;               // adjust minConfidence based on live payout ratio
-  dynamicConfidenceMargin: number;             // safety margin above breakeven win rate (default 8)
+  dynamicMinConfidence: boolean; // adjust minConfidence based on live payout ratio
+  dynamicConfidenceMargin: number; // safety margin above breakeven win rate (default 8)
   // --- Progressive stake reduction ---
-  progressiveStakeReduction: boolean;          // reduce stake gradually after each loss (not just after 3)
+  progressiveStakeReduction: boolean; // reduce stake gradually after each loss (not just after 3)
 }
 
 /**
@@ -364,7 +406,7 @@ export function computeAtrStopUsd(
   riskRewardRatio: number,
 ): { stopLossUsd: number; takeProfitUsd: number } {
   const stopDistancePct = Math.max(0.01, volatilityPct) * atrMultiple; // price % move that hits the stop
-  const rawStop = stakeUsd * (multiplierLevel * stopDistancePct) / 100;
+  const rawStop = (stakeUsd * (multiplierLevel * stopDistancePct)) / 100;
   const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, rawStop)) * 100) / 100;
   const takeProfitUsd = Math.round(stopLossUsd * riskRewardRatio * 100) / 100;
   return { stopLossUsd, takeProfitUsd };
@@ -385,11 +427,20 @@ export function computeStructuralStopUsd(
   riskAbs: number,
   rewardAbs: number,
 ): { stopLossUsd: number; takeProfitUsd: number } {
-  if (entryPrice <= 0) return { stopLossUsd: Math.max(0.5, stakeUsd * 0.1), takeProfitUsd: Math.max(0.75, stakeUsd * 0.15) };
+  if (entryPrice <= 0)
+    return {
+      stopLossUsd: Math.max(0.5, stakeUsd * 0.1),
+      takeProfitUsd: Math.max(0.75, stakeUsd * 0.15),
+    };
   const stopDistancePct = (riskAbs / entryPrice) * 100;
   const rewardDistancePct = (rewardAbs / entryPrice) * 100;
-  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, stakeUsd * (multiplierLevel * stopDistancePct) / 100)) * 100) / 100;
-  const takeProfitUsd = Math.round(Math.max(0.5, stakeUsd * (multiplierLevel * rewardDistancePct) / 100) * 100) / 100;
+  const stopLossUsd =
+    Math.round(
+      Math.min(stakeUsd, Math.max(0.5, (stakeUsd * (multiplierLevel * stopDistancePct)) / 100)) *
+        100,
+    ) / 100;
+  const takeProfitUsd =
+    Math.round(Math.max(0.5, (stakeUsd * (multiplierLevel * rewardDistancePct)) / 100) * 100) / 100;
   return { stopLossUsd, takeProfitUsd };
 }
 
@@ -448,15 +499,23 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   //   frxGBPUSD (-$6.33, PF 0.77) — tous perdants.
   // Conservés : OTC_NDX (+$99.65, PF 4.52, 24 trades), frxEURGBP (+$27.77,
   //   PF 2.00, 32 trades), frxUSDCAD (-$1.96, PF 0.96, quasi break-even).
-  symbols: [
-    "OTC_NDX",
-    "frxEURGBP", "frxUSDCAD"
-  ],
+  symbols: ["OTC_NDX", "frxEURGBP", "frxUSDCAD"],
   excludedSymbols: [
-    "frxXAUUSD", "frxXAGUSD", "OTC_SPC", "cryETHUSD",
-    "OTC_N225", "frxUSDJPY", "frxAUDUSD", "frxEURJPY", "frxGBPJPY",
-    "OTC_GDAXI", "frxUSDCHF", "OTC_DJI",
-    "frxEURUSD", "cryBTCUSD", "frxGBPUSD"
+    "frxXAUUSD",
+    "frxXAGUSD",
+    "OTC_SPC",
+    "cryETHUSD",
+    "OTC_N225",
+    "frxUSDJPY",
+    "frxAUDUSD",
+    "frxEURJPY",
+    "frxGBPJPY",
+    "OTC_GDAXI",
+    "frxUSDCHF",
+    "OTC_DJI",
+    "frxEURUSD",
+    "cryBTCUSD",
+    "frxGBPUSD",
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,
@@ -618,18 +677,26 @@ export interface ClassifyThresholds {
 }
 
 export function classifyOpportunity(
-  analysis: Pick<SymbolAnalysis, "direction" | "confidence" | "agreement" | "volatilityPct" | "volatilityRatio" | "premiumCount">,
+  analysis: Pick<
+    SymbolAnalysis,
+    "direction" | "confidence" | "agreement" | "volatilityPct" | "volatilityRatio" | "premiumCount"
+  >,
   thresholds: ClassifyThresholds,
   badStats = false,
 ): { decision: OpportunityDecision; reasonCode: ClassifyReasonCode } {
   if (badStats) return { decision: "avoid", reasonCode: "bad-stats" };
-  if (analysis.volatilityPct >= thresholds.maxVolatilityPct) return { decision: "avoid", reasonCode: "volatility-abs" };
+  if (analysis.volatilityPct >= thresholds.maxVolatilityPct)
+    return { decision: "avoid", reasonCode: "volatility-abs" };
   if (analysis.volatilityRatio >= 3) return { decision: "avoid", reasonCode: "volatility-ratio" };
   if (!analysis.direction) return { decision: "wait", reasonCode: "no-direction" };
-  if (analysis.confidence < thresholds.minConfidence) return { decision: "wait", reasonCode: "confidence-low" };
-  if (analysis.confidence > thresholds.maxConfidence) return { decision: "wait", reasonCode: "confidence-high" };
-  if (analysis.agreement < thresholds.minTfAgreement) return { decision: "wait", reasonCode: "agreement-low" };
-  if (thresholds.premiumOnly && analysis.premiumCount < 1) return { decision: "wait", reasonCode: "not-premium" };
+  if (analysis.confidence < thresholds.minConfidence)
+    return { decision: "wait", reasonCode: "confidence-low" };
+  if (analysis.confidence > thresholds.maxConfidence)
+    return { decision: "wait", reasonCode: "confidence-high" };
+  if (analysis.agreement < thresholds.minTfAgreement)
+    return { decision: "wait", reasonCode: "agreement-low" };
+  if (thresholds.premiumOnly && analysis.premiumCount < 1)
+    return { decision: "wait", reasonCode: "not-premium" };
   return { decision: "take", reasonCode: "ok" };
 }
 
@@ -651,33 +718,52 @@ export function riskLevelFor(
 ): "faible" | "modere" | "eleve" {
   const bad = stats ? isBadStats(stats) : false;
   if (analysis.volatilityRatio >= 2.5 || analysis.volatilityPct >= 8 || bad) return "eleve";
-  if (analysis.volatilityRatio >= 1.5 || analysis.volatilityPct >= 4 || (stats && stats.trades < 10)) return "modere";
+  if (
+    analysis.volatilityRatio >= 1.5 ||
+    analysis.volatilityPct >= 4 ||
+    (stats && stats.trades < 10)
+  )
+    return "modere";
   return "faible";
 }
 
 export function explainOpportunity(
   decision: OpportunityDecision,
-  analysis: Pick<SymbolAnalysis, "direction" | "confidence" | "agreement" | "volatilityRatio" | "volatilityPct">,
+  analysis: Pick<
+    SymbolAnalysis,
+    "direction" | "confidence" | "agreement" | "volatilityRatio" | "volatilityPct"
+  >,
   thresholds: ClassifyThresholds,
   stats?: OpportunityStatsSummary,
 ): string[] {
   const reasons: string[] = [];
   if (decision === "take") {
-    reasons.push(`Signal dans la zone valide (${Math.round(analysis.confidence)}% / ${analysis.agreement} TF).`);
+    reasons.push(
+      `Signal dans la zone valide (${Math.round(analysis.confidence)}% / ${analysis.agreement} TF).`,
+    );
     if (stats && stats.trades >= 10 && stats.expectancy !== null) {
-      reasons.push(`Historique exploitable: EV ${stats.expectancy >= 0 ? "+" : ""}$${stats.expectancy.toFixed(2)} par trade.`);
+      reasons.push(
+        `Historique exploitable: EV ${stats.expectancy >= 0 ? "+" : ""}$${stats.expectancy.toFixed(2)} par trade.`,
+      );
     }
     if (analysis.volatilityRatio < 1.5) reasons.push("Volatilite normale pour ce marche.");
   } else if (decision === "wait") {
     if (!analysis.direction) reasons.push("Aucune direction dominante pour le moment.");
-    if (analysis.direction && analysis.confidence < thresholds.minConfidence) reasons.push(`Confiance sous le seuil ${thresholds.minConfidence}%.`);
-    if (analysis.direction && analysis.confidence > thresholds.maxConfidence) reasons.push(`Signal trop tardif: confiance au-dessus de ${thresholds.maxConfidence}%.`);
-    if (analysis.direction && analysis.agreement < thresholds.minTfAgreement) reasons.push(`Accord TF insuffisant (${analysis.agreement}/${thresholds.minTfAgreement}).`);
+    if (analysis.direction && analysis.confidence < thresholds.minConfidence)
+      reasons.push(`Confiance sous le seuil ${thresholds.minConfidence}%.`);
+    if (analysis.direction && analysis.confidence > thresholds.maxConfidence)
+      reasons.push(`Signal trop tardif: confiance au-dessus de ${thresholds.maxConfidence}%.`);
+    if (analysis.direction && analysis.agreement < thresholds.minTfAgreement)
+      reasons.push(`Accord TF insuffisant (${analysis.agreement}/${thresholds.minTfAgreement}).`);
     if (!reasons.length) reasons.push("Setup incomplet, observation conseillee.");
   } else {
     if (stats && isBadStats(stats)) reasons.push("Historique defavorable sur ce symbole/preset.");
-    if (analysis.volatilityRatio >= 2.5) reasons.push("Volatilite anormale par rapport a ce marche.");
-    if (analysis.volatilityPct >= thresholds.maxVolatilityPct) reasons.push(`ATR ${analysis.volatilityPct.toFixed(2)}% au-dessus de la limite ${thresholds.maxVolatilityPct}%.`);
+    if (analysis.volatilityRatio >= 2.5)
+      reasons.push("Volatilite anormale par rapport a ce marche.");
+    if (analysis.volatilityPct >= thresholds.maxVolatilityPct)
+      reasons.push(
+        `ATR ${analysis.volatilityPct.toFixed(2)}% au-dessus de la limite ${thresholds.maxVolatilityPct}%.`,
+      );
     if (!reasons.length) reasons.push("Marche classe a eviter par la configuration.");
   }
   return reasons;
@@ -705,34 +791,54 @@ export interface TradeLog {
   note?: string;
   /** Internal engine attribution, kept separate from the preset. */
   strategy?: string;
-  entryPrice?: number;       // price at trade open (for live visual)
-  durationMinutes?: number;  // contract duration (for live countdown) — binary only
-  expiry?: number;           // epoch ms when the contract resolves — binary only
+  entryPrice?: number; // price at trade open (for live visual)
+  durationMinutes?: number; // contract duration (for live countdown) — binary only
+  expiry?: number; // epoch ms when the contract resolves — binary only
   components?: SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning on close
-  multiplier?: number;       // leverage level — Multiplier trades only
-  stopLossUsd?: number;      // absolute loss level that auto-closes the position — Multiplier trades only
-  takeProfitUsd?: number;    // absolute profit level that auto-closes the position — Multiplier trades only
-  preset?: "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2"; // preset engine tag
-  mode?: "demo" | "live";    // account execution mode
-  strategyVersion?: string;  // strategy / config version tag (e.g. "V1", "v1.0.0")
+  multiplier?: number; // leverage level — Multiplier trades only
+  stopLossUsd?: number; // absolute loss level that auto-closes the position — Multiplier trades only
+  takeProfitUsd?: number; // absolute profit level that auto-closes the position — Multiplier trades only
+  preset?:
+    | "default"
+    | "boom"
+    | "boom900"
+    | "vol75"
+    | "rb100"
+    | "vol50"
+    | "crash"
+    | "crash500"
+    | "scalping"
+    | "liquidity"
+    | "gold"
+    | "crash900"
+    | "boomv2"
+    | "scalpingv2"
+    | "liquidityv2"
+    | "goldv2"; // preset engine tag
+  mode?: "demo" | "live"; // account execution mode
+  strategyVersion?: string; // strategy / config version tag (e.g. "V1", "v1.0.0")
   configSnapshot?: Record<string, unknown> | string; // immutable effective preset configuration snapshot at signal time
   indicatorValues?: Record<string, unknown> | string; // raw indicator values, scores, components at signal time
   timeFilterDecision?: Record<string, unknown> | string; // Time Filter evaluation verdict & metadata
   riskManagerDecision?: Record<string, unknown> | string; // Risk Manager V3 evaluation verdict & metadata
   /** Accounting-only snapshot of daily-risk and protection states at signal time. */
   riskObservation?: Record<string, unknown> | string;
-  riskVersion?: string;        // risk engine version tag (e.g. "R4")
-  executionVersion?: string;   // execution pipeline version tag (e.g. "E2")
-  configHash?: string;         // real SHA-256 of the effective config used at execution (hashConfig(), not a static label)
+  riskVersion?: string; // risk engine version tag (e.g. "R4")
+  executionVersion?: string; // execution pipeline version tag (e.g. "E2")
+  configHash?: string; // real SHA-256 of the effective config used at execution (hashConfig(), not a static label)
   // Full stake-sizing audit trail (2026-08-13) — lets any trade's sizing
   // decision be reconstructed end to end: requestedStake -> strategy
   // suggestion -> Risk Manager cap -> Deriv broker cap -> what was actually
   // sent. See the Priority 2 MIN() in bot-engine.server.ts.
-  requestedStake?: number;          // user's own configured ceiling (fixed $ or equity x stakePercent)
-  strategySuggestedStake?: number;  // accumulated output of Kelly/Level/drift/time-filter/Gold-ATR sizing, pre-ceiling
-  riskManagerCap?: number;          // Risk Manager V2's maxRiskAllowed for this trade
-  derivMaxAllowedStake?: number;    // broker-specific hard cap (e.g. Boom900's $0.90), Infinity if none
-  stakeSource?: string;             // which term won the final MIN(): FIXED_USER_CAP | PERCENT_USER_CAP | KELLY | PROGRESSIVE_REDUCTION | BOOM500_LEVEL | VOL75_LEVEL | RB100_LEVEL | VOL50_LEVEL | DRIFT_MULTIPLIER | TIME_FILTER | GOLD_ATR | RISK_MANAGER | DERIV_CAP
+  requestedStake?: number; // user's own configured ceiling (fixed $ or equity x stakePercent)
+  strategySuggestedStake?: number; // accumulated output of Kelly/Level/drift/time-filter/Gold-ATR sizing, pre-ceiling
+  riskManagerCap?: number; // Risk Manager V2's maxRiskAllowed for this trade
+  derivMaxAllowedStake?: number; // broker-specific hard cap (e.g. Boom900's $0.90), Infinity if none
+  stakeSource?: string; // which term won the final MIN(): FIXED_USER_CAP | PERCENT_USER_CAP | KELLY | PROGRESSIVE_REDUCTION | BOOM500_LEVEL | VOL75_LEVEL | RB100_LEVEL | VOL50_LEVEL | DRIFT_MULTIPLIER | TIME_FILTER | GOLD_ATR | RISK_MANAGER | DERIV_CAP
+  estimatedMaxLoss?: number;
+  riskPctOfEquity?: number;
+  stakeScalingTier?: number | null;
+  stakeScalingReason?: string;
 
   // ── Exit-mechanism observability (2026-08-13) ──
   // Set by the engine AT THE MOMENT of closing (never reconstructed later
@@ -744,7 +850,19 @@ export interface TradeLog {
   // truth (the engine's own timer fired the sell). PARTIAL_TAKE_PROFIT and
   // BREAKEVEN are never written for Deriv multiplier trades — see
   // partialTpMechanismActive/breakevenMechanismActive below.
-  exitReason?: "TAKE_PROFIT" | "STOP_LOSS" | "PARTIAL_TAKE_PROFIT" | "BREAKEVEN" | "MAX_HOLD_TIMEOUT" | "MANUAL_EXIT" | "TRAILING_STOP" | "RISK_EXIT" | "CONTRACT_EXPIRY" | "BROKER_EXIT" | "ERROR_EXIT" | "OTHER";
+  exitReason?:
+    | "TAKE_PROFIT"
+    | "STOP_LOSS"
+    | "PARTIAL_TAKE_PROFIT"
+    | "BREAKEVEN"
+    | "MAX_HOLD_TIMEOUT"
+    | "MANUAL_EXIT"
+    | "TRAILING_STOP"
+    | "RISK_EXIT"
+    | "CONTRACT_EXPIRY"
+    | "BROKER_EXIT"
+    | "ERROR_EXIT"
+    | "OTHER";
   entryTimeMs?: number;
   exitTimeMs?: number;
   holdDurationSeconds?: number;
@@ -824,7 +942,23 @@ export type RiskStopHandler = (reasons: string[], pausedUntil?: number) => void;
 
 export interface ScanSymbolResult {
   symbol: string;
-  action: "open-trade" | "session-closed" | "no-signal" | "low-confidence" | "too-confident" | "low-agreement" | "not-premium" | "volatility" | "traded" | "daily-limit" | "cooldown" | "correlated" | "news-block" | "not-tradeable" | "low-payout" | "risk-pause";
+  action:
+    | "open-trade"
+    | "session-closed"
+    | "no-signal"
+    | "low-confidence"
+    | "too-confident"
+    | "low-agreement"
+    | "not-premium"
+    | "volatility"
+    | "traded"
+    | "daily-limit"
+    | "cooldown"
+    | "correlated"
+    | "news-block"
+    | "not-tradeable"
+    | "low-payout"
+    | "risk-pause";
   direction?: "CALL" | "PUT" | null;
   confidence?: number;
   agreement?: number;
@@ -894,7 +1028,11 @@ export function countConsecutiveLosses(logs: TradeLog[], symbol?: string): numbe
  * the streak gate forever even though it's a coin flip against a payout that
  * needs >50% to break even. This looks at the actual rate instead of a streak.
  */
-export function symbolRollingStats(logs: TradeLog[], symbol: string, lookback = 10): { trades: number; winRate: number } {
+export function symbolRollingStats(
+  logs: TradeLog[],
+  symbol: string,
+  lookback = 10,
+): { trades: number; winRate: number } {
   const closed = logs
     .filter((l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"))
     .slice(0, lookback);
@@ -1014,7 +1152,7 @@ export function computeConfidenceScaledStake(
   baseStake: number,
   confidence: number,
   tfAgreement: number,
-  enabled: boolean = true
+  enabled: boolean = true,
 ): number {
   if (!enabled || baseStake <= 0) return baseStake;
   if (confidence >= 80 && tfAgreement >= 4) {
@@ -1041,7 +1179,7 @@ export function computePositionTrailingStop(
   currentPnlUsd: number,
   currentStopLossUsd: number,
   autoBreakEvenEnabled: boolean = true,
-  trailingStopEnabled: boolean = true
+  trailingStopEnabled: boolean = true,
 ): { newStopLossUsd: number; isBreakEven: boolean; isTrailing: boolean } {
   let isBreakEven = false;
   let isTrailing = false;
@@ -1082,7 +1220,7 @@ export function computeDynamicMinConfidence(
   baseMinConfidence: number,
 ): number {
   if (payoutRatio <= 0) return baseMinConfidence;
-  const breakeven = 1 / (1 + payoutRatio) * 100;
+  const breakeven = (1 / (1 + payoutRatio)) * 100;
   const dynamic = breakeven + safetyMargin;
   return Math.round(Math.min(85, Math.max(55, dynamic)));
 }
@@ -1097,9 +1235,7 @@ export function computeDynamicMinConfidence(
  * The weighted scores are summed per direction (BUY/SELL), and the dominant
  * direction wins only if its weighted share exceeds 60%.
  */
-export function computeConfluenceScore(
-  tfSignals: TfSignalMap,
-): {
+export function computeConfluenceScore(tfSignals: TfSignalMap): {
   direction: "CALL" | "PUT" | null;
   weightedConfidence: number;
   agreement: number;
@@ -1118,8 +1254,13 @@ export function computeConfluenceScore(
     if (!sig || sig.direction === "HOLD" || sig.triggers[0] === "insufficient-data") continue;
     const w = qualityWeight[sig.quality ?? "weak"] ?? 1.0;
     totalWeight += w;
-    if (sig.direction === "BUY") { bullScore += sig.confidence * w; bullCount++; }
-    else if (sig.direction === "SELL") { bearScore += sig.confidence * w; bearCount++; }
+    if (sig.direction === "BUY") {
+      bullScore += sig.confidence * w;
+      bullCount++;
+    } else if (sig.direction === "SELL") {
+      bearScore += sig.confidence * w;
+      bearCount++;
+    }
   }
 
   if (totalWeight === 0) return { direction: null, weightedConfidence: 0, agreement: 0, blockers };
@@ -1154,7 +1295,7 @@ export function computeAdaptiveStake(baseStake: number, recentLogs: TradeLog[]):
 
   // Reduce stake proportionally to under-performance
   if (winRate < 0.35) return Math.max(1, baseStake * 0.25); // -75%
-  if (winRate < 0.45) return Math.max(1, baseStake * 0.5);  // -50%
+  if (winRate < 0.45) return Math.max(1, baseStake * 0.5); // -50%
   if (winRate < 0.55) return Math.max(1, baseStake * 0.75); // -25%
   return baseStake; // normal
 }
@@ -1170,33 +1311,48 @@ export function computeKellyFraction(winRate: number, payoutRatio: number): numb
 export const TIMEFRAMES = ["5m", "15m", "1H", "4H"] as const;
 
 export const TF_DURATION_MAP: Record<string, number> = {
-  "5m":  5,
+  "5m": 5,
   "15m": 15,
-  "1H":  30,
-  "4H":  60,
+  "1H": 30,
+  "4H": 60,
 };
 
 export interface SymbolAnalysis {
   direction: "CALL" | "PUT" | null;
   confidence: number;
   agreement: number;
-  premiumCount: number;       // how many timeframes graded PREMIUM
-  volatilityPct: number;      // current ATR% on the base timeframe
-  volatilityRatio: number;    // current ATR% vs this symbol's own recent median (1 = normal)
-  blockers: string[];         // reasons signals were rejected
-  dominantTf: string | null;  // TF with highest confidence signal
-  suggestedDuration: number;  // optimal contract duration in minutes
+  premiumCount: number; // how many timeframes graded PREMIUM
+  volatilityPct: number; // current ATR% on the base timeframe
+  volatilityRatio: number; // current ATR% vs this symbol's own recent median (1 = normal)
+  blockers: string[]; // reasons signals were rejected
+  dominantTf: string | null; // TF with highest confidence signal
+  suggestedDuration: number; // optimal contract duration in minutes
   trendAlignmentScore: number; // 0-4: how many TFs agree on direction
-  patternBonus: number;        // extra confidence from candle patterns
+  patternBonus: number; // extra confidence from candle patterns
   strategyVote?: "BUY" | "SELL" | null; // vote from the user's custom /strategies rules, if any apply
   components?: SignalComponent[]; // scoring components that drove this trade — feeds adaptive weight learning
 }
 
 export type TfSignalMap = Partial<Record<(typeof TIMEFRAMES)[number], GeneratedSignal>>;
 
-export const EMPTY_ANALYSIS = (blockers: string[], volatilityPct = 0, volatilityRatio = 1, dominantTf: string | null = null, suggestedDuration = 15): SymbolAnalysis => ({
-  direction: null, confidence: 0, agreement: 0, premiumCount: 0, volatilityPct, volatilityRatio,
-  blockers, dominantTf, suggestedDuration, trendAlignmentScore: 0, patternBonus: 0,
+export const EMPTY_ANALYSIS = (
+  blockers: string[],
+  volatilityPct = 0,
+  volatilityRatio = 1,
+  dominantTf: string | null = null,
+  suggestedDuration = 15,
+): SymbolAnalysis => ({
+  direction: null,
+  confidence: 0,
+  agreement: 0,
+  premiumCount: 0,
+  volatilityPct,
+  volatilityRatio,
+  blockers,
+  dominantTf,
+  suggestedDuration,
+  trendAlignmentScore: 0,
+  patternBonus: 0,
 });
 
 /**
@@ -1264,7 +1420,9 @@ export function aggregateTfSignals(
     }
   }
 
-  const suggestedDuration = dominantTf ? TF_DURATION_MAP[dominantTf] ?? 15 : Math.max(15, minDurationMinutes);
+  const suggestedDuration = dominantTf
+    ? (TF_DURATION_MAP[dominantTf] ?? 15)
+    : Math.max(15, minDurationMinutes);
 
   if (!results.length) {
     return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, null, 15);
@@ -1326,7 +1484,13 @@ export function aggregateTfSignals(
       const h4strong = tfQuality["4H"] !== undefined && tfQuality["4H"] !== "weak";
       if (veto4h === "always" || h4strong) {
         blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
-        return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+        return EMPTY_ANALYSIS(
+          [...blockers],
+          volatilityPct,
+          volatilityRatio,
+          dominantTf,
+          suggestedDuration,
+        );
       }
       blockers.add(`4H contre-tendance faible (${h4dir}) — toléré`);
     }
@@ -1338,7 +1502,13 @@ export function aggregateTfSignals(
         const dStrong = dailySignal.quality !== undefined && dailySignal.quality !== "weak";
         if (vetoDaily === "always" || dStrong) {
           blockers.add(`Daily contre-tendance (${dDir}) — trade annulé`);
-          return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+          return EMPTY_ANALYSIS(
+            [...blockers],
+            volatilityPct,
+            volatilityRatio,
+            dominantTf,
+            suggestedDuration,
+          );
         }
         blockers.add(`Daily contre-tendance faible (${dDir}) — toléré`);
       }
@@ -1360,9 +1530,17 @@ export function aggregateTfSignals(
     }
 
     return {
-      direction: rawDirection, confidence: Math.round(avgConf), agreement: confluence.agreement,
-      premiumCount, volatilityPct, volatilityRatio,
-      blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
+      direction: rawDirection,
+      confidence: Math.round(avgConf),
+      agreement: confluence.agreement,
+      premiumCount,
+      volatilityPct,
+      volatilityRatio,
+      blockers: [...blockers],
+      dominantTf,
+      suggestedDuration,
+      trendAlignmentScore,
+      patternBonus,
       components: components.length ? components : undefined,
     };
   }
@@ -1373,7 +1551,13 @@ export function aggregateTfSignals(
   const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
 
   if (!rawDirection) {
-    return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+    return EMPTY_ANALYSIS(
+      [...blockers],
+      volatilityPct,
+      volatilityRatio,
+      dominantTf,
+      suggestedDuration,
+    );
   }
 
   const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
@@ -1390,7 +1574,13 @@ export function aggregateTfSignals(
     const h4strong = tfQuality["4H"] !== undefined && tfQuality["4H"] !== "weak";
     if (veto4h === "always" || h4strong) {
       blockers.add(`4H contre-tendance (${h4dir}) — trade annulé`);
-      return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+      return EMPTY_ANALYSIS(
+        [...blockers],
+        volatilityPct,
+        volatilityRatio,
+        dominantTf,
+        suggestedDuration,
+      );
     }
     blockers.add(`4H contre-tendance faible (${h4dir}) — toléré`);
   }
@@ -1406,7 +1596,13 @@ export function aggregateTfSignals(
       const dStrong = dailySignal.quality !== undefined && dailySignal.quality !== "weak";
       if (vetoDaily === "always" || dStrong) {
         blockers.add(`Daily contre-tendance (${dDir}) — trade annulé`);
-        return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+        return EMPTY_ANALYSIS(
+          [...blockers],
+          volatilityPct,
+          volatilityRatio,
+          dominantTf,
+          suggestedDuration,
+        );
       }
       blockers.add(`Daily contre-tendance faible (${dDir}) — toléré`);
     }
@@ -1414,8 +1610,10 @@ export function aggregateTfSignals(
 
   // Confidence bonus based on alignment
   let avgConf = totalConf / results.length;
-  if (trendAlignmentScore >= 4) avgConf = Math.min(95, avgConf + 10); // all 4 TFs agree
-  else if (trendAlignmentScore === 3) avgConf = Math.min(95, avgConf + 6); // 3 TFs agree
+  if (trendAlignmentScore >= 4)
+    avgConf = Math.min(95, avgConf + 10); // all 4 TFs agree
+  else if (trendAlignmentScore === 3)
+    avgConf = Math.min(95, avgConf + 6); // 3 TFs agree
   else if (trendAlignmentScore <= 1) avgConf = Math.max(0, avgConf - 10); // weak alignment
 
   // Pattern bonus (capped at +10 to avoid over-confidence)
@@ -1436,8 +1634,17 @@ export function aggregateTfSignals(
   }
 
   return {
-    direction: rawDirection, confidence: avgConf, agreement, premiumCount, volatilityPct, volatilityRatio,
-    blockers: [...blockers], dominantTf, suggestedDuration, trendAlignmentScore, patternBonus,
+    direction: rawDirection,
+    confidence: avgConf,
+    agreement,
+    premiumCount,
+    volatilityPct,
+    volatilityRatio,
+    blockers: [...blockers],
+    dominantTf,
+    suggestedDuration,
+    trendAlignmentScore,
+    patternBonus,
     components: components.length ? components : undefined,
   };
 }
@@ -1460,7 +1667,11 @@ export function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export type CandleFetcher = (symbol: string, granularitySeconds: number, count: number) => Promise<CandleBar[]>;
+export type CandleFetcher = (
+  symbol: string,
+  granularitySeconds: number,
+  count: number,
+) => Promise<CandleBar[]>;
 
 export const GRANULARITY_SECONDS: Record<(typeof TIMEFRAMES)[number], number> = {
   "5m": 300,
@@ -1505,7 +1716,9 @@ export async function analyzeSymbolCore(
       // ones (Volatility 100), so we also track a relative ratio.
       if (tf === "15m") {
         candles15m = candles;
-        const highs = candles.map((c) => c.high), lows = candles.map((c) => c.low), closes = candles.map((c) => c.close);
+        const highs = candles.map((c) => c.high),
+          lows = candles.map((c) => c.low),
+          closes = candles.map((c) => c.close);
         const atrSeries = atr(highs, lows, closes, 14);
         const price = closes[closes.length - 1];
         const atrNow = atrSeries[atrSeries.length - 1];
@@ -1521,11 +1734,14 @@ export async function analyzeSymbolCore(
         // BTC (64k$ price) so crypto was always "abnormally volatile", ~0.01x
         // on forex so the gate never fired there. Dead on forex, spuriously
         // blocking on crypto — normalized, it finally does its actual job.
-        if (baseline > 0 && atrNow !== null && price > 0) volatilityRatio = ((atrNow / price) * 100) / baseline;
+        if (baseline > 0 && atrNow !== null && price > 0)
+          volatilityRatio = ((atrNow / price) * 100) / baseline;
       }
 
       tfSignals[tf] = generateSignal(candles, { weights: opts.weights });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Daily bias is fetched separately from the TIMEFRAMES loop above — it's a
@@ -1536,12 +1752,19 @@ export async function analyzeSymbolCore(
     try {
       const daily = await fetchCandlesFn(symbolDeriv, 86_400, 250);
       if (daily.length) dailySignal = generateSignal(daily, { weights: opts.weights });
-    } catch { /* ignore — veto simply doesn't apply this scan */ }
+    } catch {
+      /* ignore — veto simply doesn't apply this scan */
+    }
   }
 
   const analysis = aggregateTfSignals(
-    tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only",
-    minContractMinutes(symbolDeriv), dailySignal, opts.vetoDaily ?? "off",
+    tfSignals,
+    volatilityPct,
+    volatilityRatio,
+    opts.veto4h ?? "strong-only",
+    minContractMinutes(symbolDeriv),
+    dailySignal,
+    opts.vetoDaily ?? "off",
     {
       confluenceMode: opts.confluenceMode,
       adxFilterMode: opts.adxFilterMode,

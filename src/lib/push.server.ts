@@ -37,24 +37,39 @@ export function recordNotification(
   title: string,
   body: string,
   url?: string,
-  category: "trade" | "risk" | "system" | "signal" = "system"
-): void {
+  category: "trade" | "risk" | "system" | "signal" = "system",
+): number | null {
   try {
-    getDb().prepare(`
+    const result = getDb()
+      .prepare(
+        `
       INSERT INTO user_notifications (user_id, title, body, url, category, is_read, created_at)
       VALUES (?, ?, ?, ?, ?, 0, unixepoch())
-    `).run(userId, title, body, url ?? null, category);
+    `,
+      )
+      .run(userId, title, body, url ?? null, category);
+    return Number(result.lastInsertRowid);
   } catch (e) {
     console.error("[notifications] Failed to record notification:", (e as Error).message);
+    return null;
   }
 }
 
 /**
  * Sends to every device this user subscribed from and records in in-app notification center.
  */
-export async function sendPushToUser(userId: number, payload: PushPayload & { category?: "trade" | "risk" | "system" | "signal" }): Promise<void> {
+export async function sendPushToUser(
+  userId: number,
+  payload: PushPayload & { category?: "trade" | "risk" | "system" | "signal" },
+): Promise<void> {
   // Always record in in-app Notification Center so the user never loses a message
-  recordNotification(userId, payload.title, payload.body, payload.url, payload.category ?? "system");
+  const notificationId = recordNotification(
+    userId,
+    payload.title,
+    payload.body,
+    payload.url,
+    payload.category ?? "system",
+  );
 
   if (!ensureConfigured()) return; // VAPID not configured — silently skip, like Resend without a key
 
@@ -63,7 +78,12 @@ export async function sendPushToUser(userId: number, payload: PushPayload & { ca
     .all(userId) as SubscriptionRow[];
   if (!subs.length) return;
 
-  const body = JSON.stringify(payload);
+  // Always open the readable notification detail first. Its saved `url` is
+  // exposed as an explicit secondary action (e.g. “Préparer l’ordre”), so a
+  // mobile push cannot throw the user into a generic app screen and lose the
+  // actual reason/context of the notification.
+  const url = notificationId ? `/notifications?notification=${notificationId}` : "/notifications";
+  const body = JSON.stringify({ ...payload, url, notificationId });
   await Promise.allSettled(
     subs.map(async (sub) => {
       try {

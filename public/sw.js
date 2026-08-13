@@ -99,5 +99,21 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow(event.notification.data));
+  const rawTarget = typeof event.notification.data === 'string'
+    ? event.notification.data
+    : (event.notification.data && event.notification.data.url) || '/notifications';
+  let target = new URL('/notifications', self.location.origin).href;
+  try {
+    const candidate = new URL(rawTarget, self.location.origin);
+    if (candidate.origin === self.location.origin && candidate.pathname.startsWith('//') === false) {
+      target = candidate.href;
+    }
+  } catch (_) {}
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) return existing.navigate(target).then(() => existing.focus()).catch(() => clients.openWindow(target));
+      return clients.openWindow(target);
+    })
+  );
 });

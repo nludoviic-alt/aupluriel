@@ -752,6 +752,10 @@ export interface TradeLog {
   riskManagerCap?: number;          // Risk Manager V2's maxRiskAllowed for this trade
   derivMaxAllowedStake?: number;    // broker-specific hard cap (e.g. Boom900's $0.90), Infinity if none
   stakeSource?: string;             // which term won the final MIN(): FIXED_USER_CAP | PERCENT_USER_CAP | KELLY | PROGRESSIVE_REDUCTION | BOOM500_LEVEL | VOL75_LEVEL | RB100_LEVEL | VOL50_LEVEL | DRIFT_MULTIPLIER | TIME_FILTER | GOLD_ATR | RISK_MANAGER | DERIV_CAP
+  estimatedMaxLoss?: number;
+  riskPctOfEquity?: number;
+  stakeScalingTier?: number | null;
+  stakeScalingReason?: string;
 
   // ── Exit-mechanism observability (2026-08-13) ──
   // Set by the engine AT THE MOMENT of closing (never reconstructed later

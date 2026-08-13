@@ -89,17 +89,40 @@ export function NotificationCenterSidebarItem({
     <Link
       to="/notifications"
       onClick={onClick}
-      className={cn("relative flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-base transition-all duration-200 bg-transparent border border-transparent hover:bg-amber-500/[0.04] hover:border-amber-500/15", className)}
+      className={cn(
+        "relative flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-base transition-all duration-200 bg-transparent border border-transparent hover:bg-amber-500/[0.04] hover:border-amber-500/15",
+        className,
+      )}
       title="Notifications"
     >
-      <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover/nav:bg-amber-500/15 group-hover/nav:border-amber-500/25 group-hover/nav:text-amber-400", iconClassName)}>
-        <Bell className={cn("h-4.5 w-4.5 transition-colors duration-200", unreadCount > 0 && "text-amber-400 animate-pulse")} />
+      <span
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 border bg-white/[0.04] border-white/[0.05] text-muted-foreground group-hover/nav:bg-amber-500/15 group-hover/nav:border-amber-500/25 group-hover/nav:text-amber-400",
+          iconClassName,
+        )}
+      >
+        <Bell
+          className={cn(
+            "h-4.5 w-4.5 transition-colors duration-200",
+            unreadCount > 0 && "text-amber-400 animate-pulse",
+          )}
+        />
       </span>
-      <span className={cn("font-semibold transition-colors duration-200 text-[15px] tracking-wide text-muted-foreground/80 hover:text-amber-300", labelClassName)}>
+      <span
+        className={cn(
+          "font-semibold transition-colors duration-200 text-[15px] tracking-wide text-muted-foreground/80 hover:text-amber-300",
+          labelClassName,
+        )}
+      >
         Notifications
       </span>
       {unreadCount > 0 && (
-        <span className={cn("ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 font-mono text-[10px] font-black text-white shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-bounce", badgeClassName)}>
+        <span
+          className={cn(
+            "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 font-mono text-[10px] font-black text-white shadow-[0_0_10px_rgba(244,63,94,0.5)] animate-bounce",
+            badgeClassName,
+          )}
+        >
           {unreadCount > 99 ? "99+" : unreadCount}
         </span>
       )}
@@ -112,6 +135,7 @@ export function NotificationCenterPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "trade" | "signal" | "risk" | "system">("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [deepLinkHandledId, setDeepLinkHandledId] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const loadNotifications = useCallback(async () => {
@@ -129,6 +153,22 @@ export function NotificationCenterPage() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  // A mobile push with no task destination opens /notifications?notification=id.
+  // Select that exact record when its async list arrives, so the full text is
+  // immediately readable rather than dropping the user at the app shell.
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("notification"));
+    if (
+      Number.isInteger(id) &&
+      id !== deepLinkHandledId &&
+      notifications.some((notification) => notification.id === id)
+    ) {
+      setSelectedId(id);
+      setDeepLinkHandledId(id);
+      void markAsRead(id);
+    }
+  }, [notifications, deepLinkHandledId]);
 
   async function markAllAsRead() {
     try {
@@ -181,7 +221,12 @@ export function NotificationCenterPage() {
 
   // Auto-select first notification on desktop
   useEffect(() => {
-    if (selectedId === null && filtered.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+    if (
+      selectedId === null &&
+      filtered.length > 0 &&
+      typeof window !== "undefined" &&
+      window.innerWidth >= 768
+    ) {
       setSelectedId(filtered[0].id);
     }
   }, [filtered.length, selectedId]);
@@ -192,7 +237,7 @@ export function NotificationCenterPage() {
       <div
         className={cn(
           "flex w-full flex-col border-r border-white/[0.06] bg-background/40 md:w-[340px] lg:w-[400px] shrink-0",
-          selected ? "hidden md:flex" : "flex"
+          selected ? "hidden md:flex" : "flex",
         )}
       >
         {/* Header */}
@@ -224,10 +269,14 @@ export function NotificationCenterPage() {
               <Bell className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl font-black tracking-tight text-foreground leading-none">Notifications</h1>
+              <h1 className="text-xl font-black tracking-tight text-foreground leading-none">
+                Notifications
+              </h1>
               <p className="mt-1.5 text-[11px] text-muted-foreground/70 leading-none">
                 {unreadCount > 0 ? (
-                  <span className="text-amber-400 font-semibold">{unreadCount} non lue{unreadCount > 1 ? "s" : ""}</span>
+                  <span className="text-amber-400 font-semibold">
+                    {unreadCount} non lue{unreadCount > 1 ? "s" : ""}
+                  </span>
                 ) : (
                   <span>Toutes lues</span>
                 )}
@@ -249,12 +298,15 @@ export function NotificationCenterPage() {
             ).map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setFilter(tab.id); setSelectedId(null); }}
+                onClick={() => {
+                  setFilter(tab.id);
+                  setSelectedId(null);
+                }}
                 className={cn(
                   "rounded-full px-3 py-1.5 font-semibold whitespace-nowrap transition-all border text-[11px]",
                   filter === tab.id
                     ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                    : "border-transparent bg-white/[0.03] text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.06]"
+                    : "border-transparent bg-white/[0.03] text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.06]",
                 )}
               >
                 {tab.label}
@@ -284,21 +336,34 @@ export function NotificationCenterPage() {
               return (
                 <div
                   key={item.id}
-                  onClick={() => { markAsRead(item.id); setSelectedId(item.id); }}
+                  onClick={() => {
+                    markAsRead(item.id);
+                    setSelectedId(item.id);
+                  }}
                   className={cn(
                     "group relative flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-all duration-150",
                     isActive
                       ? "border-amber-500/25 bg-amber-500/[0.06] shadow-[0_0_12px_rgba(245,158,11,0.04)]"
-                      : "border-transparent bg-transparent hover:bg-white/[0.03] hover:border-white/[0.04]"
+                      : "border-transparent bg-transparent hover:bg-white/[0.03] hover:border-white/[0.04]",
                   )}
                 >
-                  <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs", meta.style)}>
+                  <div
+                    className={cn(
+                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs",
+                      meta.style,
+                    )}
+                  >
                     <Icon className="h-4 w-4" />
                   </div>
 
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className={cn("text-[13px] font-bold leading-snug", item.isRead ? "text-neutral-400" : "text-foreground")}>
+                      <h3
+                        className={cn(
+                          "text-[13px] font-bold leading-snug",
+                          item.isRead ? "text-neutral-400" : "text-foreground",
+                        )}
+                      >
                         {item.title}
                       </h3>
                       {!item.isRead && (
@@ -328,7 +393,7 @@ export function NotificationCenterPage() {
       <div
         className={cn(
           "flex flex-1 flex-col overflow-hidden bg-background/20 min-w-0",
-          !selected ? "hidden md:flex" : "flex"
+          !selected ? "hidden md:flex" : "flex",
         )}
       >
         {/* Mobile header */}
@@ -351,7 +416,12 @@ export function NotificationCenterPage() {
                   const meta = getCategoryMeta(selected.category);
                   const Icon = meta.icon;
                   return (
-                    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider", meta.style)}>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider",
+                        meta.style,
+                      )}
+                    >
                       <Icon className="h-3 w-3" />
                       {meta.label}
                     </span>
@@ -377,6 +447,25 @@ export function NotificationCenterPage() {
               </div>
 
               {/* Action link */}
+              {selected.url && (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    // URLs are produced server-side. Still reject an external
+                    // value defensively: a notification must never become an
+                    // open redirect from a mobile push.
+                    if (selected.url) {
+                      const destination = new URL(selected.url, window.location.origin);
+                      if (destination.origin === window.location.origin)
+                        window.location.assign(destination.href);
+                    }
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  {selected.category === "signal" ? "Préparer l’ordre" : "Ouvrir le contexte"}
+                  <ChevronRight className="ml-1.5 h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -385,7 +474,9 @@ export function NotificationCenterPage() {
               <Bell className="h-8 w-8 text-muted-foreground/30" />
             </div>
             <div className="space-y-1.5">
-              <p className="text-sm font-semibold text-foreground/80">Sélectionne une notification</p>
+              <p className="text-sm font-semibold text-foreground/80">
+                Sélectionne une notification
+              </p>
               <p className="text-xs text-muted-foreground/50 max-w-xs">
                 Clique sur un élément de la liste pour afficher les détails complets.
               </p>
@@ -400,13 +491,37 @@ export function NotificationCenterPage() {
 function getCategoryMeta(category: NotificationItem["category"]) {
   switch (category) {
     case "trade":
-      return { label: "Trade", icon: TrendingUp, style: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400", borderClass: "border-l-emerald-500/60", textClass: "text-emerald-400" };
+      return {
+        label: "Trade",
+        icon: TrendingUp,
+        style: "border-emerald-500/40 bg-emerald-500/15 text-emerald-400",
+        borderClass: "border-l-emerald-500/60",
+        textClass: "text-emerald-400",
+      };
     case "signal":
-      return { label: "Signal IA", icon: Sparkles, style: "border-purple-500/40 bg-purple-500/15 text-purple-400", borderClass: "border-l-purple-500/60", textClass: "text-purple-400" };
+      return {
+        label: "Signal IA",
+        icon: Sparkles,
+        style: "border-purple-500/40 bg-purple-500/15 text-purple-400",
+        borderClass: "border-l-purple-500/60",
+        textClass: "text-purple-400",
+      };
     case "risk":
-      return { label: "Sécurité", icon: ShieldAlert, style: "border-rose-500/40 bg-rose-500/15 text-rose-400", borderClass: "border-l-rose-500/60", textClass: "text-rose-400" };
+      return {
+        label: "Sécurité",
+        icon: ShieldAlert,
+        style: "border-rose-500/40 bg-rose-500/15 text-rose-400",
+        borderClass: "border-l-rose-500/60",
+        textClass: "text-rose-400",
+      };
     default:
-      return { label: "Système", icon: Activity, style: "border-cyan-500/40 bg-cyan-500/15 text-cyan-400", borderClass: "border-l-cyan-500/60", textClass: "text-cyan-400" };
+      return {
+        label: "Système",
+        icon: Activity,
+        style: "border-cyan-500/40 bg-cyan-500/15 text-cyan-400",
+        borderClass: "border-l-cyan-500/60",
+        textClass: "text-cyan-400",
+      };
   }
 }
 
@@ -431,5 +546,10 @@ function formatNotificationTime(timestampSeconds: number) {
   if (diffSec < 60) return "À l'instant";
   if (diffSec < 3600) return `Il y a ${Math.floor(diffSec / 60)} min`;
   if (diffSec < 86400) return `Il y a ${Math.floor(diffSec / 3600)}h`;
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
