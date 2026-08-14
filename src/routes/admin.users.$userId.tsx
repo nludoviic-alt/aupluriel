@@ -21,7 +21,7 @@ interface AdminUser {
   id: number; email: string; username: string; email_verified: number;
   status: string; is_admin: number; chat_enabled: number;
   admin_note: string | null; created_at: number;
-  has_deriv: number; has_kraken: number; has_binance: number; has_oanda: number;
+  has_deriv: number; has_kraken: number; has_binance: number;
 }
 interface BotStatus {
   userId: number; enabled: boolean; running: boolean; hasToken: boolean;
@@ -666,12 +666,11 @@ function UserProfilePage() {
           )}
 
           {/* Broker Integration Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div className="grid grid-cols-3 gap-3 pt-2">
             {[
               { label: "Deriv", active: profileUser.has_deriv, color: "text-rose-400", border: "border-rose-500/30", bg: "bg-rose-500/10" },
               { label: "Kraken", active: profileUser.has_kraken, color: "text-violet-400", border: "border-violet-500/30", bg: "bg-violet-500/10" },
               { label: "Binance", active: profileUser.has_binance, color: "text-amber-400", border: "border-amber-500/30", bg: "bg-amber-500/10" },
-              { label: "OANDA", active: profileUser.has_oanda, color: "text-emerald-400", border: "border-emerald-500/30", bg: "bg-emerald-500/10" },
             ].map((b) => (
               <div key={b.label} className={cn("flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center backdrop-blur-md", b.border, b.bg)}>
                 <span className={cn("text-[11px] font-black uppercase tracking-wider", b.color)}>{b.label}</span>

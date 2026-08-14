@@ -286,18 +286,6 @@ function Dashboard() {
             />
           );
         })()}
-        {(() => {
-          const b = brokerBalances?.oanda;
-          return (
-            <KpiCard
-              className="hidden sm:flex"
-              label="OANDA"
-              value={b ? b.balance.toFixed(2) : "0.00"}
-              delta={b ? b.currency : "CAD"}
-              tone="oanda"
-            />
-          );
-        })()}
       </div>
 
       {/* ── TRADING KPI CARDS ──
@@ -664,7 +652,7 @@ function BotStatusCard() {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-type Tone = "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "oanda" | "kraken" | "binance";
+type Tone = "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "kraken" | "binance";
 
 const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; dot: string }> = {
   default: { panel: "glass-panel",        value: "text-foreground",               icon: "text-muted-foreground",          dot: "bg-muted-foreground/40" },
@@ -674,7 +662,6 @@ const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; do
   violet:  { panel: "glass-panel-violet", value: "text-white",                     icon: "text-white/60",                   dot: "bg-[color:var(--brand-violet)]" },
   amber:   { panel: "glass-panel-amber",  value: "text-[color:var(--brand-amber)]",icon: "text-[color:var(--brand-amber)]", dot: "bg-[color:var(--brand-amber)]" },
   deriv:   { panel: "bg-red-500/[0.06] border border-red-500/20",       value: "text-foreground", icon: "text-red-400", dot: "bg-red-500" },
-  oanda:   { panel: "bg-emerald-500/[0.06] border border-emerald-500/20", value: "text-foreground", icon: "text-emerald-400", dot: "bg-emerald-500" },
   kraken:  { panel: "bg-violet-500/[0.06] border border-violet-500/20",  value: "text-foreground", icon: "text-violet-400", dot: "bg-violet-500" },
   binance: { panel: "bg-amber-500/[0.06] border border-amber-500/20",    value: "text-foreground", icon: "text-amber-400", dot: "bg-amber-500" },
 };

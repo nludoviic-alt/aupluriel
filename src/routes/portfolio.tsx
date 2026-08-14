@@ -320,9 +320,6 @@ export default function PortfolioPage() {
   const openPnl = positions.reduce((acc, p) => acc + p.profit, 0);
   const totalPnl = todayPnl + openPnl;
 
-  const hasDerivOanda = !!(brokerBalances?.deriv || brokerBalances?.oanda);
-  const derivOandaTotal = (brokerBalances?.deriv?.balance ?? 0) + (brokerBalances?.oanda?.balance ?? 0);
-
   // ── History Filter States ──
   const [historyPresetFilter, setHistoryPresetFilter] = useState<string>("all");
   const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState<"all" | "won" | "lost">("all");
@@ -495,8 +492,8 @@ export default function PortfolioPage() {
       {/* Global KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiBox
-          label={hasDerivOanda ? "Balance Total (Deriv + OANDA)" : `Solde (${currency})`}
-          value={hasDerivOanda ? `$${derivOandaTotal.toFixed(2)}` : balance !== null ? `$${balance.toFixed(2)}` : "—"}
+          label={`Solde (${currency})`}
+          value={balance !== null ? `$${balance.toFixed(2)}` : "—"}
           icon={<Wallet className="h-4 w-4 text-cyan-400" />}
           tone="cyan"
         />

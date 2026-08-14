@@ -442,7 +442,7 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   enableDeriv: true,
   enableKraken: true,
   enableBinance: true,
-  enableOanda: true,
+  enableOanda: false, // retired 2026-08-14 — synthetics-only, OANDA never connects (see OANDA_ENABLED)
   enabled: false,
   mode: "demo",
   stakeUsd: 5,

@@ -92,18 +92,10 @@ function SettingsPage() {
   const [binanceShow, setBinanceShow] = useState(false);
   const [binanceLoading, setBinanceLoading] = useState(false);
 
-  // OANDA
-  const [oandaKey, setOandaKey] = useState("");
-  const [oandaAccountId, setOandaAccountId] = useState("");
-  const [oandaPractice, setOandaPractice] = useState(true);
-  const [oandaShow, setOandaShow] = useState(false);
-  const [oandaLoading, setOandaLoading] = useState(false);
-
   // Broker Toggles
   const [enableDeriv, setEnableDeriv] = useState(true);
   const [enableKraken, setEnableKraken] = useState(true);
   const [enableBinance, setEnableBinance] = useState(true);
-  const [enableOanda, setEnableOanda] = useState(true);
 
   const { confirmState, confirm } = useConfirm();
 
@@ -127,17 +119,13 @@ function SettingsPage() {
       if (s.kraken_api_secret) setKrakenSecret(s.kraken_api_secret as string);
       if (s.binance_api_key) setBinanceKey(s.binance_api_key as string);
       if (s.binance_api_secret) setBinanceSecret(s.binance_api_secret as string);
-      if (s.oanda_api_key) setOandaKey(s.oanda_api_key as string);
-      if (s.oanda_account_id) setOandaAccountId(s.oanda_account_id as string);
-      if (s.oanda_is_practice !== undefined) setOandaPractice(!!s.oanda_is_practice);
-      
+
       if (s.bot_config) {
         try {
           const cfg = typeof s.bot_config === "string" ? JSON.parse(s.bot_config) : s.bot_config;
           if (cfg.enableDeriv !== undefined) setEnableDeriv(cfg.enableDeriv);
           if (cfg.enableKraken !== undefined) setEnableKraken(cfg.enableKraken);
           if (cfg.enableBinance !== undefined) setEnableBinance(cfg.enableBinance);
-          if (cfg.enableOanda !== undefined) setEnableOanda(cfg.enableOanda);
           // maxDailyLossUsd is NOT read from here — see the /api/bot fetch
           // below, which is the value the bot actually runs with.
         } catch { /* ignore */ }
@@ -261,22 +249,6 @@ function SettingsPage() {
     }
   }
 
-  async function saveOanda() {
-    setOandaLoading(true);
-    try {
-      await api.put("/api/settings", {
-        oanda_api_key: oandaKey || null,
-        oanda_account_id: oandaAccountId || null,
-        oanda_is_practice: oandaPractice,
-      });
-      toast.success("Configuration OANDA enregistrée");
-    } catch {
-      toast.error("Échec de l'enregistrement OANDA");
-    } finally {
-      setOandaLoading(false);
-    }
-  }
-
   async function saveTelegramToken() {
     if (!telegramToken) return;
     setTelegramSaving(true);
@@ -290,11 +262,10 @@ function SettingsPage() {
     }
   }
 
-  async function toggleBroker(broker: "enableDeriv" | "enableKraken" | "enableBinance" | "enableOanda", value: boolean) {
+  async function toggleBroker(broker: "enableDeriv" | "enableKraken" | "enableBinance", value: boolean) {
     if (broker === "enableDeriv") setEnableDeriv(value);
     if (broker === "enableKraken") setEnableKraken(value);
     if (broker === "enableBinance") setEnableBinance(value);
-    if (broker === "enableOanda") setEnableOanda(value);
     try {
       await api.put("/api/settings", { [broker]: value });
       toast.success("Statut du broker mis à jour");
@@ -302,7 +273,6 @@ function SettingsPage() {
       if (broker === "enableDeriv") setEnableDeriv(!value);
       if (broker === "enableKraken") setEnableKraken(!value);
       if (broker === "enableBinance") setEnableBinance(!value);
-      if (broker === "enableOanda") setEnableOanda(!value);
       toast.error("Échec de la mise à jour du broker");
     }
   }
@@ -329,13 +299,9 @@ function SettingsPage() {
         kraken_api_secret: krakenSecret || null,
         binance_api_key: binanceKey || null,
         binance_api_secret: binanceSecret || null,
-        oanda_api_key: oandaKey || null,
-        oanda_account_id: oandaAccountId || null,
-        oanda_is_practice: oandaPractice,
         enableDeriv,
         enableKraken,
         enableBinance,
-        enableOanda,
         auto_backtest_enabled: autoBacktestEnabled,
       });
 
@@ -468,7 +434,7 @@ function SettingsPage() {
         <div className="mt-8 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-white/5 pt-6">
           {[
             { id: "all", label: "Toutes les cartes", icon: Layers },
-            { id: "brokers", label: "Connecteurs Brokers", icon: KeyRound, badge: "4" },
+            { id: "brokers", label: "Connecteurs Brokers", icon: KeyRound, badge: "3" },
             { id: "risk", label: "Gestion du Risque", icon: ShieldAlert },
             { id: "automation", label: "Automatisation", icon: Cpu },
             { id: "notifications", label: "Notifications", icon: Bell },
@@ -765,104 +731,6 @@ function SettingsPage() {
                   <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-300 font-mono flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-yellow-400" />
                     Clefs Binance sauvegardées avec succès
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* OANDA CARD */}
-            <div className={cn(
-              "relative rounded-2xl border transition-all duration-300 p-6 space-y-5 backdrop-blur-md",
-              enableOanda ? "border-emerald-500/30 bg-neutral-900/80 shadow-[0_0_25px_rgba(16,185,129,0.05)]" : "border-white/10 bg-neutral-950/40 opacity-75"
-            )}>
-              <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <KeyRound className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-white">OANDA API</h3>
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        Forex Regulated
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-400 mt-0.5">Forex Spot régulé IIROC / Canada. Practice ou Live.</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-neutral-400">Actif</span>
-                  <Switch checked={enableOanda} onCheckedChange={(v) => toggleBroker("enableOanda", v)} />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">Clé API OANDA</label>
-                  <input
-                    type={oandaShow ? "text" : "password"}
-                    value={oandaKey}
-                    onChange={(e) => setOandaKey(e.target.value)}
-                    placeholder="ex: o1a2b3c4..."
-                    className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs md:text-sm font-mono text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">ID de Compte OANDA</label>
-                  <div className="relative">
-                    <input
-                      type={oandaShow ? "text" : "password"}
-                      value={oandaAccountId}
-                      onChange={(e) => setOandaAccountId(e.target.value)}
-                      placeholder="ex: 001-001-123456-001"
-                      className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 pr-10 text-xs md:text-sm font-mono text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setOandaShow((s) => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
-                    >
-                      {oandaShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-300">Environnement OANDA</label>
-                  <div className="flex bg-black/50 p-1.5 rounded-xl border border-white/10 gap-2">
-                    {[true, false].map((isPractice) => (
-                      <button
-                        key={String(isPractice)}
-                        onClick={() => setOandaPractice(isPractice)}
-                        className={cn(
-                          "flex-1 py-1.5 text-xs uppercase tracking-wider font-bold rounded-lg transition-all text-center",
-                          oandaPractice === isPractice
-                            ? isPractice
-                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                              : "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : "text-neutral-400 hover:text-white border border-transparent"
-                        )}
-                      >
-                        {isPractice ? "Practice (Démo)" : "Live (Réel)"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <Button
-                  onClick={saveOanda}
-                  disabled={oandaLoading || (!oandaKey && !oandaAccountId)}
-                  className="w-full bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 font-bold h-10 text-xs rounded-xl shadow-md transition-all"
-                >
-                  {oandaLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  Enregistrer OANDA
-                </Button>
-
-                {oandaKey && (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300 font-mono flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    Configuration OANDA sauvegardée ({oandaPractice ? "Practice" : "Live"})
                   </div>
                 )}
               </div>

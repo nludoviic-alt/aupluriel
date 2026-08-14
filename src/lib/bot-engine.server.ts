@@ -199,6 +199,13 @@ export function isCooldownAlreadyServedAfterRestart(
 ): lastClosed is { id: string; time: number } {
   return !!lastClosed && !!servedPause && servedPause.time >= lastClosed.time;
 }
+/** OANDA support is retired (2026-08-14) — synthetics-only going forward.
+ * A single switch rather than ripping out every `this.oandaConn` reference:
+ * the engine already treats OANDA as an optional fallback everywhere
+ * (`if (this.oandaConn) {...}`), so never constructing a connection is
+ * enough to fully disable it without touching that internal plumbing. */
+const OANDA_ENABLED = false;
+
 /** Gold strategies may never opt out of the macro-news safety block. */
 function isGoldPreset(preset: Preset): boolean {
   return (
@@ -248,8 +255,13 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** All supported system presets eligible for user activation across Auto-Trader, Piste, Portfolio and Opportunities. */
-export const ACTIVE_PRESETS: readonly Preset[] = [...ALL_PRESETS];
+/** All supported system presets eligible for user activation across Auto-Trader, Piste, Portfolio and Opportunities.
+ * The gold-family presets (gold/goldv2/liquidity/liquidityv2) are retired
+ * (2026-08-14): they required OANDA, and the account is synthetics-only
+ * going forward. Excluding them here is the existing retirement mechanism —
+ * restoreBots() force-disables any already-enabled row for a preset no
+ * longer in this list, and startBotForUser() rejects starting one. */
+export const ACTIVE_PRESETS: readonly Preset[] = ALL_PRESETS.filter((p) => !isGoldPreset(p));
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
@@ -4462,7 +4474,7 @@ export async function getBrokerBalances(userId: number): Promise<{
           .getBalance()
           .catch(() => null)
       : null,
-    enableOanda && settings.oanda_api_key && settings.oanda_account_id
+    OANDA_ENABLED && enableOanda && settings.oanda_api_key && settings.oanda_account_id
       ? new OandaTradingConnection(
           settings.oanda_api_key,
           settings.oanda_account_id,
@@ -4546,9 +4558,14 @@ export async function startBotForUser(
     );
   }
 
-  // OANDA connection (forex spot — for users in Canada)
+  // OANDA connection — retired, see OANDA_ENABLED.
   let oandaConn: OandaTradingConnection | null = null;
-  if (settings?.oanda_api_key && settings?.oanda_account_id && (config.enableOanda ?? true)) {
+  if (
+    OANDA_ENABLED &&
+    settings?.oanda_api_key &&
+    settings?.oanda_account_id &&
+    (config.enableOanda ?? true)
+  ) {
     oandaConn = new OandaTradingConnection(
       settings.oanda_api_key,
       settings.oanda_account_id,

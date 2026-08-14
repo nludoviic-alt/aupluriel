@@ -48,7 +48,6 @@ interface AdminUser {
   has_deriv: number;
   has_kraken: number;
   has_binance: number;
-  has_oanda: number;
 }
 
 interface BotStatus {
@@ -1194,7 +1193,6 @@ function AdminPage() {
                           <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
                           <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
                           <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
-                          <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-semibold">
@@ -1308,7 +1306,6 @@ function AdminPage() {
                       <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
                       <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
                       <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
-                      <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
                     </div>
                   </div>
 
