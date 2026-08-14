@@ -1,6 +1,6 @@
 import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
-import { getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
+import { ACTIVE_PRESETS, getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
 import { fetchCandlesServer, fetchRecentTicksServer } from "./deriv.server";
@@ -99,7 +99,12 @@ export interface OpportunitiesResponse {
 // TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
 // résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
 // actuelle est structurellement différente.
-const PRESETS: Preset[] = ["boom", "vol75", "rb100", "crash", "crash500", "default", "liquidity", "gold", "goldv2"];
+// liquidity/gold/goldv2 dropped 2026-08-14 (archive/oanda-gold-2026-08-14) —
+// they're retired (ACTIVE_PRESETS gate) and can never start, so scanning
+// them would surface an opportunity card the user can never act on.
+const PRESETS: Preset[] = (
+  ["boom", "vol75", "rb100", "crash", "crash500", "default", "liquidity", "gold", "goldv2"] as const
+).filter((p) => ACTIVE_PRESETS.includes(p));
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
   boom: "Boom500",

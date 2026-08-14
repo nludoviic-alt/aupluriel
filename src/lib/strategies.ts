@@ -9,7 +9,12 @@ export interface Strategy {
   id: string;
   name: string;
   pair: string;
-  targetPreset?: "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900";
+  // liquidity/gold retired 2026-08-14 (archive/oanda-gold-2026-08-14) — kept
+  // out of the type since new custom strategies can no longer target them; a
+  // pre-existing saved strategy with one of those values still loads fine
+  // (this is a display/creation-time type, not a runtime guard) and simply
+  // fails with the standard "preset disabled" error if applied.
+  targetPreset?: "default" | "boom" | "boom900" | "crash" | "scalping" | "crash900";
   indicator: "RSI" | "MACD" | "EMA_CROSS" | "BB";
   buyThreshold: number;
   sellThreshold: number;

@@ -13,7 +13,9 @@ export const Route = createFileRoute("/piste")({
   component: PistePage,
 });
 
-type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — see
+// archive/oanda-gold-2026-08-14/README.md.
+type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "crash900" | "boomv2" | "scalpingv2";
 
 type BotStatus = {
   enabled: boolean;
@@ -27,7 +29,7 @@ type BotStatus = {
 interface Track {
   key: PresetKey;
   name: string;
-  category: "boom" | "crash" | "synthetic" | "gold" | "multi";
+  category: "boom" | "crash" | "synthetic" | "multi";
   market: string;
   badge: string;
   thesis: string;
@@ -51,10 +53,6 @@ const TRACKS: Track[] = [
   { key: "scalping", name: "Scalping BOOM", category: "boom", market: "BOOM500", badge: "🎯 Scalping", thesis: "Micro-scalping price-action M1/M5 à rotation rapide.", engine: "Scalping Engine", validation: "Démo · Rotation M1/M5.", color: "text-cyan-400", borderColor: "border-cyan-500/30", bgTone: "bg-cyan-500/10" },
   { key: "scalpingv2", name: "Scalping V2", category: "boom", market: "BOOM500", badge: "🎯 Scalping V2", thesis: "Scalping V2 combiné au Spike Hunter.", engine: "Scalping V2 Hunter", validation: "Démo · Chasseur de Spikes.", color: "text-cyan-300", borderColor: "border-cyan-500/30", bgTone: "bg-cyan-500/10" },
   { key: "default", name: "Multi-Marchés", category: "multi", market: "Forex · Métaux · Crypto", badge: "📊 Multi", thesis: "Panier diversifié sur Forex Majors, XAU/USD et BTC/USD.", engine: "Multi-Asset Core", validation: "Paramètres gelés jusqu'à 50 clôtures.", color: "text-amber-400", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
-  { key: "liquidity", name: "Gold Liquidity Sweep", category: "gold", market: "XAU/USD", badge: "🥇 Liquidity Sweep", thesis: "Sweep de liquidité de session et réintégration M15.", engine: "OANDA Liquidity Engine", validation: "Démo OANDA XAU/USD.", color: "text-fuchsia-300", borderColor: "border-fuchsia-500/30", bgTone: "bg-fuchsia-500/10" },
-  { key: "liquidityv2", name: "Liquidity V2", category: "gold", market: "XAU/USD", badge: "💧 Liquidity V2", thesis: "Sweep de liquidité V2 sur les sommets/creux asiatiques.", engine: "Liquidity V2 Asian Sweep", validation: "Démo XAU/USD.", color: "text-fuchsia-300", borderColor: "border-fuchsia-500/30", bgTone: "bg-fuchsia-500/10" },
-  { key: "gold", name: "Gold Trend Pullback", category: "gold", market: "XAU/USD", badge: "🥇 Trend Pullback", thesis: "Suivi de tendance Or avec entrée sur repli EMA20/EMA50.", engine: "OANDA Trend Engine", validation: "Démo OANDA XAU/USD.", color: "text-lime-300", borderColor: "border-lime-500/30", bgTone: "bg-lime-500/10" },
-  { key: "goldv2", name: "Gold Breakout", category: "gold", market: "XAU/USD", badge: "🥇 Gold Breakout", thesis: "Cassure de range de session Or avec retest de zone.", engine: "OANDA Breakout Engine", validation: "Démo OANDA XAU/USD.", color: "text-amber-300", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
 ];
 
 function metric(value: number | undefined, fallback = "—") {
@@ -256,15 +254,6 @@ function PistePage() {
             )}
           >
             Crash
-          </button>
-          <button
-            onClick={() => setCategoryFilter("gold")}
-            className={cn(
-              "rounded-lg px-3 py-1.5 font-bold transition-all cursor-pointer",
-              categoryFilter === "gold" ? "bg-lime-500/20 text-lime-300 border border-lime-500/40" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-            )}
-          >
-            Or (XAU)
           </button>
           <button
             onClick={() => setCategoryFilter("multi")}

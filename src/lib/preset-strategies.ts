@@ -10,7 +10,7 @@ export interface PresetStrategyDef {
   id: string;
   name: string;
   category: "Multi" | "Boom" | "Crash" | "Scalping" | "Best Day";
-  targetPreset: "default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+  targetPreset: "default" | "boom" | "boom900" | "crash" | "scalping" | "crash900" | "boomv2" | "scalpingv2";
   targetMarkets: string;
   tagline: string;
   badge: string;
@@ -113,42 +113,12 @@ export const OFFICIAL_PRESET_STRATEGIES: PresetStrategyDef[] = [
       symbols: ["frxXAUUSD", "cryBTCUSD"],
     },
   },
-  {
-    id: "smc-liquidity-avg",
-    name: "SMC — Liquidité Externe & AVG 50-60%",
-    category: "Multi",
-    targetPreset: "liquidity",
-    targetMarkets: "Gold (XAU/USD) · Bitcoin (BTC) · EUR/USD",
-    tagline: "Biais institutionnel H1 sur zone d'équilibre 50-60% (OTE/AVG). Entrée M5/M15 dans le FVG interne avec TP sur la liquidité externe.",
-    badge: "Institutionnel SMC",
-    riskProfile: "Équilibré",
-    color: "from-purple-500/20 via-violet-500/10 to-transparent",
-    borderGlow: "border-purple-500/30",
-    // OTC_GDAXI retiré : déjà identifié comme le pire symbole de l'audit VPS
-    // 2026-08-05 (-$77.54) et responsable direct de la perte Multi du
-    // 2026-08-04. BOOM1000 retiré : synthétique sans edge structurelle
-    // documentée, et sous breakeven ici (38.5% sur 13 trades) — c'était lui
-    // qui gonflait artificiellement l'agrégat.
-    verifiedNote: "Backtest réel (moteur retournement de liquidité, 300 bougies M15) : l'agrégat à 5 symboles dépassait le seuil de rentabilité (57.1%), mais porté par 2 échantillons minuscules à 100% (4 trades chacun sur XAU et EUR/USD) pendant que BOOM1000 (38.5%/13) et OTC_GDAXI — déjà signalé ailleurs comme le pire symbole de l'audit prod — tiraient vers le bas. Retirés ici ; à retester sur un plus grand échantillon avant de faire confiance au chiffre.",
-    params: {
-      minConfidence: 78,
-      maxConfidence: 95,
-      minTfAgreement: 3,
-      durationMinutes: 15,
-      stakeUsd: 5,
-      maxDailyLossUsd: 20,
-      symbolsCount: 3,
-    },
-    configOverride: {
-      minConfidence: 78,
-      maxConfidence: 95,
-      minTfAgreement: 3,
-      durationMinutes: 15,
-      stakeUsd: 5,
-      maxDailyLossUsd: 20,
-      symbols: ["frxXAUUSD", "cryBTCUSD", "frxEURUSD"],
-    },
-  },
+  // "smc-liquidity-avg" archivé le 2026-08-14 : targetPreset "liquidity" est
+  // retiré (OANDA retiré, synthétiques uniquement — voir
+  // archive/oanda-gold-2026-08-14/README.md, où la définition complète est
+  // conservée pour réutilisation si le preset liquidity est un jour
+  // réactivé). L'appliquer échouerait désormais au démarrage du bot
+  // ("Ce preset est désactivé").
   // "multi-balanced" retiré le 2026-08-06 : backtest réel (150 bougies M15)
   // sur sa config d'origine → 22 trades, 45.5% WR, -8.6pp sous breakeven
   // (DÉFAVORABLE). Sa liste de symboles incluait OTC_SPC et OTC_GDAXI — les

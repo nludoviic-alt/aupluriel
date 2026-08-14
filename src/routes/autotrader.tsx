@@ -58,12 +58,8 @@ import {
   BOOM900_PRESET,
   CRASH_PRESET,
   CRASH500_PRESET,
-  LIQUIDITY_PRESET,
-  LIQUIDITY_V2_PRESET,
   SCALPING_PRESET,
   SCALPING_V2_PRESET,
-  GOLD_PRESET,
-  GOLD_V2_PRESET,
   BOOM_V2_PRESET,
   CRASH900_V2_PRESET,
   VOL75_PRESET,
@@ -120,6 +116,10 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
+// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — OANDA-only presets,
+// synthetics-only going forward. See archive/oanda-gold-2026-08-14/README.md
+// to reinstate: their canonical config objects are still exported from
+// src/lib/autotrader.ts, just no longer wired into this picker.
 type PresetKey =
   | "default"
   | "boom"
@@ -130,13 +130,9 @@ type PresetKey =
   | "crash"
   | "crash500"
   | "scalping"
-  | "liquidity"
-  | "gold"
   | "crash900"
   | "boomv2"
-  | "scalpingv2"
-  | "liquidityv2"
-  | "goldv2";
+  | "scalpingv2";
 
 const presetLabels: Record<PresetKey, string> = {
   default: "Multi",
@@ -148,13 +144,9 @@ const presetLabels: Record<PresetKey, string> = {
   crash: "Crash900",
   crash500: "Crash500",
   scalping: "Scalping",
-  liquidity: "GOLD LIQUIDITY SWEEP",
-  gold: "GOLD TREND PULLBACK",
   crash900: "Crash900 V2",
   boomv2: "Boom V2",
   scalpingv2: "Scalping V2",
-  liquidityv2: "Liquidity V2",
-  goldv2: "GOLD BREAKOUT",
 };
 
 // These are presentation labels only. The actual instruments and execution
@@ -192,17 +184,9 @@ const PRESET_PRESENTATION: Record<
     experimental: true,
   },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
-  liquidity: { market: "Or (XAU/USD)", description: "GOLD LIQUIDITY SWEEP", experimental: true },
-  gold: { market: "Or (XAU/USD)", description: "GOLD TREND PULLBACK", experimental: true },
   crash900: { market: "CRASH900", description: "Joker · optimisé data", experimental: true },
   boomv2: { market: "BOOM500", description: "Démo · exposition contrôlée", experimental: true },
   scalpingv2: { market: "BOOM500", description: "M1/M5 · Spike Hunter", experimental: true },
-  liquidityv2: {
-    market: "Or (XAU/USD)",
-    description: "M15 · sweep/réintégration",
-    experimental: true,
-  },
-  goldv2: { market: "Or (XAU/USD)", description: "GOLD BREAKOUT", experimental: true },
 };
 
 const PRESET_META_MAP: Record<
@@ -272,20 +256,6 @@ const PRESET_META_MAP: Record<
     borderColor: "border-cyan-500/30",
     bgTone: "bg-cyan-500/10",
   },
-  liquidity: {
-    label: "Gold Liquidity Sweep",
-    badge: "🥇 Liquidity Sweep",
-    color: "text-fuchsia-300",
-    borderColor: "border-fuchsia-500/30",
-    bgTone: "bg-fuchsia-500/10",
-  },
-  gold: {
-    label: "Gold Trend Pullback",
-    badge: "🥇 Trend Pullback",
-    color: "text-lime-300",
-    borderColor: "border-lime-500/30",
-    bgTone: "bg-lime-500/10",
-  },
   crash900: {
     label: "Crash900 V2",
     badge: "📉 Crash900 V2",
@@ -306,20 +276,6 @@ const PRESET_META_MAP: Record<
     color: "text-cyan-300",
     borderColor: "border-cyan-500/30",
     bgTone: "bg-cyan-500/10",
-  },
-  liquidityv2: {
-    label: "Liquidity V2",
-    badge: "💧 Liquidity V2",
-    color: "text-fuchsia-300",
-    borderColor: "border-fuchsia-500/30",
-    bgTone: "bg-fuchsia-500/10",
-  },
-  goldv2: {
-    label: "Gold Breakout",
-    badge: "🥇 Gold Breakout",
-    color: "text-amber-300",
-    borderColor: "border-amber-500/30",
-    bgTone: "bg-amber-500/10",
   },
 };
 
@@ -343,13 +299,9 @@ const PRESET_ORDER = [
   "crash",
   "crash500",
   "scalping",
-  "liquidity",
-  "gold",
   "crash900",
   "boomv2",
   "scalpingv2",
-  "liquidityv2",
-  "goldv2",
 ] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
@@ -655,18 +607,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     crash: false,
     crash500: false,
     scalping: false,
-    liquidity: false,
-    gold: false,
     crash900: false,
     boomv2: false,
     scalpingv2: false,
-    liquidityv2: false,
-    goldv2: false,
   });
 
   // The visible-preset list is an account-level display choice. Stopped
-  // presets stay selectable so a newly added strategy (notably Gold V2 and
-  // Liquidity V2) can be reviewed and started for its first demo run.
+  // presets stay selectable so a newly added strategy can be reviewed and
+  // started for its first demo run.
   const shownPresets: PresetKey[] = cloud
     ? // A valid incoming opportunity must never be silently redirected to
       // Default just because its preset is hidden in the compact mobile strip.
@@ -1258,17 +1206,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                         ? SCALPING_PRESET
                         : target === "scalpingv2"
                           ? SCALPING_V2_PRESET
-                          : target === "liquidity"
-                            ? LIQUIDITY_PRESET
-                            : target === "liquidityv2"
-                              ? LIQUIDITY_V2_PRESET
-                              : target === "gold"
-                                ? GOLD_PRESET
-                                : target === "goldv2"
-                                  ? GOLD_V2_PRESET
-                                  : target === "crash900"
-                                    ? CRASH900_V2_PRESET
-                                    : DEFAULT_CONFIG;
+                          : target === "crash900"
+                            ? CRASH900_V2_PRESET
+                            : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
@@ -1281,8 +1221,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           target === "vol50" ||
           target === "crash500" ||
           target === "scalping" ||
-          target === "liquidity" ||
-          target === "gold" ||
           target.endsWith("v2")
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {

@@ -4,7 +4,9 @@ import { SYMBOLS, normalizeContractDirection, type OpenPosition } from "@/lib/de
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
 
-type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2";
+// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — see
+// archive/oanda-gold-2026-08-14/README.md.
+type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "crash900" | "boomv2" | "scalpingv2";
 
 export function TradeJournalSection({
   journalTrades,
