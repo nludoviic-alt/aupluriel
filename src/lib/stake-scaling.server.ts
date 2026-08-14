@@ -194,7 +194,14 @@ export function assertStakeScalingApproved(
   if (!requestedTier && !percentChanged) return;
   if (!requestedTier)
     throw new Error("PERCENT_STAKE_REQUIRES_APPROVED_TIER: un palier explicite est requis.");
-  if (!approvedTier || requestedTier > approvedTier) {
+  // Restoring or lowering an already-saved stake is not a tier upgrade
+  // request — approval only gates a genuine increase above what's already
+  // active. Without this, every restart/health-repair of a bot whose saved
+  // stake sits at $25+ would relitigate a tier that was never actually
+  // changing, with no way to grandfather pre-existing configs.
+  const currentTier = requiredTier(currentConfig.stakeUsd);
+  const isTierIncrease = currentTier === null || requestedTier > currentTier;
+  if (isTierIncrease && (!approvedTier || requestedTier > approvedTier)) {
     throw new Error(
       `Palier $${requestedTier} non activé pour ${preset}. Une validation de performance et de sécurité est requise avant toute hausse de mise.`,
     );

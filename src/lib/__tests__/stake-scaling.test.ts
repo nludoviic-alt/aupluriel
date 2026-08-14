@@ -5,8 +5,10 @@ import {
   describeStakeScaling,
   evaluateStakeScalingReadiness,
   getStakeScalingPolicy,
+  scalingConfigFingerprint,
   STAKE_SCALING_TIERS,
 } from "../stake-scaling.server";
+import { getDb } from "../db.server";
 
 function finalStake(requested: number, strategy: number, risk: number, broker: number) {
   return Math.min(requested, strategy, risk, broker);
@@ -88,4 +90,91 @@ test("a percent-mode change requires an existing approved tier", () => {
       ),
     /PERCENT_STAKE_REQUIRES_APPROVED_TIER/,
   );
+});
+
+test("TEST A: restoring an identical $25 stake with no approval on file starts", () => {
+  const config = { stakeUsd: 25, stakeMode: "fixed", stakePercent: 1 } as any;
+  assert.doesNotThrow(() =>
+    assertStakeScalingApproved(987656, "crash", config, config, {
+      strategyVersion: "V1",
+      riskVersion: "R4",
+      executionVersion: "E3",
+    }),
+  );
+});
+
+test("TEST B: requesting $50 with no approval on file is blocked", () => {
+  const current = { stakeUsd: 25, stakeMode: "fixed", stakePercent: 1 } as any;
+  assert.throws(
+    () =>
+      assertStakeScalingApproved(
+        987657,
+        "crash",
+        current,
+        { ...current, stakeUsd: 50 },
+        { strategyVersion: "V1", riskVersion: "R4", executionVersion: "E3" },
+      ),
+    /Palier \$50 non activé/,
+  );
+});
+
+test("TEST C: requesting $50 with a matching $50 approval on file starts", () => {
+  const db = getDb();
+  const current = { stakeUsd: 25, stakeMode: "fixed", stakePercent: 1 } as any;
+  const next = { ...current, stakeUsd: 50 };
+  const versions = { strategyVersion: "V1", riskVersion: "R4", executionVersion: "E3" };
+  db.prepare(
+    "INSERT INTO users (email, username, password_hash, status) VALUES (?, ?, 'x', 'approved')",
+  ).run("test-stake-tier-c@example.invalid", "test-stake-tier-c");
+  const { id: userId } = db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get("test-stake-tier-c@example.invalid") as { id: number };
+  try {
+    db.prepare(
+      `INSERT INTO stake_scaling_approvals
+         (user_id, preset, approved_tier, config_hash, evidence_json, approved_at, strategy_version, risk_version, execution_version)
+       VALUES (?, 'crash', 50, ?, '{}', unixepoch(), ?, ?, ?)`,
+    ).run(
+      userId,
+      scalingConfigFingerprint(current),
+      versions.strategyVersion,
+      versions.riskVersion,
+      versions.executionVersion,
+    );
+    assert.doesNotThrow(() =>
+      assertStakeScalingApproved(userId, "crash", current, next, versions),
+    );
+  } finally {
+    db.prepare("DELETE FROM stake_scaling_approvals WHERE user_id = ?").run(userId);
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+  }
+});
+
+test("TEST D: dropping from $50 to $25 with no approval on file starts (downgrade)", () => {
+  const current = { stakeUsd: 50, stakeMode: "fixed", stakePercent: 1 } as any;
+  assert.doesNotThrow(() =>
+    assertStakeScalingApproved(
+      987658,
+      "crash",
+      current,
+      { ...current, stakeUsd: 25 },
+      { strategyVersion: "V1", riskVersion: "R4", executionVersion: "E3" },
+    ),
+  );
+});
+
+test("TEST E/F: a full restore cycle (5 presets at their saved stake) never requires approval", () => {
+  const presets = ["crash", "crash500", "vol50", "vol75", "boom"] as const;
+  for (const preset of presets) {
+    const saved = { stakeUsd: 25, stakeMode: "fixed", stakePercent: 1 } as any;
+    assert.doesNotThrow(
+      () =>
+        assertStakeScalingApproved(987659, preset, saved, saved, {
+          strategyVersion: "V1",
+          riskVersion: "R4",
+          executionVersion: "E3",
+        }),
+      `restoring ${preset} at its saved $25 stake must not require approval`,
+    );
+  }
 });
