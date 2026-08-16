@@ -57,10 +57,13 @@ export const FEATURE_FLAGS: FeatureFlags = {
   CONFIG_REGISTRY_ENABLED: true,
   CHANGE_IMPACT_TRACKER_ENABLED: true,
   // --- R5: Loss Streak Circuit Breaker ---
-  // FALSE = old permanent-latch behavior (risk_version stays "R4").
-  // Flip to TRUE only after the backfill script has been run and verified
-  // against the currently-latched (user, strategy) pairs.
-  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: false,
+  // TRUE = new NORMAL/PAUSED/RECOVERY breaker (risk_version becomes "R5").
+  // Backfill run and verified 2026-08-16 against production: CRASH_ENGINE
+  // (Ludovic/Juluo/Stella) and VOL75_1S_TREND_PULLBACK (Ludovic/Juluo) all
+  // initialized into RECOVERY from their real last-loss timestamps. Set
+  // back to false for an instant rollback to the old permanent-latch
+  // behavior without touching the DB.
+  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: true,
 };
 
 export function getFeatureFlags(): FeatureFlags {
