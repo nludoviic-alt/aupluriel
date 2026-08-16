@@ -419,6 +419,15 @@ interface PresetStatus {
     mae: number;
     mfe: number;
   };
+  /** R5 loss-streak circuit breaker — one entry per strategy this preset
+   * has ever tagged in bot_trades (a preset can have more than one). */
+  lossStreakState?: Array<{
+    strategy: string;
+    state: "NORMAL" | "PAUSED" | "RECOVERY";
+    lossStreakCount: number;
+    resumeAt: number | null;
+    recoveryTradesUsed: number;
+  }>;
 }
 
 interface CloudStatus {
@@ -3968,6 +3977,19 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                             ? ` · reprise ${new Date(state.expectedReleaseAt).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}`
                             : ""}
                         </p>
+                        {state.lossStreakState
+                          ?.filter((s) => s.state !== "NORMAL")
+                          .map((s) => (
+                            <p key={s.strategy} className="mt-1 text-[10px] text-muted-foreground">
+                              Loss Streak [{s.strategy}]: {s.state} ({s.lossStreakCount} pertes)
+                              {s.state === "PAUSED" && s.resumeAt
+                                ? ` · reprise ${new Date(s.resumeAt).toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}`
+                                : ""}
+                              {s.state === "RECOVERY"
+                                ? ` · 1 trade probe (mise réduite 50%)${s.recoveryTradesUsed >= 1 ? " · en attente du résultat" : ""}`
+                                : ""}
+                            </p>
+                          ))}
                         {state.funnelToday && (
                           <p className="mt-1 text-[10px] text-muted-foreground">
                             Funnel global preset: {state.funnelToday.scans} scans ·{" "}

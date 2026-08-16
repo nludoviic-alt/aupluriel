@@ -2,6 +2,7 @@ import { getDb } from "./db.server";
 import type { Preset } from "./bot-engine.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { getStrategyRiskMultiplier } from "./performance-drift.server";
+import { evaluateLossStreakGate } from "./loss-streak-circuit-breaker.server";
 
 // ── Types & Contracts ────────────────────────────────────────────────────────
 
@@ -281,7 +282,14 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     };
   }
 
-  // 3. Check Consecutive Loss Streak (per strategy)
+  // 3. Check Consecutive Loss Streak (per strategy). `streak` below always
+  // reflects the raw, unconditional recompute from bot_trades — it feeds
+  // the unrelated "2 consecutive losses -> half risk" soft reduction at
+  // step 8 regardless of which reject/allow path runs. The actual
+  // reject/allow decision at 3+ losses is delegated to the R5 circuit
+  // breaker (see loss-streak-circuit-breaker.server.ts) when the feature
+  // flag is on; the original permanent-latch behavior stays available
+  // verbatim behind the flag for instant rollback.
   const recentTrades = input.strategyId
     ? db.prepare(`
         SELECT status FROM bot_trades
@@ -300,7 +308,26 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     else break;
   }
 
-  if (streak >= RISK_CONFIG.MAX_CONSECUTIVE_LOSSES) {
+  let recoveryStakeMultiplier = 1.0;
+
+  if (FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED && input.strategyId) {
+    const gate = evaluateLossStreakGate(input.userId, input.strategyId);
+    if (!gate.allow) {
+      logRejection(input, "RISK_LOSS_STREAK", gate.explanation ?? `Circuit breaker actif — stratégie ${input.strategyId}`, fingerprint);
+      return {
+        decision: "REJECTED",
+        riskPercent: 0,
+        stakeUsd: 0,
+        reason: "RISK_LOSS_STREAK",
+        explanation: gate.explanation,
+        fingerprint,
+        strategyStatus: gate.strategyStatus,
+      };
+    }
+    recoveryStakeMultiplier = gate.stakeMultiplier;
+  } else if (streak >= RISK_CONFIG.MAX_CONSECUTIVE_LOSSES) {
+    // Old permanent-latch behavior — unchanged, verbatim, for instant
+    // rollback via the feature flag without touching the DB.
     logRejection(input, "RISK_LOSS_STREAK", `${streak} pertes consécutives — Pause de la stratégie ${input.strategyId}`, fingerprint);
     return {
       decision: "REJECTED",
@@ -429,8 +456,9 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
     baseRiskPct = baseRiskPct / 2;
   }
 
-  // Apply Strategy Metrics multiplier & Performance Drift multiplier
-  baseRiskPct = baseRiskPct * metrics.stakeMultiplier * driftMultiplier;
+  // Apply Strategy Metrics multiplier & Performance Drift multiplier & R5
+  // loss-streak RECOVERY multiplier (1.0 outside RECOVERY / flag off).
+  baseRiskPct = baseRiskPct * metrics.stakeMultiplier * driftMultiplier * recoveryStakeMultiplier;
 
   const finalRiskPct = Math.min(RISK_CONFIG.MAX_RISK_PER_TRADE_PCT, Math.max(0.05, baseRiskPct));
 
