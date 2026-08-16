@@ -11,6 +11,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { getDb } from "@/lib/db.server";
 import { getPresetRiskMetrics } from "@/lib/risk-manager.server";
+import { getLossStreakStatesForPreset } from "@/lib/loss-streak-circuit-breaker.server";
 import { getFunnelStats } from "@/lib/signal-funnel.server";
 import { getFeatureFlags } from "@/lib/feature-flags.server";
 import { getHourlyPerformanceHeatmap } from "@/lib/hourly-performance.server";
@@ -217,6 +218,7 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
     openTrades: getOpenBotTrades(userId, preset),
     allTimeStats: allTime,
     riskMetrics: getPresetRiskMetrics(userId, preset),
+    lossStreakState: getLossStreakStatesForPreset(userId, preset),
     funnelStats: getFunnelStats(preset),
     featureFlags: shared.featureFlags,
     hourlyPerformance: getHourlyPerformanceHeatmap(preset),

@@ -90,6 +90,8 @@ import {
 import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { logSafetyAlert } from "./r4-e2-audit.server";
+import { currentRiskVersion } from "./risk-version.server";
+import { recordTradeOutcome } from "./loss-streak-circuit-breaker.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
 import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import { executionMonitor } from "./execution-quality-monitor.server";
@@ -667,7 +669,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       note: log.note ?? null,
       strategy: log.strategy ?? null,
       strategy_version: strategyVersion,
-      risk_version: log.riskVersion ?? "R4",
+      risk_version: log.riskVersion ?? currentRiskVersion(),
       execution_version: log.executionVersion ?? "E3",
       config_hash: log.configHash ?? null,
       requested_stake: log.requestedStake ?? null,
@@ -1211,6 +1213,14 @@ class ServerBotEngine {
     else this.logs.unshift(log);
     if (this.logs.length > 60) this.logs.length = 60;
     upsertTrade(this.userId, this.preset, log, this.config.mode === "live" ? "live" : "demo");
+    if (
+      FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED &&
+      (log.status === "won" || log.status === "lost") &&
+      prevStatus !== "won" && prevStatus !== "lost" &&
+      log.strategy
+    ) {
+      recordTradeOutcome(this.userId, log.strategy, log.status);
+    }
     this.notify(log, prevStatus);
     this.finalizeIfIdle();
   }
@@ -3226,7 +3236,7 @@ class ServerBotEngine {
             ...riskObservation,
             COHORT: {
               strategy_version: currentStrategyVersion,
-              risk_version: "R4",
+              risk_version: currentRiskVersion(),
               execution_version: "E3",
               config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
             },
@@ -3296,7 +3306,7 @@ class ServerBotEngine {
               ...riskObservation,
               COHORT: {
                 strategy_version: currentStrategyVersion,
-                risk_version: "R4",
+                risk_version: currentRiskVersion(),
                 execution_version: "E3",
                 config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
               },
@@ -3951,7 +3961,7 @@ class ServerBotEngine {
         note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
         strategy: strategyId,
         strategyVersion: currentStrategyVersion,
-        riskVersion: "R4",
+        riskVersion: currentRiskVersion(),
         executionVersion: "E3",
         configHash,
         requestedStake,
@@ -3977,7 +3987,7 @@ class ServerBotEngine {
           ...riskObservation,
           COHORT: {
             strategy_version: currentStrategyVersion,
-            risk_version: "R4",
+            risk_version: currentRiskVersion(),
             execution_version: "E3",
             config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
           },

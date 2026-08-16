@@ -28,6 +28,8 @@ export interface FeatureFlags {
   RESTART_RECOVERY_ENABLED: boolean;
   CONFIG_REGISTRY_ENABLED: boolean;
   CHANGE_IMPACT_TRACKER_ENABLED: boolean;
+  // --- R5: Loss Streak Circuit Breaker ---
+  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: boolean;
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
@@ -54,6 +56,11 @@ export const FEATURE_FLAGS: FeatureFlags = {
   RESTART_RECOVERY_ENABLED: true,
   CONFIG_REGISTRY_ENABLED: true,
   CHANGE_IMPACT_TRACKER_ENABLED: true,
+  // --- R5: Loss Streak Circuit Breaker ---
+  // FALSE = old permanent-latch behavior (risk_version stays "R4").
+  // Flip to TRUE only after the backfill script has been run and verified
+  // against the currently-latched (user, strategy) pairs.
+  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: false,
 };
 
 export function getFeatureFlags(): FeatureFlags {

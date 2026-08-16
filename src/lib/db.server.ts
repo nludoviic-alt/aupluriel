@@ -62,6 +62,29 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (user_id, preset)
     );
 
+    -- Persistent per-(user,strategy) circuit breaker lifecycle for
+    -- consecutive loss streaks (R5). bot_trades stays the factual outcome
+    -- ledger; this table is the breaker's OWN state machine, reconciled
+    -- against bot_trades on first read per process lifetime (see
+    -- loss-streak-circuit-breaker.server.ts). Deliberately NOT reusing
+    -- bot_state.paused_until: that column is the unrelated engine-level
+    -- scan pause.
+    CREATE TABLE IF NOT EXISTS loss_streak_state (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      strategy TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'NORMAL',
+      loss_streak_count INTEGER NOT NULL DEFAULT 0,
+      paused_at INTEGER,
+      resume_at INTEGER,
+      recovery_trades_used INTEGER NOT NULL DEFAULT 0,
+      last_loss_at INTEGER,
+      last_win_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      risk_version TEXT,
+      PRIMARY KEY (user_id, strategy)
+    );
+
     CREATE TABLE IF NOT EXISTS strategies (
       id             TEXT    PRIMARY KEY,
       user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
