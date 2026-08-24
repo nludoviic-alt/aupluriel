@@ -1216,7 +1216,8 @@ class ServerBotEngine {
     if (
       FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED &&
       (log.status === "won" || log.status === "lost") &&
-      prevStatus !== "won" && prevStatus !== "lost" &&
+      prevStatus !== "won" &&
+      prevStatus !== "lost" &&
       log.strategy
     ) {
       recordTradeOutcome(this.userId, log.strategy, log.status);
@@ -4148,6 +4149,23 @@ class ServerBotEngine {
           profit: 0,
           note: `Échec: ${(e as Error).message}`,
         });
+        if (e instanceof DerivApiError && e.code === "DERIV_AUTH_INVALID") {
+          const reason =
+            "Token Deriv invalide ou expiré — mise à jour et redémarrage explicite requis";
+          this.lastError = reason;
+          logSafetyAlert({
+            alertType: "DERIV_AUTH_INVALID",
+            userId: this.userId,
+            preset: this.preset,
+            symbol,
+            details: reason,
+          });
+          // Fail closed: no future proposal/buy attempt may occur with a
+          // rejected credential. stopBotForUser preserves subscriptions for
+          // any already-open contracts until they settle.
+          stopBotForUser(this.userId, this.preset, reason);
+          return finishScan();
+        }
         if (this.preset === "boom900") {
           const error =
             e instanceof DerivApiError
@@ -4281,6 +4299,63 @@ function logConfigChange(
 }
 
 /**
+ * `bot_state.enabled` is the sole activation authority.  Older UI saves also
+ * serialized an `enabled` property in config, which made audit/UI output
+ * contradict the engine.  Keep that legacy field synchronized for backwards
+ * compatibility, but never derive the SQL state from it.
+ */
+function setBotStateEnabled(userId: number, preset: Preset, enabled: boolean): void {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
+    .get(userId, preset) as { config: string } | undefined;
+  if (!row) return;
+
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(row.config) as Record<string, unknown>;
+  } catch (error) {
+    // Fail closed even when an old row is corrupt.  Leaving the legacy JSON
+    // untouched is safer than allowing another scan; the alert makes the
+    // required manual repair visible.
+    db.prepare(
+      "UPDATE bot_state SET enabled = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+    ).run(enabled ? 1 : 0, userId, preset);
+    logSafetyAlert({
+      alertType: "BOT_CONFIG_INVALID",
+      userId,
+      preset,
+      symbol: "N/A",
+      details: `Activation non synchronisée: JSON config invalide (${error instanceof Error ? error.message : String(error)})`,
+    });
+    return;
+  }
+  config.enabled = enabled;
+  db.prepare(
+    "UPDATE bot_state SET enabled = ?, config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+  ).run(enabled ? 1 : 0, JSON.stringify(config), userId, preset);
+  try {
+    ConfigRegistry.saveConfigVersion({
+      userId,
+      preset,
+      newConfig: config,
+      source: "admin",
+      changeReason: `Activation synchronisée avec bot_state.enabled=${enabled}`,
+      syncSecondaryUsers: false,
+    });
+  } catch (error) {
+    console.error("[ConfigRegistry] Activation snapshot failed:", error);
+    logSafetyAlert({
+      alertType: "CONFIG_HASH_MISSING",
+      userId,
+      preset,
+      symbol: "N/A",
+      details: `Snapshot d'activation absent: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+}
+
+/**
  * Persists a config change to bot_state and, if this user's bot is currently
  * running, hot-swaps it into the live engine so it applies on the next scan
  * tick instead of waiting for a manual stop/restart. Also logs a
@@ -4301,9 +4376,12 @@ export function updateConfigForUser(
   config = lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(config) : config);
   const db = getDb();
   const oldRow = db
-    .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
-    .get(userId, preset) as { config: string } | undefined;
+    .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?")
+    .get(userId, preset) as { enabled: number; config: string } | undefined;
   const oldConfig = oldRow ? (JSON.parse(oldRow.config) as AutoTraderConfig) : null;
+  // Compatibility only: the SQL field remains authoritative, so regular
+  // config edits cannot reintroduce an activation mismatch.
+  if (oldRow) (config as AutoTraderConfig & { enabled?: boolean }).enabled = !!oldRow.enabled;
   const approvalStrategyVersion =
     preset === "rb100"
       ? RB100_ENGINE_VERSION
@@ -4415,12 +4493,7 @@ export async function revalidateBoom900ContractForUser(userId: number) {
     updateConfigForUser(userId, "boom900", next);
     // Re-enable only after a real valid proposal. An invalid proposal leaves
     // the temporary suspension intact.
-    if (result.status === "AVAILABLE")
-      getDb()
-        .prepare(
-          "UPDATE bot_state SET enabled = 1, updated_at = unixepoch() WHERE user_id = ? AND preset = 'boom900'",
-        )
-        .run(userId);
+    if (result.status === "AVAILABLE") setBotStateEnabled(userId, "boom900", true);
     return result;
   } finally {
     connection.close();
@@ -4631,7 +4704,8 @@ export async function startBotForUser(
     ON CONFLICT(user_id, preset) DO UPDATE SET enabled = 1, config = excluded.config, paused_until = NULL, updated_at = unixepoch()
   `,
     )
-    .run(userId, preset, JSON.stringify(config));
+    .run(userId, preset, JSON.stringify({ ...config, enabled: true }));
+  setBotStateEnabled(userId, preset, true);
 
   const engine = new ServerBotEngine(
     userId,
@@ -4663,11 +4737,7 @@ export async function startBotForUser(
 }
 
 export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt manuel"): void {
-  getDb()
-    .prepare(
-      "UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
-    )
-    .run(userId, preset);
+  setBotStateEnabled(userId, preset, false);
   const engine = engines.get(engineKey(userId, preset));
   if (engine) {
     // A full stop() tears down every contract subscription and timer —
@@ -4736,11 +4806,16 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
  * for an account revocation: stopping outright would orphan open positions. */
 export function suspendBotsForUser(userId: number, reason = "Compte suspendu"): void {
   const until = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
-  getDb()
-    .prepare(
-      "UPDATE bot_state SET enabled = 0, paused_until = ?, updated_at = unixepoch() WHERE user_id = ?",
-    )
-    .run(until, userId);
+  const db = getDb();
+  const rows = db.prepare("SELECT preset FROM bot_state WHERE user_id = ?").all(userId) as {
+    preset: Preset;
+  }[];
+  for (const row of rows) {
+    setBotStateEnabled(userId, row.preset, false);
+  }
+  db.prepare(
+    "UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ?",
+  ).run(until, userId);
   console.log(`[bot] Tous les scans suspendus pour user ${userId} (${reason})`);
 }
 
@@ -4778,11 +4853,7 @@ export async function restoreBots(): Promise<void> {
     if (!ACTIVE_PRESETS.includes(preset)) {
       // Leave any already-open broker position untouched; this only prevents
       // the retired engine from resuming scans after the restart.
-      getDb()
-        .prepare(
-          "UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
-        )
-        .run(user_id, preset);
+      setBotStateEnabled(user_id, preset, false);
       continue;
     }
     try {

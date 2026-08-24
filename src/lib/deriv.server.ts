@@ -20,7 +20,16 @@ function getCurrencyDecimals(currency = "USD"): number {
   if (c === "BTC") return 8;
   if (c === "ETH") return 6;
   if (c === "LTC") return 5;
-  if (c === "USD" || c === "EUR" || c === "GBP" || c === "AUD" || c === "CAD" || c === "CHF" || c === "JPY") return 2;
+  if (
+    c === "USD" ||
+    c === "EUR" ||
+    c === "GBP" ||
+    c === "AUD" ||
+    c === "CAD" ||
+    c === "CHF" ||
+    c === "JPY"
+  )
+    return 2;
   return 2;
 }
 
@@ -44,12 +53,20 @@ export function effectiveMultiplier(symbol: string, requestedMultiplier: number)
 }
 
 export type DerivPortfolioResult =
-  | { success: true; positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }> }
+  | {
+      success: true;
+      positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }>;
+    }
   | { success: false; error: string };
 
 type Msg = Record<string, unknown>;
 export class DerivApiError extends Error {
-  constructor(public code: string, message: string) { super(message); }
+  constructor(
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 type Listener = (msg: Msg) => void;
 
@@ -71,7 +88,10 @@ class DerivSocket {
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private closedByUs = false;
 
-  constructor(private getUrl: () => Promise<string>, private label: string) {}
+  constructor(
+    private getUrl: () => Promise<string>,
+    private label: string,
+  ) {}
 
   onMessage(l: Listener): () => void {
     this.listeners.add(l);
@@ -89,26 +109,47 @@ class DerivSocket {
       const url = await this.getUrl();
       await new Promise<void>((resolve, reject) => {
         const ws = new WebSocket(url);
-        const timer = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } reject(new Error(`${this.label}: timeout connexion`)); }, 15_000);
+        const timer = setTimeout(() => {
+          try {
+            ws.close();
+          } catch {
+            /* ignore */
+          }
+          reject(new Error(`${this.label}: timeout connexion`));
+        }, 15_000);
         ws.onopen = () => {
           clearTimeout(timer);
           this.ws = ws;
           this.closedByUs = false;
           this.heartbeat = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) { try { ws.send(JSON.stringify({ ping: 1 })); } catch { /* ignore */ } }
+            if (ws.readyState === WebSocket.OPEN) {
+              try {
+                ws.send(JSON.stringify({ ping: 1 }));
+              } catch {
+                /* ignore */
+              }
+            }
           }, 30_000);
           resolve();
         };
-        ws.onerror = () => { clearTimeout(timer); reject(new Error(`${this.label}: échec connexion WS`)); };
+        ws.onerror = () => {
+          clearTimeout(timer);
+          reject(new Error(`${this.label}: échec connexion WS`));
+        };
         ws.onclose = () => {
           if (this.ws === ws) this.ws = null;
-          if (this.heartbeat) { clearInterval(this.heartbeat); this.heartbeat = null; }
+          if (this.heartbeat) {
+            clearInterval(this.heartbeat);
+            this.heartbeat = null;
+          }
         };
         ws.onmessage = (evt) => {
           try {
             const data = JSON.parse(String(evt.data)) as Msg;
             for (const l of [...this.listeners]) l(data);
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         };
       });
     })();
@@ -125,16 +166,23 @@ class DerivSocket {
     if (!ws) throw new Error(`${this.label}: socket indisponible`);
     const id = ++this.reqId;
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => { off(); reject(new Error(`${this.label}: timeout requête`)); }, timeoutMs);
+      const timer = setTimeout(() => {
+        off();
+        reject(new Error(`${this.label}: timeout requête`));
+      }, timeoutMs);
       const off = this.onMessage((msg) => {
         if (msg.req_id !== id) return;
         clearTimeout(timer);
         off();
         if (msg.error) {
           const error = msg.error as { code?: string; message?: string };
-          reject(new DerivApiError(String(error.code ?? "DERIV_ERROR"), String(error.message ?? "Deriv error")));
-        }
-        else resolve(msg as T);
+          reject(
+            new DerivApiError(
+              String(error.code ?? "DERIV_ERROR"),
+              String(error.message ?? "Deriv error"),
+            ),
+          );
+        } else resolve(msg as T);
       });
       try {
         ws.send(JSON.stringify({ ...payload, req_id: id }));
@@ -148,8 +196,15 @@ class DerivSocket {
 
   close() {
     this.closedByUs = true;
-    if (this.heartbeat) { clearInterval(this.heartbeat); this.heartbeat = null; }
-    try { this.ws?.close(); } catch { /* ignore */ }
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+    try {
+      this.ws?.close();
+    } catch {
+      /* ignore */
+    }
     this.ws = null;
   }
 }
@@ -175,7 +230,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isRateLimitError(error: unknown): boolean {
-  const apiError = error instanceof DerivApiError ? `${error.code} ${error.message}` : String(error);
+  const apiError =
+    error instanceof DerivApiError ? `${error.code} ${error.message}` : String(error);
   return /rate[ _-]?limit|too many requests/i.test(apiError);
 }
 
@@ -192,24 +248,36 @@ function queuePublicHistoryRequest<T>(request: () => Promise<T>): Promise<T> {
         lastError = error;
         if (!isRateLimitError(error) || attempt === PUBLIC_HISTORY_MAX_ATTEMPTS - 1) throw error;
         // Deriv limits the shared public socket, not one user or preset.
-        nextPublicHistoryAt = Math.max(nextPublicHistoryAt, Date.now() + PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS * (attempt + 1));
+        nextPublicHistoryAt = Math.max(
+          nextPublicHistoryAt,
+          Date.now() + PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS * (attempt + 1),
+        );
       }
     }
     throw lastError;
   });
-  publicHistoryQueue = run.then(() => undefined, () => undefined);
+  publicHistoryQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
   return run;
 }
 
-function getPublicHistory<T>(key: string, request: () => Promise<T>, cacheMs = PUBLIC_HISTORY_CACHE_MS): Promise<T> {
+function getPublicHistory<T>(
+  key: string,
+  request: () => Promise<T>,
+  cacheMs = PUBLIC_HISTORY_CACHE_MS,
+): Promise<T> {
   const cached = publicHistoryCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T);
   const inflight = publicHistoryInflight.get(key);
   if (inflight) return inflight as Promise<T>;
-  const pending = queuePublicHistoryRequest(request).then((value) => {
-    publicHistoryCache.set(key, { value, expiresAt: Date.now() + cacheMs });
-    return value;
-  }).finally(() => publicHistoryInflight.delete(key));
+  const pending = queuePublicHistoryRequest(request)
+    .then((value) => {
+      publicHistoryCache.set(key, { value, expiresAt: Date.now() + cacheMs });
+      return value;
+    })
+    .finally(() => publicHistoryInflight.delete(key));
   publicHistoryInflight.set(key, pending);
   return pending;
 }
@@ -229,22 +297,35 @@ export function closePublicSocket(): void {
   nextPublicHistoryAt = 0;
 }
 
-export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number, end: number | "latest" = "latest"): Promise<ServerCandle[]> {
+export async function fetchCandlesServer(
+  symbol: string,
+  granularitySeconds: number,
+  count: number,
+  end: number | "latest" = "latest",
+): Promise<ServerCandle[]> {
   const key = `candles:${symbol}:${granularitySeconds}:${count}:${end}`;
-  return getPublicHistory(key, async () => {
-    const res = await getPublicSocket().request<{
-      candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
-    }>({
-      ticks_history: symbol,
-      style: "candles",
-      granularity: granularitySeconds,
-      count,
-      end,
-    });
-    return (res.candles ?? []).map((c) => ({
-      epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
-    }));
-  }, end === "latest" ? PUBLIC_HISTORY_CACHE_MS : 60_000);
+  return getPublicHistory(
+    key,
+    async () => {
+      const res = await getPublicSocket().request<{
+        candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
+      }>({
+        ticks_history: symbol,
+        style: "candles",
+        granularity: granularitySeconds,
+        count,
+        end,
+      });
+      return (res.candles ?? []).map((c) => ({
+        epoch: c.epoch,
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+      }));
+    },
+    end === "latest" ? PUBLIC_HISTORY_CACHE_MS : 60_000,
+  );
 }
 
 /** Recent tick prices for micro-momentum confirmation.  Consumers must not
@@ -264,15 +345,33 @@ export async function fetchRecentTicksServer(symbol: string, count = 120): Promi
 
 // ─── Per-user authenticated trading connection ────────────────────────────────
 
-async function fetchOtpUrl(patToken: string, accountType: "demo" | "live"): Promise<{ url: string; currency: string; loginId: string; balance: number }> {
+async function fetchOtpUrl(
+  patToken: string,
+  accountType: "demo" | "live",
+): Promise<{ url: string; currency: string; loginId: string; balance: number }> {
   const headers = {
     Authorization: `Bearer ${patToken}`,
     "Deriv-App-ID": DERIV_REST_APP_ID,
     "Content-Type": "application/json",
   };
   const accRes = await fetch(`${TRADING_V1}/accounts`, { headers });
-  if (!accRes.ok) throw new Error(`Deriv auth échouée (${accRes.status})`);
-  const accData = (await accRes.json()) as { data?: Array<{ account_id: string; account_type: string; balance: string; currency: string; status: string }> };
+  // A 401 is not a transient proposal failure.  The engine must be able to
+  // distinguish it from timeouts/rate limits and stop future entries safely.
+  if (!accRes.ok) {
+    throw new DerivApiError(
+      accRes.status === 401 ? "DERIV_AUTH_INVALID" : "DERIV_ACCOUNTS_FAILED",
+      `Deriv auth échouée (${accRes.status})`,
+    );
+  }
+  const accData = (await accRes.json()) as {
+    data?: Array<{
+      account_id: string;
+      account_type: string;
+      balance: string;
+      currency: string;
+      status: string;
+    }>;
+  };
   const accounts = accData.data ?? [];
   const wantedType = accountType === "live" ? "real" : "demo";
   const chosen =
@@ -280,11 +379,24 @@ async function fetchOtpUrl(patToken: string, accountType: "demo" | "live"): Prom
     accounts.find((a) => a.status === "active");
   if (!chosen) throw new Error("Aucun compte Deriv actif");
 
-  const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, { method: "POST", headers });
-  if (!otpRes.ok) throw new Error(`OTP WebSocket refusé (${otpRes.status})`);
+  const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, {
+    method: "POST",
+    headers,
+  });
+  if (!otpRes.ok) {
+    throw new DerivApiError(
+      otpRes.status === 401 ? "DERIV_AUTH_INVALID" : "DERIV_OTP_FAILED",
+      `OTP WebSocket refusé (${otpRes.status})`,
+    );
+  }
   const otpData = (await otpRes.json()) as { data?: { url?: string } };
   if (!otpData.data?.url) throw new Error("URL WebSocket OTP manquante");
-  return { url: otpData.data.url, currency: chosen.currency, loginId: chosen.account_id, balance: parseFloat(chosen.balance) };
+  return {
+    url: otpData.data.url,
+    currency: chosen.currency,
+    loginId: chosen.account_id,
+    balance: parseFloat(chosen.balance),
+  };
 }
 
 export interface ServerContractUpdate {
@@ -297,7 +409,10 @@ export class DerivTradingConnection {
   private socket: DerivSocket;
   private currency = "USD";
 
-  constructor(private patToken: string, private accountType: "demo" | "live") {
+  constructor(
+    private patToken: string,
+    private accountType: "demo" | "live",
+  ) {
     this.socket = new DerivSocket(async () => {
       const otp = await fetchOtpUrl(this.patToken, this.accountType);
       this.currency = otp.currency;
@@ -307,32 +422,90 @@ export class DerivTradingConnection {
 
   /** Read-only contract gate. It never sends `buy`: a valid proposal is the
    * only prerequisite for a Boom900 multiplier order. */
-  async validateMultiplierContract(params: { symbol: string; direction: "CALL" | "PUT"; multiplier: number; amount: number }) {
+  async validateMultiplierContract(params: {
+    symbol: string;
+    direction: "CALL" | "PUT";
+    multiplier: number;
+    amount: number;
+  }) {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     const at = Date.now();
     try {
-      const active = await this.socket.request<{ active_symbols?: Array<{ symbol?: string; underlying_symbol?: string }> }>({ active_symbols: "brief" });
+      const active = await this.socket.request<{
+        active_symbols?: Array<{ symbol?: string; underlying_symbol?: string }>;
+      }>({ active_symbols: "brief" });
       const activeSymbols = active.active_symbols ?? [];
       // Some Deriv Options sessions acknowledge active_symbols with an empty
       // list (observed even for BOOM500/CRASH900 that are tradable on the
       // same account). Keep the mandatory metadata request, but only reject
       // when it returned an actual, non-empty catalogue that excludes symbol.
       // contracts_for + proposal remain the definitive account-level gate.
-      if (activeSymbols.length > 0 && !activeSymbols.some((s) => s.symbol === params.symbol || s.underlying_symbol === params.symbol)) {
-        return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "SYMBOL_UNAVAILABLE", message: "Symbole absent de active_symbols" } };
+      if (
+        activeSymbols.length > 0 &&
+        !activeSymbols.some(
+          (s) => s.symbol === params.symbol || s.underlying_symbol === params.symbol,
+        )
+      ) {
+        return {
+          status: "CONTRACT_UNAVAILABLE" as const,
+          at,
+          contractType,
+          error: { code: "SYMBOL_UNAVAILABLE", message: "Symbole absent de active_symbols" },
+        };
       }
-      const contracts = await this.socket.request<{ contracts_for?: { available?: Array<{ contract_type?: string }> } }>({ contracts_for: params.symbol });
-      if (!(contracts.contracts_for?.available ?? []).some((c) => c.contract_type === contractType)) return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "CONTRACT_UNAVAILABLE", message: `${contractType} indisponible pour ${params.symbol}` } };
+      const contracts = await this.socket.request<{
+        contracts_for?: { available?: Array<{ contract_type?: string }> };
+      }>({ contracts_for: params.symbol });
+      if (!(contracts.contracts_for?.available ?? []).some((c) => c.contract_type === contractType))
+        return {
+          status: "CONTRACT_UNAVAILABLE" as const,
+          at,
+          contractType,
+          error: {
+            code: "CONTRACT_UNAVAILABLE",
+            message: `${contractType} indisponible pour ${params.symbol}`,
+          },
+        };
       const proposal = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
-        proposal: 1, amount: roundToCurrency(params.amount, this.currency), basis: "stake", contract_type: contractType,
-        currency: this.currency, underlying_symbol: params.symbol, multiplier: params.multiplier,
+        proposal: 1,
+        amount: roundToCurrency(params.amount, this.currency),
+        basis: "stake",
+        contract_type: contractType,
+        currency: this.currency,
+        underlying_symbol: params.symbol,
+        multiplier: params.multiplier,
       });
-      return { status: "AVAILABLE" as const, at, contractType, currency: this.currency, amount: params.amount, proposalId: proposal.proposal?.id, askPrice: proposal.proposal?.ask_price };
+      return {
+        status: "AVAILABLE" as const,
+        at,
+        contractType,
+        currency: this.currency,
+        amount: params.amount,
+        proposalId: proposal.proposal?.id,
+        askPrice: proposal.proposal?.ask_price,
+      };
     } catch (error) {
-      const e = error instanceof DerivApiError ? error : new DerivApiError("TEMPORARY_ERROR", (error as Error).message);
+      const e =
+        error instanceof DerivApiError
+          ? error
+          : new DerivApiError("TEMPORARY_ERROR", (error as Error).message);
       const lower = e.message.toLowerCase();
-      const status = lower.includes("stake amount") || lower.includes("amount") ? "INVALID_STAKE" : lower.includes("multiplier") ? "INVALID_MULTIPLIER" : lower.includes("authorize") || lower.includes("account") ? "ACCOUNT_RESTRICTED" : "TEMPORARILY_DISABLED";
-      return { status, at, contractType, currency: this.currency, amount: params.amount, error: { code: e.code, message: e.message } };
+      const status =
+        lower.includes("stake amount") || lower.includes("amount")
+          ? "INVALID_STAKE"
+          : lower.includes("multiplier")
+            ? "INVALID_MULTIPLIER"
+            : lower.includes("authorize") || lower.includes("account")
+              ? "ACCOUNT_RESTRICTED"
+              : "TEMPORARILY_DISABLED";
+      return {
+        status,
+        at,
+        contractType,
+        currency: this.currency,
+        amount: params.amount,
+        error: { code: e.code, message: e.message },
+      };
     }
   }
 
@@ -342,7 +515,9 @@ export class DerivTradingConnection {
 
   async getBalance(): Promise<{ balance: number; currency: string } | null> {
     try {
-      const res = await this.socket.request<{ balance?: { balance: number; currency: string } }>({ balance: 1 });
+      const res = await this.socket.request<{ balance?: { balance: number; currency: string } }>({
+        balance: 1,
+      });
       if (res.balance) {
         this.currency = res.balance.currency;
         return { balance: Number(res.balance.balance), currency: res.balance.currency };
@@ -385,16 +560,21 @@ export class DerivTradingConnection {
     }
   }
 
-  async proposeAndBuy(params: {
-    symbol: string;
-    amount: number;
-    contractType: "CALL" | "PUT";
-    durationMinutes: number;
-  }, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number; payout: number }> {
+  async proposeAndBuy(
+    params: {
+      symbol: string;
+      amount: number;
+      contractType: "CALL" | "PUT";
+      durationMinutes: number;
+    },
+    maxAttempts = 3,
+  ): Promise<{ contractId: number; buyPrice: number; payout: number }> {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number; payout: number } }>({
+        const prop = await this.socket.request<{
+          proposal?: { id: string; ask_price: number; payout: number };
+        }>({
           proposal: 1,
           amount: roundToCurrency(params.amount, this.currency),
           basis: "stake",
@@ -405,18 +585,25 @@ export class DerivTradingConnection {
           underlying_symbol: params.symbol,
         });
         if (!prop.proposal) throw new Error("Proposal failed");
-        const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number; payout: number } }>({
+        const buy = await this.socket.request<{
+          buy?: { contract_id: number; buy_price: number; payout: number };
+        }>({
           buy: prop.proposal.id,
           // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
           price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
         });
         if (!buy.buy) throw new Error("Buy failed");
-        return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price), payout: Number(buy.buy.payout) };
+        return {
+          contractId: buy.buy.contract_id,
+          buyPrice: Number(buy.buy.buy_price),
+          payout: Number(buy.buy.payout),
+        };
       } catch (e) {
         lastError = e as Error;
         // Validation errors (invalid price/stake/contract) fail identically on retry —
         // only transient failures (proposal expired, network) are worth another attempt.
-        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) break;
+        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message))
+          break;
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
       }
     }
@@ -430,21 +617,27 @@ export class DerivTradingConnection {
    * numbers — Deriv closes when the loss/profit reaches that amount), not a
    * price or a percentage.
    */
-  async proposeAndBuyMultiplier(params: {
-    symbol: string;
-    amount: number;
-    direction: "CALL" | "PUT";
-    multiplier: number;
-    stopLossUsd: number;
-    takeProfitUsd: number;
-  }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
+  async proposeAndBuyMultiplier(
+    params: {
+      symbol: string;
+      amount: number;
+      direction: "CALL" | "PUT";
+      multiplier: number;
+      stopLossUsd: number;
+      takeProfitUsd: number;
+    },
+    maxAttempts = 4,
+  ): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     // Every multiplier order, irrespective of feature flags or symbol, must
     // receive a current valid proposal before it can reach `buy`.
     const validation = await this.validateMultiplierContract(params);
     if (validation.status !== "AVAILABLE") {
       const detail = validation.error;
-      throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `${params.symbol} ${validation.status}`);
+      throw new DerivApiError(
+        detail?.code ?? validation.status,
+        detail?.message ?? `${params.symbol} ${validation.status}`,
+      );
     }
     let lastError: Error | null = null;
     const currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
@@ -465,16 +658,22 @@ export class DerivTradingConnection {
           },
         });
         if (!prop.proposal) throw new Error("Proposal failed");
-        const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>({
-          buy: prop.proposal.id,
-          // Same >2-decimal rejection as binary buys — re-round after the slippage buffer.
-          price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
-        });
+        const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>(
+          {
+            buy: prop.proposal.id,
+            // Same >2-decimal rejection as binary buys — re-round after the slippage buffer.
+            price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
+          },
+        );
         if (!buy.buy) throw new Error("Buy failed");
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
       } catch (e) {
         lastError = e as Error;
-        if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) {
+        if (
+          /price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(
+            lastError.message,
+          )
+        ) {
           break;
         }
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
@@ -492,7 +691,8 @@ export class DerivTradingConnection {
   subscribeContract(contractId: number, onUpdate: (u: ServerContractUpdate) => void): () => void {
     let subId: string | undefined;
     const off = this.socket.onMessage((msg) => {
-      const p = (msg as { proposal_open_contract?: Record<string, unknown> }).proposal_open_contract;
+      const p = (msg as { proposal_open_contract?: Record<string, unknown> })
+        .proposal_open_contract;
       if (!p || p.contract_id !== contractId) return;
       const subscription = (msg as { subscription?: { id?: string } }).subscription;
       if (subscription?.id) subId = subscription.id;
@@ -503,7 +703,9 @@ export class DerivTradingConnection {
         status: done ? (Number(p.profit ?? 0) > 0 ? "won" : "lost") : "open",
       });
     });
-    this.socket.request({ proposal_open_contract: 1, contract_id: contractId, subscribe: 1 }).catch(() => {});
+    this.socket
+      .request({ proposal_open_contract: 1, contract_id: contractId, subscribe: 1 })
+      .catch(() => {});
     return () => {
       off();
       if (subId) this.socket.request({ forget: subId }).catch(() => {});
@@ -513,11 +715,19 @@ export class DerivTradingConnection {
   async getProfitTable(limit = 50): Promise<Array<{ contractId: number; profit: number }>> {
     try {
       const res = await this.socket.request<{
-        profit_table?: { transactions?: Array<{ contract_id: number; buy_price: number; sell_price: number; profit?: number }> };
+        profit_table?: {
+          transactions?: Array<{
+            contract_id: number;
+            buy_price: number;
+            sell_price: number;
+            profit?: number;
+          }>;
+        };
       }>({ profit_table: 1, limit, sort: "DESC" });
       return (res.profit_table?.transactions ?? []).map((t) => ({
         contractId: t.contract_id,
-        profit: t.profit !== undefined ? Number(t.profit) : Number(t.sell_price) - Number(t.buy_price),
+        profit:
+          t.profit !== undefined ? Number(t.profit) : Number(t.sell_price) - Number(t.buy_price),
       }));
     } catch {
       return [];

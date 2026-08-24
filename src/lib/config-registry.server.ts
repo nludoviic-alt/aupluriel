@@ -74,7 +74,7 @@ const CRITICAL_RISK_FIELDS = new Set([
   "rsi_period",
   "rsi_overbought",
   "rsi_oversold",
-  "volatility_threshold"
+  "volatility_threshold",
 ]);
 
 export class ConfigRegistry {
@@ -84,7 +84,7 @@ export class ConfigRegistry {
   static getLatestVersion(userId: number, preset: string): VersionedConfigRow | null {
     const row = getDb()
       .prepare(
-        "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT 1"
+        "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT 1",
       )
       .get(userId, preset) as VersionedConfigRow | undefined;
     return row ?? null;
@@ -101,8 +101,18 @@ export class ConfigRegistry {
     createdBy?: number | null;
     source?: "user" | "admin" | "auto-tuner" | "rollback";
     changeReason?: string;
+    /** Activation reconciliation must never bulk-overwrite other accounts. */
+    syncSecondaryUsers?: boolean;
   }): { version: VersionedConfigRow; auditEvents: AuditEventRow[] } {
-    const { userId, preset, newConfig, createdBy = null, source = "user", changeReason } = opts;
+    const {
+      userId,
+      preset,
+      newConfig,
+      createdBy = null,
+      source = "user",
+      changeReason,
+      syncSecondaryUsers = true,
+    } = opts;
     const now = Date.now();
     const newHash = hashConfig(newConfig);
 
@@ -133,9 +143,9 @@ export class ConfigRegistry {
     const versionTag = nextVersionTag(latest?.version_tag ?? null, isMajorChange);
     const versionId = `ver_${preset}_${userId}_${now}_${crypto.randomBytes(4).toString("hex")}`;
 
-    const summaryItems = changedFields.slice(0, 4).map(
-      (c) => `${c.field}: ${JSON.stringify(c.oldVal)} ➔ ${JSON.stringify(c.newVal)}`
-    );
+    const summaryItems = changedFields
+      .slice(0, 4)
+      .map((c) => `${c.field}: ${JSON.stringify(c.oldVal)} ➔ ${JSON.stringify(c.newVal)}`);
     if (changedFields.length > 4) {
       summaryItems.push(`+${changedFields.length - 4} other fields`);
     }
@@ -153,7 +163,7 @@ export class ConfigRegistry {
       created_at: now,
       created_by: createdBy,
       source,
-      change_summary: changeSummary
+      change_summary: changeSummary,
     };
 
     const auditEvents: AuditEventRow[] = [];
@@ -161,21 +171,25 @@ export class ConfigRegistry {
     // Transaction for atomic insertion of version + audit events + user_configs sync
     getDb().transaction(() => {
       // 1. Insert config_versions row
-      getDb().prepare(`
+      getDb()
+        .prepare(
+          `
         INSERT INTO config_versions (id, user_id, preset, version_tag, version_hash, config_json, created_at, created_by, source, change_summary)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        versionRow.id,
-        versionRow.user_id,
-        versionRow.preset,
-        versionRow.version_tag,
-        versionRow.version_hash,
-        versionRow.config_json,
-        versionRow.created_at,
-        versionRow.created_by,
-        versionRow.source,
-        versionRow.change_summary
-      );
+      `,
+        )
+        .run(
+          versionRow.id,
+          versionRow.user_id,
+          versionRow.preset,
+          versionRow.version_tag,
+          versionRow.version_hash,
+          versionRow.config_json,
+          versionRow.created_at,
+          versionRow.created_by,
+          versionRow.source,
+          versionRow.change_summary,
+        );
 
       // 2. Insert audit events for every single changed field
       const auditStmt = getDb().prepare(`
@@ -195,7 +209,7 @@ export class ConfigRegistry {
           new_value: JSON.stringify(change.newVal ?? null),
           timestamp: now,
           source,
-          metadata: changeReason ? JSON.stringify({ reason: changeReason }) : null
+          metadata: changeReason ? JSON.stringify({ reason: changeReason }) : null,
         };
         auditEvents.push(eventRow);
 
@@ -209,24 +223,32 @@ export class ConfigRegistry {
           eventRow.new_value,
           eventRow.timestamp,
           eventRow.source,
-          eventRow.metadata
+          eventRow.metadata,
         );
       }
 
       // 3. Keep legacy user_configs table synchronized
-      getDb().prepare(`
+      getDb()
+        .prepare(
+          `
         INSERT INTO user_configs (user_id, preset, config, updated_at)
         VALUES (?, ?, ?, unixepoch())
         ON CONFLICT(user_id, preset) DO UPDATE SET
           config = excluded.config,
           updated_at = unixepoch()
-      `).run(userId, preset, JSON.stringify(newConfig));
+      `,
+        )
+        .run(userId, preset, JSON.stringify(newConfig));
     })();
 
     // Auto-sync secondary users (juluo, stella) to match admin active presets
-    try {
-      ConfigRegistry.syncAllUsersToAdminPresets(userId);
-    } catch { /* ignore non-blocking sync error */ }
+    if (syncSecondaryUsers) {
+      try {
+        ConfigRegistry.syncAllUsersToAdminPresets(userId);
+      } catch {
+        /* ignore non-blocking sync error */
+      }
+    }
 
     return { version: versionRow, auditEvents };
   }
@@ -237,32 +259,42 @@ export class ConfigRegistry {
    */
   static syncAllUsersToAdminPresets(adminUserId: number): void {
     const db = getDb();
-    const adminConfigs = db.prepare("SELECT preset, config FROM user_configs WHERE user_id = ?").all(adminUserId) as { preset: string; config: string }[];
-    const adminBotStates = db.prepare("SELECT preset, enabled FROM bot_state WHERE user_id = ?").all(adminUserId) as { preset: string; enabled: number }[];
+    const adminConfigs = db
+      .prepare("SELECT preset, config FROM user_configs WHERE user_id = ?")
+      .all(adminUserId) as { preset: string; config: string }[];
+    const adminBotStates = db
+      .prepare("SELECT preset, enabled FROM bot_state WHERE user_id = ?")
+      .all(adminUserId) as { preset: string; enabled: number }[];
 
     if (!adminConfigs.length) return;
 
-    const targetUsers = db.prepare("SELECT id FROM users WHERE id != ?").all(adminUserId) as { id: number }[];
+    const targetUsers = db.prepare("SELECT id FROM users WHERE id != ?").all(adminUserId) as {
+      id: number;
+    }[];
 
     for (const user of targetUsers) {
       for (const cfg of adminConfigs) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT INTO user_configs (user_id, preset, config, updated_at)
           VALUES (?, ?, ?, unixepoch())
           ON CONFLICT(user_id, preset) DO UPDATE SET
             config = excluded.config,
             updated_at = unixepoch()
-        `).run(user.id, cfg.preset, cfg.config);
+        `,
+        ).run(user.id, cfg.preset, cfg.config);
       }
 
       for (const st of adminBotStates) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT INTO bot_state (user_id, preset, enabled, current_balance, session_peak_pnl, updated_at)
           VALUES (?, ?, ?, 1000, 0, unixepoch())
           ON CONFLICT(user_id, preset) DO UPDATE SET
             enabled = excluded.enabled,
             updated_at = unixepoch()
-        `).run(user.id, st.preset, st.enabled);
+        `,
+        ).run(user.id, st.preset, st.enabled);
       }
     }
   }
@@ -273,7 +305,7 @@ export class ConfigRegistry {
   static getVersionHistory(userId: number, preset: string, limit = 50): VersionedConfigRow[] {
     return getDb()
       .prepare(
-        "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT ?"
+        "SELECT * FROM config_versions WHERE user_id = ? AND preset = ? ORDER BY created_at DESC LIMIT ?",
       )
       .all(userId, preset, limit) as VersionedConfigRow[];
   }
@@ -284,7 +316,7 @@ export class ConfigRegistry {
   static getAuditEvents(userId: number, preset: string, limit = 100): AuditEventRow[] {
     return getDb()
       .prepare(
-        "SELECT * FROM config_audit_events WHERE user_id = ? AND preset = ? ORDER BY timestamp DESC LIMIT ?"
+        "SELECT * FROM config_audit_events WHERE user_id = ? AND preset = ? ORDER BY timestamp DESC LIMIT ?",
       )
       .all(userId, preset, limit) as AuditEventRow[];
   }
@@ -296,7 +328,7 @@ export class ConfigRegistry {
     userId: number,
     preset: string,
     targetVersionId: string,
-    revertedBy?: number | null
+    revertedBy?: number | null,
   ): { version: VersionedConfigRow; auditEvents: AuditEventRow[] } {
     const target = getDb()
       .prepare("SELECT * FROM config_versions WHERE id = ? AND user_id = ? AND preset = ?")
@@ -314,7 +346,7 @@ export class ConfigRegistry {
       newConfig: targetConfig,
       createdBy: revertedBy,
       source: "rollback",
-      changeReason: `Reverted to version ${target.version_tag} (${target.id})`
+      changeReason: `Reverted to version ${target.version_tag} (${target.id})`,
     });
   }
 }

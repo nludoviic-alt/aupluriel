@@ -6,6 +6,10 @@ import { getDb } from "./db.server";
 import { currentActiveSessions, SESSION_HOURS, type TradingSession } from "./signal-core";
 
 const CHECK_INTERVAL_MS = 30_000;
+// Market-opening pushes are deliberately disabled. They were noisy and could
+// appear unreliable after restarts; trade, execution-error and risk alerts use
+// separate notification paths and remain enabled.
+const MARKET_OPEN_NOTIFICATIONS_ENABLED = false;
 
 let prevActive = new Set<TradingSession>();
 const notifiedToday = new Set<string>();
@@ -50,6 +54,10 @@ function tick(): void {
 }
 
 export function startMarketSessionScheduler(): void {
+  if (!MARKET_OPEN_NOTIFICATIONS_ENABLED) {
+    console.log("[market-session] Notifications d'ouverture désactivées.");
+    return;
+  }
   // Seed with whatever's already open at boot so a restart never re-fires
   // for sessions that were open before the process started.
   prevActive = new Set(currentActiveSessions());
