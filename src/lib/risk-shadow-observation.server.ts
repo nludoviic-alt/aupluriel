@@ -51,7 +51,23 @@ export async function settleDueRiskShadowObservations(): Promise<void> {
     WHERE status = 'open' AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW', 'RISK_PRESET_PAUSED')
     ORDER BY evaluation_at ASC LIMIT 50
   `).all() as Array<{ id: string; symbol: string; direction: string; entry_price: number; notional_stake: number | null; shadow_mae: number; shadow_mfe: number; evaluation_at: number | null }>;
+  // An observation whose hold window closed hours ago never got marked in time
+  // (scheduler gap, or its reason was only just added to the settle list). Its
+  // entry price is stale — marking it against the current tick fabricates a
+  // meaningless win/loss. Void it instead so it can't pollute shadow metrics.
+  const STALE_SETTLE_CUTOFF_MS = 3 * 60 * 60 * 1000;
+  const nowMs = Date.now();
   for (const row of rows) {
+    if (row.evaluation_at && nowMs - row.evaluation_at > STALE_SETTLE_CUTOFF_MS) {
+      // 'void' — not 'closed' — so performance-drift's shadow window (the only
+      // consumer that counts 'closed') never sees these zero-P&L placeholders.
+      getDb()
+        .prepare(
+          "UPDATE shadow_trades SET status = 'void', closed_at = ?, exit_reason = 'STALE_UNSETTLED' WHERE id = ? AND status = 'open'",
+        )
+        .run(nowMs, row.id);
+      continue;
+    }
     const ticks = await fetchRecentTicksServer(row.symbol, 1).catch(() => []);
     const exit = ticks.at(-1);
     if (!exit || !Number.isFinite(exit)) continue;

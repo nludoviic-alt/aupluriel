@@ -129,21 +129,25 @@ export function getAutoAdaptivePauseRecovery(
   preset: Preset,
   strategyId?: string,
 ): { eligible: boolean; shadowSample: number; shadowPf: number } {
-  const minClosedAt = Date.now() - PAUSE_RECOVERY_MAX_AGE_MS;
+  // Recency is filtered on the ENTRY time, not closed_at — a stale observation
+  // settled late (e.g. a pre-existing backlog marked when its reason was first
+  // added to the settle list) would otherwise look fresh and feed garbage,
+  // weeks-stale-entry P&L into the recovery decision.
+  const minEntryTime = Date.now() - PAUSE_RECOVERY_MAX_AGE_MS;
   const rows = (
     strategyId
       ? getDb().prepare(
           `SELECT status, virtual_pnl FROM shadow_trades
            WHERE user_id = ? AND strategy = ? AND block_reason = 'RISK_PRESET_PAUSED'
-             AND status IN ('won', 'lost') AND COALESCE(closed_at, time) >= ?
-           ORDER BY COALESCE(closed_at, time) DESC LIMIT 30`,
-        ).all(userId, strategyId, minClosedAt)
+             AND status IN ('won', 'lost') AND time >= ?
+           ORDER BY time DESC LIMIT 30`,
+        ).all(userId, strategyId, minEntryTime)
       : getDb().prepare(
           `SELECT status, virtual_pnl FROM shadow_trades
            WHERE user_id = ? AND preset = ? AND block_reason = 'RISK_PRESET_PAUSED'
-             AND status IN ('won', 'lost') AND COALESCE(closed_at, time) >= ?
-           ORDER BY COALESCE(closed_at, time) DESC LIMIT 30`,
-        ).all(userId, preset, minClosedAt)
+             AND status IN ('won', 'lost') AND time >= ?
+           ORDER BY time DESC LIMIT 30`,
+        ).all(userId, preset, minEntryTime)
   ) as { status: "won" | "lost"; virtual_pnl: number }[];
 
   let grossWin = 0;

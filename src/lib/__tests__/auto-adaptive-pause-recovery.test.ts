@@ -37,19 +37,21 @@ function seedShadowTrades(
   userId: number,
   winners: number,
   losers: number,
-  ageMs = 60 * 60_000,
+  entryAgeMs = 60 * 60_000,
+  closedAtOverride?: number,
 ) {
   const db = getDb();
-  const base = Date.now() - ageMs;
+  const base = Date.now() - entryAgeMs;
   const ins = db.prepare(`
     INSERT INTO shadow_trades (id, user_id, preset, strategy, symbol, direction, entry_price, virtual_pnl, status, time, closed_at, block_reason)
     VALUES (?, ?, ?, ?, '1HZ75V', 'CALL', 100, ?, ?, ?, ?, 'RISK_PRESET_PAUSED')
   `);
   let n = 0;
+  const closedAt = () => closedAtOverride ?? base + n + 1;
   for (let i = 0; i < winners; i++)
-    ins.run(`s_${userId}_w_${i}`, userId, PRESET, STRATEGY, 2, "won", base + n, base + n++ + 1);
+    ins.run(`s_${userId}_w_${i}`, userId, PRESET, STRATEGY, 2, "won", base + n++, closedAt());
   for (let i = 0; i < losers; i++)
-    ins.run(`s_${userId}_l_${i}`, userId, PRESET, STRATEGY, -1, "lost", base + n, base + n++ + 1);
+    ins.run(`s_${userId}_l_${i}`, userId, PRESET, STRATEGY, -1, "lost", base + n++, closedAt());
 }
 
 function cleanup(userId: number) {
@@ -121,11 +123,24 @@ test("shadow PF below 1.1 stays PAUSED", () => {
   }
 });
 
-test("stale shadow sample (older than the recency window) stays PAUSED", () => {
+test("stale shadow sample (entry older than the recency window) stays PAUSED", () => {
   const userId = makeTestUser("stale");
   try {
     seedRealTrades(userId, 10, 40);
-    seedShadowTrades(userId, 20, 8, 6 * 24 * 60 * 60_000); // 6 days old
+    seedShadowTrades(userId, 20, 8, 6 * 24 * 60 * 60_000); // entry 6 days old
+    assert.equal(getAutoAdaptivePauseRecovery(userId, PRESET).eligible, false);
+    assert.equal(getPresetRiskMetrics(userId, PRESET).status, "PAUSED");
+  } finally {
+    cleanup(userId);
+  }
+});
+
+test("old entry marked recently (settled-late backlog) still stays PAUSED", () => {
+  const userId = makeTestUser("late");
+  try {
+    seedRealTrades(userId, 10, 40);
+    // entry 10 days ago, but closed_at = now (as a late backlog settle would do)
+    seedShadowTrades(userId, 20, 8, 10 * 24 * 60 * 60_000, Date.now());
     assert.equal(getAutoAdaptivePauseRecovery(userId, PRESET).eligible, false);
     assert.equal(getPresetRiskMetrics(userId, PRESET).status, "PAUSED");
   } finally {
