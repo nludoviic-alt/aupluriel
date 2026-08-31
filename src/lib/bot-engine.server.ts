@@ -158,6 +158,13 @@ const REASON_CODE_ACTION: Record<ClassifyReasonCode, ScanSymbolResult["action"]>
 };
 
 const SCAN_MS = 60_000;
+// Watchdog thresholds for a scan that never returns. Every network await
+// inside runScan is individually bounded (deriv.server.ts), so a healthy scan
+// finishes in seconds; ~4 SCAN_MS periods with no completion means something
+// uncovered has wedged — warn in the log then, force-release the lock at the
+// hard ceiling so the engine resumes instead of staying dark and silent.
+const TICK_STUCK_WARN_MS = 4 * SCAN_MS;
+const TICK_STUCK_FORCE_MS = 10 * SCAN_MS;
 // Durée de pause pour un déclencheur RÉVERSIBLE (perte flottante non réalisée,
 // trailing stop sur un pic). 45 min laisse le temps aux positions ouvertes de
 // se résoudre — la durée de détention moyenne mesurée sur Boom est de ~20 min —
@@ -1016,6 +1023,8 @@ class ServerBotEngine {
   private interval: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private ticking = false;
+  private tickStartedAt = 0;
+  private tickStuckWarned = false;
   private conn: DerivTradingConnection;
   private krakenConn: KrakenTradingConnection | null;
   private binanceConn: BinanceTradingConnection | null;
@@ -2053,17 +2062,52 @@ class ServerBotEngine {
   }
 
   private async tick() {
-    if (this.stopped || this.ticking) return;
+    if (this.stopped) return;
+    if (this.ticking) {
+      // Watchdog. A scan must never outlive a few interval periods — every
+      // network await inside runScan is now individually bounded (see
+      // deriv.server.ts withTimeout). If one is still flagged as running well
+      // past that ceiling, something the timeouts don't cover has wedged it:
+      // surface it in the log (once) instead of failing silently, and past a
+      // hard ceiling drop the lock so the engine can resume — a stuck scan is
+      // strictly worse than a rare overlapping one.
+      const stuckMs = Date.now() - this.tickStartedAt;
+      if (stuckMs > TICK_STUCK_WARN_MS && !this.tickStuckWarned) {
+        this.tickStuckWarned = true;
+        this.lastError = `scan bloqué depuis ${Math.round(stuckMs / 1000)}s`;
+        console.error(
+          `[bot] Scan bloqué pour user ${this.userId} preset ${this.preset} — ${Math.round(stuckMs / 1000)}s`,
+        );
+      }
+      if (stuckMs > TICK_STUCK_FORCE_MS) {
+        console.error(
+          `[bot] Scan forcé-déverrouillé pour user ${this.userId} preset ${this.preset} après ${Math.round(stuckMs / 1000)}s`,
+        );
+        this.ticking = false;
+      } else {
+        return;
+      }
+    }
     // Pending analytical observations must still close while the trading
     // engine is paused; this has no execution side effect.
     void settleDueRiskShadowObservations();
     const observationOnly = Date.now() < this.pausedUntil;
     this.ticking = true;
+    this.tickStartedAt = Date.now();
+    this.tickStuckWarned = false;
     try {
       // A paused preset continues to evaluate only qualified signals in
       // Shadow. Execution is blocked below before proposal/buy.
       await this.runScan(observationOnly);
       this.lastError = null;
+    } catch (err) {
+      // A scan that throws (bounded network timeout, transient broker error)
+      // must not kill the interval — log and let the next tick retry.
+      this.lastError = (err as Error).message;
+      console.error(
+        `[bot] Scan échoué pour user ${this.userId} preset ${this.preset}:`,
+        (err as Error).message,
+      );
     } finally {
       this.ticking = false;
     }

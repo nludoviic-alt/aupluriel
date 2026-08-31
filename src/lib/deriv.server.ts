@@ -70,6 +70,34 @@ export class DerivApiError extends Error {
 }
 type Listener = (msg: Msg) => void;
 
+/**
+ * Reject a promise that never settles. Node's global `fetch` and a WebSocket
+ * that connects at the TCP layer but never completes the HTTP/WS handshake
+ * (stale NAT mapping after a long idle, broker-side hang) will otherwise await
+ * forever. A single un-timed await here used to brick a whole bot engine with
+ * no error and no log: `connect()` cached the forever-pending promise in
+ * `this.connecting` and handed it to every later `request()` (incident
+ * 2026-08-29 — vol75 froze mid-scan, then crash500 two days later).
+ */
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}: timeout ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+const OTP_FETCH_TIMEOUT_MS = 15_000;
+const SOCKET_CONNECT_TIMEOUT_MS = 25_000;
+
 export interface ServerCandle {
   epoch: number;
   open: number;
@@ -105,7 +133,7 @@ class DerivSocket {
   private async connect(): Promise<void> {
     if (this.isOpen) return;
     if (this.connecting) return this.connecting;
-    this.connecting = (async () => {
+    const doConnect = async () => {
       const url = await this.getUrl();
       await new Promise<void>((resolve, reject) => {
         const ws = new WebSocket(url);
@@ -152,7 +180,12 @@ class DerivSocket {
           }
         };
       });
-    })();
+    };
+    this.connecting = withTimeout(
+      doConnect(),
+      SOCKET_CONNECT_TIMEOUT_MS,
+      `${this.label}: connexion`,
+    );
     try {
       await this.connecting;
     } finally {
@@ -354,7 +387,10 @@ async function fetchOtpUrl(
     "Deriv-App-ID": DERIV_REST_APP_ID,
     "Content-Type": "application/json",
   };
-  const accRes = await fetch(`${TRADING_V1}/accounts`, { headers });
+  const accRes = await fetch(`${TRADING_V1}/accounts`, {
+    headers,
+    signal: AbortSignal.timeout(OTP_FETCH_TIMEOUT_MS),
+  });
   // A 401 is not a transient proposal failure.  The engine must be able to
   // distinguish it from timeouts/rate limits and stop future entries safely.
   if (!accRes.ok) {
@@ -382,6 +418,7 @@ async function fetchOtpUrl(
   const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, {
     method: "POST",
     headers,
+    signal: AbortSignal.timeout(OTP_FETCH_TIMEOUT_MS),
   });
   if (!otpRes.ok) {
     throw new DerivApiError(
