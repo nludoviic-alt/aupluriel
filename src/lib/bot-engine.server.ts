@@ -1025,6 +1025,11 @@ class ServerBotEngine {
   private ticking = false;
   private tickStartedAt = 0;
   private tickStuckWarned = false;
+  // One-shot latches for the auto-adaptive PAUSE state transitions, so the
+  // user is notified once when the preset is benched and once when it earns a
+  // supervised re-entry — not every 60s tick.
+  private autoAdaptivePauseAlerted = false;
+  private autoAdaptiveRecoveryAlerted = false;
   private conn: DerivTradingConnection;
   private krakenConn: KrakenTradingConnection | null;
   private binanceConn: BinanceTradingConnection | null;
@@ -1213,6 +1218,24 @@ class ServerBotEngine {
         (e as Error).message,
       ),
     );
+  }
+
+  /** One-shot risk-state notification (in-app Notification Center + push).
+   * Best-effort: a delivery failure must never disturb the scan loop. */
+  private notifyRiskState(
+    category: "risk" | "system",
+    title: string,
+    body: string,
+  ) {
+    console.warn(`[bot] ${title} (user ${this.userId}) — ${body}`);
+    void (async () => {
+      try {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(this.userId, { title, body, url: "/autotrader", category });
+      } catch {
+        /* push is best-effort */
+      }
+    })();
   }
 
   private emit(log: TradeLog) {
@@ -2357,10 +2380,42 @@ class ServerBotEngine {
     // ── Auto-Adaptive Risk Manager Check (Rolling Window 30/100) ──
     const riskMetrics = getPresetRiskMetrics(this.userId, this.preset);
     if (riskMetrics.status === "PAUSED") {
-      for (const symbol of config.symbols) {
-        scanResults.push({ symbol, action: "cooldown", note: riskMetrics.reason });
+      // A hard `return` here used to freeze the preset's own rolling window
+      // (no new trades → PF50 stuck below 0.70 → paused forever) with no
+      // alert. Now: notify once, then keep evaluating in shadow so the paper
+      // record can prove a recovery and unlock a supervised re-entry
+      // (getAutoAdaptivePauseRecovery / risk-manager.server.ts).
+      if (!this.autoAdaptivePauseAlerted) {
+        this.autoAdaptivePauseAlerted = true;
+        this.notifyRiskState(
+          "risk",
+          `Preset ${this.preset} en pause sécurité`,
+          riskMetrics.reason ??
+            "Profit factor récent trop faible — trading réel suspendu, évaluation en shadow jusqu'au retour de l'edge.",
+        );
       }
-      return finishScan();
+      this.autoAdaptiveRecoveryAlerted = false;
+      observationBlockReason = "RISK_PRESET_PAUSED";
+      for (const symbol of config.symbols) {
+        scanResults.push({ symbol, action: "risk-pause", note: riskMetrics.reason });
+      }
+    } else {
+      if (
+        this.autoAdaptivePauseAlerted &&
+        !this.autoAdaptiveRecoveryAlerted &&
+        riskMetrics.reason?.startsWith("Réactivation supervisée")
+      ) {
+        this.autoAdaptiveRecoveryAlerted = true;
+        this.notifyRiskState(
+          "risk",
+          `Preset ${this.preset} réactivé (stake réduit)`,
+          riskMetrics.reason,
+        );
+      }
+      if (riskMetrics.status === "NORMAL") {
+        this.autoAdaptivePauseAlerted = false;
+        this.autoAdaptiveRecoveryAlerted = false;
+      }
     }
 
     // ── Stake ──

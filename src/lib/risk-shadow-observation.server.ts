@@ -48,7 +48,7 @@ export async function settleDueRiskShadowObservations(): Promise<void> {
   const rows = getDb().prepare(`
     SELECT id, symbol, direction, entry_price, notional_stake, shadow_mae, shadow_mfe, evaluation_at
     FROM shadow_trades
-    WHERE status = 'open' AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')
+    WHERE status = 'open' AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW', 'RISK_PRESET_PAUSED')
     ORDER BY evaluation_at ASC LIMIT 50
   `).all() as Array<{ id: string; symbol: string; direction: string; entry_price: number; notional_stake: number | null; shadow_mae: number; shadow_mfe: number; evaluation_at: number | null }>;
   for (const row of rows) {

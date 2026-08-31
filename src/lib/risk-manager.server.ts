@@ -104,6 +104,60 @@ export function getAssetFamily(symbol: string): string {
   return "OTHER";
 }
 
+// ── Supervised re-entry from an auto-adaptive PAUSE ─────────────────────────
+// A preset paused for PF50 < 0.70 stops trading entirely, which FREEZES its
+// own rolling window — no new bot_trades ever replace the 50 that triggered
+// the pause, so getPresetRiskMetrics keeps returning PAUSED forever and the
+// preset goes permanently dark with no way back (incident: vol75 paused
+// 2026-08-29, still down 2 days later with no alert). Fix: while paused the
+// engine keeps evaluating signals in shadow (bot-engine.server.ts sets
+// observationBlockReason = "RISK_PRESET_PAUSED"); once those settled paper
+// trades show the edge is back, grant a supervised re-entry at half stake so
+// real results can take over the rolling window again. Never straight to
+// full size — the real 30/50/100 matrix drives it from RESTRICTED onward.
+const PAUSE_RECOVERY_MIN_SAMPLE = 25;
+const PAUSE_RECOVERY_MIN_PF = 1.1;
+// Only paper trades from the last few days count: once a supervised re-entry
+// starts, the engine leaves shadow mode and stops adding observations, so a
+// stale-but-good shadow record must not keep a bleeding preset alive at half
+// stake forever. If the sample goes stale, the preset drops back to PAUSED,
+// re-enters shadow, and has to re-prove itself on fresh data.
+const PAUSE_RECOVERY_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1000;
+
+export function getAutoAdaptivePauseRecovery(
+  userId: number,
+  preset: Preset,
+  strategyId?: string,
+): { eligible: boolean; shadowSample: number; shadowPf: number } {
+  const minClosedAt = Date.now() - PAUSE_RECOVERY_MAX_AGE_MS;
+  const rows = (
+    strategyId
+      ? getDb().prepare(
+          `SELECT status, virtual_pnl FROM shadow_trades
+           WHERE user_id = ? AND strategy = ? AND block_reason = 'RISK_PRESET_PAUSED'
+             AND status IN ('won', 'lost') AND COALESCE(closed_at, time) >= ?
+           ORDER BY COALESCE(closed_at, time) DESC LIMIT 30`,
+        ).all(userId, strategyId, minClosedAt)
+      : getDb().prepare(
+          `SELECT status, virtual_pnl FROM shadow_trades
+           WHERE user_id = ? AND preset = ? AND block_reason = 'RISK_PRESET_PAUSED'
+             AND status IN ('won', 'lost') AND COALESCE(closed_at, time) >= ?
+           ORDER BY COALESCE(closed_at, time) DESC LIMIT 30`,
+        ).all(userId, preset, minClosedAt)
+  ) as { status: "won" | "lost"; virtual_pnl: number }[];
+
+  let grossWin = 0;
+  let grossLoss = 0;
+  for (const r of rows) {
+    if (r.status === "won") grossWin += Math.abs(r.virtual_pnl || 0);
+    else grossLoss += Math.abs(r.virtual_pnl || 0);
+  }
+  const shadowPf = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 99 : 0;
+  const eligible =
+    rows.length >= PAUSE_RECOVERY_MIN_SAMPLE && shadowPf >= PAUSE_RECOVERY_MIN_PF;
+  return { eligible, shadowSample: rows.length, shadowPf };
+}
+
 // ── Strategy Performance Monitor (Rolling 30/50/100 Trades) ─────────────────
 
 export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?: string): PresetRiskMetrics {
@@ -174,6 +228,20 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
 
   // Status Matrix: NORMAL, CAUTION, RESTRICTED, PAUSED
   if (sample50 >= 50 && profitFactor50 < 0.70) {
+    // A paper recovery in shadow grants a supervised re-entry at half stake
+    // instead of a dead end — checked at both the preset-level call and the
+    // per-strategy health call so the two agree.
+    const recovery = getAutoAdaptivePauseRecovery(userId, preset, strategyId);
+    if (recovery.eligible) {
+      return {
+        status: "RESTRICTED",
+        sample30, sample100, winRate30, profitFactor30, expectancy30, avgWin30, avgLoss30, lossToWinRatio30,
+        winRate100, profitFactor100, expectancy100,
+        reason: `Réactivation supervisée depuis PAUSE — PF shadow ${recovery.shadowPf.toFixed(2)} sur ${recovery.shadowSample} trades (PF réel 50 : ${profitFactor50.toFixed(2)}) — stake 50%`,
+        stakeMultiplier: 0.5,
+        minConfidenceAdjustment: 5,
+      };
+    }
     return {
       status: "PAUSED",
       sample30, sample100, winRate30, profitFactor30, expectancy30, avgWin30, avgLoss30, lossToWinRatio30,
