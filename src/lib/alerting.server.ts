@@ -22,28 +22,55 @@ export interface AlertPayload {
   metadata?: Record<string, any>;
 }
 
+// Suppress an identical (type, user, preset) alert for this long — a repeating
+// health-check (HeartbeatMonitor runs every 30s) must not push the same
+// "strategy paused" line dozens of times before the pause clears.
+const ALERT_DEDUP_MS = 30 * 60_000;
+const lastAlertAt = new Map<string, number>();
+
 export class AlertingEngine {
   /**
    * Dispatches an alert across all active notification channels and persists to SQLite.
    */
   static async sendAlert(payload: AlertPayload): Promise<void> {
-    const { userId, preset = "default", type, severity, title, message, metadata } = payload;
+    const { userId, preset = "default", type, severity, title, message } = payload;
     const now = Date.now();
-    const alertId = `alt_${now}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const dedupKey = `${type}:${userId}:${preset}`;
+    const prev = lastAlertAt.get(dedupKey);
+    if (prev && now - prev < ALERT_DEDUP_MS) return;
+    lastAlertAt.set(dedupKey, now);
 
     console.warn(`[ALERTING] [${severity}] [${type}] User ${userId} (${preset}): ${title} - ${message}`);
 
-    // 1. Persist alert to database
+    // 1. Persist to safety_alerts (the R4/E2 admin dashboard reads this).
+    //    The old code targeted `alerts`, whose real schema has no
+    //    title/message/is_read columns — every insert threw, so no system
+    //    alert was ever recorded. safety_alerts.alert_type is free-form TEXT.
     try {
-      getDb().prepare(`
-        INSERT INTO alerts (id, user_id, title, message, type, is_read, created_at, symbol)
-        VALUES (?, ?, ?, ?, ?, 0, unixepoch(), ?)
-      `).run(alertId, userId, `[${severity}] ${title}`, message, type.toLowerCase(), preset);
+      const id = `alert_${now}_${Math.random().toString(36).slice(2, 7)}`;
+      getDb()
+        .prepare(
+          `INSERT INTO safety_alerts (id, time, alert_type, user_id, preset, symbol, details)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(id, now, type, userId, preset, "N/A", `[${severity}] ${title} — ${message}`);
     } catch (err) {
-      console.error("[ALERTING] DB insert error:", err);
+      console.error("[ALERTING] safety_alerts insert error:", err);
     }
 
-    // 2. Dispatch to Telegram if configured
+    // 2. Only CRITICAL alerts reach the user's Notification Center / phone —
+    //    WARNING/INFO are operational diagnostics for the admin dashboard.
+    if (severity === "CRITICAL") {
+      try {
+        const { recordNotification } = await import("./push.server");
+        recordNotification(userId, `🚨 ${title}`, message, "/autotrader", "system");
+      } catch (err) {
+        console.error("[ALERTING] notification-center record error:", err);
+      }
+    }
+
+    // 3. Dispatch to Telegram if configured
     try {
       await this.sendTelegramNotification(userId, severity, title, message);
     } catch (err) {
