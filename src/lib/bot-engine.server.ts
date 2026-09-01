@@ -23,6 +23,7 @@ import {
   effectiveMultiplier,
   fetchCandlesServer,
   fetchRecentTicksServer,
+  getMarketState,
   closePublicSocket,
 } from "./deriv.server";
 import {
@@ -1031,6 +1032,15 @@ class ServerBotEngine {
   private ticking = false;
   private tickStartedAt = 0;
   private tickStuckWarned = false;
+  // Set every time tick() returns (success, early-return, or caught throw).
+  // The in-tick watchdog only helps while the interval still fires; if the
+  // interval itself dies (or `ticking` stays wedged past the force ceiling
+  // with no interval to release it), this timestamp stops advancing and the
+  // module-level supervisor (startBotSupervisor) recreates the engine.
+  private lastScanCompletedAt = Date.now();
+  get lastScanAt(): number {
+    return this.lastScanCompletedAt;
+  }
   // One-shot latches for the auto-adaptive PAUSE state transitions, so the
   // user is notified once when the preset is benched and once when it earns a
   // supervised re-entry — not every 60s tick.
@@ -2139,6 +2149,7 @@ class ServerBotEngine {
       );
     } finally {
       this.ticking = false;
+      this.lastScanCompletedAt = Date.now();
     }
   }
 
@@ -3771,6 +3782,25 @@ class ServerBotEngine {
       // contract). Multiplier, Kraken/Binance spot, and OANDA spot have neither.
       let tradeDuration = 0;
       if (!isMultiplier && !useAltBroker) {
+        // ── Trading-calendar gate (binary fixed-expiry only) ──
+        // A binary contract whose window overlaps a market close is
+        // hard-rejected by Deriv, and a burst of those rejections wedged the
+        // scan loop (2026-09-01: forex rollover + gold maintenance). Skip the
+        // signal cleanly here instead of letting the proposal hard-fail.
+        const market = await getMarketState(symbol);
+        if (market.known && (!market.open || market.suspended)) {
+          scanResults.push({
+            symbol,
+            action: "session-closed",
+            direction: analysis.direction,
+            confidence: analysis.confidence,
+            note: market.suspended
+              ? "Marché suspendu — signal ignoré"
+              : "Marché fermé (week-end / rollover / maintenance) — signal ignoré",
+          });
+          continue;
+        }
+
         // ── Dynamic duration based on ATR ──
         if (config.dynamicDuration) {
           // High volatility = shorter duration (capture the move faster)
@@ -4973,6 +5003,85 @@ export async function restoreBots(): Promise<void> {
     }
   }
   if (rows.length) console.log(`[bot] ${rows.length} bot(s) restauré(s) après redémarrage`);
+}
+
+// ─── Engine supervisor ────────────────────────────────────────────────────────
+// The in-tick watchdog only rescues a wedged scan while the 60s interval is
+// still firing. On 2026-09-01 an engine's interval itself stopped (funnel
+// froze for 29 min, well past the 10-min in-tick force ceiling). This external
+// supervisor is the backstop: every 2 min it recreates any enabled engine
+// whose tick() hasn't returned in STALL_MS — but only when it holds no open
+// position, so a teardown can never orphan a live contract.
+const SUPERVISOR_INTERVAL_MS = 2 * 60_000;
+const ENGINE_STALL_MS = 6 * 60_000;
+const SUPERVISOR_KEY = Symbol.for("lio23.bot.supervisor");
+
+export function startBotSupervisor(): void {
+  const g = globalThis as Record<symbol, unknown>;
+  if (g[SUPERVISOR_KEY]) return;
+  g[SUPERVISOR_KEY] = setInterval(() => {
+    void superviseEngines();
+  }, SUPERVISOR_INTERVAL_MS);
+  console.log("[bot-supervisor] Démarré (contrôle toutes les 2 min).");
+}
+
+let supervising = false;
+async function superviseEngines(): Promise<void> {
+  if (supervising) return;
+  supervising = true;
+  try {
+    await superviseEnginesInner();
+  } finally {
+    supervising = false;
+  }
+}
+
+async function superviseEnginesInner(): Promise<void> {
+  const now = Date.now();
+  for (const [key, engine] of [...engines.entries()]) {
+    const age = now - engine.lastScanAt;
+    if (age < ENGINE_STALL_MS) continue;
+    const [userIdRaw, preset] = key.split(":");
+    const userId = Number(userIdRaw);
+    if (!Number.isFinite(userId) || !preset) continue;
+
+    // Only resurrect an engine the DB still wants running — a race with
+    // stopBotForUser must not bring a disabled bot back.
+    const stateRow = getDb()
+      .prepare("SELECT enabled FROM bot_state WHERE user_id = ? AND preset = ?")
+      .get(userId, preset) as { enabled: number } | undefined;
+    if (!stateRow?.enabled) continue;
+
+    if (hasOpenPositions(userId, preset as Preset)) {
+      // Don't tear down an engine tracking a live contract — log it and wait.
+      console.error(
+        `[bot-supervisor] Moteur figé user ${userId}/${preset} (${Math.round(age / 1000)}s) mais position ouverte — recréation différée.`,
+      );
+      continue;
+    }
+
+    console.error(
+      `[bot-supervisor] Moteur figé user ${userId}/${preset} (${Math.round(age / 1000)}s sans scan) — recréation.`,
+    );
+    logSafetyAlert({
+      alertType: "BOT_STALLED",
+      userId,
+      preset,
+      symbol: "N/A",
+      details: `Scan loop figé ${Math.round(age / 1000)}s — moteur recréé par le superviseur.`,
+    });
+    try {
+      engine.stop();
+      engines.delete(key);
+      const config = loadBotConfig(userId, preset as Preset);
+      if (config) await startBotForUser(userId, preset as Preset, config);
+    } catch (e) {
+      console.error(
+        `[bot-supervisor] Recréation échouée user ${userId}/${preset}:`,
+        (e as Error).message,
+      );
+    }
+  }
 }
 
 export function getBotTrades(userId: number, preset: Preset, limit = 20): TradeLog[] {

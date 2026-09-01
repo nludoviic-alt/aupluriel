@@ -67,6 +67,15 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[config-guardian] Démarrage échoué:", e));
   }, 11000);
 
+  // Bot supervisor: recreates any enabled engine whose scan loop has frozen
+  // (the in-tick watchdog only helps while the 60s interval still fires; on
+  // 2026-09-01 an interval died outright). See startBotSupervisor.
+  setTimeout(() => {
+    import("./lib/bot-engine.server")
+      .then((m) => m.startBotSupervisor())
+      .catch((e) => console.error("[bot-supervisor] Démarrage échoué:", e));
+  }, 12000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so

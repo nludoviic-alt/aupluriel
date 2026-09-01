@@ -376,6 +376,50 @@ export async function fetchRecentTicksServer(symbol: string, count = 120): Promi
   });
 }
 
+export interface MarketState {
+  /** exchange_is_open from Deriv — 0 during weekends, holidays, the daily
+   *  forex rollover, and each instrument's own maintenance breaks. */
+  open: boolean;
+  /** is_trading_suspended — a transient halt distinct from a scheduled close. */
+  suspended: boolean;
+  /** false only when the symbol was actually absent from the catalogue. */
+  known: boolean;
+}
+
+/**
+ * Per-symbol market open/suspended state from `active_symbols: full`, cached
+ * 5 min (trading hours don't shift intraday). This gates every binary
+ * proposal: a fixed-expiry contract whose window overlaps a close is
+ * hard-rejected by Deriv ("Contract must expire during trading hours" /
+ * "Trading is not available from HH:MM"), and a storm of those rejections
+ * wedged the scan loop (2026-09-01). Unknown symbol → treated as open; the
+ * proposal itself stays the definitive gate.
+ */
+export async function getMarketState(symbol: string): Promise<MarketState> {
+  const rows = await getPublicHistory(
+    "active_symbols:full",
+    async () => {
+      const res = await getPublicSocket().request<{
+        active_symbols?: Array<{
+          symbol?: string;
+          underlying_symbol?: string;
+          exchange_is_open?: 0 | 1;
+          is_trading_suspended?: 0 | 1;
+        }>;
+      }>({ active_symbols: "full" });
+      return res.active_symbols ?? [];
+    },
+    5 * 60_000,
+  );
+  const row = rows.find((s) => s.symbol === symbol || s.underlying_symbol === symbol);
+  if (!row) return { open: true, suspended: false, known: false };
+  return {
+    open: row.exchange_is_open !== 0,
+    suspended: row.is_trading_suspended === 1,
+    known: true,
+  };
+}
+
 // ─── Per-user authenticated trading connection ────────────────────────────────
 
 async function fetchOtpUrl(
