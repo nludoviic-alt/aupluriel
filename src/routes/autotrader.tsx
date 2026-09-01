@@ -372,6 +372,34 @@ function saveConfig(c: AutoTraderConfig, preset?: string) {
   } catch {}
 }
 
+// The visible-preset whitelist only arrives with the /api/bot response, a
+// second or two after mount — until then `shownPresets` fell back to the full
+// PRESET_ORDER, so every hidden preset card flashed on screen and then
+// vanished. Cache the last-known list so the first paint already renders the
+// right subset.
+const VISIBLE_PRESETS_KEY = "lio23.visible_presets";
+function loadCachedVisiblePresets(): PresetKey[] | null {
+  try {
+    const raw =
+      typeof localStorage !== "undefined" ? localStorage.getItem(VISIBLE_PRESETS_KEY) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const clean = parsed.filter((p): p is PresetKey =>
+      (PRESET_ORDER as readonly string[]).includes(p as string),
+    );
+    return clean.length ? clean : null;
+  } catch {
+    return null;
+  }
+}
+function saveCachedVisiblePresets(list: readonly string[]) {
+  try {
+    if (typeof localStorage !== "undefined")
+      localStorage.setItem(VISIBLE_PRESETS_KEY, JSON.stringify(list));
+  } catch {}
+}
+
 interface PresetStatus {
   enabled: boolean;
   running: boolean;
@@ -624,13 +652,18 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // The visible-preset list is an account-level display choice. Stopped
   // presets stay selectable so a newly added strategy can be reviewed and
   // started for its first demo run.
-  const shownPresets: PresetKey[] = cloud
+  const [cachedVisiblePresets] = useState<PresetKey[] | null>(loadCachedVisiblePresets);
+  // Prefer the authoritative list from the cloud response; fall back to the
+  // cached list on the first paint (before /api/bot answers) so hidden preset
+  // cards never flash; only a first-ever visit with no cache shows them all.
+  const visibleWhitelist = cloud?.visiblePresets ?? cachedVisiblePresets;
+  const shownPresets: PresetKey[] = visibleWhitelist
     ? // A valid incoming opportunity must never be silently redirected to
       // Default just because its preset is hidden in the compact mobile strip.
       // It is displayed temporarily so the order can be prepared with the
       // matching configuration; this never changes the user's visibility list.
       PRESET_ORDER.filter(
-        (preset) => (cloud.visiblePresets?.includes(preset) ?? true) || preset === deepLinkedPreset,
+        (preset) => visibleWhitelist.includes(preset) || preset === deepLinkedPreset,
       )
     : [...PRESET_ORDER];
 
@@ -646,6 +679,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       const data = await api.get<CloudStatus>("/api/bot");
       if (sequence !== cloudRefreshSequenceRef.current) return;
       setCloud(data);
+      if (data.visiblePresets?.length) saveCachedVisiblePresets(data.visiblePresets);
       // This browser's draft can silently fall behind the server's saved
       // configuration (for example after an admin edit or another device).
       // The decision summary must describe what the engine actually uses;
