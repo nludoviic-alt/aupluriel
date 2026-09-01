@@ -289,20 +289,12 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = [
-  "default",
-  "boom",
-  "boom900",
-  "vol75",
-  "rb100",
-  "vol50",
-  "crash",
-  "crash500",
-  "scalping",
-  "crash900",
-  "boomv2",
-  "scalpingv2",
-] as const;
+// Synthetic-index presets retired 2026-09-01 (30-day audit: all net-negative
+// after removing their 2 best days; Deriv synthetics = RNG, negative
+// expectancy). `default` is the sole active preset. The others stay in
+// PresetKey / metadata maps only so historical trade-journal data still
+// renders; they are never offered for activation.
+const PRESET_ORDER = ["default"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
