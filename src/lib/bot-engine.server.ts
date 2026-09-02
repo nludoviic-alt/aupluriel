@@ -2243,6 +2243,26 @@ class ServerBotEngine {
             }));
 
             reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+
+            // reconcileUserPositions may have flipped orphaned trades to
+            // 'closed'. activeSymbols is not DB-backed, so a reservation for a
+            // now-closed position lingers and every future signal is rejected
+            // RISK_MAX_POSITIONS until the next restart (observed 2026-09-02: a
+            // Deriv 502 reconciled 3 positions closed, the 3 engines stayed
+            // blocked ~2h). Resync to what's actually still open — only ever
+            // releases stale slots, never adds one.
+            const stillOpen = new Set(
+              (
+                getDb()
+                  .prepare(
+                    `SELECT symbol FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`,
+                  )
+                  .all(this.userId, this.preset) as { symbol: string }[]
+              ).map((r) => r.symbol),
+            );
+            for (const sym of [...this.activeSymbols.keys()]) {
+              if (!stillOpen.has(sym)) this.activeSymbols.delete(sym);
+            }
           }
         }
       } catch {
