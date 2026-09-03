@@ -76,6 +76,16 @@ if (!g.__lio23_bot_boot__) {
       .catch((e) => console.error("[bot-supervisor] Démarrage échoué:", e));
   }, 12000);
 
+  // Index Seasonal (piste A) — scheduler autonome, hors moteur TA : LONG les
+  // indices actions à l'ouverture du lundi, sortie à la clôture. On/off via
+  // bot_state (userId, 'idxseasonal'). Voir idx-seasonal.server.ts +
+  // RESEARCH-A-index-monday.md.
+  setTimeout(() => {
+    import("./lib/idx-seasonal.server")
+      .then((m) => m.startIdxSeasonalScheduler())
+      .catch((e) => console.error("[idx-seasonal] Démarrage échoué:", e));
+  }, 13000);
+
   // Graceful shutdown: without this, open Deriv WebSockets + bot intervals kept
   // the process alive ~90s past SIGTERM until systemd SIGKILLed it — a full 502
   // window on every deploy. Engines are stopped WITHOUT flipping bot_state, so
@@ -89,6 +99,7 @@ if (!g.__lio23_bot_boot__) {
     Promise.all([
       import("./lib/bot-engine.server").then((m) => m.shutdownAllEngines()),
       import("./lib/deriv.server").then((m) => m.closePublicSocket()),
+      import("./lib/idx-seasonal.server").then((m) => m.stopIdxSeasonalScheduler()),
     ])
       .catch(() => { /* exiting regardless */ })
       .finally(() => process.exit(0));
