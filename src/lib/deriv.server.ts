@@ -95,8 +95,45 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
   });
 }
 
-const OTP_FETCH_TIMEOUT_MS = 15_000;
-const SOCKET_CONNECT_TIMEOUT_MS = 25_000;
+// Per-attempt budget for each OTP-exchange REST call. Lower than it used to be
+// (15s) because fetchOtpUrl now retries transient failures up to 3× — the outer
+// SOCKET_CONNECT_TIMEOUT_MS below has to cover the whole retry sequence.
+const OTP_FETCH_TIMEOUT_MS = 6_000;
+// Wraps getUrl() + the WS handshake. Must exceed the worst-case fetchOtpUrl
+// retry sequence: 2 sequential REST calls, each up to 3 attempts of 6s with
+// 0.5s+1s backoff (~19s per call, ~38s total), plus the 15s WS handshake.
+// 60s covers a full transient-failure storm; a genuinely dead connection still
+// fails within the minute and simply retries on the next scan tick.
+const SOCKET_CONNECT_TIMEOUT_MS = 60_000;
+
+// Deriv's REST edge intermittently returns 5xx (502/503/524) and, less often,
+// times out — ~10 lost trades over 5 days (2026-09) were all transient auth
+// failures, not bad tokens. Retry those; never retry 401/403 (a rejected
+// credential fails identically on retry, and the engine must fail closed on it).
+const OTP_RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 522, 524]);
+const OTP_MAX_ATTEMPTS = 3;
+
+async function derivRestFetch(url: string, init: RequestInit, label: string): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= OTP_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(OTP_FETCH_TIMEOUT_MS),
+      });
+      if (res.ok || !OTP_RETRYABLE_STATUS.has(res.status) || attempt === OTP_MAX_ATTEMPTS) {
+        return res;
+      }
+      lastError = new Error(`${label}: HTTP ${res.status}`);
+    } catch (e) {
+      // AbortError (timeout) and network errors (TypeError) are transient.
+      lastError = e;
+      if (attempt === OTP_MAX_ATTEMPTS) throw e;
+    }
+    await sleep(attempt * 500);
+  }
+  throw lastError ?? new Error(`${label}: échec après ${OTP_MAX_ATTEMPTS} tentatives`);
+}
 
 export interface ServerCandle {
   epoch: number;
@@ -431,12 +468,10 @@ async function fetchOtpUrl(
     "Deriv-App-ID": DERIV_REST_APP_ID,
     "Content-Type": "application/json",
   };
-  const accRes = await fetch(`${TRADING_V1}/accounts`, {
-    headers,
-    signal: AbortSignal.timeout(OTP_FETCH_TIMEOUT_MS),
-  });
+  const accRes = await derivRestFetch(`${TRADING_V1}/accounts`, { headers }, "Deriv /accounts");
   // A 401 is not a transient proposal failure.  The engine must be able to
   // distinguish it from timeouts/rate limits and stop future entries safely.
+  // derivRestFetch has already retried any transient 5xx/timeout by this point.
   if (!accRes.ok) {
     throw new DerivApiError(
       accRes.status === 401 ? "DERIV_AUTH_INVALID" : "DERIV_ACCOUNTS_FAILED",
@@ -459,11 +494,11 @@ async function fetchOtpUrl(
     accounts.find((a) => a.status === "active");
   if (!chosen) throw new Error("Aucun compte Deriv actif");
 
-  const otpRes = await fetch(`${TRADING_V1}/accounts/${chosen.account_id}/otp`, {
-    method: "POST",
-    headers,
-    signal: AbortSignal.timeout(OTP_FETCH_TIMEOUT_MS),
-  });
+  const otpRes = await derivRestFetch(
+    `${TRADING_V1}/accounts/${chosen.account_id}/otp`,
+    { method: "POST", headers },
+    "Deriv /otp",
+  );
   if (!otpRes.ok) {
     throw new DerivApiError(
       otpRes.status === 401 ? "DERIV_AUTH_INVALID" : "DERIV_OTP_FAILED",
