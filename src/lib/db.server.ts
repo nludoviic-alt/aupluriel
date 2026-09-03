@@ -385,6 +385,17 @@ function migrate(db: Database.Database) {
       checked_at          INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
+    -- On/off + last-verdict for the "Index Seasonal" scheduler (piste A —
+    -- Monday-effect on equity indices, idx-seasonal.server.ts). A dedicated
+    -- row, NOT a bot_state entry: restoreBots() force-disables any bot_state
+    -- row whose preset isn't in ACTIVE_PRESETS, which would silently kill this
+    -- standalone scheduler on every restart.
+    CREATE TABLE IF NOT EXISTS idx_seasonal_state (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled    INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
     -- Web Push subscriptions — one row per browser/device a user opted in
     -- from (a phone and a laptop are two rows). endpoint is the push
     -- service's unique URL for that subscription, so it doubles as the
