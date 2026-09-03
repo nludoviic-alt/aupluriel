@@ -75,10 +75,13 @@ function resolveAccount(): { userId: number; token: string } | null {
   return row ?? null;
 }
 
-function isEnabled(userId: number): boolean {
+// Dedicated row, not bot_state: restoreBots() force-disables any bot_state
+// entry whose preset isn't in ACTIVE_PRESETS, which killed this scheduler on
+// every restart (2026-09-03). See idx_seasonal_state in db.server.ts.
+function isEnabled(): boolean {
   const row = db()
-    .prepare(`SELECT enabled FROM bot_state WHERE user_id = ? AND preset = ?`)
-    .get(userId, IDX_SEASONAL_PRESET) as { enabled: number } | undefined;
+    .prepare(`SELECT enabled FROM idx_seasonal_state WHERE id = 1`)
+    .get() as { enabled: number } | undefined;
   return !!row && row.enabled === 1;
 }
 
@@ -169,7 +172,7 @@ async function realizedProfit(c: DerivTradingConnection, contractId: number): Pr
 async function tick(): Promise<void> {
   const account = resolveAccount();
   if (!account) return;
-  if (!isEnabled(account.userId)) {
+  if (!isEnabled()) {
     // arrêt propre : si des positions traînent encore ouvertes, les fermer.
     if (openPositions.size && conn) {
       for (const pos of [...openPositions.values()]) {
