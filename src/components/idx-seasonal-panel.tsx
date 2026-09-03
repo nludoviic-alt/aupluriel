@@ -21,6 +21,7 @@ interface IdxTrade {
 }
 interface IdxSeasonalData {
   enabled: boolean;
+  canToggle?: boolean;
   updatedAt: number | null;
   killSwitch: { active: boolean; pf: number; n: number } | null;
   stats: {
@@ -109,18 +110,20 @@ export function IdxSeasonalPanel() {
           >
             {data.enabled ? "Armé" : "Inactif"}
           </span>
-          <button
-            onClick={toggle}
-            disabled={toggling}
-            className={cn(
-              "rounded-xl px-4 py-2 text-xs font-bold transition-all border",
-              data.enabled
-                ? "border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
-                : "border-emerald-500/30 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25",
-            )}
-          >
-            {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : data.enabled ? "Désarmer" : "Armer"}
-          </button>
+          {data.canToggle && (
+            <button
+              onClick={toggle}
+              disabled={toggling}
+              className={cn(
+                "rounded-xl px-4 py-2 text-xs font-bold transition-all border",
+                data.enabled
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
+                  : "border-emerald-500/30 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25",
+              )}
+            >
+              {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : data.enabled ? "Désarmer" : "Armer"}
+            </button>
+          )}
         </div>
       </div>
 
