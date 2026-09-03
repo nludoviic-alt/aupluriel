@@ -80,7 +80,10 @@ function JournalPage() {
   // hiding all data behind a filter that couldn't be computed.
   const visibleLogs = showRetired || !activeSymbols || activeSymbols.size === 0
     ? logs
-    : logs.filter((l) => activeSymbols.has(l.symbol));
+    : // idxseasonal (piste A) est un preset autonome : ses symboles OTC_* ne sont
+      // dans aucune watchlist du moteur TA, donc jamais dans activeSymbols. On
+      // les garde toujours visibles sinon la validation 200 trades est invisible ici.
+      logs.filter((l) => activeSymbols.has(l.symbol) || (l.preset as string) === "idxseasonal");
 
   const s = summarize(visibleLogs);
   const equity = equityCurve(visibleLogs);
