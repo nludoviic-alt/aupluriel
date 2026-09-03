@@ -25,6 +25,7 @@ import { SCAN_ACTION_META } from "@/lib/scan-actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MarketSessionsBar } from "@/components/market-sessions-bar";
+import { IdxSeasonalPanel } from "@/components/idx-seasonal-panel";
 import { HealthPanel } from "@/components/health-panel";
 import { BacktestVisualizer } from "@/components/backtest-visualizer";
 import {
@@ -1512,7 +1513,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         <MarketSessionsBar />
       </div>
 
-      {/* ── Sticky HUD Status Bar ── */}
+      {/* ── Stratégie active : Index Seasonal (piste A) ──
+           L'ancien livre forex ("Multi" = preset `default`) n'a pas d'edge
+           (DECISION-2026-09-03) et est éteint. Le sélecteur de presets et sa
+           barre de statut sont retirés de l'écran ; la stratégie active est
+           pilotée par le panneau ci-dessous (armer/désarmer, stats, trades).
+           Le bloc `{false && (...)}` garde l'ancien code sous la main. */}
+      <IdxSeasonalPanel />
+
+      {false && (
       <AutoTraderStatusBar
         mode={config.mode}
         presetLabel={presetLabels[selectedPreset]}
@@ -1528,8 +1537,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         onAuto={toggleCloud}
         onModeChange={changeTradingMode}
       />
+      )}
 
-      {/* ── Strategy Selector — shared by Auto and Manual modes ── */}
+      {false && (
       <section
         aria-label="Choisir une stratégie"
         className="scroll-mt-[220px] space-y-2.5 lg:scroll-mt-[90px]"
@@ -1753,6 +1763,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           })}
         </div>
       </section>
+      )}
 
       {/* Manual tab already has its own live-position view further down
           (Suivi des Contrats & Positions, with a close-at-market action) —
