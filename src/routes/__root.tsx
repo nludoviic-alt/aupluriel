@@ -243,6 +243,21 @@ function RootComponent() {
   // directly, deferring only when the page is genuinely still loading.
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    // When a new SW takes control (cache-name bump on deploy), the page in the
+    // tab is still running the OLD bundle in memory until a manual reload — which
+    // is how installed clients kept showing archived preset cards after a deploy.
+    // Reload once, automatically, the first time control passes to a new worker.
+    // Only reload when REPLACING an existing worker — on a first-ever install
+    // there is no stale bundle in memory and clients.claim() would trigger a
+    // pointless reload right after the initial load.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    const onControllerChange = () => {
+      if (reloading || !hadController) return;
+      reloading = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     const register = () =>
       navigator.serviceWorker
         .register("/sw.js")
@@ -251,8 +266,11 @@ function RootComponent() {
       register();
     } else {
       window.addEventListener("load", register, { once: true });
-      return () => window.removeEventListener("load", register);
     }
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      window.removeEventListener("load", register);
+    };
   }, []);
 
   const publicRoutes = ["/login", "/verify-email", "/forgot-password", "/reset-password"];

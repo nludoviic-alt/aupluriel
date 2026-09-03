@@ -11,7 +11,12 @@
 // v5: cache-name bump to force-evict every installed client's stale cache
 // after the admin user profile page deploy — guarantees phones/browsers
 // that keep reporting the old modal behavior aren't simply running an old bundle.
-const CACHE_NAME = 'lio23-v5';
+// v6: 2026-09-03 — synthetic-index presets were archived 2026-09-01 but installed
+// clients kept rendering the pre-archive Auto-Trader bundle (13 preset cards that
+// flash then vanish once /api/bot answers). Bump evicts every stale cache; paired
+// with the controllerchange auto-reload in __root.tsx so the visible page updates
+// without a manual hard-refresh.
+const CACHE_NAME = 'lio23-v6';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo.png',
