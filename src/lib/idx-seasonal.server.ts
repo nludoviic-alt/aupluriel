@@ -26,19 +26,37 @@ import { DerivTradingConnection, getMarketState } from "./deriv.server";
 export const IDX_SEASONAL_PRESET = "idxseasonal";
 
 // Les 10 indices validés en OOS (RESEARCH-A). Deriv OTC index CFDs.
-const SYMBOLS = [
-  "OTC_NDX", "OTC_SPC", "OTC_DJI", "OTC_GDAXI", "OTC_N225",
-  "OTC_HSI", "OTC_FCHI", "OTC_AS51", "OTC_SX5E", "OTC_SSMI",
-] as const;
+//
+// Un binaire Deriv sur indice DOIT expirer pendant les heures de marché
+// ("Contract must expire during trading hours" — testé le 2026-09-03). Chaque
+// bourse a sa propre session, donc chaque symbole a son heure d'entrée (UTC) et
+// sa durée de hold, choisies pour que l'expiration tombe ~30-60 min avant la
+// clôture. entryHourUtc : le tick tourne toutes les 5 min, on entre au 1er tick
+// de cette heure (tradedThisUtcDay évite les doublons).
+const IDX_CONFIG: Record<string, { entryHourUtc: number; durationMin: number }> = {
+  // US (session ~13:30-20:00 UTC) — entrée 14:00, expiration 19:00
+  OTC_NDX: { entryHourUtc: 14, durationMin: 300 },
+  OTC_SPC: { entryHourUtc: 14, durationMin: 300 },
+  OTC_DJI: { entryHourUtc: 14, durationMin: 300 },
+  // Europe (session ~08:00-16:30 UTC) — entrée 08:00, expiration 15:00
+  OTC_GDAXI: { entryHourUtc: 8, durationMin: 420 },
+  OTC_FCHI: { entryHourUtc: 8, durationMin: 420 },
+  OTC_SX5E: { entryHourUtc: 8, durationMin: 420 },
+  OTC_SSMI: { entryHourUtc: 8, durationMin: 420 },
+  // Asie (sessions ~00:00-06:00 / 01:30-08:00 UTC)
+  OTC_N225: { entryHourUtc: 1, durationMin: 240 },
+  OTC_HSI: { entryHourUtc: 2, durationMin: 300 },
+  OTC_AS51: { entryHourUtc: 1, durationMin: 240 },
+};
+const SYMBOLS = Object.keys(IDX_CONFIG);
 
 const TICK_MS = 5 * 60_000;
-// Fenêtre d'entrée : lundi, entre 07:00 et 14:00 UTC — couvre l'ouverture de
-// session de tous les indices (Tokyo tôt -> New York).
-const ENTRY_UTC_HOUR_START = 7;
-const ENTRY_UTC_HOUR_END = 14;
-// Durées de hold visées (minutes), de la plus longue à la plus courte. On prend
-// la première que Deriv accepte pour le symbole (bornée par contracts_for).
-const HOLD_LADDER_MIN = [480, 360, 240, 180, 120, 60];
+// Si Deriv refuse la durée configurée ("must expire during trading hours"),
+// on redescend par ce ladder jusqu'à une durée acceptée. La borne min Deriv
+// sur ces indices est 15 min.
+const FALLBACK_LADDER_MIN = [240, 180, 120, 60, 30, 15];
+// TEST_MODE : force une durée courte pour vérifier le cycle complet en séance.
+const TEST_MODE_DURATION_MIN = 15;
 const SETTLE_BUFFER_MS = 90_000; // marge après expiration avant de lire le P&L
 
 const STAKE_USD = 5;
@@ -201,11 +219,11 @@ async function tick(): Promise<void> {
 
   if (!enabled) return;
 
-  // ── Entrées : lundi, fenêtre horaire, kill-switch off ──
-  // IDX_SEASONAL_TEST_MODE=1 : ignore la fenêtre lundi/heure pour vérifier la
-  // plomberie un jour de semaine (respecte marché ouvert, 1/symbole/jour, kill-switch).
+  // IDX_SEASONAL_TEST_MODE=1 : ignore la contrainte lundi + heure-par-symbole
+  // pour vérifier le cycle complet en séance (respecte marché ouvert,
+  // 1/symbole/jour, kill-switch). Durée forcée courte.
   const testMode = process.env.IDX_SEASONAL_TEST_MODE === "1";
-  if (!testMode && (!isMonday || hour < ENTRY_UTC_HOUR_START || hour >= ENTRY_UTC_HOUR_END)) return;
+  if (!testMode && !isMonday) return;
 
   const ks = trailingProfitFactor();
   if (ks && ks.pf < KILL_SWITCH_MIN_PF) {
@@ -227,17 +245,16 @@ async function tick(): Promise<void> {
   }
 
   for (const symbol of SYMBOLS) {
+    const cfg = IDX_CONFIG[symbol];
     if (openPositions.has(symbol)) continue;
+    if (!testMode && hour !== cfg.entryHourUtc) continue;
     if (tradedThisUtcDay(symbol)) continue;
     const mkt = await getMarketState(symbol).catch(() => null);
     if (!mkt || !mkt.open || mkt.suspended) continue;
 
-    // borne la durée par ce que Deriv accepte pour ce symbole
-    const bounds = await conn2.getRiseFallDurationBounds(symbol).catch(() => null);
-    const maxMin = bounds ? Math.floor(bounds.maxSec / 60) : Infinity;
-    const minMin = bounds ? Math.ceil(bounds.minSec / 60) : 1;
-    const ladder = HOLD_LADDER_MIN.filter((d) => d <= maxMin && d >= minMin);
-    if (!ladder.length) ladder.push(Math.min(60, maxMin === Infinity ? 60 : maxMin));
+    const ladder = testMode
+      ? [TEST_MODE_DURATION_MIN]
+      : [cfg.durationMin, ...FALLBACK_LADDER_MIN.filter((d) => d < cfg.durationMin)];
 
     let placed = false;
     for (const durationMin of ladder) {
@@ -289,7 +306,7 @@ export function startIdxSeasonalScheduler(): void {
       openPositions.set(r.symbol, {
         tradeId: r.id, contractId: cid, symbol: r.symbol,
         entryTime: r.entry_time || Date.now(),
-        durationMin: r.duration_minutes || HOLD_LADDER_MIN[0],
+        durationMin: r.duration_minutes || IDX_CONFIG[r.symbol]?.durationMin || 240,
       });
     }
     if (rows.length) console.log(`[idx-seasonal] ${rows.length} position(s) ouverte(s) rechargée(s).`);
