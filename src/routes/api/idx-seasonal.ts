@@ -2,7 +2,7 @@
 // Preset autonome hors ServerBotEngine — donc pas dans /api/bot ; sa propre route.
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
-import { requireAdmin } from "@/lib/auth.server";
+import { getFullUserFromRequest, requireAdmin } from "@/lib/auth.server";
 
 // Inliné plutôt qu'importé de idx-seasonal.server.ts : évite de tirer tout le
 // module scheduler (DerivTradingConnection…) dans le bundle de cette route.
@@ -57,8 +57,9 @@ export const Route = createFileRoute("/api/idx-seasonal")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const admin = await requireAdmin(request);
-        if (!admin) return json({ error: "Accès réservé aux administrateurs." }, 403);
+        const user = await getFullUserFromRequest(request);
+        if (!user) return json({ error: "Non authentifié" }, 401);
+        const canToggle = !!user.is_admin;
 
         const db = getDb();
         const state = db
@@ -89,6 +90,7 @@ export const Route = createFileRoute("/api/idx-seasonal")({
 
         return json({
           enabled: state?.enabled === 1,
+          canToggle,
           updatedAt: state?.updated_at ?? null,
           killSwitch,
           stats: computeStats(rows),
