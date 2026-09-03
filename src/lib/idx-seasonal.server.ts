@@ -6,13 +6,17 @@
 // (pas porté par 2 lundis), encore actif dans les données récentes. Anomalie
 // connue ("weekend effect" inversé sur les marchés électroniques).
 //
-// Scheduler AUTONOME, volontairement hors du moteur TA (ServerBotEngine) :
-// un signal calendaire n'a rien à faire dans la cascade d'analyse technique.
-// Il ouvre/ferme des positions multiplicateur via DerivTradingConnection et
-// journalise dans bot_trades avec preset='idxseasonal' — tout l'affichage et
-// les stats existants (Journal, requêtes) fonctionnent tels quels.
+// L'effet n'existe PAS heure par heure (~52 % à chaque heure) — il faut tenir
+// toute la séance. Deriv n'offre pas de multiplicateur sur les OTC indices
+// (testé le 2026-09-03 : "MULTUP indisponible"), donc : un binaire CALL "Rise"
+// avec la plus longue durée que Deriv accepte sur le symbole, entré le lundi
+// matin, qui se règle tout seul.
 //
-// On/off : ligne bot_state (userId, 'idxseasonal'). enabled=0 -> no-op total.
+// Scheduler AUTONOME, hors du moteur TA (ServerBotEngine) : un signal calendaire
+// n'a rien à faire dans la cascade d'analyse technique. Journalise dans
+// bot_trades avec preset='idxseasonal' — Journal et stats existants OK.
+//
+// On/off : ligne idx_seasonal_state (id=1). enabled=0 -> no-op total.
 // Kill-switch : PF glissant 28 j < 1.0 sur >= 20 trades clôturés -> pause.
 // Démo uniquement en V1. Mise fixe, pas de Kelly/adaptatif — on mesure d'abord.
 
@@ -29,17 +33,15 @@ const SYMBOLS = [
 
 const TICK_MS = 5 * 60_000;
 // Fenêtre d'entrée : lundi, entre 07:00 et 14:00 UTC — couvre l'ouverture de
-// session de tous les indices (Tokyo tôt -> New York). On entre une fois par
-// symbole dès qu'il est ouvert dans cette fenêtre.
+// session de tous les indices (Tokyo tôt -> New York).
 const ENTRY_UTC_HOUR_START = 7;
 const ENTRY_UTC_HOUR_END = 14;
-// Sortie : clôture de session détectée, ou au plus tard après MAX_HOLD.
-const MAX_HOLD_MINUTES = 9 * 60;
+// Durées de hold visées (minutes), de la plus longue à la plus courte. On prend
+// la première que Deriv accepte pour le symbole (bornée par contracts_for).
+const HOLD_LADDER_MIN = [480, 360, 240, 180, 120, 60];
+const SETTLE_BUFFER_MS = 90_000; // marge après expiration avant de lire le P&L
 
 const STAKE_USD = 5;
-const MULTIPLIER = 20;               // x20 : un lundi à -3% -> -60% de la mise (~-$3)
-const STOP_LOSS_USD = STAKE_USD;     // perte plafonnée à 100 % de la mise
-const TAKE_PROFIT_USD = STAKE_USD * 4;
 
 const KILL_SWITCH_WINDOW_MS = 28 * 24 * 3600_000;
 const KILL_SWITCH_MIN_TRADES = 20;
@@ -50,13 +52,14 @@ interface OpenPos {
   contractId: number;
   symbol: string;
   entryTime: number;
-  entryPrice: number;
+  durationMin: number;
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let conn: DerivTradingConnection | null = null;
 const openPositions = new Map<string, OpenPos>();
 let lastKillSwitchLog = 0;
+let durationsLogged = false;
 
 function db() {
   return getDb();
@@ -114,22 +117,21 @@ function tradedThisUtcDay(symbol: string): boolean {
 }
 
 function insertOpenTrade(p: {
-  tradeId: string; userId: number; symbol: string; entryPrice: number; contractId: number;
+  tradeId: string; userId: number; symbol: string; entryPrice: number;
+  contractId: number; durationMin: number; payout: number;
 }): void {
   db()
     .prepare(
       `INSERT INTO bot_trades
         (id, user_id, time, symbol, direction, stake, payout, status, profit,
          confidence, tf_agreement, contract_id, note, strategy, strategy_version,
-         entry_price, multiplier, stop_loss, take_profit, mode, preset,
-         entry_time, configured_max_hold_seconds, market_type, execution_mode)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         entry_price, duration_minutes, mode, preset, entry_time, market_type, execution_mode)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
-      p.tradeId, p.userId, Date.now(), p.symbol, "CALL", STAKE_USD, 0, "open", 0,
+      p.tradeId, p.userId, Date.now(), p.symbol, "CALL", STAKE_USD, p.payout, "open", 0,
       65, 0, String(p.contractId), "Index Seasonal — lundi haussier", "IDX_SEASONAL", "v1",
-      p.entryPrice, MULTIPLIER, STOP_LOSS_USD, TAKE_PROFIT_USD, "demo", IDX_SEASONAL_PRESET,
-      Date.now(), MAX_HOLD_MINUTES * 60, "DERIV_INDEX", "LIVE",
+      p.entryPrice, p.durationMin, "demo", IDX_SEASONAL_PRESET, Date.now(), "DERIV_INDEX", "LIVE",
     );
 }
 
@@ -149,7 +151,7 @@ function closeTrade(pos: OpenPos, profit: number, reason: string): void {
       now,
       Math.round((now - pos.entryTime) / 1000),
       reason,
-      `Index Seasonal — clôturé (${reason})`,
+      `Index Seasonal — réglé (${reason})`,
       pos.tradeId,
     );
 }
@@ -159,65 +161,49 @@ async function getConn(token: string): Promise<DerivTradingConnection> {
   return conn;
 }
 
-async function realizedProfit(c: DerivTradingConnection, contractId: number): Promise<number> {
-  for (let i = 0; i < 3; i++) {
-    const table = await c.getProfitTable(25).catch(() => []);
-    const hit = table.find((t) => t.contractId === contractId);
-    if (hit) return hit.profit;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  return 0;
+async function realizedProfit(c: DerivTradingConnection, contractId: number): Promise<number | null> {
+  const table = await c.getProfitTable(50).catch(() => []);
+  const hit = table.find((t) => t.contractId === contractId);
+  return hit ? hit.profit : null;
 }
 
 async function tick(): Promise<void> {
   const account = resolveAccount();
   if (!account) return;
-  if (!isEnabled()) {
-    // arrêt propre : si des positions traînent encore ouvertes, les fermer.
-    if (openPositions.size && conn) {
-      for (const pos of [...openPositions.values()]) {
-        try {
-          await conn.sellContract(pos.contractId);
-          const pnl = await realizedProfit(conn, pos.contractId);
-          closeTrade(pos, pnl, "disabled");
-        } catch { /* réessai au prochain tick */ }
-        openPositions.delete(pos.symbol);
-      }
-    }
-    return;
-  }
+  const enabled = isEnabled();
 
-  const c = await getConn(account.token);
   const now = new Date();
   const isMonday = now.getUTCDay() === 1;
   const hour = now.getUTCHours();
+  const c = openPositions.size || enabled ? await getConn(account.token) : null;
 
-  // ── Sorties ──
-  for (const pos of [...openPositions.values()]) {
-    const heldMin = (Date.now() - pos.entryTime) / 60_000;
-    let reason: string | null = null;
-    if (heldMin >= MAX_HOLD_MINUTES) reason = "max-hold";
-    else {
-      const mkt = await getMarketState(pos.symbol).catch(() => null);
-      if (mkt && mkt.known && !mkt.open) reason = "session-close";
-    }
-    if (!reason) continue;
-    try {
-      await c.sellContract(pos.contractId);
+  // ── Règlement des binaires expirés (toujours, même si désarmé) ──
+  if (c) {
+    for (const pos of [...openPositions.values()]) {
+      const expiresAt = pos.entryTime + pos.durationMin * 60_000;
+      if (Date.now() < expiresAt + SETTLE_BUFFER_MS) continue;
       const pnl = await realizedProfit(c, pos.contractId);
-      closeTrade(pos, pnl, reason);
-      console.log(`[idx-seasonal] ${pos.symbol} clôturé (${reason}) P&L ${pnl.toFixed(2)}`);
-    } catch (e) {
-      console.error(`[idx-seasonal] échec clôture ${pos.symbol}:`, (e as Error).message);
-      continue; // on retentera
+      if (pnl === null) {
+        // pas encore dans le profit_table — on retente au prochain tick,
+        // sauf si ça traîne depuis > 30 min après expiration (contrat perdu).
+        if (Date.now() > expiresAt + 30 * 60_000) {
+          closeTrade(pos, -STAKE_USD, "settle-timeout");
+          openPositions.delete(pos.symbol);
+          console.warn(`[idx-seasonal] ${pos.symbol} règlement introuvable — clôturé -$${STAKE_USD}`);
+        }
+        continue;
+      }
+      closeTrade(pos, pnl, "expiry");
+      openPositions.delete(pos.symbol);
+      console.log(`[idx-seasonal] ${pos.symbol} réglé P&L ${pnl.toFixed(2)}`);
     }
-    openPositions.delete(pos.symbol);
   }
+
+  if (!enabled) return;
 
   // ── Entrées : lundi, fenêtre horaire, kill-switch off ──
   // IDX_SEASONAL_TEST_MODE=1 : ignore la fenêtre lundi/heure pour vérifier la
-  // plomberie d'exécution un jour de semaine (respecte quand même marché ouvert,
-  // 1 trade/symbole/jour, et le kill-switch). À retirer après validation.
+  // plomberie un jour de semaine (respecte marché ouvert, 1/symbole/jour, kill-switch).
   const testMode = process.env.IDX_SEASONAL_TEST_MODE === "1";
   if (!testMode && (!isMonday || hour < ENTRY_UTC_HOUR_START || hour >= ENTRY_UTC_HOUR_END)) return;
 
@@ -230,34 +216,58 @@ async function tick(): Promise<void> {
     return;
   }
 
+  const conn2 = await getConn(account.token);
+
+  if (!durationsLogged) {
+    durationsLogged = true;
+    const b = await conn2.getRiseFallDurationBounds("OTC_NDX").catch(() => null);
+    console.log(
+      `[idx-seasonal] Rise/Fall OTC_NDX bornes: ${b ? `${(b.minSec / 60).toFixed(0)}min .. ${(b.maxSec / 60).toFixed(0)}min` : "inconnues"}`,
+    );
+  }
+
   for (const symbol of SYMBOLS) {
     if (openPositions.has(symbol)) continue;
     if (tradedThisUtcDay(symbol)) continue;
     const mkt = await getMarketState(symbol).catch(() => null);
     if (!mkt || !mkt.open || mkt.suspended) continue;
 
-    try {
-      const bought = await c.proposeAndBuyMultiplier({
-        symbol,
-        amount: STAKE_USD,
-        direction: "CALL",
-        multiplier: MULTIPLIER,
-        stopLossUsd: STOP_LOSS_USD,
-        takeProfitUsd: TAKE_PROFIT_USD,
-      });
-      const tradeId = `idxs_${Date.now()}_${symbol}`;
-      insertOpenTrade({
-        tradeId, userId: account.userId, symbol,
-        entryPrice: bought.buyPrice, contractId: bought.contractId,
-      });
-      openPositions.set(symbol, {
-        tradeId, contractId: bought.contractId, symbol,
-        entryTime: Date.now(), entryPrice: bought.buyPrice,
-      });
-      console.log(`[idx-seasonal] LONG ${symbol} x${MULTIPLIER} $${STAKE_USD} — contrat ${bought.contractId}`);
-    } catch (e) {
-      console.error(`[idx-seasonal] échec entrée ${symbol}:`, (e as Error).message);
+    // borne la durée par ce que Deriv accepte pour ce symbole
+    const bounds = await conn2.getRiseFallDurationBounds(symbol).catch(() => null);
+    const maxMin = bounds ? Math.floor(bounds.maxSec / 60) : Infinity;
+    const minMin = bounds ? Math.ceil(bounds.minSec / 60) : 1;
+    const ladder = HOLD_LADDER_MIN.filter((d) => d <= maxMin && d >= minMin);
+    if (!ladder.length) ladder.push(Math.min(60, maxMin === Infinity ? 60 : maxMin));
+
+    let placed = false;
+    for (const durationMin of ladder) {
+      try {
+        const bought = await conn2.proposeAndBuy({
+          symbol, amount: STAKE_USD, contractType: "CALL", durationMinutes: durationMin,
+        });
+        const tradeId = `idxs_${Date.now()}_${symbol}`;
+        insertOpenTrade({
+          tradeId, userId: account.userId, symbol,
+          entryPrice: bought.buyPrice, contractId: bought.contractId,
+          durationMin, payout: bought.payout,
+        });
+        openPositions.set(symbol, {
+          tradeId, contractId: bought.contractId, symbol,
+          entryTime: Date.now(), durationMin,
+        });
+        console.log(`[idx-seasonal] LONG ${symbol} CALL ${durationMin}min $${STAKE_USD} — contrat ${bought.contractId} (payout ${bought.payout})`);
+        placed = true;
+        break;
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (!/not offered|not available|duration/i.test(msg)) {
+          console.error(`[idx-seasonal] échec entrée ${symbol} (${durationMin}min):`, msg);
+          break; // erreur non liée à la durée — inutile de descendre le ladder
+        }
+        // sinon : durée refusée, on essaie la suivante
+      }
     }
+    if (!placed) console.error(`[idx-seasonal] ${symbol} : aucune durée acceptée`);
   }
 }
 
@@ -267,18 +277,19 @@ export function startIdxSeasonalScheduler(): void {
   try {
     const rows = db()
       .prepare(
-        `SELECT id, symbol, contract_id, entry_price, entry_time
+        `SELECT id, symbol, contract_id, entry_time, duration_minutes
            FROM bot_trades WHERE preset = ? AND status = 'open'`,
       )
       .all(IDX_SEASONAL_PRESET) as {
-        id: string; symbol: string; contract_id: string; entry_price: number; entry_time: number;
+        id: string; symbol: string; contract_id: string; entry_time: number; duration_minutes: number;
       }[];
     for (const r of rows) {
       const cid = Number(r.contract_id);
       if (!Number.isFinite(cid)) continue;
       openPositions.set(r.symbol, {
         tradeId: r.id, contractId: cid, symbol: r.symbol,
-        entryTime: r.entry_time || Date.now(), entryPrice: r.entry_price || 0,
+        entryTime: r.entry_time || Date.now(),
+        durationMin: r.duration_minutes || HOLD_LADDER_MIN[0],
       });
     }
     if (rows.length) console.log(`[idx-seasonal] ${rows.length} position(s) ouverte(s) rechargée(s).`);
@@ -290,7 +301,6 @@ export function startIdxSeasonalScheduler(): void {
     tick().catch((e) => console.error("[idx-seasonal] tick:", (e as Error).message));
   }, TICK_MS);
   console.log("[idx-seasonal] Scheduler démarré (contrôle toutes les 5 min).");
-  // premier tick rapide
   setTimeout(() => tick().catch(() => {}), 15_000);
 }
 
