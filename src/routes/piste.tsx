@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { AutoTraderConfig } from "@/lib/signal-core";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { IdxSeasonalPanel } from "@/components/idx-seasonal-panel";
 
 export const Route = createFileRoute("/piste")({
   head: () => ({ meta: [{ title: "Laboratoire Piste — PLURIEL" }] }),
@@ -198,6 +199,9 @@ function PistePage() {
           </div>
         </div>
       </header>
+
+      {/* ── Index Seasonal (piste A) — preset autonome, statut + trades ── */}
+      <IdxSeasonalPanel />
 
       {/* ── CONTROLS: CATEGORY FILTERS, SEARCH & VIEW TOGGLE ── */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border border-white/10 bg-black/40 p-3 backdrop-blur-md">

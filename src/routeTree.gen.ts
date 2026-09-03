@@ -48,6 +48,7 @@ import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
+import { Route as ApiIdxSeasonalRouteImport } from './routes/api/idx-seasonal'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
 import { Route as ApiDailyRiskSimulationRouteImport } from './routes/api/daily-risk-simulation'
@@ -282,6 +283,11 @@ const ApiNotesRoute = ApiNotesRouteImport.update({
 const ApiLearningRoute = ApiLearningRouteImport.update({
   id: '/api/learning',
   path: '/api/learning',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIdxSeasonalRoute = ApiIdxSeasonalRouteImport.update({
+  id: '/api/idx-seasonal',
+  path: '/api/idx-seasonal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -519,6 +525,7 @@ export interface FileRoutesByFullPath {
   '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/idx-seasonal': typeof ApiIdxSeasonalRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -600,6 +607,7 @@ export interface FileRoutesByTo {
   '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/idx-seasonal': typeof ApiIdxSeasonalRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -682,6 +690,7 @@ export interface FileRoutesById {
   '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/idx-seasonal': typeof ApiIdxSeasonalRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -765,6 +774,7 @@ export interface FileRouteTypes {
     | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
+    | '/api/idx-seasonal'
     | '/api/learning'
     | '/api/notes'
     | '/api/notifications'
@@ -846,6 +856,7 @@ export interface FileRouteTypes {
     | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
+    | '/api/idx-seasonal'
     | '/api/learning'
     | '/api/notes'
     | '/api/notifications'
@@ -927,6 +938,7 @@ export interface FileRouteTypes {
     | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
+    | '/api/idx-seasonal'
     | '/api/learning'
     | '/api/notes'
     | '/api/notifications'
@@ -1009,6 +1021,7 @@ export interface RootRouteChildren {
   ApiDailyRiskSimulationRoute: typeof ApiDailyRiskSimulationRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiIdxSeasonalRoute: typeof ApiIdxSeasonalRoute
   ApiLearningRoute: typeof ApiLearningRoute
   ApiNotesRoute: typeof ApiNotesRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
@@ -1329,6 +1342,13 @@ declare module '@tanstack/react-router' {
       path: '/api/learning'
       fullPath: '/api/learning'
       preLoaderRoute: typeof ApiLearningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/idx-seasonal': {
+      id: '/api/idx-seasonal'
+      path: '/api/idx-seasonal'
+      fullPath: '/api/idx-seasonal'
+      preLoaderRoute: typeof ApiIdxSeasonalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/health': {
@@ -1669,6 +1689,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDailyRiskSimulationRoute: ApiDailyRiskSimulationRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiIdxSeasonalRoute: ApiIdxSeasonalRoute,
   ApiLearningRoute: ApiLearningRoute,
   ApiNotesRoute: ApiNotesRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,
