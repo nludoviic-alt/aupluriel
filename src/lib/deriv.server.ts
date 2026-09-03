@@ -676,6 +676,45 @@ export class DerivTradingConnection {
     }
   }
 
+  /** Rise/Fall (CALL/PUT) duration bounds for a symbol, in seconds, from
+   * contracts_for. Used by the Index Seasonal scheduler to pick the longest
+   * hold Deriv actually offers on an OTC index binary. null if unavailable. */
+  async getRiseFallDurationBounds(
+    symbol: string,
+  ): Promise<{ minSec: number; maxSec: number } | null> {
+    try {
+      const res = await this.socket.request<{
+        contracts_for?: {
+          available?: Array<{
+            contract_type?: string;
+            min_contract_duration?: string;
+            max_contract_duration?: string;
+          }>;
+        };
+      }>({ contracts_for: symbol });
+      const toSec = (d: string | undefined): number | null => {
+        if (!d) return null;
+        const m = /^(\d+)([smhdt])$/.exec(d.trim());
+        if (!m) return null;
+        const n = Number(m[1]);
+        return { s: n, m: n * 60, h: n * 3600, d: n * 86400, t: n }[m[2]] ?? null;
+      };
+      let minSec = Infinity;
+      let maxSec = 0;
+      for (const c of res.contracts_for?.available ?? []) {
+        if (c.contract_type !== "CALL" && c.contract_type !== "PUT") continue;
+        const lo = toSec(c.min_contract_duration);
+        const hi = toSec(c.max_contract_duration);
+        if (lo !== null) minSec = Math.min(minSec, lo);
+        if (hi !== null) maxSec = Math.max(maxSec, hi);
+      }
+      if (!Number.isFinite(minSec) || maxSec === 0) return null;
+      return { minSec, maxSec };
+    } catch {
+      return null;
+    }
+  }
+
   async proposeAndBuy(
     params: {
       symbol: string;
