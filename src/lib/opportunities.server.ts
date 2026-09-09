@@ -154,7 +154,7 @@ function mergeConfig(userId: number, preset: Preset): AutoTraderConfig {
   };
 }
 
-function statsFor(preset: Preset, symbol: string): OpportunityItem["stats"] {
+export function statsFor(userId: number, preset: Preset, symbol: string): OpportunityItem["stats"] {
   const row = getDb()
     .prepare(`
       SELECT COUNT(*) AS trades,
@@ -164,11 +164,12 @@ function statsFor(preset: Preset, symbol: string): OpportunityItem["stats"] {
              COALESCE(-SUM(profit) FILTER (WHERE status = 'lost'), 0) AS gross_loss
       FROM bot_trades
       WHERE status IN ('won','lost')
+        AND user_id = ?
         AND (mode = 'demo' OR mode IS NULL)
         AND preset = ?
         AND symbol = ?
     `)
-    .get(preset, symbol) as { trades: number; wins: number; pnl: number; gross_win: number; gross_loss: number };
+    .get(userId, preset, symbol) as { trades: number; wins: number; pnl: number; gross_win: number; gross_loss: number };
 
   return {
     trades: row.trades,
@@ -200,9 +201,9 @@ function thresholdsFor(symbol: string, instrument: "binary" | "multiplier", conf
   };
 }
 
-async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoTraderConfig): Promise<OpportunityItem> {
+async function analyzePresetSymbol(userId: number, preset: Preset, symbol: string, config: AutoTraderConfig): Promise<OpportunityItem> {
   const meta = SYMBOL_LABELS.get(symbol);
-  const stats = statsFor(preset, symbol);
+  const stats = statsFor(userId, preset, symbol);
   const instrument = getInstrumentForSymbol(symbol, config);
   const now = Date.now();
 
@@ -545,7 +546,7 @@ function sortOpportunities(a: OpportunityItem, b: OpportunityItem): number {
 }
 
 let opportunitiesCache: { timestamp: number; userId: number; result: OpportunitiesResponse } | null = null;
-let pendingBuildPromise: Promise<OpportunitiesResponse> | null = null;
+const pendingBuilds = new Map<number, Promise<OpportunitiesResponse>>();
 
 export async function buildOpportunities(userId: number): Promise<OpportunitiesResponse> {
   const now = Date.now();
@@ -553,11 +554,10 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
     return opportunitiesCache.result;
   }
 
-  if (pendingBuildPromise) {
-    return pendingBuildPromise;
-  }
+  const pending = pendingBuilds.get(userId);
+  if (pending) return pending;
 
-  pendingBuildPromise = (async () => {
+  const buildPromise = Promise.resolve().then(async () => {
     try {
       const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
       const activeBotPresets = new Set(
@@ -566,9 +566,9 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
           .all(userId) as Array<{ preset: Preset }>)
           .map((row) => row.preset),
       );
-      const activePresets = activeBotPresets.size > 0
-        ? activeBotPresets
-        : new Set(getVisiblePresets(userId));
+      // Visible presets remain inspectable before starting a bot, including
+      // when another preset is already running.
+      const activePresets = new Set([...activeBotPresets, ...getVisiblePresets(userId)]);
       const targetPresets = PRESETS.filter((preset) => activePresets.has(preset));
 
       const jobs = targetPresets.flatMap((preset) => {
@@ -578,9 +578,9 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
       });
 
       const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>
-        analyzePresetSymbol(preset, symbol, config).catch((e) => {
+        analyzePresetSymbol(userId, preset, symbol, config).catch((e) => {
           const meta = SYMBOL_LABELS.get(symbol);
-          const stats = statsFor(preset, symbol);
+          const stats = statsFor(userId, preset, symbol);
           return {
             id: `${preset}:${symbol}`,
             preset,
@@ -606,14 +606,14 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
           };
         }),
       ))
-        .map((opportunity) => ({ ...opportunity, active: activePresets.has(opportunity.preset) }))
+        .map((opportunity) => ({ ...opportunity, active: activeBotPresets.has(opportunity.preset) }))
         .sort(sortOpportunities);
 
       const avoidList: AvoidItem[] = targetPresets.flatMap((preset) => {
         const config = configs.get(preset)!;
         return (config.excludedSymbols ?? []).map((symbol) => {
           const meta = SYMBOL_LABELS.get(symbol);
-          const stats = statsFor(preset, symbol);
+          const stats = statsFor(userId, preset, symbol);
           return {
             preset,
             presetLabel: PRESET_LABEL[preset],
@@ -640,9 +640,10 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
       opportunitiesCache = { timestamp: Date.now(), userId, result: res };
       return res;
     } finally {
-      pendingBuildPromise = null;
+      pendingBuilds.delete(userId);
     }
-  })();
+  });
 
-  return pendingBuildPromise;
+  pendingBuilds.set(userId, buildPromise);
+  return buildPromise;
 }

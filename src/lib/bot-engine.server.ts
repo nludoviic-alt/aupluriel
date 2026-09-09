@@ -265,19 +265,10 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** All supported system presets eligible for user activation across Auto-Trader, Piste, Portfolio and Opportunities.
- * The gold-family presets (gold/goldv2/liquidity/liquidityv2) were retired
- * 2026-08-14 (OANDA dependency). The synthetic-index presets
- * (boom/boom900/vol75/rb100/vol50/crash/crash500/scalping/crash900/*v2) are
- * retired 2026-09-01: a 30-day audit showed every one of them net-negative
- * once its 2 best days are removed, and Deriv synthetics are a cryptographic
- * RNG with negative expectancy after costs — not a tuning problem. `default`
- * is now the sole active preset (repointed to a real-instrument trend book).
- * Retirement mechanism: restoreBots() force-disables any already-enabled row
- * for a preset no longer in this list, and startBotForUser() rejects one.
- * ALL_PRESETS keeps the full list so historical data/admin tools still read
- * archived presets. */
-export const ACTIVE_PRESETS: readonly Preset[] = ["default"];
+/** Presets available for activation. Crash900 is reopened for demo validation
+ * only; the September audit does not establish a robust profitable baseline.
+ * Archived presets remain readable through ALL_PRESETS. */
+export const ACTIVE_PRESETS: readonly Preset[] = ["default", "crash"];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
@@ -294,7 +285,8 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
   goldv2: ["frxXAUUSD"],
 };
 
-function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
+export function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
+  if (preset === "crash") config = { ...config, mode: "demo" };
   const symbols = LOCKED_PRESET_SYMBOLS[preset];
   return symbols
     ? { ...config, symbolMode: "watchlist", symbols: [...symbols], excludedSymbols: [] }

@@ -110,7 +110,7 @@ export const Route = createFileRoute("/api/admin/bot")({
           // jamais activer du live sans que l'utilisateur l'ait lui-même
           // déjà choisi une fois.
           const saved = loadBotConfig(userId, preset);
-          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "vol50" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
+          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "vol50" || preset === "crash" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
           try {
             await startBotForUser(userId, preset, config);
           } catch (e) {

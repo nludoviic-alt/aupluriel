@@ -178,7 +178,7 @@ const PRESET_PRESENTATION: Record<
     description: "Démo · Trend Pullback & Retest",
     experimental: true,
   },
-  crash: { market: "CRASH900 uniquement", description: "Crash900" },
+  crash: { market: "CRASH900 uniquement", description: "Démo · rentabilité à valider", experimental: true },
   crash500: {
     market: "CRASH500 uniquement",
     description: "Démo · Spike SELL + Drift BUY",
@@ -290,12 +290,8 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-// Synthetic-index presets retired 2026-09-01 (30-day audit: all net-negative
-// after removing their 2 best days; Deriv synthetics = RNG, negative
-// expectancy). `default` is the sole active preset. The others stay in
-// PresetKey / metadata maps only so historical trade-journal data still
-// renders; they are never offered for activation.
-const PRESET_ORDER = ["default"] as const;
+// Crash900 is available for demo validation; archived V2 presets stay hidden.
+const PRESET_ORDER = ["default", "crash"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -342,6 +338,7 @@ function loadConfig(preset?: string): AutoTraderConfig {
     };
     // A stale mode:"simulation" saved before that option was removed would
     // otherwise load as a literal string the rest of the app can't handle.
+    if (preset === "crash") cfg.mode = "demo";
     if ((cfg.mode as string) !== "demo" && (cfg.mode as string) !== "live") cfg.mode = "demo";
     return cfg;
   } catch {
@@ -869,6 +866,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   }
 
   async function changeTradingMode(mode: TradingMode) {
+    if (selectedPreset === "crash" && mode !== "demo") {
+      toast.error("Crash900 est limité à la validation en démo.");
+      return;
+    }
     if (mode === config.mode) return;
     if (mode === "live") {
       const ok = await confirm({
@@ -1266,6 +1267,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             maxDailyLossUsd: config.maxDailyLossUsd,
             mode: config.mode,
           };
+    if (target === "crash") next.mode = "demo";
     setConfig(next);
   }
 

@@ -41,11 +41,9 @@ interface Track {
   bgTone: string;
 }
 
-// Synthetic-index tracks (vol75/rb100/vol50/boom*/crash*/scalping*) archived
-// 2026-09-01 — see ACTIVE_PRESETS in bot-engine.server.ts for the rationale
-// (30-day audit: all net-negative after removing their 2 best days). Kept in
-// git history; `default` (real-instrument trend book) is the only live track.
+// Crash900 is reopened for demo validation, alongside the existing Multi track.
 const TRACKS: Track[] = [
+  { key: "crash", name: "Crash900", category: "crash", market: "CRASH900 uniquement", badge: "Démo", thesis: "Réévaluation du preset historique : les gains passés sont concentrés sur deux journées.", engine: "Crash historique", validation: "Rentabilité non démontrée · Démo uniquement", color: "text-rose-400", borderColor: "border-rose-500/30", bgTone: "bg-rose-500/10" },
   { key: "default", name: "Multi-Marchés (Tendance)", category: "multi", market: "Forex Majors · XAU/USD · Indices", badge: "📊 Multi", thesis: "Suivi de tendance intraday sur instruments réels : entrée régime-tendance uniquement (4/4 TF + ADX + veto 4H/Daily), levier faible, on laisse courir.", engine: "Multi-Asset Trend Core", validation: "Démo · Paramètres gelés jusqu'à 50 clôtures.", color: "text-amber-400", borderColor: "border-amber-500/30", bgTone: "bg-amber-500/10" },
 ];
 

@@ -388,7 +388,7 @@ export const Route = createFileRoute("/api/bot")({
             preset === "vol75" ||
             preset === "rb100" ||
             preset === "vol50" ||
-            preset === "crash500" ||
+            preset === "crash" || preset === "crash500" ||
             preset === "scalping" ||
             preset === "liquidity" ||
             preset === "gold" ||
@@ -458,7 +458,7 @@ export const Route = createFileRoute("/api/bot")({
             preset === "vol75" ||
             preset === "rb100" ||
             preset === "vol50" ||
-            preset === "crash500" ||
+            preset === "crash" || preset === "crash500" ||
             preset === "scalping" ||
             preset === "liquidity" ||
             preset === "gold" ||
@@ -543,7 +543,7 @@ export const Route = createFileRoute("/api/bot")({
               preset === "vol75" ||
               preset === "rb100" ||
               preset === "vol50" ||
-              preset === "crash500" ||
+              preset === "crash" || preset === "crash500" ||
               preset === "scalping" ||
               preset === "liquidity" ||
               preset === "gold" ||

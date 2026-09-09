@@ -95,7 +95,7 @@ export const Route = createFileRoute("/api/admin/user-config")({
           const { stakeUsd, maxDailyLossUsd, mode, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled } = config;
           Object.assign(config, presetFieldsFor(body.preset), {
             stakeUsd, maxDailyLossUsd, excludedSymbols, minConfidence, maxConfidence, autoRollbackEnabled,
-            mode: body.preset === "boom900" || body.preset === "vol75" || body.preset === "rb100" || body.preset === "vol50" || body.preset === "crash500" || body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
+            mode: body.preset === "boom900" || body.preset === "vol75" || body.preset === "rb100" || body.preset === "vol50" || body.preset === "crash" || body.preset === "crash500" || body.preset === "scalping" || body.preset === "liquidity" || body.preset === "gold" || body.preset === "crash900" || body.preset.endsWith("v2") ? "demo" : mode,
           });
         }
         if (body.symbols !== undefined) {
