@@ -588,3 +588,29 @@ html {
     padding-bottom: 0 !important;
   }
 }
+
+/* ── Mobile Touch, Scrolling & GPU Rendering Optimizations ── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, select, input, [role="button"] {
+  touch-action: manipulation;
+}
+
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.scroll-touch-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+}
+
+.scroll-touch-x::-webkit-scrollbar {
+  display: none;
+}
+
