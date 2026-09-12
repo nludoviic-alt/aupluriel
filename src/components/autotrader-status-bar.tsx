@@ -19,6 +19,9 @@ export function AutoTraderStatusBar({
   winRate,
   onAuto,
   onModeChange,
+  symbols,
+  operationalStatus,
+  blockReason,
 }: {
   mode: TradingMode;
   presetLabel: string;
@@ -33,6 +36,9 @@ export function AutoTraderStatusBar({
   winRate: string;
   onAuto: () => void;
   onModeChange: (mode: TradingMode) => void;
+  symbols: string[];
+  operationalStatus?: string;
+  blockReason?: string | null;
 }) {
   const isMobile = useIsMobile();
   const [expanded, setExpanded] = useState(false);
@@ -66,6 +72,7 @@ export function AutoTraderStatusBar({
           <StatusMetric label="Solde" value={balance} tone="text-foreground" />
           <StatusMetric label="P&L jour" value={`${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`} tone={pnl >= 0 ? "text-up" : "text-down"} />
         </div>
+        <StatusDetails symbols={symbols} operationalStatus={operationalStatus} blockReason={blockReason} />
 
         {expanded && (
           <div className="mt-2.5 space-y-2.5">
@@ -179,6 +186,15 @@ export function AutoTraderStatusBar({
       </div>
     </div>
   );
+}
+
+function StatusDetails({ symbols, operationalStatus, blockReason }: { symbols: string[]; operationalStatus?: string; blockReason?: string | null }) {
+  return <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+    <span className="rounded-lg border border-border/60 bg-muted/10 px-2 py-1">Marchés : {symbols.length ? symbols.join(" · ") : "aucun"}</span>
+    <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-300">Source : moteur serveur</span>
+    {operationalStatus && <span className="rounded-lg border border-border/60 bg-muted/10 px-2 py-1">État : {operationalStatus}</span>}
+    {blockReason && <span className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-rose-300">Blocage : {blockReason}</span>}
+  </div>;
 }
 
 function StatusMetric({ label, value, tone }: { label: string; value: string; tone: string }) {

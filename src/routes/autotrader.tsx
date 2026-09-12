@@ -1528,6 +1528,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         winRate={wins + losses > 0 ? `${winRate.toFixed(0)}%` : "—"}
         onAuto={toggleCloud}
         onModeChange={changeTradingMode}
+        symbols={cloudSelected?.savedConfig?.symbols ?? config.symbols}
+        operationalStatus={cloudSelected?.operationalStatus}
+        blockReason={cloudSelected?.blockReason}
       />
 
       <section
