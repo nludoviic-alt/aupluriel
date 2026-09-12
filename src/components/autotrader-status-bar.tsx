@@ -44,12 +44,13 @@ export function AutoTraderStatusBar({
   const [expanded, setExpanded] = useState(false);
   const remainingLoss = Math.max(0, maxDailyLossUsd - lossUsedUsd);
   const limitPct = maxDailyLossUsd > 0 ? Math.min(100, Math.round((lossUsedUsd / maxDailyLossUsd) * 100)) : 0;
-  const statusLabel = autoEnabled
+  const entriesBlocked = autoEnabled && !!operationalStatus && operationalStatus !== "ACTIVE";
+  const statusLabel = entriesBlocked ? "Entrées suspendues" : autoEnabled
     ? autoRunning
       ? "Auto actif"
       : "Auto en démarrage"
     : "Scan seul";
-  const statusTone = autoEnabled && autoRunning ? "text-up" : autoEnabled ? "text-amber-300" : "text-muted-foreground";
+  const statusTone = entriesBlocked ? "text-amber-300" : autoEnabled && autoRunning ? "text-up" : autoEnabled ? "text-amber-300" : "text-muted-foreground";
 
   if (isMobile) {
     return (
@@ -184,6 +185,7 @@ export function AutoTraderStatusBar({
           {autoEnabled ? "Pause auto" : "Activer auto"}
         </Button>
       </div>
+      <StatusDetails symbols={symbols} operationalStatus={operationalStatus} blockReason={blockReason} />
     </div>
   );
 }

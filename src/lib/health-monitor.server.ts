@@ -6,6 +6,8 @@
 import { getDb } from "./db.server";
 import { getBotRuntime, isBotRunning, restoreBots, loadBotConfig, startBotForUser, type Preset } from "./bot-engine.server";
 import { DEFAULT_CONFIG, getInstrumentForSymbol } from "./signal-core";
+import { circuitBreaker } from "./global-circuit-breaker.server";
+import { getPresetRiskMetrics } from "./risk-manager.server";
 
 type Status = "ok" | "warn" | "error";
 interface CheckResult {
@@ -18,15 +20,27 @@ interface CheckResult {
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 function checkBotsRunning(): CheckResult {
+  const breaker = circuitBreaker.getState();
+  if (breaker.isActive) return {
+    key: "bots_running", label: "Bots serveur", status: "warn",
+    detail: `Entrées bloquées par le Kill Switch : ${breaker.reason ?? "motif inconnu"}. Les moteurs peuvent rester en cours d'exécution.`,
+  };
   const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
   const down = rows.filter((r) => !isBotRunning(r.user_id, r.preset)).map((r) => `${r.user_id}:${r.preset}`);
   if (!down.length) {
+    const paused = rows.filter((r) => {
+      const config = loadBotConfig(r.user_id, r.preset);
+      return getPresetRiskMetrics(r.user_id, r.preset, undefined, config?.mode === "live" ? "live" : "demo").status === "PAUSED";
+    }).map((r) => `${r.user_id}:${r.preset}`);
+    if (paused.length) return { key: "bots_running", label: "Bots serveur", status: "warn", detail: `${rows.length} moteurs en cours d'exécution ; pauses de risque : ${paused.join(", ")}.` };
     return { key: "bots_running", label: "Bots serveur", status: "ok", detail: `${rows.length} bot(s) actif(s), tous en cours d'exécution.` };
   }
   return { key: "bots_running", label: "Bots serveur", status: "error", detail: `Activé(s) en base mais arrêté(s) en pratique : ${down.join(", ")}.` };
 }
 
 function checkBotErrors(): CheckResult {
+  const breaker = circuitBreaker.getState();
+  if (breaker.isActive) return { key: "bot_errors", label: "Erreurs bot actives", status: "warn", detail: `Kill Switch actif : ${breaker.reason ?? "motif inconnu"}` };
   const rows = getDb().prepare("SELECT user_id, preset FROM bot_state WHERE enabled = 1").all() as { user_id: number; preset: Preset }[];
   const errored = rows
     .map((r) => ({ userId: r.user_id, preset: r.preset, err: getBotRuntime(r.user_id, r.preset).lastError }))
@@ -180,7 +194,7 @@ async function attemptRepair(result: CheckResult): Promise<CheckResult> {
 
   try {
     // Bot enabled in DB but not running → restart it
-    if (result.key === "bots_running") {
+    if (result.key === "bots_running" && result.status === "error" && !circuitBreaker.getState().isActive) {
       console.log(`[health] Auto-réparation : redémarrage des bots arrêtés…`);
       await restoreBots();
       // Re-check immediately

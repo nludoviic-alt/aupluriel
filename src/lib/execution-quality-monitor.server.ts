@@ -4,7 +4,12 @@
  * et déclenche un EXECUTION_COOLDOWN si le broker rejette plusieurs fois le même contrat.
  */
 
-import { FEATURE_FLAGS } from "./feature-flags.server";
+// These are explicit broker refusals of one contract, not evidence of a
+// transport outage. Unknown errors are deliberately NOT in this allowlist.
+const CONTRACT_REJECTIONS = new Set([
+  "ContractBuyValidationError", "INVALID_MULTIPLIER", "INVALID_STAKE",
+  "CONTRACT_UNAVAILABLE", "SYMBOL_UNAVAILABLE", "InvalidContractProposal",
+]);
 
 export type ExecutionHealth = "HEALTHY" | "DEGRADED" | "POOR" | "CRITICAL";
 
@@ -24,7 +29,9 @@ export interface ExecutionMetrics {
   recentErrors: { symbol: string; code: string; message: string; timestamp: number }[];
 }
 
-class ExecutionMonitorStore {
+export class ExecutionMonitorStore {
+  private proposalContractRejections = 0;
+  private buyContractRejections = 0;
   private proposalsSent = 0;
   private proposalsSuccess = 0;
   private proposalsFailed = 0;
@@ -48,6 +55,7 @@ class ExecutionMonitorStore {
       this.consecutiveErrorsPerSymbol.set(symbol, 0);
     } else {
       this.proposalsFailed++;
+      if (errorCode && CONTRACT_REJECTIONS.has(errorCode)) this.proposalContractRejections++;
       const currentErrCount = (this.consecutiveErrorsPerSymbol.get(symbol) ?? 0) + 1;
       this.consecutiveErrorsPerSymbol.set(symbol, currentErrCount);
 
@@ -73,6 +81,7 @@ class ExecutionMonitorStore {
       if (this.buyLatencies.length > 100) this.buyLatencies.shift();
     } else {
       this.buysFailed++;
+      if (errorCode && CONTRACT_REJECTIONS.has(errorCode)) this.buyContractRejections++;
       if (errorCode && errorMessage) {
         this.errors.push({ symbol, code: errorCode, message: errorMessage, timestamp: Date.now() });
         if (this.errors.length > 50) this.errors.shift();
@@ -103,10 +112,17 @@ class ExecutionMonitorStore {
     const propSR = this.proposalsSent > 0 ? (this.proposalsSuccess / this.proposalsSent) * 100 : 100;
     const buySR = this.buysSent > 0 ? (this.buysSuccess / this.buysSent) * 100 : 100;
 
+    // Retain every rejection in displayed metrics and symbol cooldowns, but
+    // only technical failures may halt all markets. The engine currently
+    // reports end-to-end latency, not the latency of a single proposal.
+    const technicalProposalCount = this.proposalsSent - this.proposalContractRejections;
+    const technicalBuyCount = this.buysSent - this.buyContractRejections;
+    const technicalPropSR = technicalProposalCount ? this.proposalsSuccess / technicalProposalCount * 100 : 100;
+    const technicalBuySR = technicalBuyCount ? this.buysSuccess / technicalBuyCount * 100 : 100;
     let health: ExecutionHealth = "HEALTHY";
-    if (propSR < 70 || buySR < 70 || avgProposalLat > 3000) {
+    if (technicalPropSR < 70 || technicalBuySR < 70) {
       health = "CRITICAL";
-    } else if (propSR < 85 || buySR < 85 || avgProposalLat > 1500) {
+    } else if (technicalPropSR < 85 || technicalBuySR < 85 || avgProposalLat > 1500) {
       health = "POOR";
     } else if (propSR < 95 || buySR < 95 || avgProposalLat > 800) {
       health = "DEGRADED";

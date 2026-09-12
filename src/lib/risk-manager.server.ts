@@ -173,12 +173,12 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
   const rows = strategyId
     ? db.prepare(`
         SELECT status, profit FROM bot_trades
-        WHERE user_id = ? AND strategy = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
+        WHERE user_id = ? AND strategy = ? AND (? IS NULL OR COALESCE(mode, 'demo') = ?) AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 100
       `).all(userId, strategyId, mode ?? null, mode ?? null) as { status: "won" | "lost"; profit: number }[]
     : db.prepare(`
         SELECT status, profit FROM bot_trades
-        WHERE user_id = ? AND preset = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
+        WHERE user_id = ? AND preset = ? AND (? IS NULL OR COALESCE(mode, 'demo') = ?) AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 100
       `).all(userId, preset, mode ?? null, mode ?? null) as { status: "won" | "lost"; profit: number }[];
 
@@ -347,7 +347,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const todayStart = new Date().setUTCHours(0, 0, 0, 0);
   const todayPnlRow = db.prepare(`
     SELECT SUM(profit) as pnl FROM bot_trades
-    WHERE user_id = ? AND mode = ? AND time >= ? AND status IN ('won', 'lost')
+    WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND time >= ? AND status IN ('won', 'lost')
   `).get(input.userId, accountMode, todayStart) as { pnl: number | null };
 
   const todayPnl = todayPnlRow.pnl || 0;
@@ -378,12 +378,12 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const recentTrades = input.strategyId
     ? db.prepare(`
         SELECT status FROM bot_trades
-        WHERE user_id = ? AND mode = ? AND strategy = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND strategy = ? AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 5
   `).all(input.userId, accountMode, input.strategyId) as { status: "won" | "lost" }[]
     : db.prepare(`
         SELECT status FROM bot_trades
-        WHERE user_id = ? AND mode = ? AND preset = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND preset = ? AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 5
   `).all(input.userId, accountMode, input.preset) as { status: "won" | "lost" }[];
 
@@ -430,7 +430,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   // 4. Duplicate Trade Protection (fingerprint active check)
   const activeDuplicate = db.prepare(`
     SELECT id FROM bot_trades
-    WHERE user_id = ? AND mode = ? AND symbol = ? AND direction = ? AND status IN ('pending', 'open')
+    WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND symbol = ? AND direction = ? AND status IN ('pending', 'open')
   `).get(input.userId, accountMode, input.symbol, input.direction);
 
   if (activeDuplicate) {
@@ -450,7 +450,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const opposingDirection = input.direction === "CALL" || input.direction === "BUY" ? ["PUT", "SELL"] : ["CALL", "BUY"];
   const activeConflict = db.prepare(`
     SELECT id FROM bot_trades
-    WHERE user_id = ? AND mode = ? AND symbol = ? AND status IN ('pending', 'open') AND direction IN (${opposingDirection.map(() => "?").join(",")})
+    WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND symbol = ? AND status IN ('pending', 'open') AND direction IN (${opposingDirection.map(() => "?").join(",")})
   `).get(input.userId, accountMode, input.symbol, ...opposingDirection);
 
   if (activeConflict) {
@@ -468,7 +468,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
 
   // 6. Max Active Positions Limits (Global, Strategy, Symbol)
   const activeGlobalCount = (db.prepare(`
-    SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open')
+    SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND status IN ('pending', 'open')
   `).get(input.userId, accountMode) as { c: number }).c;
 
   if (activeGlobalCount >= RISK_CONFIG.MAX_ACTIVE_POSITIONS_GLOBAL) {
@@ -486,10 +486,10 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
 
   const activeStrategyRow = (input.strategyId
     ? db.prepare(`
-        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND strategy = ? AND status IN ('pending', 'open')
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND strategy = ? AND status IN ('pending', 'open')
       `).get(input.userId, accountMode, input.strategyId)
     : db.prepare(`
-        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND preset = ? AND status IN ('pending', 'open')
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND preset = ? AND status IN ('pending', 'open')
       `).get(input.userId, accountMode, input.preset)
   ) as { c: number } | undefined;
 
@@ -513,7 +513,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const familySymbols = ASSET_FAMILIES[family] || [input.symbol];
   const activeFamilyStakeRow = db.prepare(`
     SELECT SUM(stake) as total_stake FROM bot_trades
-    WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open') AND symbol IN (${familySymbols.map(() => "?").join(",")})
+    WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND status IN ('pending', 'open') AND symbol IN (${familySymbols.map(() => "?").join(",")})
   `).get(input.userId, accountMode, ...familySymbols) as { total_stake: number | null };
 
   const currentFamilyExposurePct = ((activeFamilyStakeRow.total_stake || 0) / equity) * 100;
@@ -561,7 +561,7 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const exposure = db.prepare(`
     SELECT COALESCE(SUM(stake), 0) AS total,
       COALESCE(SUM(CASE WHEN symbol = ? THEN stake ELSE 0 END), 0) AS symbol
-    FROM bot_trades WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open')
+    FROM bot_trades WHERE user_id = ? AND COALESCE(mode, 'demo') = ? AND status IN ('pending', 'open')
   `).get(input.symbol, input.userId, accountMode) as { total: number; symbol: number };
   const limits: [number, number, RiskRejectionReason][] = [
     [exposure.total, RISK_CONFIG.MAX_TOTAL_OPEN_RISK_PCT, "RISK_MAX_EXPOSURE"],

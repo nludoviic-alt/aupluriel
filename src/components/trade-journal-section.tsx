@@ -6,7 +6,7 @@ import type { TradeLog } from "@/lib/autotrader";
 
 // liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — see
 // archive/oanda-gold-2026-08-14/README.md.
-type PresetKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "crash900" | "boomv2" | "scalpingv2";
+import type { Preset as PresetKey } from "@/lib/bot-engine.server";
 
 export function TradeJournalSection({
   journalTrades,

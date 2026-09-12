@@ -167,7 +167,7 @@ function computeRealStreak(userId: number, strategy: string): {
   const recent = getDb()
     .prepare(`
       SELECT status, COALESCE(closed_at, time) AS time FROM bot_trades
-      WHERE user_id = ? AND strategy = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
+      WHERE user_id = ? AND strategy = ? AND (? IS NULL OR COALESCE(mode, 'demo') = ?) AND status IN ('won', 'lost')
       ORDER BY COALESCE(closed_at, time) DESC LIMIT 5
     `)
     .all(userId, tradeStrategy, mode, mode) as { status: "won" | "lost"; time: number }[];

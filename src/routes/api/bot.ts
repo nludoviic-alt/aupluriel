@@ -188,7 +188,9 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
   const brokerRequired = preset === "liquidity" && !!state?.enabled && !runtime.running;
   const operationalStatus = !state?.enabled
     ? "DISABLED"
-    : brokerRequired
+    : shared.circuitBreaker.isActive
+      ? "PAUSED"
+      : brokerRequired
       ? "BROKER_CONFIGURATION_REQUIRED"
       : autoShadow
         ? "AUTO_SHADOW"
@@ -227,7 +229,7 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
     circuitBreaker: shared.circuitBreaker,
     operationalStatus,
     blockReason:
-      runtime.lastError ??
+      (shared.circuitBreaker.isActive ? `KILL_SWITCH: ${shared.circuitBreaker.reason ?? "actif"}` : null) ?? runtime.lastError ??
       (brokerRequired
         ? "OANDA_NOT_CONFIGURED"
         : autoShadow

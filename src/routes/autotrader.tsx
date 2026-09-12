@@ -674,6 +674,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({
+    gold: false,
+    goldv2: false,
+    liquidity: false,
+    liquidityv2: false,
     default: false,
     boom: false,
     boom900: false,

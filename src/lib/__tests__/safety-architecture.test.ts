@@ -49,6 +49,7 @@ test("Priority 3 — Deriv Minimum Stake Rejection (No Silent Escalation)", () =
 });
 
 test("Priority 4 — Loss Streak Order (3 Losses => PAUSED)", () => {
+  getDb().prepare("INSERT OR IGNORE INTO users (id, email, username, password_hash) VALUES (999999, 'safety-fixture@example.invalid', 'safety-fixture', 'test-only')").run();
   // Mock check for a non-existent strategy to verify baseline
   const res = evaluateRiskCheck({
     userId: 999999,
