@@ -529,7 +529,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 74, maxConfidence: 100, minTfAgreement: 3,
+  minConfidence: 65, maxConfidence: 100, minTfAgreement: 2,
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "amount", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
@@ -640,7 +640,7 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   stopLossPctOfStake: 10,
   // MAJ 2026-08-12 (sweep tune-crash-preset sur bougies historiques Deriv) :
   // TP 5% / SL 10% / minConfidence 55 / minTfAgreement 2 → 79.5% WR, edge +12.9pp, +$85.00 P&L sur 88 trades.
-  minConfidence: 65,
+  minConfidence: 60,
   maxConfidence: 89,
   minTfAgreement: 2,
   multiplierLevel: 100,
