@@ -70,6 +70,36 @@ export async function subscribeToPush(): Promise<void> {
   await api.post("/api/push", { endpoint: json.endpoint, keys: json.keys });
 }
 
+export async function autoSyncPushSubscription(): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+  if (isIosNonSafari() || isIosNonStandalone()) return false;
+
+  try {
+    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+    if (!publicKey) return false;
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+
+    const json = sub.toJSON();
+    if (json.endpoint && json.keys) {
+      await api.post("/api/push", { endpoint: json.endpoint, keys: json.keys });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.debug("[push] Auto-sync skipped or failed:", err);
+    return false;
+  }
+}
+
 export async function unsubscribeFromPush(): Promise<void> {
   const sub = await getExistingPushSubscription();
   if (!sub) return;

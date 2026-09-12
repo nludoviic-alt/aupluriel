@@ -16,6 +16,9 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { autoSyncPushSubscription, isPushSupported, isIosNonSafari, isIosNonStandalone, subscribeToPush } from "@/lib/push";
 import { useMarketOpenNotify } from "@/hooks/use-market-open-notify";
 import { useDerivSession } from "@/hooks/use-deriv-session";
 import { useHeartbeat } from "@/hooks/use-heartbeat";
@@ -280,6 +283,39 @@ function RootComponent() {
     window.location.href = "/login";
   }, [authLoading, isPublicRoute, user]);
 
+  // ── Push Notification Auto-Sync & Permanent Presence ──
+  const [pushStatus, setPushStatus] = useState<"granted" | "denied" | "default" | "unsupported">("granted");
+  const [pushBannerDismissed, setPushBannerDismissed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+    if (!isPushSupported()) {
+      setPushStatus("unsupported");
+      return;
+    }
+    if (typeof Notification !== "undefined") {
+      setPushStatus(Notification.permission);
+      if (Notification.permission === "granted") {
+        autoSyncPushSubscription();
+      }
+    }
+  }, [user]);
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    try {
+      await subscribeToPush();
+      setPushStatus("granted");
+      toast.success("Notifications push activées sur cet appareil !");
+    } catch (e) {
+      toast.error((e as Error).message || "Impossible d'activer les notifications");
+      if (typeof Notification !== "undefined") setPushStatus(Notification.permission);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   // Restrict expensive market services to the pages that actually show them.
   const showMarketAlerts = !isPublicRoute && !!user && ALERT_ROUTES.has(pathname);
   const needsTradingSession = !isPublicRoute && !!user && SESSION_ROUTES.has(pathname);
@@ -491,6 +527,35 @@ function RootComponent() {
             {/* Live price ticker is a nice-to-have, not core to using the app —
                 desktop-only, keeps the mobile header/main area focused. */}
             {showTicker && <div className="hidden md:block"><TickerBar /></div>}
+
+            {/* Permanent Push Activation Banner for unconfigured devices */}
+            {user && pushStatus === "default" && !pushBannerDismissed && !isMessenger && (
+              <div className="border-b border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-200 backdrop-blur-sm shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Bell className="h-4 w-4 text-amber-400 shrink-0 animate-bounce" />
+                  <span className="truncate">
+                    <strong className="text-white">Activez les notifications</strong> pour recevoir les alertes de trades et de risque en direct sur cet appareil.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    disabled={pushBusy}
+                    onClick={handleEnablePush}
+                    className="h-7 px-3 bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs rounded-lg shadow-sm cursor-pointer"
+                  >
+                    {pushBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Activer"}
+                  </Button>
+                  <button
+                    onClick={() => setPushBannerDismissed(true)}
+                    className="text-muted-foreground hover:text-white p-1 transition-colors cursor-pointer"
+                    title="Masquer pour cette session"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
             <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
               isMessenger
