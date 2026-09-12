@@ -3,8 +3,9 @@ import test from "node:test";
 import { ACTIVE_PRESETS, lockPresetSymbols, startBotForUser } from "../bot-engine.server";
 import { DEFAULT_CONFIG } from "../signal-core";
 
-test("historical Crash is available while V2 remains archived", () => {
+test("historical Crash and Vol75 are available while V2 remains archived", () => {
   assert.ok(ACTIVE_PRESETS.includes("crash"));
+  assert.ok(ACTIVE_PRESETS.includes("vol75"));
   assert.ok(!ACTIVE_PRESETS.includes("crash900"));
 });
 

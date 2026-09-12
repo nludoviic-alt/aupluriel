@@ -531,9 +531,9 @@ export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
   minConfidence: 74, maxConfidence: 100, minTfAgreement: 3,
   instrumentType: "multiplier", multiplierLevel: 50,
-  stakeMode: "percent", stakePercent: 0.25,
+  stakeMode: "amount", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
-  maxDailyLossUsd: 2, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
+  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
   cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
   newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
@@ -632,11 +632,15 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // SL 10% surpasse SL 20% (+$9.12, edge +2.8pp) — le stop serré coupe les
   // pertes plus tôt sans sacrifier les gains (TP 5% atteint rapidement).
   // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
+  stakeMode: "amount",
+  stakeUsd: 25,
+  maxDailyLossUsd: 75,
+  maxConsecutiveLosses: 3,
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 10,
   // MAJ 2026-08-12 (sweep tune-crash-preset sur bougies historiques Deriv) :
   // TP 5% / SL 10% / minConfidence 55 / minTfAgreement 2 → 79.5% WR, edge +12.9pp, +$85.00 P&L sur 88 trades.
-  minConfidence: 55,
+  minConfidence: 65,
   maxConfidence: 89,
   minTfAgreement: 2,
   multiplierLevel: 100,
