@@ -14,7 +14,7 @@ export interface DataQualityCheckResult {
   isBlocked: boolean;
   reason?: string;
   diagnostics: {
-    lastTickAgeMs: number;
+    lastTickAgeMs: number | null;
     m1CandleCount: number;
     m5CandleCount: number;
     m15CandleCount: number;
@@ -22,65 +22,82 @@ export interface DataQualityCheckResult {
   };
   observationMode: boolean;
 }
+type Candle = { epoch: number; open: number; high: number; low: number; close: number };
 
 export function evaluateDataQuality(params: {
   symbol: string;
   lastTickTimestamp?: number;
-  m1Candles?: any[];
-  m5Candles?: any[];
-  m15Candles?: any[];
+  m1Candles?: Candle[];
+  m5Candles?: Candle[];
+  m15Candles?: Candle[];
   wsConnected?: boolean;
 }): DataQualityCheckResult {
   const observationMode = FEATURE_FLAGS.OBSERVATION_MODE;
   const now = Date.now();
-
-  const wsConnected = params.wsConnected ?? true;
-
-  // Determine tick/candle age
-  let lastTickAgeMs = params.lastTickTimestamp ? (now - params.lastTickTimestamp) : 0;
-  
-  // Inspect latest candle timestamp if candles are provided
-  const latestCandle = params.m15Candles?.[params.m15Candles.length - 1] 
-    ?? params.m5Candles?.[params.m5Candles.length - 1] 
-    ?? params.m1Candles?.[params.m1Candles.length - 1];
-  
-  if (latestCandle && latestCandle.epoch) {
-    const candleAgeMs = now - (latestCandle.epoch * 1000);
-    if (!params.lastTickTimestamp || candleAgeMs > lastTickAgeMs) {
-      lastTickAgeMs = Math.max(lastTickAgeMs, candleAgeMs);
-    }
-  }
-
+  const wsConnected = params.wsConnected === true;
+  // Tick timestamps are milliseconds; candle epochs are seconds. Never substitute
+  // candle opening times for ticks (a healthy M15 candle may be 15 minutes old).
+  const tickTimestamp = params.lastTickTimestamp;
+  const lastTickAgeMs = typeof tickTimestamp === "number" && Number.isFinite(tickTimestamp)
+    ? now - tickTimestamp : null;
   const m1Count = params.m1Candles?.length ?? 0;
   const m5Count = params.m5Candles?.length ?? 0;
   const m15Count = params.m15Candles?.length ?? 0;
-
   let status: DataStatus = "HEALTHY";
   let reason: string | undefined;
+  const reject = (failure: DataStatus, detail: string) => {
+    status = failure;
+    reason = `DATA_QUALITY_BLOCK: ${detail}`;
+  };
 
-  // Check flat-line / zero variance (stuck feed)
-  let isFlatLine = false;
-  if (params.m15Candles && params.m15Candles.length >= 5) {
-    const recent = params.m15Candles.slice(-5);
-    isFlatLine = recent.every((c) => c.high === c.low);
-  }
-
-  // 1. Contrôle connexion & fraîcheur ticks
   if (!wsConnected) {
-    status = "INVALID";
-    reason = "DATA_QUALITY_BLOCK: WebSocket déconnecté";
-  } else if (isFlatLine) {
-    status = "STALE";
-    reason = "DATA_QUALITY_BLOCK: Flux de prix figé (variation zéro sur 5 bougies)";
-  } else if (lastTickAgeMs > 180000) {
-    status = "STALE";
-    reason = `DATA_QUALITY_BLOCK: Données de marché périmées (${Math.round(lastTickAgeMs / 1000)}s > 180s)`;
-  } else if (m1Count < 15 || m5Count < 15 || m15Count < 15) {
-    status = "DEGRADED";
-    reason = `Historique de bougies incomplet (M1:${m1Count}, M5:${m5Count}, M15:${m15Count})`;
+    reject("INVALID", "WebSocket déconnecté ou état inconnu");
+  } else if (tickTimestamp !== undefined && (lastTickAgeMs === null || !tickTimestamp || lastTickAgeMs < -5000)) {
+    reject("INVALID", "Timestamp du dernier tick absent ou invalide");
+  } else if (lastTickAgeMs !== null && lastTickAgeMs > 180000) {
+    reject("STALE", "Dernier tick périmé (> 180s)");
+  } else {
+    for (const [label, interval, candles] of [
+      ["M1", 60, params.m1Candles],
+      ["M5", 300, params.m5Candles],
+      ["M15", 900, params.m15Candles],
+    ] as const) {
+      if (!Array.isArray(candles) || candles.length < 15) {
+        reject("DEGRADED", `Historique ${label} incomplet (< 15 bougies)`);
+        break;
+      }
+      let previousEpoch: number | undefined;
+      for (const candle of candles) {
+        if (!candle || ![candle.epoch, candle.open, candle.high, candle.low, candle.close]
+          .every(value => typeof value === "number" && Number.isFinite(value)) ||
+          candle.epoch <= 0 || candle.epoch * 1000 > now + 5000 ||
+          candle.low <= 0 || candle.high < candle.low ||
+          candle.open < candle.low || candle.open > candle.high ||
+          candle.close < candle.low || candle.close > candle.high) {
+          reject("INVALID", `Bougie ${label} invalide (OHLC ou timestamp)`);
+          break;
+        }
+        if (previousEpoch !== undefined && candle.epoch - previousEpoch !== interval) {
+          reject("INVALID", `Historique ${label} non chronologique ou discontinu`);
+          break;
+        }
+        previousEpoch = candle.epoch;
+      }
+      if (status !== "HEALTHY") break;
+      // Accept both a current candle and a most-recent closed candle, with
+      // 30 seconds delivery tolerance. Freshness is specific to each timeframe.
+      if (now - candles[candles.length - 1].epoch * 1000 > interval * 2000 + 30000) {
+        reject("STALE", `Dernière bougie ${label} périmée`);
+        break;
+      }
+      if (candles.slice(-5).every(candle => candle.high === candle.low)) {
+        reject("STALE", `Flux ${label} figé sur 5 bougies`);
+        break;
+      }
+    }
   }
-
-  const isBlocked = (status === "STALE" || status === "INVALID") && !observationMode;
+  // Observation flags cannot authorize trades against invalid market data.
+  const isBlocked = status !== "HEALTHY";
 
   return {
     symbol: params.symbol,

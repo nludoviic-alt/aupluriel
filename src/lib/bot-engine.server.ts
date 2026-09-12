@@ -19,6 +19,7 @@ import { getDb } from "./db.server";
 import { ConfigRegistry, hashConfig } from "./config-registry.server";
 import {
   DerivApiError,
+  DerivBuyUncertainError,
   DerivTradingConnection,
   effectiveMultiplier,
   fetchCandlesServer,
@@ -94,7 +95,7 @@ import { logSafetyAlert } from "./r4-e2-audit.server";
 import { currentRiskVersion } from "./risk-version.server";
 import { recordTradeOutcome } from "./loss-streak-circuit-breaker.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
-import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
+import { classifyRegimeFromCandles, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import { executionMonitor } from "./execution-quality-monitor.server";
 import { circuitBreaker } from "./global-circuit-breaker.server";
 import {
@@ -1972,6 +1973,24 @@ class ServerBotEngine {
   }): Promise<TradeLog> {
     if (this.stopped) throw new Error("Moteur arrêté — redémarrez le bot d'abord.");
     const { symbol, direction, stake, durationMinutes } = opts;
+    const accountBalance = await this.conn.getBalance();
+    const risk = evaluateRiskCheck({
+      userId: this.userId,
+      preset: this.preset,
+      strategyId: `${this.preset.toUpperCase()}_MANUAL`,
+      symbol,
+      direction: direction === "MULTUP" ? "CALL" : direction === "MULTDOWN" ? "PUT" : direction,
+      confidenceScore: 100,
+      currentEquity: accountBalance?.balance ?? NaN,
+      currentBalance: accountBalance?.balance ?? NaN,
+      mode: this.config.mode === "live" ? "live" : "demo",
+    });
+    if (risk.decision === "REJECTED") {
+      throw new Error(`Trade manuel refusé par le Risk Manager: ${risk.reason ?? "RISK_REJECTED"}`);
+    }
+    if (!Number.isFinite(stake) || stake <= 0 || stake > risk.stakeUsd) {
+      throw new Error(`Mise manuelle supérieure à la limite de risque (${risk.stakeUsd.toFixed(2)} USD)`);
+    }
     if (isTradingSymbolDisabled(symbol)) {
       throw new Error(`${symbol} est exclu globalement et ne peut pas être tradé.`);
     }
@@ -2407,7 +2426,7 @@ class ServerBotEngine {
     }
 
     // ── Auto-Adaptive Risk Manager Check (Rolling Window 30/100) ──
-    const riskMetrics = getPresetRiskMetrics(this.userId, this.preset);
+    const riskMetrics = getPresetRiskMetrics(this.userId, this.preset, undefined, this.config.mode === "live" ? "live" : "demo");
     if (riskMetrics.status === "PAUSED") {
       // A hard `return` here used to freeze the preset's own rolling window
       // (no new trades → PF50 stuck below 0.70 → paused forever) with no
@@ -2525,6 +2544,7 @@ class ServerBotEngine {
     };
 
     const toAnalyze: string[] = [];
+    const regimeCandlesBySymbol = new Map<string, any[]>();
     for (const symbol of candidateSymbols) {
       if (isGoldPreset(this.preset) && hasOpenGoldExposure(this.userId, this.preset)) {
         scanResults.push({
@@ -2610,9 +2630,9 @@ class ServerBotEngine {
       let m15Candles: any[] = [];
       try {
         [m1Candles, m5Candles, m15Candles] = await Promise.all([
-          candleFetcher(symbol, 60, 20),
-          candleFetcher(symbol, 300, 20),
-          candleFetcher(symbol, 900, 20),
+          candleFetcher(symbol, 60, 60),
+          candleFetcher(symbol, 300, 60),
+          candleFetcher(symbol, 900, 60),
         ]);
       } catch {
         /* handled by Data Quality Guard */
@@ -2632,6 +2652,7 @@ class ServerBotEngine {
         m5Candles,
         m15Candles,
       });
+      regimeCandlesBySymbol.set(symbol, m15Candles);
       if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
         circuitBreaker.updateAutoTriggers({
           dataQualityFailure:
@@ -2639,7 +2660,7 @@ class ServerBotEngine {
             (dataQuality.status === "STALE" || dataQuality.status === "INVALID"),
         });
       }
-      if (FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED && dataQuality.isBlocked) {
+      if (dataQuality.isBlocked) {
         scanResults.push({ symbol, action: "session-closed", note: dataQuality.reason });
         continue;
       }
@@ -3268,12 +3289,12 @@ class ServerBotEngine {
         `${this.preset.toUpperCase()}_ENGINE`;
       // ── Step 2: Setup Detected & Market Regime Classification ──
       recordFunnelStep(this.preset, strategyId, "setup");
-      const regimeClassification = classifyMarketRegime({
+      const regimeClassification = classifyRegimeFromCandles(
         symbol,
-        adx: analysis.volatilityRatio * 20,
-        atrRatio: analysis.volatilityRatio,
-        trendAlignmentScore: analysis.trendAlignmentScore,
-      });
+        regimeCandlesBySymbol.get(symbol) ?? [],
+        analysis.volatilityRatio,
+        analysis.trendAlignmentScore,
+      );
 
       const regimeRouting = isStrategyAllowedInRegime(strategyId, regimeClassification.regime);
       if (FEATURE_FLAGS.MARKET_REGIME_ROUTER_ENABLED && !regimeRouting.allowed) {
@@ -3389,7 +3410,7 @@ class ServerBotEngine {
       }
 
       if (FEATURE_FLAGS.STRATEGY_HEALTH_ENABLED) {
-        const stratHealth = getPresetRiskMetrics(this.userId, this.preset, strategyId);
+        const stratHealth = getPresetRiskMetrics(this.userId, this.preset, strategyId, this.config.mode === "live" ? "live" : "demo");
         if (stratHealth.status === "PAUSED") {
           scanResults.push({
             symbol,
@@ -3410,8 +3431,9 @@ class ServerBotEngine {
         symbol,
         direction,
         confidenceScore: analysis.confidence,
-        currentEquity: currentBalance || 1000,
-        currentBalance: currentBalance || 1000,
+        currentEquity: currentBalance ?? NaN,
+        currentBalance: currentBalance ?? NaN,
+        mode: this.config.mode === "live" ? "live" : "demo",
       });
 
       if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && riskCheck.decision === "REJECTED") {
@@ -4289,7 +4311,14 @@ class ServerBotEngine {
           executionMonitor.recordProposal(symbol, latency, false, error.code, error.message);
           executionMonitor.recordBuy(symbol, latency, false, error.code, error.message);
         }
-        this.activeSymbols.delete(symbol); // release the reservation — no position was actually opened
+        if (e instanceof DerivBuyUncertainError || (e instanceof DerivApiError && e.code === "BUY_OUTCOME_UNKNOWN")) {
+          // The persistent order intent remains unresolved. Stop new scans so
+          // a lost transport response can never be replayed as a second buy.
+          this.lastError = "BUY_OUTCOME_UNKNOWN — réconciliation Deriv requise";
+          this.stopScanning(this.lastError);
+        } else {
+          this.activeSymbols.delete(symbol); // no mutating request was confirmed
+        }
         this.emit({
           ...pendingLog,
           status: "error",

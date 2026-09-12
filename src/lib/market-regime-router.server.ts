@@ -4,9 +4,11 @@
  * et détermine dynamiquement l'autorisation des sous-stratégies selon le régime.
  */
 
+import { adx, bollinger, ema } from "./indicators";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 
 export type MarketRegime =
+  | "UNKNOWN"
   | "STRONG_UPTREND"
   | "UPTREND"
   | "STRONG_DOWNTREND"
@@ -39,17 +41,25 @@ export function classifyMarketRegime(params: {
   ema50?: number;
   recentSpike?: boolean;
 }): MarketRegimeClassification {
-  const adx = params.adx ?? 22;
-  const atrRatio = params.atrRatio ?? 1.0;
-  const bbWidth = params.bbWidth ?? 0.002;
-  const tas = params.trendAlignmentScore ?? 2;
-  const ema20 = params.ema20 ?? 100;
-  const ema50 = params.ema50 ?? 99;
+  const validInputs = [params.adx, params.atrRatio, params.bbWidth,
+    params.trendAlignmentScore, params.ema20, params.ema50]
+    .every(value => typeof value === "number" && Number.isFinite(value)) &&
+    params.adx! >= 0 && params.adx! <= 100 && params.atrRatio! > 0 &&
+    params.bbWidth! >= 0 && params.trendAlignmentScore! >= 0 &&
+    params.trendAlignmentScore! <= 4 && params.ema20! > 0 && params.ema50! > 0;
+  const adx = params.adx ?? NaN;
+  const atrRatio = params.atrRatio ?? NaN;
+  const bbWidth = params.bbWidth ?? NaN;
+  const tas = params.trendAlignmentScore ?? NaN;
+  const ema20 = params.ema20 ?? NaN;
+  const ema50 = params.ema50 ?? NaN;
   const recentSpike = params.recentSpike ?? false;
 
   let regime: MarketRegime = "RANGE";
 
-  if (recentSpike && (params.symbol.startsWith("BOOM") || params.symbol.startsWith("CRASH"))) {
+  if (!validInputs) {
+    regime = "UNKNOWN";
+  } else if (recentSpike && (params.symbol.startsWith("BOOM") || params.symbol.startsWith("CRASH"))) {
     regime = "POST_SPIKE";
   } else if (atrRatio > 2.50) {
     regime = "EXTREME_VOLATILITY";
@@ -88,8 +98,9 @@ export function isStrategyAllowedInRegime(
   strategy: string,
   regime: MarketRegime
 ): { allowed: boolean; reason?: string } {
-  const observationMode = FEATURE_FLAGS.OBSERVATION_MODE;
-
+  if (regime === "UNKNOWN") {
+    return { allowed: false, reason: "REGIME_NOT_ALLOWED: Indicateurs requis absents ou invalides" };
+  }
   let allowed = true;
   let reason: string | undefined;
 
@@ -120,12 +131,34 @@ export function isStrategyAllowedInRegime(
     }
   }
 
-  if (observationMode) {
-    return {
-      allowed: true, // Ne bloque jamais les ordres réels en Observation Mode
-      reason: allowed ? undefined : `[OBSERVATION] REGIME_NOT_ALLOWED: ${reason}`,
-    };
-  }
-
   return { allowed, reason };
+}
+
+/** Derive the regime from actual indicator inputs, never a proxy ADX or EMA. */
+export function classifyRegimeFromCandles(
+  symbol: string,
+  candles: readonly { open: number; high: number; low: number; close: number; epoch: number }[],
+  atrRatio: number,
+  trendAlignmentScore: number,
+): MarketRegimeClassification {
+  if (candles.length < 50 || candles.some((c, index) =>
+    ![c.open, c.high, c.low, c.close, c.epoch].every(Number.isFinite) ||
+    c.low <= 0 || c.high < c.low || c.open < c.low || c.open > c.high ||
+    c.close < c.low || c.close > c.high || c.epoch <= 0 ||
+    (index > 0 && c.epoch <= candles[index - 1].epoch))) {
+    return classifyMarketRegime({ symbol });
+  }
+  const closes = candles.map(c => c.close);
+  const bands = bollinger(closes);
+  const last = candles.length - 1;
+  const middle = bands.middle[last];
+  const upper = bands.upper[last];
+  const lower = bands.lower[last];
+  return classifyMarketRegime({
+    symbol, atrRatio, trendAlignmentScore,
+    adx: adx(candles.map(c => c.high), candles.map(c => c.low), closes).adx[last] ?? undefined,
+    ema20: ema(closes, 20)[last] ?? undefined,
+    ema50: ema(closes, 50)[last] ?? undefined,
+    bbWidth: middle && upper !== null && lower !== null ? (upper - lower) / middle : undefined,
+  });
 }

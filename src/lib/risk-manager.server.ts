@@ -29,6 +29,8 @@ export type StrategyRiskStatus = "NORMAL" | "CAUTION" | "RESTRICTED" | "PAUSED" 
 
 export interface RiskCheckInput {
   userId: number;
+  /** Required for execution authorization; omitted only by legacy read-only callers. */
+  mode?: "demo" | "live";
   preset: Preset;
   strategyId: string;
   symbol: string;
@@ -164,21 +166,21 @@ export function getAutoAdaptivePauseRecovery(
 
 // ── Strategy Performance Monitor (Rolling 30/50/100 Trades) ─────────────────
 
-export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?: string): PresetRiskMetrics {
+export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?: string, mode?: "demo" | "live"): PresetRiskMetrics {
   const db = getDb();
   const targetStrat = strategyId || preset;
 
   const rows = strategyId
     ? db.prepare(`
         SELECT status, profit FROM bot_trades
-        WHERE user_id = ? AND strategy = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND strategy = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 100
-      `).all(userId, strategyId) as { status: "won" | "lost"; profit: number }[]
+      `).all(userId, strategyId, mode ?? null, mode ?? null) as { status: "won" | "lost"; profit: number }[]
     : db.prepare(`
         SELECT status, profit FROM bot_trades
-        WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND preset = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 100
-      `).all(userId, preset) as { status: "won" | "lost"; profit: number }[];
+      `).all(userId, preset, mode ?? null, mode ?? null) as { status: "won" | "lost"; profit: number }[];
 
   const sample100 = rows.length;
   const trades50 = rows.slice(0, 50);
@@ -235,7 +237,8 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
     // A paper recovery in shadow grants a supervised re-entry at half stake
     // instead of a dead end — checked at both the preset-level call and the
     // per-strategy health call so the two agree.
-    const recovery = getAutoAdaptivePauseRecovery(userId, preset, strategyId);
+    // Shadow observations have no account mode: they cannot authorize a scoped recovery.
+    const recovery = mode ? { eligible: false, shadowSample: 0, shadowPf: 0 } : getAutoAdaptivePauseRecovery(userId, preset, strategyId);
     if (recovery.eligible) {
       return {
         status: "RESTRICTED",
@@ -294,10 +297,20 @@ export function getPresetRiskMetrics(userId: number, preset: Preset, strategyId?
 
 export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const db = getDb();
+  const accountMode = input.mode ?? "demo";
+  const scopedInput = input.mode ? input : { ...input, mode: accountMode as "demo" | "live" };
   const fingerprint = `${input.strategyId}_${input.symbol}_${input.direction}_${input.setupId || "standard"}`;
 
+  if ((accountMode !== "demo" && accountMode !== "live") ||
+      !Number.isFinite(input.currentEquity) || input.currentEquity <= 0 ||
+      !Number.isFinite(input.currentBalance) || input.currentBalance <= 0) {
+    const explanation = "Mode de compte, solde et equity positifs et fiables requis";
+    logRejection(scopedInput, "RISK_ACCOUNT_LIMIT", explanation, fingerprint);
+    return { decision: "REJECTED", riskPercent: 0, stakeUsd: 0, reason: "RISK_ACCOUNT_LIMIT", explanation, fingerprint, strategyStatus: "PAUSED" };
+  }
+
   // 1. Get Strategy Risk Metrics
-  const metrics = getPresetRiskMetrics(input.userId, input.preset, input.strategyId);
+  const metrics = getPresetRiskMetrics(input.userId, input.preset, input.strategyId, accountMode);
   if (metrics.status === "PAUSED" || metrics.status === "DISABLED") {
     logRejection(input, "RISK_STRATEGY_PAUSED", metrics.reason || "Moteur suspendu par le Risk Manager", fingerprint);
     return {
@@ -334,11 +347,11 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const todayStart = new Date().setUTCHours(0, 0, 0, 0);
   const todayPnlRow = db.prepare(`
     SELECT SUM(profit) as pnl FROM bot_trades
-    WHERE user_id = ? AND time >= ? AND status IN ('won', 'lost')
-  `).get(input.userId, todayStart) as { pnl: number | null };
+    WHERE user_id = ? AND mode = ? AND time >= ? AND status IN ('won', 'lost')
+  `).get(input.userId, accountMode, todayStart) as { pnl: number | null };
 
   const todayPnl = todayPnlRow.pnl || 0;
-  const equity = Math.max(10, input.currentEquity || input.currentBalance || 1000);
+  const equity = input.currentEquity;
   const dailyLossPct = todayPnl < 0 ? (Math.abs(todayPnl) / equity) * 100 : 0;
 
   if (dailyLossPct >= RISK_CONFIG.HARD_DAILY_DD_PCT) {
@@ -365,14 +378,14 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const recentTrades = input.strategyId
     ? db.prepare(`
         SELECT status FROM bot_trades
-        WHERE user_id = ? AND strategy = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND mode = ? AND strategy = ? AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 5
-      `).all(input.userId, input.strategyId) as { status: "won" | "lost" }[]
+  `).all(input.userId, accountMode, input.strategyId) as { status: "won" | "lost" }[]
     : db.prepare(`
         SELECT status FROM bot_trades
-        WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+        WHERE user_id = ? AND mode = ? AND preset = ? AND status IN ('won', 'lost')
         ORDER BY time DESC LIMIT 5
-      `).all(input.userId, input.preset) as { status: "won" | "lost" }[];
+  `).all(input.userId, accountMode, input.preset) as { status: "won" | "lost" }[];
 
   let streak = 0;
   for (const t of recentTrades) {
@@ -383,7 +396,9 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   let recoveryStakeMultiplier = 1.0;
 
   if (FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED && input.strategyId) {
-    const gate = evaluateLossStreakGate(input.userId, input.strategyId);
+  // Preserve legacy breaker records for callers that predate explicit mode;
+  // engine calls always provide mode and therefore remain strictly scoped.
+  const gate = evaluateLossStreakGate(input.userId, input.strategyId, input.mode ? accountMode : undefined);
     if (!gate.allow) {
       logRejection(input, "RISK_LOSS_STREAK", gate.explanation ?? `Circuit breaker actif — stratégie ${input.strategyId}`, fingerprint);
       return {
@@ -415,11 +430,11 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   // 4. Duplicate Trade Protection (fingerprint active check)
   const activeDuplicate = db.prepare(`
     SELECT id FROM bot_trades
-    WHERE user_id = ? AND symbol = ? AND direction = ? AND status = 'open'
-  `).get(input.userId, input.symbol, input.direction);
+    WHERE user_id = ? AND mode = ? AND symbol = ? AND direction = ? AND status IN ('pending', 'open')
+  `).get(input.userId, accountMode, input.symbol, input.direction);
 
   if (activeDuplicate) {
-    logRejection(input, "RISK_DUPLICATE", `Position identique déjà ouverte sur ${input.symbol} (${input.direction})`, fingerprint);
+    logRejection(scopedInput, "RISK_DUPLICATE", `Position identique déjà ouverte sur ${input.symbol} (${input.direction})`, fingerprint);
     return {
       decision: "REJECTED",
       riskPercent: 0,
@@ -435,8 +450,8 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const opposingDirection = input.direction === "CALL" || input.direction === "BUY" ? ["PUT", "SELL"] : ["CALL", "BUY"];
   const activeConflict = db.prepare(`
     SELECT id FROM bot_trades
-    WHERE user_id = ? AND symbol = ? AND status = 'open' AND direction IN (${opposingDirection.map(() => "?").join(",")})
-  `).get(input.userId, input.symbol, ...opposingDirection);
+    WHERE user_id = ? AND mode = ? AND symbol = ? AND status IN ('pending', 'open') AND direction IN (${opposingDirection.map(() => "?").join(",")})
+  `).get(input.userId, accountMode, input.symbol, ...opposingDirection);
 
   if (activeConflict) {
     logRejection(input, "RISK_CONFLICT", `Conflit de direction opposée sur ${input.symbol}`, fingerprint);
@@ -453,8 +468,8 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
 
   // 6. Max Active Positions Limits (Global, Strategy, Symbol)
   const activeGlobalCount = (db.prepare(`
-    SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND status = 'open'
-  `).get(input.userId) as { c: number }).c;
+    SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open')
+  `).get(input.userId, accountMode) as { c: number }).c;
 
   if (activeGlobalCount >= RISK_CONFIG.MAX_ACTIVE_POSITIONS_GLOBAL) {
     logRejection(input, "RISK_MAX_POSITIONS", `Limite globale de positions ouvertes (${activeGlobalCount}/${RISK_CONFIG.MAX_ACTIVE_POSITIONS_GLOBAL}) atteinte`, fingerprint);
@@ -471,11 +486,11 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
 
   const activeStrategyRow = (input.strategyId
     ? db.prepare(`
-        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND strategy = ? AND status = 'open'
-      `).get(input.userId, input.strategyId)
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND strategy = ? AND status IN ('pending', 'open')
+      `).get(input.userId, accountMode, input.strategyId)
     : db.prepare(`
-        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
-      `).get(input.userId, input.preset)
+        SELECT COUNT(*) as c FROM bot_trades WHERE user_id = ? AND mode = ? AND preset = ? AND status IN ('pending', 'open')
+      `).get(input.userId, accountMode, input.preset)
   ) as { c: number } | undefined;
 
   const activeStrategyCount = activeStrategyRow?.c ?? 0;
@@ -498,8 +513,8 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const familySymbols = ASSET_FAMILIES[family] || [input.symbol];
   const activeFamilyStakeRow = db.prepare(`
     SELECT SUM(stake) as total_stake FROM bot_trades
-    WHERE user_id = ? AND status = 'open' AND symbol IN (${familySymbols.map(() => "?").join(",")})
-  `).get(input.userId, ...familySymbols) as { total_stake: number | null };
+    WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open') AND symbol IN (${familySymbols.map(() => "?").join(",")})
+  `).get(input.userId, accountMode, ...familySymbols) as { total_stake: number | null };
 
   const currentFamilyExposurePct = ((activeFamilyStakeRow.total_stake || 0) / equity) * 100;
   if (currentFamilyExposurePct >= RISK_CONFIG.MAX_FAMILY_RISK_PCT) {
@@ -535,7 +550,31 @@ export function evaluateRiskCheck(input: RiskCheckInput): RiskCheckOutput {
   const finalRiskPct = Math.min(RISK_CONFIG.MAX_RISK_PER_TRADE_PCT, Math.max(0.05, baseRiskPct));
 
   // Compute position stake USD
-  let stakeUsd = Math.max(1, Math.round((equity * (finalRiskPct / 100)) * 100) / 100);
+  const stakeUsd = Math.floor((equity * (finalRiskPct / 100)) * 100) / 100;
+  if (!Number.isFinite(stakeUsd) || stakeUsd < 1) {
+    const explanation = "La mise minimale dépasserait le budget de risque autorisé";
+    logRejection(input, "RISK_INVALID_POSITION_SIZE", explanation, fingerprint);
+    return { decision: "REJECTED", riskPercent: 0, stakeUsd: 0, reason: "RISK_INVALID_POSITION_SIZE", explanation, fingerprint, strategyStatus: metrics.status };
+  }
+
+  // Include the candidate in all exposure limits, not only existing positions.
+  const exposure = db.prepare(`
+    SELECT COALESCE(SUM(stake), 0) AS total,
+      COALESCE(SUM(CASE WHEN symbol = ? THEN stake ELSE 0 END), 0) AS symbol
+    FROM bot_trades WHERE user_id = ? AND mode = ? AND status IN ('pending', 'open')
+  `).get(input.symbol, input.userId, accountMode) as { total: number; symbol: number };
+  const limits: [number, number, RiskRejectionReason][] = [
+    [exposure.total, RISK_CONFIG.MAX_TOTAL_OPEN_RISK_PCT, "RISK_MAX_EXPOSURE"],
+    [exposure.symbol, RISK_CONFIG.MAX_SYMBOL_RISK_PCT, "RISK_SYMBOL_EXPOSURE"],
+    [activeFamilyStakeRow.total_stake || 0, RISK_CONFIG.MAX_FAMILY_RISK_PCT, "RISK_FAMILY_EXPOSURE"],
+  ];
+  for (const [existing, limit, reason] of limits) {
+    if (!Number.isFinite(existing) || existing < 0 || (existing + stakeUsd) / equity * 100 > limit + 1e-9) {
+      const explanation = `Exposition après achat supérieure à la limite ${limit}%`;
+      logRejection(input, reason, explanation, fingerprint);
+      return { decision: "REJECTED", riskPercent: 0, stakeUsd: 0, reason, explanation, fingerprint, strategyStatus: metrics.status };
+    }
+  }
 
   // Check Account Balance
   if (input.currentBalance > 0 && stakeUsd > input.currentBalance) {
@@ -579,5 +618,5 @@ function logRejection(input: RiskCheckInput, reason: RiskRejectionReason, explan
       reason,
       JSON.stringify({ explanation, strategyId: input.strategyId, direction: input.direction, fingerprint })
     );
-  } catch { /* ignore log write error */ }
+  } catch (error) { console.error("[RiskManager] Rejection journal write failed", { reason, fingerprint, error }); }
 }

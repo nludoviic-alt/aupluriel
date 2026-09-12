@@ -161,13 +161,16 @@ function upsert(userId: number, strategy: string, fields: Partial<Omit<StoredRow
 function computeRealStreak(userId: number, strategy: string): {
   streak: number; lastLossAt: number | null; lastWinAt: number | null;
 } {
+  const scoped = /^(demo|live)::(.*)$/.exec(strategy);
+  const tradeStrategy = scoped ? scoped[2] : strategy;
+  const mode = scoped ? scoped[1] : null;
   const recent = getDb()
     .prepare(`
-      SELECT status, time FROM bot_trades
-      WHERE user_id = ? AND strategy = ? AND status IN ('won', 'lost')
-      ORDER BY time DESC LIMIT 5
+      SELECT status, COALESCE(closed_at, time) AS time FROM bot_trades
+      WHERE user_id = ? AND strategy = ? AND (? IS NULL OR mode = ?) AND status IN ('won', 'lost')
+      ORDER BY COALESCE(closed_at, time) DESC LIMIT 5
     `)
-    .all(userId, strategy) as { status: "won" | "lost"; time: number }[];
+    .all(userId, tradeStrategy, mode, mode) as { status: "won" | "lost"; time: number }[];
 
   let streak = 0;
   let lastLossAt: number | null = null;
@@ -274,7 +277,8 @@ function ensureReconciled(userId: number, strategy: string): void {
 
 /** Reads the current breaker state for (userId, strategy), reconciling
  * against bot_trades on first access this process. */
-export function getLossStreakState(userId: number, strategy: string): LossStreakRecord {
+export function getLossStreakState(userId: number, strategy: string, mode?: "demo" | "live"): LossStreakRecord {
+  if (mode) strategy = `${mode}::${strategy}`;
   ensureReconciled(userId, strategy);
   const row = readRow(userId, strategy);
   if (!row) {
@@ -302,7 +306,8 @@ export function getLossStreakStatesForPreset(userId: number, preset: string): Lo
  * mutates loss_streak_count itself — only recordTradeOutcome (a real
  * resolved trade) does that. This function only ever performs the
  * time-driven PAUSED -> RECOVERY transition. */
-export function evaluateLossStreakGate(userId: number, strategy: string): LossStreakGateResult {
+export function evaluateLossStreakGate(userId: number, strategy: string, mode?: "demo" | "live"): LossStreakGateResult {
+  if (mode) strategy = `${mode}::${strategy}`;
   const row = getLossStreakState(userId, strategy);
 
   if (row.state === "NORMAL") {
@@ -339,7 +344,8 @@ export function evaluateLossStreakGate(userId: number, strategy: string): LossSt
 /** The only function allowed to advance the state machine on an actual
  * trade result. Called from bot-engine.server.ts's emit() on the
  * pending -> won/lost transition. */
-export function recordTradeOutcome(userId: number, strategy: string, outcome: "won" | "lost"): void {
+export function recordTradeOutcome(userId: number, strategy: string, outcome: "won" | "lost", mode?: "demo" | "live"): void {
+  if (mode) strategy = `${mode}::${strategy}`;
   const row = getLossStreakState(userId, strategy);
   const now = Date.now();
 

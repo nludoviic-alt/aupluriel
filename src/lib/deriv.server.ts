@@ -8,6 +8,7 @@
 //
 // Requires Node ≥ 22 (global WebSocket).
 
+import { executionAccountKey, withOrderIntent } from "./order-intent.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 
 const DERIV_APP_ID = 1089;
@@ -68,6 +69,28 @@ export class DerivApiError extends Error {
     super(message);
   }
 }
+/** A buy may have executed; reconcile the account before permitting another entry. */
+export class DerivBuyUncertainError extends DerivApiError {
+  constructor(message: string) {
+    super("BUY_OUTCOME_UNKNOWN", message);
+    this.name = "DerivBuyUncertainError";
+  }
+}
+
+function validateBuyProposal(proposal: { id: string; ask_price: number } | undefined): asserts proposal is { id: string; ask_price: number } {
+  if (!proposal || typeof proposal.id !== "string" || !proposal.id.trim() ||
+      typeof proposal.ask_price !== "number" || !Number.isFinite(proposal.ask_price) || proposal.ask_price <= 0) {
+    throw new DerivApiError("INVALID_PROPOSAL", "Invalid proposal id or ask price; buy blocked");
+  }
+}
+
+function validateBuyConfirmation(buy: { contract_id: number; buy_price: number } | undefined): asserts buy is { contract_id: number; buy_price: number } {
+  if (!buy || !Number.isSafeInteger(buy.contract_id) || buy.contract_id <= 0 ||
+      !Number.isFinite(Number(buy.buy_price)) || Number(buy.buy_price) <= 0) {
+    throw new DerivBuyUncertainError("Missing or invalid buy confirmation; reconcile portfolio before any new entry");
+  }
+}
+
 type Listener = (msg: Msg) => void;
 
 /**
@@ -715,7 +738,11 @@ export class DerivTradingConnection {
     }
   }
 
-  async proposeAndBuy(
+  async proposeAndBuy(params: { symbol: string; amount: number; contractType: "CALL" | "PUT"; durationMinutes: number }, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number; payout: number }> {
+    return withOrderIntent(executionAccountKey(this.patToken, this.accountType), (markSent) => this.proposeAndBuyReserved(params, maxAttempts, markSent));
+  }
+
+  private async proposeAndBuyReserved(
     params: {
       symbol: string;
       amount: number;
@@ -723,9 +750,11 @@ export class DerivTradingConnection {
       durationMinutes: number;
     },
     maxAttempts = 3,
+    markSent: () => void,
   ): Promise<{ contractId: number; buyPrice: number; payout: number }> {
     let lastError: Error | null = null;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= Math.min(4, Math.max(1, Math.floor(maxAttempts) || 1)); attempt++) {
+      let buyAttempted = false;
       try {
         const prop = await this.socket.request<{
           proposal?: { id: string; ask_price: number; payout: number };
@@ -739,7 +768,9 @@ export class DerivTradingConnection {
           duration_unit: "m",
           underlying_symbol: params.symbol,
         });
-        if (!prop.proposal) throw new Error("Proposal failed");
+        validateBuyProposal(prop.proposal);
+        markSent();
+        buyAttempted = true;
         const buy = await this.socket.request<{
           buy?: { contract_id: number; buy_price: number; payout: number };
         }>({
@@ -747,14 +778,23 @@ export class DerivTradingConnection {
           // Deriv rejects a `price` with >2 decimals — the 1.05 slippage buffer must be re-rounded.
           price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
         });
-        if (!buy.buy) throw new Error("Buy failed");
+        validateBuyConfirmation(buy.buy);
+        if (!Number.isFinite(Number(buy.buy.payout)) || Number(buy.buy.payout) < 0) {
+          throw new DerivBuyUncertainError("Invalid buy payout; reconcile confirmed contract before another entry");
+        }
         return {
           contractId: buy.buy.contract_id,
           buyPrice: Number(buy.buy.buy_price),
           payout: Number(buy.buy.payout),
         };
       } catch (e) {
-        lastError = e as Error;
+        lastError = e instanceof Error ? e : new Error(String(e));
+        if (buyAttempted) {
+          // Never replay a mutating request. An explicit API rejection is final;
+          // transport failures and malformed confirmations require reconciliation.
+          if (e instanceof DerivApiError) throw e;
+          throw new DerivBuyUncertainError(`Buy outcome unknown: ${lastError.message}`);
+        }
         // Validation errors (invalid price/stake/contract) fail identically on retry —
         // only transient failures (proposal expired, network) are worth another attempt.
         if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message))
@@ -772,7 +812,11 @@ export class DerivTradingConnection {
    * numbers — Deriv closes when the loss/profit reaches that amount), not a
    * price or a percentage.
    */
-  async proposeAndBuyMultiplier(
+  async proposeAndBuyMultiplier(params: { symbol: string; amount: number; direction: "CALL" | "PUT"; multiplier: number; stopLossUsd: number; takeProfitUsd: number }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
+    return withOrderIntent(executionAccountKey(this.patToken, this.accountType), (markSent) => this.proposeAndBuyMultiplierReserved(params, maxAttempts, markSent));
+  }
+
+  private async proposeAndBuyMultiplierReserved(
     params: {
       symbol: string;
       amount: number;
@@ -782,6 +826,7 @@ export class DerivTradingConnection {
       takeProfitUsd: number;
     },
     maxAttempts = 4,
+    markSent: () => void,
   ): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
     // Every multiplier order, irrespective of feature flags or symbol, must
@@ -797,7 +842,8 @@ export class DerivTradingConnection {
     let lastError: Error | null = null;
     const currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= Math.min(4, Math.max(1, Math.floor(maxAttempts) || 1)); attempt++) {
+      let buyAttempted = false;
       try {
         const prop = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
           proposal: 1,
@@ -812,7 +858,9 @@ export class DerivTradingConnection {
             take_profit: roundToCurrency(params.takeProfitUsd, this.currency),
           },
         });
-        if (!prop.proposal) throw new Error("Proposal failed");
+        validateBuyProposal(prop.proposal);
+        markSent();
+        buyAttempted = true;
         const buy = await this.socket.request<{ buy?: { contract_id: number; buy_price: number } }>(
           {
             buy: prop.proposal.id,
@@ -820,10 +868,16 @@ export class DerivTradingConnection {
             price: roundToCurrency(Number(prop.proposal.ask_price) * 1.05, this.currency),
           },
         );
-        if (!buy.buy) throw new Error("Buy failed");
+        validateBuyConfirmation(buy.buy);
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
       } catch (e) {
-        lastError = e as Error;
+        lastError = e instanceof Error ? e : new Error(String(e));
+        if (buyAttempted) {
+          // Never replay a mutating request. An explicit API rejection is final;
+          // transport failures and malformed confirmations require reconciliation.
+          if (e instanceof DerivApiError) throw e;
+          throw new DerivBuyUncertainError(`Buy outcome unknown: ${lastError.message}`);
+        }
         if (
           /price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(
             lastError.message,

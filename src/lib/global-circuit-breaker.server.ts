@@ -70,10 +70,9 @@ class GlobalCircuitBreakerStore {
   }
 
   getState(): CircuitBreakerState {
-    const observationMode = FEATURE_FLAGS.OBSERVATION_MODE;
     return {
-      isActive: observationMode ? false : this.active, // En mode observation, n'interrompt pas les ordres réels
-      reason: this.reason ? (observationMode ? `[OBSERVATION] ${this.reason}` : this.reason) : undefined,
+      isActive: this.active,
+      reason: this.reason,
       triggeredAt: this.triggeredAt,
       autoTriggers: {
         dataQualityFailure: this.dataQualityFailure,
