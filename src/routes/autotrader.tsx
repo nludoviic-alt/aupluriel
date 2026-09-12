@@ -130,9 +130,13 @@ type PresetKey =
   | "crash"
   | "crash500"
   | "scalping"
+  | "gold"
+  | "liquidity"
   | "crash900"
   | "boomv2"
-  | "scalpingv2";
+  | "scalpingv2"
+  | "goldv2"
+  | "liquidityv2";
 
 const presetLabels: Record<PresetKey, string> = {
   default: "Multi",
@@ -144,9 +148,13 @@ const presetLabels: Record<PresetKey, string> = {
   crash: "Crash900",
   crash500: "Crash500",
   scalping: "Scalping",
+  gold: "Gold Trend Pullback",
+  liquidity: "Gold Liquidity Sweep",
   crash900: "Crash900 V2",
   boomv2: "Boom V2",
   scalpingv2: "Scalping V2",
+  goldv2: "Gold Breakout",
+  liquidityv2: "Liquidity V2",
 };
 
 // These are presentation labels only. The actual instruments and execution
@@ -184,9 +192,13 @@ const PRESET_PRESENTATION: Record<
     experimental: true,
   },
   scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
+  gold: { market: "frxXAUUSD (Or)", description: "Trend Pullback" },
+  liquidity: { market: "frxXAUUSD (Or)", description: "Liquidity Sweep" },
   crash900: { market: "CRASH900", description: "Joker · optimisé data", experimental: true },
   boomv2: { market: "BOOM500", description: "Démo · exposition contrôlée", experimental: true },
   scalpingv2: { market: "BOOM500", description: "M1/M5 · Spike Hunter", experimental: true },
+  goldv2: { market: "frxXAUUSD (Or)", description: "Breakout" },
+  liquidityv2: { market: "frxXAUUSD (Or)", description: "Sweep M15" },
 };
 
 const PRESET_META_MAP: Record<
@@ -256,6 +268,20 @@ const PRESET_META_MAP: Record<
     borderColor: "border-cyan-500/30",
     bgTone: "bg-cyan-500/10",
   },
+  gold: {
+    label: "Gold Trend Pullback",
+    badge: "🥇 Trend Pullback",
+    color: "text-amber-300",
+    borderColor: "border-amber-500/30",
+    bgTone: "bg-amber-500/10",
+  },
+  liquidity: {
+    label: "Gold Liquidity Sweep",
+    badge: "🥇 Liquidity Sweep",
+    color: "text-fuchsia-300",
+    borderColor: "border-fuchsia-500/30",
+    bgTone: "bg-fuchsia-500/10",
+  },
   crash900: {
     label: "Crash900 V2",
     badge: "📉 Crash900 V2",
@@ -276,6 +302,20 @@ const PRESET_META_MAP: Record<
     color: "text-cyan-300",
     borderColor: "border-cyan-500/30",
     bgTone: "bg-cyan-500/10",
+  },
+  goldv2: {
+    label: "Gold Breakout",
+    badge: "🥇 Gold Breakout",
+    color: "text-amber-300",
+    borderColor: "border-amber-500/30",
+    bgTone: "bg-amber-500/10",
+  },
+  liquidityv2: {
+    label: "Liquidity V2",
+    badge: "💧 Liquidity V2",
+    color: "text-fuchsia-300",
+    borderColor: "border-fuchsia-500/30",
+    bgTone: "bg-fuchsia-500/10",
   },
 };
 
@@ -1575,10 +1615,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             const pnlVal = st?.todayPnl ?? 0;
             const isOnline = !!st?.enabled && !!st?.running;
             const isSelected = selectedPreset === p;
-            const meta = PRESET_META_MAP[p];
+            const meta = PRESET_META_MAP[p] ?? PRESET_META_MAP.default;
             const configuredMarkets = formatConfiguredMarkets(
               st?.savedConfig?.symbols,
-              PRESET_PRESENTATION[p].market,
+              PRESET_PRESENTATION[p]?.market ?? "Marchés configurés",
             );
 
             const closedTrades = (st?.trades ?? []).filter(
