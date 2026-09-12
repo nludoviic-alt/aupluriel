@@ -1,6 +1,6 @@
 {
   "version": "3.0.0",
-  "config_name": "NEXIUM_MARKETS",
+  "config_name": "AU_PLURIEL",
   "environment": "paper",
   "enabled": true,
   "global": {
