@@ -395,7 +395,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   //   sur 701 trades au 5 août. Détérioration sur 3 jours.
   // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
   // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
-  minConfidence: 88,
+  minConfidence: 82,
   maxConfidence: 100,
   minTfAgreement: 3,
   premiumOnly: false,
@@ -500,7 +500,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   mode: "demo",
   // Deriv currently rejects BOOM900 amounts above $0.90 on this account.
   stakeUsd: 0.9,
-  minConfidence: 80,
+  minConfidence: 84,
   maxConfidence: 100,
   minTfAgreement: 3,
   multiplierLevel: 100,
@@ -529,7 +529,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 65, maxConfidence: 100, minTfAgreement: 2,
+  minConfidence: 80, maxConfidence: 100, minTfAgreement: 2,
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
@@ -543,7 +543,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: ["RB100"],
   mode: "demo",
-  minConfidence: 72,
+  minConfidence: 80,
   maxConfidence: 100,
   minTfAgreement: 1,
   instrumentType: "multiplier",
@@ -567,7 +567,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
 export const VOL50_PRESET: Partial<AutoTraderConfig> = {
   ...VOL75_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
-  minConfidence: 76, maxConfidence: 100, minTfAgreement: 3,
+  minConfidence: 78, maxConfidence: 100, minTfAgreement: 3,
   instrumentType: "multiplier", multiplierLevel: 80,
   stakeMode: "percent", stakePercent: 0.25,
   atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
@@ -626,22 +626,14 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
-  // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
-  // Sweep tune-crash-preset 2026-08-05 (150 bougies, 163 trades, levier 100x) :
-  // TP 5% / SL 10% = +$10, edge +8.2pp, 74.8% WR (breakeven 66.7%).
-  // SL 10% surpasse SL 20% (+$9.12, edge +2.8pp) — le stop serré coupe les
-  // pertes plus tôt sans sacrifier les gains (TP 5% atteint rapidement).
-  // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
   stakeMode: "fixed",
   stakeUsd: 25,
   maxDailyLossUsd: 75,
   maxConsecutiveLosses: 3,
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 10,
-  // MAJ 2026-08-12 (sweep tune-crash-preset sur bougies historiques Deriv) :
-  // TP 5% / SL 10% / minConfidence 55 / minTfAgreement 2 → 79.5% WR, edge +12.9pp, +$85.00 P&L sur 88 trades.
-  minConfidence: 60,
-  maxConfidence: 89,
+  minConfidence: 82,
+  maxConfidence: 100,
   minTfAgreement: 2,
   multiplierLevel: 100,
 };
@@ -655,7 +647,7 @@ export const CRASH500_PRESET: Partial<AutoTraderConfig> = {
   mode: "demo",
   stakeMode: "percent",
   stakePercent: 0.25,
-  minConfidence: 88,
+  minConfidence: 82,
   maxConfidence: 100,
   minTfAgreement: 4,
   maxTradesPerDay: 15,
@@ -673,46 +665,14 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping V2 watchlist: BOOM1000 retained after VPS audit.
- * BOOM500 retiré du scalping : WR 36.1%, -$3.14 sur 36 trades — performance
- * catastrophique en mode scalping (contrairement au preset Boom où il
- * performe bien avec TP/SL différents et levier 100x). */
-export const SCALPING_SYMBOLS = ["BOOM1000"];
+export const SCALPING_SYMBOLS = ["1HZ75V", "1HZ50V", "BOOM500", "CRASH500", "frxEURGBP", "frxUSDCAD"];
 
-/**
- * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
- * strategy: M5 trend (price vs SMA20) → M1 pullback to SMA10 → M1
- * confirmation candle → structural stop at the last swing low/high → 1.5R
- * target. Full rules and backtest numbers in scalping-signal.server.ts.
- *
- * This is a DIFFERENT TRADING MECHANISM, not a confidence-band variant of
- * Boom: bot-engine.server.ts branches on preset === "scalping" and calls
- * generateScalpingSignal instead of analyzeSymbolCore, and sizes the stop via
- * computeStructuralStopUsd instead of ATR/flat-% of stake. It therefore does
- * NOT inherit Boom's TP/SL — those fields are ignored for this preset.
- *
- * Runs as a genuinely separate server engine so it can trade BOOM500
- * alongside Boom itself without disrupting Boom's own live config — the two
- * are told apart in bot_trades via the explicit `preset` column (not symbol
- * inference, which can't distinguish them since they share BOOM500).
- *
- * Risk guards are scaled down for the deliberately tiny stake ($1, vs
- * Boom's $5) — NOT left at BOOM_PRESET's values. Leaving a $-denominated
- * guard sized for a $5 stake while the stake shrinks 5x is exactly the bug
- * class already documented on BOOM_PRESET.trailingStopMinPeakUsd (a guard
- * that doesn't scale with stake pauses the bot after a handful of normal
- * losses, or does nothing at all).
- */
 export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  // Audit VPS 2026-08-08 (2 446 trades) : bucket 80-89 = -$162.70 (PF 0.93),
-  // bucket 70-79 = +$54.46 (PF 1.22). minTfAgreement 4/4 hérité de BOOM_PRESET.
-  // BOOM1000 : -$34.75 sur 221 trades (PF 0.70), CRASH1000 : -$25.89 sur 270
-  //   trades (PF 0.94) — mais scalping utilise un moteur de signaux différent.
-  minConfidence: 85,
-  maxConfidence: 89,
+  minConfidence: 82,
+  maxConfidence: 100,
   stakeUsd: 1,
   // Scaled down from BOOM_PRESET's $5 stake to this preset's $1 — not left at
   // BOOM_PRESET's values verbatim. trailingStopMinPeakUsd follows the

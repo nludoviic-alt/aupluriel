@@ -1,0 +1,1019 @@
+{
+  "version": "3.0.0",
+  "config_name": "NEXIUM_MARKETS",
+  "environment": "paper",
+  "enabled": true,
+  "global": {
+    "base_currency": "USD",
+    "execution": {
+      "default_contract_type": "AUTO",
+      "require_contract_validation": true,
+      "require_market_open": true,
+      "require_quote_freshness": true,
+      "max_quote_age_ms": 1500,
+      "max_execution_latency_ms": 2500,
+      "max_order_retries": 1,
+      "duplicate_signal_protection": true,
+      "idempotency_required": true
+    },
+    "data": {
+      "minimum_candles": {
+        "tick": 200,
+        "15s": 300,
+        "1m": 300,
+        "5m": 250,
+        "15m": 200
+      },
+      "max_data_gap_seconds": 10,
+      "reject_nan": true,
+      "reject_infinite": true,
+      "reject_stale_data": true,
+      "synchronization_required": true
+    },
+    "global_risk": {
+      "default_risk_per_trade": 0.0035,
+      "absolute_max_risk_per_trade": 0.005,
+      "max_daily_loss": 0.02,
+      "max_drawdown": 0.05,
+      "max_consecutive_losses": 3,
+      "max_trades_per_day": 20,
+      "max_concurrent_positions": 2,
+      "max_positions_per_instrument": 1,
+      "loss_reduction": {
+        "after_2_losses_multiplier": 0.5,
+        "after_3_losses_action": "HALT"
+      },
+      "daily_loss_actions": {
+        "at_50_percent": "REDUCE_RISK_50",
+        "at_75_percent": "REDUCE_RISK_75",
+        "at_100_percent": "HALT"
+      },
+      "drawdown_actions": {
+        "at_50_percent": "REDUCE_RISK_50",
+        "at_75_percent": "REDUCE_RISK_75",
+        "at_100_percent": "HALT"
+      }
+    },
+    "score_system": {
+      "minimum_trade_score": 75,
+      "preferred_trade_score": 85,
+      "high_quality_trade_score": 90,
+      "weights": {
+        "regime": 20,
+        "trend": 15,
+        "momentum": 15,
+        "structure": 15,
+        "entry_quality": 15,
+        "volatility": 10,
+        "confirmation": 10
+      },
+      "score_rules": {
+        "below_60": "REJECT",
+        "60_to_74": "REJECT",
+        "75_to_84": "VALID_WITH_STANDARD_RISK",
+        "85_to_89": "VALID_WITH_STANDARD_RISK",
+        "90_to_100": "HIGH_QUALITY"
+      }
+    },
+    "ai": {
+      "enabled": true,
+      "role": "CONTEXT_ANALYSIS",
+      "minimum_confidence": 0.75,
+      "preferred_confidence": 0.85,
+      "allowed_decisions": [
+        "APPROVE",
+        "REJECT",
+        "NO_TRADE",
+        "REVIEW"
+      ],
+      "forbidden_actions": [
+        "CHANGE_RISK_LIMITS",
+        "BYPASS_RISK_MANAGER",
+        "DISABLE_KILL_SWITCH",
+        "CHANGE_ACCOUNT_SETTINGS",
+        "SEND_ORDER_DIRECTLY"
+      ]
+    },
+    "safety": {
+      "unknown_regime_action": "NO_TRADE",
+      "stale_data_action": "NO_TRADE",
+      "invalid_data_action": "NO_TRADE",
+      "execution_unhealthy_action": "NO_TRADE",
+      "position_desync_action": "HALT_NEW_ENTRIES",
+      "api_unhealthy_action": "HALT_NEW_ENTRIES"
+    }
+  },
+  "timeframes": {
+    "forex": {
+      "context": "15m",
+      "setup": "5m",
+      "entry": "1m",
+      "confirmation": "1m"
+    },
+    "volatility": {
+      "context": "5m",
+      "setup": "1m",
+      "entry": "1m",
+      "confirmation": "tick"
+    },
+    "boom_crash": {
+      "context": "5m",
+      "setup": "1m",
+      "entry": "tick",
+      "confirmation": "tick"
+    },
+    "scalping": {
+      "context": "1m",
+      "setup": "15s",
+      "entry": "tick",
+      "confirmation": "tick"
+    },
+    "range_break": {
+      "context": "15m",
+      "setup": "5m",
+      "entry": "1m",
+      "confirmation": "1m"
+    }
+  },
+  "regimes": {
+    "allowed": [
+      "TREND_UP",
+      "TREND_DOWN",
+      "RANGE",
+      "BREAKOUT",
+      "HIGH_VOLATILITY",
+      "LOW_VOLATILITY",
+      "TRANSITION"
+    ],
+    "blocked": [
+      "UNKNOWN"
+    ]
+  },
+  "strategies": {
+    "trend_following": {
+      "enabled": true,
+      "type": "TREND",
+      "minimum_score": 75,
+      "minimum_confidence": 0.75,
+      "allowed_regimes": [
+        "TREND_UP",
+        "TREND_DOWN",
+        "BREAKOUT"
+      ],
+      "timeframe_profile": "forex",
+      "risk": {
+        "risk_per_trade": 0.0035,
+        "max_risk": 0.005
+      },
+      "cooldown_seconds": 90,
+      "confirmation": {
+        "require_structure": true,
+        "require_momentum": true,
+        "require_regime_alignment": true
+      }
+    },
+    "pullback": {
+      "enabled": true,
+      "type": "PULLBACK",
+      "minimum_score": 78,
+      "minimum_confidence": 0.78,
+      "allowed_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframe_profile": "forex",
+      "risk": {
+        "risk_per_trade": 0.0035,
+        "max_risk": 0.0045
+      },
+      "cooldown_seconds": 120,
+      "confirmation": {
+        "require_trend_alignment": true,
+        "require_momentum_recovery": true,
+        "require_entry_zone": true
+      }
+    },
+    "mean_reversion": {
+      "enabled": true,
+      "type": "MEAN_REVERSION",
+      "minimum_score": 80,
+      "minimum_confidence": 0.8,
+      "allowed_regimes": [
+        "RANGE"
+      ],
+      "timeframe_profile": "forex",
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk": 0.0035
+      },
+      "cooldown_seconds": 180,
+      "confirmation": {
+        "require_range_confirmation": true,
+        "require_extreme_deviation": true,
+        "require_volatility_normal": true
+      }
+    },
+    "momentum": {
+      "enabled": true,
+      "type": "MOMENTUM",
+      "minimum_score": 80,
+      "minimum_confidence": 0.8,
+      "allowed_regimes": [
+        "TREND_UP",
+        "TREND_DOWN",
+        "BREAKOUT"
+      ],
+      "timeframe_profile": "volatility",
+      "risk": {
+        "risk_per_trade": 0.003,
+        "max_risk": 0.004
+      },
+      "cooldown_seconds": 90,
+      "confirmation": {
+        "require_momentum_alignment": true,
+        "require_volatility_filter": true,
+        "avoid_exhaustion": true
+      }
+    },
+    "breakout": {
+      "enabled": true,
+      "type": "BREAKOUT",
+      "minimum_score": 82,
+      "minimum_confidence": 0.82,
+      "allowed_regimes": [
+        "BREAKOUT",
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframe_profile": "range_break",
+      "risk": {
+        "risk_per_trade": 0.003,
+        "max_risk": 0.004
+      },
+      "cooldown_seconds": 180,
+      "confirmation": {
+        "require_range_break": true,
+        "require_momentum": true,
+        "require_close_confirmation": true,
+        "avoid_false_breakout": true
+      }
+    },
+    "boom_spike": {
+      "enabled": true,
+      "type": "SPIKE",
+      "minimum_score": 84,
+      "minimum_confidence": 0.84,
+      "allowed_regimes": [
+        "TREND_UP",
+        "BREAKOUT"
+      ],
+      "timeframe_profile": "boom_crash",
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk": 0.0035
+      },
+      "cooldown_seconds": 120,
+      "confirmation": {
+        "require_spike_setup": true,
+        "require_tick_confirmation": true,
+        "require_directional_alignment": true,
+        "avoid_chasing": true
+      }
+    },
+    "crash_spike": {
+      "enabled": true,
+      "type": "SPIKE",
+      "minimum_score": 84,
+      "minimum_confidence": 0.84,
+      "allowed_regimes": [
+        "TREND_DOWN",
+        "BREAKOUT"
+      ],
+      "timeframe_profile": "boom_crash",
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk": 0.0035
+      },
+      "cooldown_seconds": 120,
+      "confirmation": {
+        "require_spike_setup": true,
+        "require_tick_confirmation": true,
+        "require_directional_alignment": true,
+        "avoid_chasing": true
+      }
+    },
+    "spike_pullback": {
+      "enabled": true,
+      "type": "SPIKE_PULLBACK",
+      "minimum_score": 80,
+      "minimum_confidence": 0.8,
+      "allowed_regimes": [
+        "TREND_UP",
+        "TREND_DOWN"
+      ],
+      "timeframe_profile": "boom_crash",
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk": 0.0035
+      },
+      "cooldown_seconds": 150
+    },
+    "range_break": {
+      "enabled": true,
+      "type": "RANGE_BREAK",
+      "minimum_score": 80,
+      "minimum_confidence": 0.8,
+      "allowed_regimes": [
+        "RANGE",
+        "BREAKOUT"
+      ],
+      "timeframe_profile": "range_break",
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk": 0.0035
+      },
+      "cooldown_seconds": 180,
+      "confirmation": {
+        "require_range_identification": true,
+        "require_breakout": true,
+        "require_close_confirmation": true,
+        "avoid_mid_range_entries": true
+      }
+    }
+  },
+  "markets": {
+    "frxEURGBP": {
+      "enabled": true,
+      "display_name": "EUR/GBP",
+      "family": "FOREX",
+      "contract_type": "CALL_PUT",
+      "profile": "forex",
+      "strategies": [
+        "trend_following",
+        "pullback",
+        "mean_reversion",
+        "breakout"
+      ],
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "TREND_DOWN",
+          "RANGE",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN",
+          "HIGH_VOLATILITY"
+        ]
+      },
+      "scoring": {
+        "minimum": 75,
+        "preferred": 85,
+        "elite": 90
+      },
+      "risk": {
+        "risk_per_trade": 0.0035,
+        "max_risk_per_trade": 0.005
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 8,
+        "cooldown_seconds": 120
+      },
+      "session_filter": {
+        "enabled": true,
+        "avoid_low_liquidity": true
+      }
+    },
+    "frxUSDCAD": {
+      "enabled": true,
+      "display_name": "USD/CAD",
+      "family": "FOREX",
+      "contract_type": "CALL_PUT",
+      "profile": "forex",
+      "strategies": [
+        "trend_following",
+        "pullback",
+        "mean_reversion",
+        "breakout"
+      ],
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "TREND_DOWN",
+          "RANGE",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN",
+          "HIGH_VOLATILITY"
+        ]
+      },
+      "scoring": {
+        "minimum": 75,
+        "preferred": 85,
+        "elite": 90
+      },
+      "risk": {
+        "risk_per_trade": 0.0035,
+        "max_risk_per_trade": 0.005
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 8,
+        "cooldown_seconds": 120
+      },
+      "session_filter": {
+        "enabled": true,
+        "avoid_low_liquidity": true
+      }
+    },
+    "OTC_NDX": {
+      "enabled": true,
+      "display_name": "OTC NDX",
+      "family": "OTC",
+      "contract_type": "CALL_PUT",
+      "profile": "forex",
+      "strategies": [
+        "momentum",
+        "breakout",
+        "trend_following"
+      ],
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "TREND_DOWN",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN",
+          "LOW_VOLATILITY"
+        ]
+      },
+      "scoring": {
+        "minimum": 80,
+        "preferred": 87,
+        "elite": 92
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 6,
+        "cooldown_seconds": 150
+      },
+      "execution": {
+        "require_extra_confirmation": true
+      }
+    },
+    "BOOM500": {
+      "enabled": true,
+      "display_name": "Boom 500 Index",
+      "family": "BOOM",
+      "contract_type": "MULTIPLIER",
+      "profile": "boom_crash",
+      "strategies": [
+        "boom_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "directional_bias": "UP_SPIKE",
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN"
+        ]
+      },
+      "scoring": {
+        "minimum": 82,
+        "preferred": 87,
+        "elite": 92
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 8,
+        "cooldown_seconds": 120
+      },
+      "market_properties": {
+        "frequency_reference_ticks": 500,
+        "frequency_is_probability_only": true
+      }
+    },
+    "BOOM900": {
+      "enabled": true,
+      "display_name": "Boom 900 Index",
+      "family": "BOOM",
+      "contract_type": "MULTIPLIER",
+      "profile": "boom_crash",
+      "strategies": [
+        "boom_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "directional_bias": "UP_SPIKE",
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN"
+        ]
+      },
+      "scoring": {
+        "minimum": 84,
+        "preferred": 88,
+        "elite": 93
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.003
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 5,
+        "cooldown_seconds": 180
+      },
+      "market_properties": {
+        "frequency_reference_ticks": 900,
+        "frequency_is_probability_only": true
+      }
+    },
+    "CRASH500": {
+      "enabled": true,
+      "display_name": "Crash 500 Index",
+      "family": "CRASH",
+      "contract_type": "MULTIPLIER",
+      "profile": "boom_crash",
+      "strategies": [
+        "crash_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "directional_bias": "DOWN_SPIKE",
+      "regimes": {
+        "preferred": [
+          "TREND_DOWN",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN"
+        ]
+      },
+      "scoring": {
+        "minimum": 82,
+        "preferred": 87,
+        "elite": 92
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 8,
+        "cooldown_seconds": 120
+      },
+      "market_properties": {
+        "frequency_reference_ticks": 500,
+        "frequency_is_probability_only": true
+      }
+    },
+    "CRASH900": {
+      "enabled": true,
+      "display_name": "Crash 900 Index",
+      "family": "CRASH",
+      "contract_type": "MULTIPLIER",
+      "profile": "boom_crash",
+      "strategies": [
+        "crash_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "directional_bias": "DOWN_SPIKE",
+      "regimes": {
+        "preferred": [
+          "TREND_DOWN",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN"
+        ]
+      },
+      "scoring": {
+        "minimum": 84,
+        "preferred": 88,
+        "elite": 93
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.003
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 5,
+        "cooldown_seconds": 180
+      },
+      "market_properties": {
+        "frequency_reference_ticks": 900,
+        "frequency_is_probability_only": true
+      }
+    },
+    "1HZ75V": {
+      "enabled": true,
+      "display_name": "Volatility 75 (1s)",
+      "family": "VOLATILITY_1S",
+      "contract_type": "MULTIPLIER",
+      "profile": "volatility",
+      "strategies": [
+        "momentum",
+        "trend_following",
+        "breakout"
+      ],
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "TREND_DOWN",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN",
+          "LOW_VOLATILITY"
+        ]
+      },
+      "scoring": {
+        "minimum": 80,
+        "preferred": 86,
+        "elite": 92
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 10,
+        "cooldown_seconds": 90
+      },
+      "filters": {
+        "avoid_exhaustion": true,
+        "require_momentum_confirmation": true
+      }
+    },
+    "1HZ50V": {
+      "enabled": true,
+      "display_name": "Volatility 50 (1s)",
+      "family": "VOLATILITY_1S",
+      "contract_type": "MULTIPLIER",
+      "profile": "volatility",
+      "strategies": [
+        "trend_following",
+        "momentum",
+        "mean_reversion",
+        "breakout"
+      ],
+      "regimes": {
+        "preferred": [
+          "TREND_UP",
+          "TREND_DOWN",
+          "RANGE",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN"
+        ]
+      },
+      "scoring": {
+        "minimum": 78,
+        "preferred": 85,
+        "elite": 90
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 12,
+        "cooldown_seconds": 90
+      },
+      "execution": {
+        "multiplier_value_source": "BROKER_SPEC",
+        "do_not_hardcode": true
+      }
+    },
+    "RB100": {
+      "enabled": true,
+      "display_name": "Range Break 100",
+      "family": "RANGE_BREAK",
+      "contract_type": "BROKER_DEFINED",
+      "profile": "range_break",
+      "strategies": [
+        "range_break"
+      ],
+      "regimes": {
+        "preferred": [
+          "RANGE",
+          "BREAKOUT"
+        ],
+        "blocked": [
+          "UNKNOWN",
+          "HIGH_VOLATILITY"
+        ]
+      },
+      "scoring": {
+        "minimum": 80,
+        "preferred": 87,
+        "elite": 92
+      },
+      "risk": {
+        "risk_per_trade": 0.0025,
+        "max_risk_per_trade": 0.0035
+      },
+      "limits": {
+        "max_positions": 1,
+        "max_trades_per_day": 6,
+        "cooldown_seconds": 180
+      },
+      "status": {
+        "default": "INACTIVE",
+        "reason": "ENABLE_ONLY_AFTER_LIVE_SYMBOL_VALIDATION"
+      }
+    }
+  },
+  "scalping": {
+    "enabled": true,
+    "global": {
+      "minimum_score": 82,
+      "preferred_score": 88,
+      "minimum_ai_confidence": 0.82,
+      "risk_per_trade": 0.0025,
+      "max_risk_per_trade": 0.0035,
+      "max_trades_per_day": 15,
+      "max_consecutive_losses": 2,
+      "cooldown_after_loss_seconds": 180,
+      "cooldown_after_win_seconds": 30,
+      "max_holding_time_seconds": 180,
+      "require_tick_confirmation": true,
+      "avoid_low_quality_entries": true,
+      "avoid_chasing": true
+    },
+    "markets": {
+      "1HZ75V": {
+        "enabled": true,
+        "strategies": [
+          "momentum",
+          "breakout"
+        ],
+        "minimum_score": 84,
+        "risk_per_trade": 0.0025,
+        "cooldown_seconds": 90
+      },
+      "1HZ50V": {
+        "enabled": true,
+        "strategies": [
+          "momentum",
+          "trend_following"
+        ],
+        "minimum_score": 82,
+        "risk_per_trade": 0.0025,
+        "cooldown_seconds": 90
+      },
+      "BOOM500": {
+        "enabled": true,
+        "strategies": [
+          "boom_spike",
+          "spike_pullback"
+        ],
+        "minimum_score": 86,
+        "risk_per_trade": 0.0025,
+        "cooldown_seconds": 120
+      },
+      "CRASH500": {
+        "enabled": true,
+        "strategies": [
+          "crash_spike",
+          "spike_pullback"
+        ],
+        "minimum_score": 86,
+        "risk_per_trade": 0.0025,
+        "cooldown_seconds": 120
+      },
+      "frxEURGBP": {
+        "enabled": true,
+        "strategies": [
+          "momentum",
+          "pullback"
+        ],
+        "minimum_score": 84,
+        "risk_per_trade": 0.003,
+        "cooldown_seconds": 120
+      },
+      "frxUSDCAD": {
+        "enabled": true,
+        "strategies": [
+          "momentum",
+          "pullback"
+        ],
+        "minimum_score": 84,
+        "risk_per_trade": 0.003,
+        "cooldown_seconds": 120
+      }
+    }
+  },
+  "preset_profiles": {
+    "MULTI_DEFAULT": {
+      "enabled": true,
+      "markets": [
+        "OTC_NDX",
+        "frxEURGBP",
+        "frxUSDCAD"
+      ],
+      "strategies": [
+        "trend_following",
+        "pullback",
+        "mean_reversion",
+        "breakout",
+        "momentum"
+      ],
+      "minimum_score": 75,
+      "preferred_score": 85
+    },
+    "BOOM": {
+      "enabled": true,
+      "markets": [
+        "BOOM500"
+      ],
+      "strategies": [
+        "boom_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "minimum_score": 82,
+      "preferred_score": 87
+    },
+    "BOOM900": {
+      "enabled": true,
+      "markets": [
+        "BOOM900"
+      ],
+      "strategies": [
+        "boom_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "minimum_score": 84,
+      "preferred_score": 88
+    },
+    "CRASH": {
+      "enabled": true,
+      "markets": [
+        "CRASH900"
+      ],
+      "strategies": [
+        "crash_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "minimum_score": 82,
+      "preferred_score": 87
+    },
+    "CRASH500": {
+      "enabled": true,
+      "markets": [
+        "CRASH500"
+      ],
+      "strategies": [
+        "crash_spike",
+        "spike_pullback",
+        "momentum"
+      ],
+      "minimum_score": 82,
+      "preferred_score": 87
+    },
+    "VOLATILITY75": {
+      "enabled": true,
+      "markets": [
+        "1HZ75V"
+      ],
+      "strategies": [
+        "momentum",
+        "trend_following",
+        "breakout"
+      ],
+      "minimum_score": 80,
+      "preferred_score": 86
+    },
+    "VOLATILITY50": {
+      "enabled": true,
+      "markets": [
+        "1HZ50V"
+      ],
+      "strategies": [
+        "trend_following",
+        "momentum",
+        "mean_reversion",
+        "breakout"
+      ],
+      "minimum_score": 78,
+      "preferred_score": 85
+    },
+    "RB100": {
+      "enabled": true,
+      "markets": [
+        "RB100"
+      ],
+      "strategies": [
+        "range_break"
+      ],
+      "minimum_score": 80,
+      "preferred_score": 87,
+      "requires_live_symbol_validation": true
+    },
+    "SCALPING": {
+      "enabled": true,
+      "markets": [
+        "1HZ75V",
+        "1HZ50V",
+        "BOOM500",
+        "CRASH500",
+        "frxEURGBP",
+        "frxUSDCAD"
+      ],
+      "minimum_score": 82,
+      "preferred_score": 88
+    }
+  },
+  "trade_validation_pipeline": [
+    "DATA_OK",
+    "MARKET_AVAILABLE",
+    "REGIME_VALID",
+    "STRATEGY_ALLOWED",
+    "SIGNAL_VALID",
+    "MINIMUM_SCORE_REACHED",
+    "AI_CONFIRMATION",
+    "VOLATILITY_VALID",
+    "COOLDOWN_VALID",
+    "DAILY_RISK_VALID",
+    "DRAWDOWN_VALID",
+    "EXPOSURE_VALID",
+    "POSITION_LIMIT_VALID",
+    "CONTRACT_VALID",
+    "EXECUTION_HEALTHY",
+    "DUPLICATE_CHECK",
+    "FINAL_RISK_AUTHORIZATION"
+  ],
+  "hard_blocks": [
+    "DATA_INVALID",
+    "DATA_STALE",
+    "UNKNOWN_REGIME",
+    "RISK_LIMIT_REACHED",
+    "DAILY_LOSS_LIMIT_REACHED",
+    "MAX_DRAWDOWN_REACHED",
+    "MAX_CONSECUTIVE_LOSSES",
+    "DUPLICATE_SIGNAL",
+    "POSITION_DESYNC",
+    "EXECUTION_UNHEALTHY",
+    "BROKER_SYMBOL_INVALID",
+    "CONTRACT_NOT_SUPPORTED"
+  ],
+  "dynamic_broker_specs": {
+    "enabled": true,
+    "never_hardcode": [
+      "minimum_stake",
+      "minimum_lot",
+      "maximum_lot",
+      "spread",
+      "margin_requirement",
+      "leverage",
+      "trading_hours",
+      "contract_availability",
+      "multiplier_availability"
+    ],
+    "refresh_on_startup": true,
+    "refresh_before_live_trading": true,
+    "refresh_interval_minutes": 60,
+    "source_of_truth": "DERIV_API"
+  },
+  "live_activation": {
+    "default": false,
+    "requirements": [
+      "ALL_TESTS_PASS",
+      "PAPER_TRADING_VALIDATED",
+      "RISK_MANAGER_HEALTHY",
+      "EXECUTION_ENGINE_HEALTHY",
+      "POSITION_SYNC_HEALTHY",
+      "DERIV_SPECIFICATIONS_VALIDATED",
+      "LIVE_TRADING_EXPLICITLY_ENABLED"
+    ]
+  }
+}
