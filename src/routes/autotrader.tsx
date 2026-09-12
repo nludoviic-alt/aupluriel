@@ -289,8 +289,18 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-// Crash900 is available for demo validation; archived V2 presets stay hidden.
-const PRESET_ORDER = ["vol75", "crash"] as const;
+const PRESET_ORDER = [
+  "default",
+  "boom",
+  "boom900",
+  "crash",
+  "crash500",
+  "vol75",
+  "vol50",
+  "rb100",
+  "scalping",
+  "gold",
+] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {

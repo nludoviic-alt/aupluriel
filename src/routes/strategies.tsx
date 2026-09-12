@@ -539,9 +539,16 @@ function StrategyEditor({
               value={s.targetPreset || "default"}
               onChange={(e) => patch("targetPreset", e.target.value as Strategy["targetPreset"])}
             >
-              {/* Synthetic-index presets archived 2026-09-01 (see ACTIVE_PRESETS).
-                  `default` is the only preset a strategy can target now. */}
               <option value="default">Preset Multi (Forex, Métaux &amp; Indices)</option>
+              <option value="boom">Boom500</option>
+              <option value="boom900">Boom900</option>
+              <option value="crash">Crash900</option>
+              <option value="crash500">Crash500</option>
+              <option value="vol75">Volatility 75 (1s)</option>
+              <option value="vol50">Volatility 50 (1s)</option>
+              <option value="rb100">Range Break 100</option>
+              <option value="scalping">Scalping</option>
+              <option value="gold">Gold Trend / Liquidity</option>
             </select>
           </Field>
 

@@ -269,7 +269,18 @@ export const ALL_PRESETS: readonly Preset[] = [
 /** Presets available for activation. Crash900 is reopened for demo validation
  * only; the September audit does not establish a robust profitable baseline.
  * Archived presets remain readable through ALL_PRESETS. */
-export const ACTIVE_PRESETS: readonly Preset[] = ["vol75", "crash"];
+export const ACTIVE_PRESETS: readonly Preset[] = [
+  "default",
+  "boom",
+  "boom900",
+  "crash",
+  "crash500",
+  "vol75",
+  "vol50",
+  "rb100",
+  "scalping",
+  "gold",
+];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.

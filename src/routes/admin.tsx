@@ -232,11 +232,18 @@ const presetLabels = {
 
 type PresetKey = keyof typeof presetLabels;
 
-// All presets except `default` archived 2026-09-01 (see ACTIVE_PRESETS in
-// bot-engine.server.ts). Only `default` is offered in the visible-presets
-// admin toggle; archived presets keep their `presetLabels` entry so old
-// trade/config data still labels correctly elsewhere.
-const PRESET_KEYS: readonly PresetKey[] = ["default"];
+const PRESET_KEYS: readonly PresetKey[] = [
+  "default",
+  "boom",
+  "boom900",
+  "crash",
+  "crash500",
+  "vol75",
+  "vol50",
+  "rb100",
+  "scalping",
+  "gold",
+];
 
 const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
