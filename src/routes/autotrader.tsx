@@ -291,7 +291,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
 // Crash900 is available for demo validation; archived V2 presets stay hidden.
-const PRESET_ORDER = ["default", "crash"] as const;
+const PRESET_ORDER = ["vol75", "crash"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -467,7 +467,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       | undefined;
     return preset && preset in presetLabels ? preset : null;
   })();
-  const deepLinkPreset = deepLinkedPreset ?? "default";
+  const deepLinkPreset = deepLinkedPreset ?? "vol75";
   const [config, setConfig] = useState<AutoTraderConfig>(() => loadConfig(deepLinkPreset));
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
