@@ -168,7 +168,7 @@ function computeRealStreak(userId: number, strategy: string): {
     .prepare(`
       SELECT status, COALESCE(closed_at, time) AS time FROM bot_trades
       WHERE user_id = ? AND strategy = ? AND (? IS NULL OR COALESCE(mode, 'demo') = ?) AND status IN ('won', 'lost')
-      ORDER BY COALESCE(closed_at, time) DESC LIMIT 5
+      ORDER BY COALESCE(closed_at, time) DESC, id DESC
     `)
     .all(userId, tradeStrategy, mode, mode) as { status: "won" | "lost"; time: number }[];
 
@@ -250,7 +250,10 @@ function reconcileFromTrades(userId: number, strategy: string): void {
     metadata: { strategy, stored, computedStreak, lastLossAt, lastWinAt },
   });
 
-  if (computedStreak >= MAX_CONSECUTIVE_LOSSES && stored.state === "NORMAL" && lastLossAt !== null) {
+  if (lastLossAt !== null && (
+    (computedStreak >= MAX_CONSECUTIVE_LOSSES && stored.state === "NORMAL") ||
+    (stored.state === "RECOVERY" && lastLossAt > (stored.last_loss_at ?? 0))
+  )) {
     // bot_trades shows a live streak the table doesn't know about — rebuild
     // as freshly PAUSED/RECOVERY from the real last-loss timestamp.
     initializeFromRealLastLoss(userId, strategy, lastLossAt, computedStreak, lastWinAt);
@@ -295,11 +298,11 @@ export function getLossStreakState(userId: number, strategy: string, mode?: "dem
 /** Every strategy ever tagged for this (userId, preset) pair in bot_trades —
  * a preset can have more than one strategy, so this can return several
  * entries. Used by the API for per-preset observability. */
-export function getLossStreakStatesForPreset(userId: number, preset: string): LossStreakRecord[] {
+export function getLossStreakStatesForPreset(userId: number, preset: string, mode?: "demo" | "live"): LossStreakRecord[] {
   const strategies = getDb()
-    .prepare(`SELECT DISTINCT strategy FROM bot_trades WHERE user_id = ? AND preset = ? AND strategy IS NOT NULL`)
-    .all(userId, preset) as { strategy: string }[];
-  return strategies.map((s) => getLossStreakState(userId, s.strategy));
+    .prepare(`SELECT DISTINCT strategy FROM bot_trades WHERE user_id = ? AND preset = ? AND strategy IS NOT NULL AND (? IS NULL OR COALESCE(mode, 'demo') = ?)`)
+    .all(userId, preset, mode ?? null, mode ?? null) as { strategy: string }[];
+  return strategies.map((s) => getLossStreakState(userId, s.strategy, mode));
 }
 
 /** Called from risk-manager.server.ts's step 3 (loss-streak check). Never
@@ -344,10 +347,10 @@ export function evaluateLossStreakGate(userId: number, strategy: string, mode?: 
 /** The only function allowed to advance the state machine on an actual
  * trade result. Called from bot-engine.server.ts's emit() on the
  * pending -> won/lost transition. */
-export function recordTradeOutcome(userId: number, strategy: string, outcome: "won" | "lost", mode?: "demo" | "live"): void {
+export function recordTradeOutcome(userId: number, strategy: string, outcome: "won" | "lost", mode?: "demo" | "live", resolvedAt = Date.now()): void {
   if (mode) strategy = `${mode}::${strategy}`;
   const row = getLossStreakState(userId, strategy);
-  const now = Date.now();
+  const now = resolvedAt;
 
   if (row.state === "NORMAL") {
     if (outcome === "lost") {

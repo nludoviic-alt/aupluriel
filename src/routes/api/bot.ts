@@ -220,7 +220,7 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
     openTrades: getOpenBotTrades(userId, preset),
     allTimeStats: allTime,
     riskMetrics: getPresetRiskMetrics(userId, preset),
-    lossStreakState: getLossStreakStatesForPreset(userId, preset),
+    lossStreakState: getLossStreakStatesForPreset(userId, preset, mode),
     funnelStats: getFunnelStats(preset),
     featureFlags: shared.featureFlags,
     hourlyPerformance: getHourlyPerformanceHeatmap(preset),

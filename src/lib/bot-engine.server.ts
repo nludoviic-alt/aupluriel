@@ -93,7 +93,7 @@ import { recordFunnelStep } from "./signal-funnel.server";
 import { FEATURE_FLAGS } from "./feature-flags.server";
 import { logSafetyAlert } from "./r4-e2-audit.server";
 import { currentRiskVersion } from "./risk-version.server";
-import { recordTradeOutcome } from "./loss-streak-circuit-breaker.server";
+import { recordTradeOutcome, getLossStreakState } from "./loss-streak-circuit-breaker.server";
 import { evaluateDataQuality } from "./data-quality-guard.server";
 import { classifyRegimeFromCandles, isStrategyAllowedInRegime } from "./market-regime-router.server";
 import { executionMonitor } from "./execution-quality-monitor.server";
@@ -754,6 +754,24 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
   }
 }
 
+/** Persist a settlement and its mode-scoped risk outcome exactly once together. */
+export function persistTradeAndRiskOutcome(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live"): void {
+  const db = getDb();
+  const previous = db.prepare("SELECT status, mode FROM bot_trades WHERE id = ? AND user_id = ?")
+    .get(log.id, userId) as { status: string; mode: string | null } | undefined;
+  const tradeMode = previous ? (previous.mode === "live" ? "live" : "demo") : mode;
+  const terminal = log.status === "won" || log.status === "lost";
+  const newOutcome = FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED && terminal &&
+    previous?.status !== "won" && previous?.status !== "lost" && !!log.strategy;
+  // Reconcile before writing the new result, so it cannot be counted twice.
+  // Initialization stays outside the transaction so its process cache survives rollback safely.
+  if (newOutcome) getLossStreakState(userId, log.strategy!, tradeMode);
+  db.transaction(() => {
+    upsertTrade(userId, preset, log, tradeMode);
+    if (newOutcome) recordTradeOutcome(userId, log.strategy!, log.status as "won" | "lost", tradeMode, log.closedAt ?? log.time);
+  })();
+}
+
 /** Best-effort write of one shadow post-exit horizon snapshot (2026-08-13,
  * analytical only). Never touches any column read by a trading decision. */
 function recordShadowObservation(
@@ -1264,16 +1282,7 @@ class ServerBotEngine {
     if (idx >= 0) this.logs[idx] = log;
     else this.logs.unshift(log);
     if (this.logs.length > 60) this.logs.length = 60;
-    upsertTrade(this.userId, this.preset, log, this.config.mode === "live" ? "live" : "demo");
-    if (
-      FEATURE_FLAGS.RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED &&
-      (log.status === "won" || log.status === "lost") &&
-      prevStatus !== "won" &&
-      prevStatus !== "lost" &&
-      log.strategy
-    ) {
-      recordTradeOutcome(this.userId, log.strategy, log.status);
-    }
+    persistTradeAndRiskOutcome(this.userId, this.preset, log, this.config.mode === "live" ? "live" : "demo");
     this.notify(log, prevStatus);
     this.finalizeIfIdle();
   }
