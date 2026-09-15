@@ -434,13 +434,20 @@ export function computeStructuralStopUsd(
     };
   const stopDistancePct = (riskAbs / entryPrice) * 100;
   const rewardDistancePct = (rewardAbs / entryPrice) * 100;
-  const stopLossUsd =
-    Math.round(
-      Math.min(stakeUsd, Math.max(0.5, (stakeUsd * (multiplierLevel * stopDistancePct)) / 100)) *
-        100,
-    ) / 100;
-  const takeProfitUsd =
-    Math.round(Math.max(0.5, (stakeUsd * (multiplierLevel * rewardDistancePct)) / 100) * 100) / 100;
+  const rawSl = (stakeUsd * (multiplierLevel * stopDistancePct)) / 100;
+  const rawTp = (stakeUsd * (multiplierLevel * rewardDistancePct)) / 100;
+  // 2026-09-15: flooring stopLossUsd and takeProfitUsd independently to $0.5
+  // silently flattens the intended reward:risk ratio to 1:1 whenever the
+  // ATR-scaled distance is small (e.g. CRASH500: audit of its 45 live trades
+  // showed stop_loss/take_profit both pinned at exactly $0.5 despite the
+  // signal's own riskAbs/rewardAbs implying ~1.3-1.6:1 reward:risk). Scale
+  // BOTH by the same factor instead, so the floor is hit without erasing the
+  // asymmetry the signal was designed to have. A no-op when neither value
+  // needed flooring (scale stays 1).
+  const smaller = Math.min(rawSl, rawTp);
+  const floorScale = smaller > 0 && smaller < 0.5 ? 0.5 / smaller : 1;
+  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, rawSl * floorScale)) * 100) / 100;
+  const takeProfitUsd = Math.round(Math.max(0.5, rawTp * floorScale) * 100) / 100;
   return { stopLossUsd, takeProfitUsd };
 }
 
