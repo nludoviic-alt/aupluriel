@@ -20,6 +20,13 @@ export function onDerivDisconnect(cb: (() => void) | null): void {
   _disconnectCallback = cb;
 }
 
+/** True only when the authenticated trading socket is actually open — used
+ * by use-deriv-session.ts to fast-path a reconnect on tab/app resume instead
+ * of waiting out the generic instability backoff (see there for why). */
+export function isDerivSocketOpen(): boolean {
+  return !!sharedSocket && sharedSocket.readyState === WebSocket.OPEN;
+}
+
 /** Call after fetching /api/deriv-session to wire up the authenticated WS. */
 export function setDerivSession(wsUrl: string, targetAccount?: string, currency?: string): void {
   derivSessionUrl = wsUrl;

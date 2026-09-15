@@ -4,7 +4,7 @@
  * tous les appelants reçoivent les mises à jour.
  */
 import { useEffect, useState } from "react";
-import { setDerivSession, subscribeBalance, getBalance, onDerivDisconnect } from "@/lib/deriv";
+import { setDerivSession, subscribeBalance, getBalance, onDerivDisconnect, isDerivSocketOpen } from "@/lib/deriv";
 import { api } from "@/lib/api";
 
 export interface DerivSession {
@@ -32,6 +32,13 @@ const _initial: DerivSession = {
 let _state: DerivSession = { ..._initial };
 const _listeners = new Set<(s: DerivSession) => void>();
 let _initStarted = false;
+// Unlike _initStarted (which goes false the instant a disconnect is
+// detected — see onDerivDisconnect below — precisely while a fast resume
+// would matter most), this only ever goes true, once, the first time this
+// tab actually wants a Deriv session. Guards the resume listener further
+// down from firing /api/deriv-session on pages that never use Deriv at all
+// (e.g. still sitting on /login).
+let _sessionEverRequested = false;
 let _balanceUnsub: (() => void) | null = null;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 // Backoff state — without this, a WS that dies right after connecting (seen
@@ -44,6 +51,28 @@ let _consecutiveFailures = 0;
 let _stabilityTimer: ReturnType<typeof setTimeout> | null = null;
 const STABLE_AFTER_MS = 20_000;
 const MAX_AUTO_RETRIES = 6;
+
+// Mobile browsers routinely suspend/kill the WS the moment the screen locks
+// or the tab backgrounds — completely normal, not an unstable connection.
+// Without this, the ONLY path back was onDerivDisconnect's generic backoff
+// (built for a flaky connection dying repeatedly), which forces a visible
+// "Session expirée — reconnexion…" flash and a minimum ~4s wait on every
+// single resume — seen in prod as the app appearing to "connect then
+// disconnect" each time the phone is unlocked. Reconnect immediately (no
+// backoff, no visible flash) whenever the app becomes visible/online again
+// and the socket is actually dead; the generic backoff still applies to a
+// real mid-session drop while the tab stays open and visible.
+if (typeof window !== "undefined" && !(window as unknown as Record<string, boolean>).__lio23_deriv_session_resume__) {
+  (window as unknown as Record<string, boolean>).__lio23_deriv_session_resume__ = true;
+  const fastResume = () => {
+    if (!_sessionEverRequested || isDerivSocketOpen()) return;
+    reinitDerivSession();
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") fastResume();
+  });
+  window.addEventListener("online", fastResume);
+}
 
 function dispatch(update: Partial<DerivSession> | ((s: DerivSession) => DerivSession)) {
   _state = typeof update === "function" ? update(_state) : { ..._state, ...update };
@@ -58,6 +87,7 @@ function startBalanceSubscription() {
 }
 
 function initSession() {
+  _sessionEverRequested = true;
   if (_initStarted) return;
   _initStarted = true;
 
