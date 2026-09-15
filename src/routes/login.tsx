@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { User, Mail, Lock, Eye, EyeOff, Key } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { api, setToken, TOKEN_KEY } from "@/lib/api";
@@ -24,7 +24,6 @@ interface AuthResponse {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
 
   // Only check auth once on mount, not continuously
@@ -46,23 +45,6 @@ function LoginPage() {
   const [loginPassword, setLoginPassword] = useState("");
   const [showLoginPw, setShowLoginPw] = useState(false);
 
-  // Register form state
-  const [regEmail, setRegEmail] = useState("");
-  const [regUsername, setRegUsername] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [showRegPw, setShowRegPw] = useState(false);
-  const [regInviteCode, setRegInviteCode] = useState("");
-
-  // Prefill from an invite email link (?tab=register&email=...&code=...).
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const email = params.get("email");
-    const code = params.get("code");
-    if (params.get("tab") === "register" || code) setTab("register");
-    if (email) setRegEmail(email);
-    if (code) setRegInviteCode(code);
-  }, []);
-
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -80,47 +62,6 @@ function LoginPage() {
       toast.error(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const data = await api.post<AuthResponse>("/api/auth/register", {
-        email: regEmail,
-        username: regUsername,
-        password: regPassword,
-        inviteCode: regInviteCode,
-      });
-      // Admin accounts log in immediately; everyone else must verify + await approval.
-      if (data.token && data.user) {
-        setToken(data.token);
-        toast.success(`Compte créé ! Bienvenue, ${data.user.username} !`);
-        navigate({ to: "/" });
-      } else {
-        toast.success(data.message ?? "Compte créé. Vérifie ta boîte mail pour l'activer.");
-        setTab("login");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur d'inscription");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResendVerification() {
-    if (!loginEmail) {
-      toast.error("Saisis ton email ci-dessus d'abord.");
-      return;
-    }
-    try {
-      const data = await api.post<{ message?: string }>("/api/auth/resend-verification", {
-        email: loginEmail,
-      });
-      toast.success(data.message ?? "Si un compte non vérifié existe, un email a été envoyé.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur");
     }
   }
 
@@ -155,32 +96,12 @@ function LoginPage() {
               {/* Subtle inner glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent rounded-[2.5rem] pointer-events-none" />
               
-              {/* Tabs Toggle */}
-              <div className="relative flex p-1.5 bg-white/5 rounded-2xl mb-8 border border-white/5 shadow-inner">
-                <button
-                  onClick={() => setTab("login")}
-                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
-                    tab === "login" 
-                      ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/25" 
-                      : "text-gray-500 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  Connexion
-                </button>
-                <button
-                  onClick={() => setTab("register")}
-                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
-                    tab === "register" 
-                      ? "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25" 
-                      : "text-gray-500 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  S'inscrire
-                </button>
+              {/* Access is admin-provisioned only — no public sign-up. */}
+              <div className="mb-8 text-center">
+                <h2 className="text-lg font-black uppercase tracking-[0.2em] text-white">Connexion</h2>
               </div>
 
-              {tab === "login" ? (
-                <form onSubmit={handleLogin} className="space-y-6">
+              <form onSubmit={handleLogin} className="space-y-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Adresse Email</label>
                     <div className="relative group">
@@ -230,96 +151,7 @@ function LoginPage() {
                   >
                     {loading ? "Connexion..." : "Ouvrir le Terminal"}
                   </Button>
-
-                  <div className="pt-4 text-center">
-                    <button
-                      type="button"
-                      onClick={handleResendVerification}
-                      className="text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:text-orange-400 transition-colors duration-300"
-                    >
-                      Pas reçu d'email ? <span className="underline underline-offset-4 decoration-white/10">Renvoyer</span>
-                    </button>
-                  </div>
                 </form>
-              ) : (
-                <form onSubmit={handleRegister} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Email</label>
-                    <div className="relative group">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
-                      <input
-                        type="email"
-                        value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
-                        placeholder="nom@exemple.com"
-                        required
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Pseudo</label>
-                    <div className="relative group">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
-                      <input
-                        type="text"
-                        value={regUsername}
-                        onChange={(e) => setRegUsername(e.target.value)}
-                        placeholder="Votre pseudo"
-                        required
-                        minLength={2}
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Mot de Passe</label>
-                    <div className="relative group">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
-                      <input
-                        type={showRegPw ? "text" : "password"}
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        placeholder="6+ caractères"
-                        required
-                        minLength={6}
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-12 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowRegPw(!showRegPw)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white transition-colors"
-                      >
-                        {showRegPw ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] ml-1">Code d'Invitation</label>
-                    <div className="relative group">
-                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 group-focus-within:text-amber-400 transition-colors" />
-                      <input
-                        type="text"
-                        value={regInviteCode}
-                        onChange={(e) => setRegInviteCode(e.target.value)}
-                        placeholder="Requis si configuré"
-                        className="w-full bg-white/[0.03] border border-white/5 rounded-2xl pl-12 pr-4 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/30 transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    type="submit" 
-                    disabled={loading} 
-                    className="w-full py-7 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white font-black uppercase tracking-[0.2em] shadow-[0_10px_30px_-10px_rgba(245,158,11,0.4)] border-none transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                  >
-                    {loading ? "Création..." : "Créer mon compte"}
-                  </Button>
-                </form>
-              )}
             </div>
           </div>
           
