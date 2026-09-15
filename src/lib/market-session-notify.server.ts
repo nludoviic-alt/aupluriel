@@ -31,6 +31,7 @@ async function notifyAll(session: TradingSession): Promise<void> {
         title: `Au Pluriel — Session ${label} ouverte`,
         body: "Une nouvelle session de marché vient de démarrer.",
         url: "/",
+        category: "market",
       }),
     ),
   );

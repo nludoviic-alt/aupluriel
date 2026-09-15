@@ -8,7 +8,7 @@ export interface NotificationItem {
   title: string;
   body: string;
   url: string | null;
-  category: "trade" | "risk" | "system" | "signal";
+  category: "trade" | "risk" | "system" | "signal" | "market" | "chat";
   isRead: boolean;
   createdAt: number;
 }

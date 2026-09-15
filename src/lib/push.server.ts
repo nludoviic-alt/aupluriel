@@ -32,12 +32,23 @@ interface SubscriptionRow {
   auth: string;
 }
 
+export type NotificationCategory = "trade" | "risk" | "system" | "signal" | "market" | "chat";
+
+// User asked (2026-09-15) to cut push/notification noise down to exactly 3
+// things: a market session opening, a position opening, and its result —
+// both of the latter are tagged "trade". "chat" (person-to-person messaging)
+// is a different feature entirely, not trading noise, and stays enabled.
+// Everything else (opportunity signals, risk pauses, bot start/stop, admin
+// alerts, daily summaries, price alerts) is suppressed — no push AND no
+// in-app Notification Center entry, per "tout le reste désactive".
+const ENABLED_CATEGORIES = new Set<NotificationCategory>(["trade", "market", "chat"]);
+
 export function recordNotification(
   userId: number,
   title: string,
   body: string,
   url?: string,
-  category: "trade" | "risk" | "system" | "signal" = "system",
+  category: NotificationCategory = "system",
 ): number | null {
   try {
     const result = getDb()
@@ -60,8 +71,10 @@ export function recordNotification(
  */
 export async function sendPushToUser(
   userId: number,
-  payload: PushPayload & { category?: "trade" | "risk" | "system" | "signal" },
+  payload: PushPayload & { category?: NotificationCategory },
 ): Promise<void> {
+  if (!ENABLED_CATEGORIES.has(payload.category ?? "system")) return;
+
   // Always record in in-app Notification Center so the user never loses a message
   const notificationId = recordNotification(
     userId,

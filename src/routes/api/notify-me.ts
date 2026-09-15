@@ -13,11 +13,21 @@ export const Route = createFileRoute("/api/notify-me")({
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
 
-        const body = (await request.json().catch(() => ({}))) as { title?: string; body?: string; url?: string };
+        const body = (await request.json().catch(() => ({}))) as {
+          title?: string;
+          body?: string;
+          url?: string;
+          category?: "trade" | "signal";
+        };
         if (!body.title || !body.body) return json({ error: "title et body requis." }, 400);
 
         const { sendPushToUser } = await import("@/lib/push.server");
-        await sendPushToUser(user.id, { title: body.title, body: body.body, url: body.url ?? "/" });
+        await sendPushToUser(user.id, {
+          title: body.title,
+          body: body.body,
+          url: body.url ?? "/",
+          category: body.category,
+        });
 
         return json({ success: true });
       },

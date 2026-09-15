@@ -1336,6 +1336,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           `🎉 Au Pluriel — Trade gagnant (+$${log.profit.toFixed(2)})`,
           `La position sur ${log.symbol} s'est clôturée avec succès (${config.mode.toUpperCase()}).`,
           "/autotrader",
+          "trade",
         );
 
         setCumulativePnl(loadCumulativePnl());

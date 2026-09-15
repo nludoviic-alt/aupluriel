@@ -2244,6 +2244,7 @@ class ServerBotEngine {
                 title: `Session ${sessionLabels[s] || s} ouverte`,
                 body: `La session ${sessionLabels[s] || s} vient d'ouvrir. Le bot commence l'analyse de ce marché.`,
                 url: "/autotrader",
+                category: "market",
               }).catch(() => {});
             }
 

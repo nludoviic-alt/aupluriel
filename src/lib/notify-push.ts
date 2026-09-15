@@ -6,6 +6,11 @@ import { api } from "./api";
  * fires while the tab is open and focused — this arrives as a proper OS
  * notification even with the screen off or another app in front.
  */
-export function relayPush(title: string, body: string, url?: string): void {
-  api.post("/api/notify-me", { title, body, url }).catch(() => {});
+export function relayPush(
+  title: string,
+  body: string,
+  url?: string,
+  category?: "trade" | "signal",
+): void {
+  api.post("/api/notify-me", { title, body, url, category }).catch(() => {});
 }

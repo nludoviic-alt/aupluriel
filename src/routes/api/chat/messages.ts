@@ -205,6 +205,7 @@ export const Route = createFileRoute("/api/chat/messages")({
               title: pushTitle,
               body: pushBody,
               url: "/messenger",
+              category: "chat",
             }).catch((err) => console.error("[push] error sending chat notification:", err));
           }
         } catch (pushErr) {
