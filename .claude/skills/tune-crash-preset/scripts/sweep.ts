@@ -25,6 +25,7 @@ function parseArgs() {
     stake: Number(get("stake", "5")),
     leverage: Number(get("leverage", "100")), // matches CRASH_PRESET.multiplierLevel
     hold: Number(get("hold", "60")), // matches CRASH_PRESET.maxHoldMinutes (inherited from BOOM_PRESET)
+    tf: get("tf", ""), // e.g. "2,3,4" — overrides the default TF grid ([2] quick / [2,3] full)
   };
 }
 
@@ -33,7 +34,8 @@ async function main() {
   console.log(`${args.symbols.length} symbol(s) — fetching candles once per symbol, then replaying every combo in memory.`);
   console.log(`symbols=${args.symbols.join(",")} candles=${args.candles} stake=$${args.stake} leverage=${args.leverage}x hold=${args.hold}min\n`);
 
-  const report = await sweepBoomPreset(args);
+  const tfValues = args.tf ? args.tf.split(",").map(Number).filter((n) => Number.isFinite(n)) : undefined;
+  const report = await sweepBoomPreset({ ...args, tfValues });
 
   for (const [symbol, count] of Object.entries(report.signalCountsBySymbol)) {
     console.log(`${symbol}: ${count} candidate signals`);

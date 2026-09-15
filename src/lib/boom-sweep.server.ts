@@ -36,11 +36,11 @@ export interface SweepCombo {
   minTfAgreement: number;
 }
 
-export function defaultSweepGrid(quick: boolean): SweepCombo[] {
+export function defaultSweepGrid(quick: boolean, tfValues?: number[]): SweepCombo[] {
   const TP = quick ? [5, 10] : [5, 8, 10];
   const SL = quick ? [10, 20] : [10, 15, 20, 30];
   const CONF = quick ? [55] : [50, 55, 60];
-  const TF = quick ? [2] : [2, 3];
+  const TF = tfValues ?? (quick ? [2] : [2, 3]);
   const combos: SweepCombo[] = [];
   for (const takeProfitPctOfStake of TP) {
     for (const stopLossPctOfStake of SL) {
@@ -214,6 +214,8 @@ export interface SweepArgs {
   leverage: number;
   hold: number;
   quick: boolean;
+  /** Overrides the default TF-agreement grid ([2] quick / [2,3] full). */
+  tfValues?: number[];
 }
 
 export interface SweepComboReport {
@@ -239,7 +241,7 @@ export interface SweepReport {
  * that combined total is the only number that maps onto a real change,
  * unlike per-symbol "best" answers which can't each be applied separately. */
 export async function sweepBoomPreset(args: SweepArgs): Promise<SweepReport> {
-  const grid = defaultSweepGrid(args.quick);
+  const grid = defaultSweepGrid(args.quick, args.tfValues);
   type Row = SweepCombo & { symbol: string } & SweepSimResult;
   const allRows: Row[] = [];
   const signalCountsBySymbol: Record<string, number> = {};

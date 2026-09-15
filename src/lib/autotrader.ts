@@ -634,7 +634,11 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   stopLossPctOfStake: 10,
   minConfidence: 82,
   maxConfidence: 100,
-  minTfAgreement: 2,
+  // 2026-09-15 : audit VPS des trades réels (842 clôturés) montre TF=2 à
+  // -$13.51 (88 trades) et TF=4 à -$7.87 (242 trades), alors que TF=3 est le
+  // seul segment vraiment rentable : +$155.49 sur 420 trades. Relevé de 2 à 3
+  // pour couper le segment TF=2 déficitaire tout en gardant le driver TF=3.
+  minTfAgreement: 3,
   multiplierLevel: 100,
 };
 

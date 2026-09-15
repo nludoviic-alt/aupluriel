@@ -1085,6 +1085,13 @@ class ServerBotEngine {
   // cooldown has been served, the symbol gets one real attempt to trade
   // again; only a genuinely NEW loss re-arms the cooldown.
   private servedCooldownFor = new Map<string, string>();
+  // Same idea again, for the minSymbolWinRate guard below: without it, a
+  // symbol whose midnight pause expires keeps re-reading the SAME stale
+  // rolling win-rate (no new trade can occur while paused to change it) and
+  // immediately re-arms an identical "pause jusqu'à 00:00 UTC" — forever.
+  // Observed live 2026-09-15: crash/rb100/vol50/vol75/crash500/boom/default
+  // stuck re-pausing daily for 13-34 days straight with zero real trades.
+  private servedWinRateCooldownFor = new Map<string, string>();
   // Same idea as servedCooldownFor but for the PRESET-WIDE circuit breaker
   // below (countConsecutiveLosses(logs) with no symbol filter): identifies
   // which streak the preset's last risk-pause was served for, by the id of
@@ -1180,6 +1187,20 @@ class ServerBotEngine {
         .get(this.userId, this.preset, symbol) as { time: number } | undefined;
       if (isCooldownAlreadyServedAfterRestart(latestSymbolLoss, servedSymbolPause)) {
         this.servedCooldownFor.set(symbol, latestSymbolLoss.id);
+      }
+
+      const servedWinRatePause = db
+        .prepare(
+          `
+        SELECT time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND symbol = ? AND status = 'cooldown'
+          AND note LIKE '%Win rate%pause%'
+        ORDER BY time DESC LIMIT 1
+      `,
+        )
+        .get(this.userId, this.preset, symbol) as { time: number } | undefined;
+      if (isCooldownAlreadyServedAfterRestart(latestSymbolLoss, servedWinRatePause)) {
+        this.servedWinRateCooldownFor.set(symbol, latestSymbolLoss.id);
       }
     }
   }
@@ -2757,23 +2778,40 @@ class ServerBotEngine {
       if (config.minSymbolWinRate > 0) {
         const rolling = symbolRollingStats(logs, symbol, config.symbolWinRateLookback);
         if (rolling.trades >= 5 && rolling.winRate < config.minSymbolWinRate) {
-          const until = this.nextUtcMidnight();
-          this.symbolCooldowns.set(symbol, until);
-          this.emit({
-            id: `cd_${Date.now()}_${symbol}`,
-            time: Date.now(),
-            symbol,
-            direction: "CALL",
-            stake: 0,
-            payout: 0,
-            profit: 0,
-            confidence: 0,
-            tfAgreement: 0,
-            status: "cooldown",
-            note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause jusqu'à 00:00 UTC`,
-          });
-          scanResults.push({ symbol, action: "cooldown" });
-          continue;
+          // Identify this rolling-stats snapshot by the symbol's most recent
+          // closed trade. If the midnight pause already served was for this
+          // exact snapshot (no new trade since — expected, the symbol was
+          // blocked), let it try again instead of re-reading the same stale
+          // history and re-pausing forever.
+          const streakTrade = logs.find(
+            (l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"),
+          );
+          const streakKey = streakTrade?.id;
+          const alreadyServed =
+            streakKey !== undefined && this.servedWinRateCooldownFor.get(symbol) === streakKey;
+          if (!alreadyServed) {
+            const until = this.nextUtcMidnight();
+            this.symbolCooldowns.set(symbol, until);
+            if (streakKey !== undefined) this.servedWinRateCooldownFor.set(symbol, streakKey);
+            this.emit({
+              id: `cd_${Date.now()}_${symbol}`,
+              time: Date.now(),
+              symbol,
+              direction: "CALL",
+              stake: 0,
+              payout: 0,
+              profit: 0,
+              confidence: 0,
+              tfAgreement: 0,
+              status: "cooldown",
+              note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause jusqu'à 00:00 UTC`,
+            });
+            scanResults.push({ symbol, action: "cooldown" });
+            continue;
+          }
+          // Pause already served for this stale snapshot — fall through and
+          // let it attempt a trade. A fresh loss produces a new streakKey and
+          // re-arms the pause normally; a win raises the rolling win rate.
         }
       }
       toAnalyze.push(symbol);
