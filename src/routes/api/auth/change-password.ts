@@ -26,8 +26,14 @@ export const Route = createFileRoute("/api/auth/change-password")({
           .get(auth.userId) as { id: number; password_hash: string } | undefined;
         if (!user) return json({ error: "Utilisateur introuvable." }, 404);
 
+        // 400, not 401: the user IS authenticated (getUserFromRequest above
+        // succeeded) — this is a wrong form field, not an invalid session.
+        // A 401 here trips the client's generic interceptor (api.ts), which
+        // treats ANY 401 from ANY endpoint as "your login session is
+        // invalid" and force-logs the user out — the same anti-pattern
+        // found and fixed in /api/deriv-session.
         const valid = await verifyPassword(currentPassword, user.password_hash);
-        if (!valid) return json({ error: "Mot de passe actuel incorrect." }, 401);
+        if (!valid) return json({ error: "Mot de passe actuel incorrect." }, 400);
 
         const passwordHash = await hashPassword(newPassword);
         db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, user.id);

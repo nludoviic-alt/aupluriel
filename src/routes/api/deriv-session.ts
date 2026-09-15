@@ -52,11 +52,25 @@ export const Route = createFileRoute("/api/deriv-session")({
           "Content-Type": "application/json",
         };
 
-        // Fetch account list to verify token and get account info
+        // Fetch account list to verify token and get account info. A 401
+        // here means DERIV rejected the account's own API token — nothing to
+        // do with whether the app's own login session is valid. Returning
+        // 401 from THIS route used to make the client's generic interceptor
+        // (api.ts) treat it as "your app session is invalid", wiping the
+        // JWT and bouncing the user to /login — for what was usually just a
+        // transient blip talking to Deriv (reported live: users "connecting
+        // then disconnecting" on mobile, confirmed in nginx logs as a 401
+        // here immediately followed by a 499-cancelled /api/bot and a
+        // redirect to /login, moments after /api/auth/me had itself
+        // succeeded repeatedly). 502 (upstream failure) matches the OTP
+        // failure case below and no longer triggers that logout.
         const accRes = await fetch(`${TRADING_V1}/accounts`, { headers });
         if (!accRes.ok) {
           const text = await accRes.text();
-          return json({ error: `Authentification échouée (${accRes.status}): ${text.slice(0, 200)}` }, 401);
+          return json(
+            { error: `Authentification Deriv échouée (${accRes.status}): ${text.slice(0, 200)}` },
+            502,
+          );
         }
         const accData = (await accRes.json()) as { data: DerivAccount[] };
         const accounts = accData.data ?? [];
