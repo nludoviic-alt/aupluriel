@@ -558,13 +558,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   const [forceStake, setForceStake] = useState(DEFAULT_CONFIG.stakeUsd);
   const [autoTpEnabled, setAutoTpEnabled] = useState(true);
   const [autoSlEnabled, setAutoSlEnabled] = useState(true);
-  const [candleSeconds, setCandleSeconds] = useState(60 - (Math.floor(Date.now() / 1000) % 60));
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCandleSeconds(60 - (Math.floor(Date.now() / 1000) % 60));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
   const [logFilter, setLogFilter] = useState<"all" | "won" | "lost" | "open" | "error">("all");
   const [showConfig, setShowConfig] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -2241,24 +2234,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   <div className="flex flex-col gap-3">
                     {/* Timer & IA Context Row (Mobile) */}
                     <div className="flex items-center gap-2 lg:hidden">
-                      <div className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-3.5 w-3.5 text-primary animate-pulse" />
-                          <span className="font-mono text-xs font-black text-foreground">
-                            {candleSeconds}s
-                          </span>
-                        </div>
-                        <span
-                          className={cn(
-                            "rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
-                            candleSeconds >= 45 || candleSeconds <= 15
-                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                              : "border-white/5 bg-white/[0.02] text-muted-foreground",
-                          )}
-                        >
-                          {candleSeconds >= 45 || candleSeconds <= 15 ? "Idéal" : "Attente"}
-                        </span>
-                      </div>
+                      <CandleTimerBadge variant="mobile" />
                       {manualOpportunity && (
                         <div
                           className={cn(
@@ -2282,23 +2258,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </div>
 
                     {/* Desktop Timer (Original) */}
-                    <div className="hidden lg:flex rounded-xl border border-white/10 bg-black/30 p-3.5 items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-primary animate-pulse" />
-                        <span className="font-mono text-sm font-black text-foreground">
-                          {candleSeconds}s
-                        </span>
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
-                          candleSeconds >= 45 || candleSeconds <= 15
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 animate-pulse"
-                            : "border-white/10 bg-white/[0.04] text-muted-foreground",
-                        )}
-                      >
-                        {candleSeconds >= 45 || candleSeconds <= 15 ? "🔥 Idéal" : "⏳ Attente"}
-                      </span>
+                    <div className="hidden lg:flex">
+                      <CandleTimerBadge variant="desktop" />
                     </div>
 
                     {/* Desktop Signal Card (Original) */}
@@ -6568,6 +6529,61 @@ function CooldownBanner({ lastScan }: { lastScan: ScanResult | null }) {
           — trop de pertes consécutives, reprise automatique après le délai configuré.
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Ticks its own 1s timer in isolation instead of living in AutotraderPage's
+ * top-level state — that used to re-render the ENTIRE page (charts, tables,
+ * everything) every second just for this small badge. Same pattern as
+ * ScanCountdown/CloudScanPanel below. */
+function CandleTimerBadge({ variant }: { variant: "mobile" | "desktop" }) {
+  const [candleSeconds, setCandleSeconds] = useState(60 - (Math.floor(Date.now() / 1000) % 60));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCandleSeconds(60 - (Math.floor(Date.now() / 1000) % 60));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  const ideal = candleSeconds >= 45 || candleSeconds <= 15;
+
+  if (variant === "mobile") {
+    return (
+      <div className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-primary animate-pulse" />
+          <span className="font-mono text-xs font-black text-foreground">{candleSeconds}s</span>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+            ideal
+              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+              : "border-white/5 bg-white/[0.02] text-muted-foreground",
+          )}
+        >
+          {ideal ? "Idéal" : "Attente"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/30 p-3.5 flex items-center justify-between gap-2 text-xs w-full">
+      <div className="flex items-center gap-2">
+        <Clock className="h-4 w-4 text-primary animate-pulse" />
+        <span className="font-mono text-sm font-black text-foreground">{candleSeconds}s</span>
+      </div>
+      <span
+        className={cn(
+          "rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+          ideal
+            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 animate-pulse"
+            : "border-white/10 bg-white/[0.04] text-muted-foreground",
+        )}
+      >
+        {ideal ? "🔥 Idéal" : "⏳ Attente"}
+      </span>
     </div>
   );
 }
