@@ -1568,32 +1568,24 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
 
       {/* ── ALERTE VISUELLE EN DIRECT : POSITIONS EN COURS D'EXÉCUTION ── */}
       {(liveDerivPositions.length > 0 || openTradeList.length > 0) && (
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/40 via-background to-emerald-950/20 p-4 shadow-[0_0_30px_rgba(16,185,129,0.15)] animate-in fade-in slide-in-from-top-3 duration-300">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-400">
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
-                </span>
-                <Activity className="h-5 w-5 animate-pulse text-emerald-400" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-black uppercase tracking-wider text-emerald-300">
-                    {liveDerivPositions.length || openTradeList.length} Position{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""} Ouverte{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""} en Direct
-                  </h3>
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-300 animate-pulse">
-                    EN COURS
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Trade exécuté sous VETO Risk Manager • Suivi en temps réel
-                </p>
-              </div>
+        <div className="relative overflow-hidden rounded-xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/30 via-neutral-950 to-emerald-950/20 p-3 shadow-[0_0_20px_rgba(16,185,129,0.12)] animate-in fade-in duration-300">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              </span>
+              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-300">
+                {liveDerivPositions.length || openTradeList.length} Position{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""} Active{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""}
+              </h3>
+              <span className="rounded-md border border-emerald-500/30 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-300 animate-pulse">
+                EN COURS
+              </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="h-4 w-px bg-white/10 hidden sm:block shrink-0" />
+
+            <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
               {(liveDerivPositions.length > 0
                 ? liveDerivPositions
                 : openTradeList.map((t) => ({
@@ -1609,14 +1601,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 return (
                   <div
                     key={pos.contractId || idx}
-                    className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-white/[0.04] px-3.5 py-2 backdrop-blur-md"
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-white/[0.04] px-2.5 py-1 backdrop-blur-md text-xs font-bold"
                   >
-                    <span className="font-extrabold text-xs text-foreground">
+                    <span className="font-extrabold text-foreground">
                       {SYMBOLS.find((s) => s.deriv === pos.symbol)?.label || pos.symbol}
                     </span>
                     <span
                       className={cn(
-                        "rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider",
+                        "rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
                         isUp
                           ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                           : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
@@ -1624,13 +1616,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     >
                       {isUp ? "▲ CALL" : "▼ PUT"}
                     </span>
-                    <span className="font-mono text-xs font-bold text-muted-foreground">
+                    <span className="font-mono text-muted-foreground text-[11px]">
                       ${pos.buyPrice ? pos.buyPrice.toFixed(2) : "0.00"}
                     </span>
                     {pnl !== 0 && (
                       <span
                         className={cn(
-                          "font-mono text-xs font-black px-2 py-0.5 rounded-lg border",
+                          "font-mono text-[11px] font-black px-1.5 py-0.5 rounded border",
                           pnl > 0
                             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
                             : "border-rose-500/40 bg-rose-500/10 text-rose-400"
