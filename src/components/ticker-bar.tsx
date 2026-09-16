@@ -6,8 +6,8 @@ import { TrendingUp, TrendingDown } from "lucide-react";
 // returning InvalidSymbol on Deriv's tick stream) with symbols that are
 // actively traded by the bots and confirmed valid on the public WS API.
 const TICKERS = [
-  { symbol: "BOOM500",   label: "BOOM 500",   decimals: 3 },
-  { symbol: "CRASH900",  label: "CRASH 900",  decimals: 3 },
+  { symbol: "BOOM900",   label: "BOOM 900",   decimals: 3 },
+  { symbol: "CRASH1000", label: "CRASH 1000", decimals: 3 },
   { symbol: "OTC_NDX",   label: "US Tech 100", decimals: 2 },
   { symbol: "frxEURGBP", label: "EUR/GBP",    decimals: 5 },
 ] as const;

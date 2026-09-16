@@ -89,3 +89,21 @@ export async function sendTelegramNotification(
     return { success: false, error: err.message || "Échec de la connexion Telegram" };
   }
 }
+
+/**
+ * Sends a Telegram notification to a user based on their saved preferences.
+ */
+export async function sendTelegramToUser(
+  userId: number,
+  htmlMessage: string,
+  category: "tradeOpen" | "tradeClose" | "risk" | "signal",
+): Promise<void> {
+  const cfg = getUserTelegramConfig(userId);
+  if (!cfg || cfg.enabled === false || !cfg.botToken || !cfg.chatId) return;
+  if (category === "tradeOpen" && cfg.notifyOnTradeOpen === false) return;
+  if (category === "tradeClose" && cfg.notifyOnTradeClose === false) return;
+  if (category === "risk" && cfg.notifyOnRiskLimit === false) return;
+  if (category === "signal" && cfg.notifyOnSpikeSignal === false) return;
+
+  await sendTelegramNotification(cfg.botToken, cfg.chatId, htmlMessage);
+}

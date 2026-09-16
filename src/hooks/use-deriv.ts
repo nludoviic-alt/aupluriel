@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchCandles, subscribeTicks, type DerivCandle } from "@/lib/deriv";
 
-const TICK_FLUSH_MS = 400; // throttle UI updates for high-frequency ticks
+const TICK_FLUSH_MS = 1000; // throttle UI updates to 1s for lightweight CPU performance
 
 export function useDerivTicks(symbol: string, maxPoints = 120) {
   const [series, setSeries] = useState<{ t: number; price: number }[]>([]);

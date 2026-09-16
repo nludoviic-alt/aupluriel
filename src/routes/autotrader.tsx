@@ -140,21 +140,21 @@ type PresetKey =
 
 const presetLabels: Record<PresetKey, string> = {
   default: "Multi",
-  boom: "Boom500",
+  boom: "Boom900",
   boom900: "Boom900",
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
+  crash: "Crash1000",
+  crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
-  gold: "Gold Trend Pullback",
-  liquidity: "Gold Liquidity Sweep",
-  crash900: "Crash900 V2",
+  gold: "Or (Exclu)",
+  liquidity: "Gold Liquidity (Exclu)",
+  crash900: "Crash900 (Exclu)",
   boomv2: "Boom V2",
   scalpingv2: "Scalping V2",
-  goldv2: "Gold Breakout",
-  liquidityv2: "Liquidity V2",
+  goldv2: "Gold (Exclu)",
+  liquidityv2: "Liquidity V2 (Exclu)",
 };
 
 // These are presentation labels only. The actual instruments and execution
@@ -163,11 +163,11 @@ const PRESET_PRESENTATION: Record<
   PresetKey,
   { market: string; description: string; experimental?: boolean }
 > = {
-  default: { market: "Forex · Métaux · Crypto", description: "Marchés configurés" },
-  boom: { market: "BOOM500 uniquement", description: "Boom500" },
+  default: { market: "EUR/GBP · USD/CAD · Nasdaq", description: "Symboles vérifiés (TF=4)" },
+  boom: { market: "BOOM900 uniquement", description: "Boom900 (PF 1.31) · BOOM500/1000 Exclus" },
   boom900: {
     market: "BOOM900 uniquement",
-    description: "Démo · validation isolée",
+    description: "Validation isolée (PF 1.31)",
     experimental: true,
   },
   vol75: {
@@ -185,20 +185,20 @@ const PRESET_PRESENTATION: Record<
     description: "Démo · Trend Pullback & Retest",
     experimental: true,
   },
-  crash: { market: "CRASH900 uniquement", description: "Démo · rentabilité à valider", experimental: true },
+  crash: { market: "CRASH1000 uniquement", description: "Crash1000 (PF 1.02) · CRASH900 Exclu", experimental: true },
   crash500: {
-    market: "CRASH500 uniquement",
-    description: "Démo · Spike SELL + Drift BUY",
+    market: "Désactivé",
+    description: "Désactivé suite à audit (-59.27$)",
     experimental: true,
   },
-  scalping: { market: "BOOM500", description: "M1/M5 · stratégie distincte", experimental: true },
-  gold: { market: "frxXAUUSD (Or)", description: "Trend Pullback" },
-  liquidity: { market: "frxXAUUSD (Or)", description: "Liquidity Sweep" },
-  crash900: { market: "CRASH900", description: "Joker · optimisé data", experimental: true },
-  boomv2: { market: "BOOM500", description: "Démo · exposition contrôlée", experimental: true },
-  scalpingv2: { market: "BOOM500", description: "M1/M5 · Spike Hunter", experimental: true },
-  goldv2: { market: "frxXAUUSD (Or)", description: "Breakout" },
-  liquidityv2: { market: "frxXAUUSD (Or)", description: "Sweep M15" },
+  scalping: { market: "BOOM900", description: "M1/M5 · stratégie distincte", experimental: true },
+  gold: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
+  liquidity: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
+  crash900: { market: "CRASH900 (Exclu)", description: "Exclu suite à audit (-43.63$)", experimental: true },
+  boomv2: { market: "BOOM900", description: "Démo · exposition contrôlée", experimental: true },
+  scalpingv2: { market: "BOOM900", description: "M1/M5 · Spike Hunter", experimental: true },
+  goldv2: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
+  liquidityv2: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
 };
 
 const PRESET_META_MAP: Record<
@@ -206,8 +206,8 @@ const PRESET_META_MAP: Record<
   { label: string; badge: string; color: string; borderColor: string; bgTone: string }
 > = {
   boom: {
-    label: "Boom500",
-    badge: "⚡ Boom500",
+    label: "Boom900",
+    badge: "⚡ Boom900",
     color: "text-rose-400",
     borderColor: "border-rose-500/30",
     bgTone: "bg-rose-500/10",
@@ -241,15 +241,15 @@ const PRESET_META_MAP: Record<
     bgTone: "bg-emerald-500/10",
   },
   crash: {
-    label: "Crash900",
-    badge: "📉 Crash900",
+    label: "Crash1000",
+    badge: "📉 Crash1000",
     color: "text-purple-400",
     borderColor: "border-purple-500/30",
     bgTone: "bg-purple-500/10",
   },
   crash500: {
-    label: "Crash500",
-    badge: "📉 Crash500",
+    label: "Crash500 (Exclu)",
+    badge: "❌ Crash500 Désactivé",
     color: "text-violet-300",
     borderColor: "border-violet-500/30",
     bgTone: "bg-violet-500/10",
@@ -269,22 +269,22 @@ const PRESET_META_MAP: Record<
     bgTone: "bg-cyan-500/10",
   },
   gold: {
-    label: "Gold Trend Pullback",
-    badge: "🥇 Trend Pullback",
+    label: "Or (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-amber-300",
     borderColor: "border-amber-500/30",
     bgTone: "bg-amber-500/10",
   },
   liquidity: {
-    label: "Gold Liquidity Sweep",
-    badge: "🥇 Liquidity Sweep",
+    label: "Gold Liquidity (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-fuchsia-300",
     borderColor: "border-fuchsia-500/30",
     bgTone: "bg-fuchsia-500/10",
   },
   crash900: {
-    label: "Crash900 V2",
-    badge: "📉 Crash900 V2",
+    label: "Crash900 (Exclu)",
+    badge: "❌ Crash900 Exclu",
     color: "text-orange-400",
     borderColor: "border-orange-500/30",
     bgTone: "bg-orange-500/10",
@@ -304,15 +304,15 @@ const PRESET_META_MAP: Record<
     bgTone: "bg-cyan-500/10",
   },
   goldv2: {
-    label: "Gold Breakout",
-    badge: "🥇 Gold Breakout",
+    label: "Or (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-amber-300",
     borderColor: "border-amber-500/30",
     bgTone: "bg-amber-500/10",
   },
   liquidityv2: {
-    label: "Liquidity V2",
-    badge: "💧 Liquidity V2",
+    label: "Liquidity V2 (Exclu)",
+    badge: "💧 Liquidity V2 Exclu",
     color: "text-fuchsia-300",
     borderColor: "border-fuchsia-500/30",
     bgTone: "bg-fuchsia-500/10",
@@ -332,14 +332,9 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 const PRESET_ORDER = [
   "default",
   "boom",
-  "boom900",
   "crash",
-  "crash500",
-  "vol75",
-  "vol50",
-  "rb100",
   "scalping",
-  "gold",
+  "vol75",
 ] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
@@ -516,7 +511,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       | undefined;
     return preset && preset in presetLabels ? preset : null;
   })();
-  const deepLinkPreset = deepLinkedPreset ?? "vol75";
+  const deepLinkPreset = deepLinkedPreset ?? "default";
   const [config, setConfig] = useState<AutoTraderConfig>(() => loadConfig(deepLinkPreset));
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
@@ -617,7 +612,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     } catch {
       /* fallback */
     }
-    return ["frxEURUSD", "frxGBPUSD", "frxXAUUSD", "cryBTCUSD", "BOOM500"];
+    return ["frxEURUSD", "frxGBPUSD", "frxEURGBP", "cryBTCUSD", "BOOM900"];
   });
 
   const saveQuickSymbols = useCallback(
@@ -954,7 +949,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       } catch {}
     };
     fetchPositions();
-    const id = setInterval(fetchPositions, 5000);
+    const id = setInterval(fetchPositions, 1000);
     return () => clearInterval(id);
   }, [derivSession.connected]);
 
@@ -1571,6 +1566,87 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         </div>
       </div>
 
+      {/* ── ALERTE VISUELLE EN DIRECT : POSITIONS EN COURS D'EXÉCUTION ── */}
+      {(liveDerivPositions.length > 0 || openTradeList.length > 0) && (
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/40 via-background to-emerald-950/20 p-4 shadow-[0_0_30px_rgba(16,185,129,0.15)] animate-in fade-in slide-in-from-top-3 duration-300">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-400">
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+                </span>
+                <Activity className="h-5 w-5 animate-pulse text-emerald-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-emerald-300">
+                    {liveDerivPositions.length || openTradeList.length} Position{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""} Ouverte{(liveDerivPositions.length || openTradeList.length) > 1 ? "s" : ""} en Direct
+                  </h3>
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-300 animate-pulse">
+                    EN COURS
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Trade exécuté sous VETO Risk Manager • Suivi en temps réel
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {(liveDerivPositions.length > 0
+                ? liveDerivPositions
+                : openTradeList.map((t) => ({
+                    contractId: Number(t.id) || 0,
+                    symbol: t.symbol,
+                    contractType: t.direction,
+                    buyPrice: t.stake,
+                    profit: t.pnl ?? 0,
+                  }))
+              ).map((pos, idx) => {
+                const isUp = pos.contractType?.includes("CALL") || pos.contractType?.includes("UP") || pos.contractType === "BUY";
+                const pnl = pos.profit ?? 0;
+                return (
+                  <div
+                    key={pos.contractId || idx}
+                    className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-white/[0.04] px-3.5 py-2 backdrop-blur-md"
+                  >
+                    <span className="font-extrabold text-xs text-foreground">
+                      {SYMBOLS.find((s) => s.deriv === pos.symbol)?.label || pos.symbol}
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider",
+                        isUp
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                      )}
+                    >
+                      {isUp ? "▲ CALL" : "▼ PUT"}
+                    </span>
+                    <span className="font-mono text-xs font-bold text-muted-foreground">
+                      ${pos.buyPrice ? pos.buyPrice.toFixed(2) : "0.00"}
+                    </span>
+                    {pnl !== 0 && (
+                      <span
+                        className={cn(
+                          "font-mono text-xs font-black px-2 py-0.5 rounded-lg border",
+                          pnl > 0
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                            : "border-rose-500/40 bg-rose-500/10 text-rose-400"
+                        )}
+                      >
+                        {pnl > 0 ? `+${pnl.toFixed(2)}$` : `${pnl.toFixed(2)}$`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Visual Market Sessions Tracker & 24h Timeline ── */}
       <div className="hidden md:block">
         <MarketSessionsBar />
@@ -2071,36 +2147,35 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* ── CRASH900 Sniper: pre-filtered manual mode ──
-                      Only activates when CRASH900 has a MULTDOWN signal at
-                      confidence ≥ 90 (the edge documented in the VPS audit
-                      2026-08-06: PF 1.58, 71.4% WR at conf 95+). Pre-fills
-                      the validated $25 manual stake, MULTDOWN direction, CRASH900 symbol — the
-                      trader just hits "Exécuter". */}
+                    {/* ── CRASH1000 Sniper: pre-filtered manual mode ──
+                      Only activates when CRASH1000 has a MULTDOWN signal at
+                      confidence ≥ 90 (the edge documented in the VPS audit:
+                      PF 1.58, 71.4% WR at conf 95+). Pre-fills the validated
+                      $25 manual stake, MULTDOWN direction, CRASH1000 symbol. */}
                     {(() => {
-                      const crash900Opp = (opportunities?.opportunities ?? []).find(
+                      const crash1000Opp = (opportunities?.opportunities ?? []).find(
                         (o) =>
-                          o.symbol === "CRASH900" &&
+                          o.symbol === "CRASH1000" &&
                           o.direction === "PUT" &&
                           o.confidence >= 90 &&
                           o.decision === "take",
                       );
-                      if (!crash900Opp) {
+                      if (!crash1000Opp) {
                         // Show a disabled "scanning" state so the trader knows
                         // the feature exists but conditions aren't met yet.
                         return (
                           <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40 px-2 py-1 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                            <Crosshair className="h-3 w-3" /> CRASH900 Sniper — en attente
+                            <Crosshair className="h-3 w-3" /> CRASH1000 Sniper — en attente
                           </span>
                         );
                       }
                       return (
                         <button
                           onClick={() => {
-                            setForceSymbol("CRASH900");
+                            setForceSymbol("CRASH1000");
                             setForceDir("MULTDOWN");
                             setForceStake(25);
-                            setPreparedManualOpportunity(crash900Opp);
+                            setPreparedManualOpportunity(crash1000Opp);
                             setManualArmed(true);
                             window.setTimeout(
                               () =>

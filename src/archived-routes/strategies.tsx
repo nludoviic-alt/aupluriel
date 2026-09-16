@@ -539,16 +539,16 @@ function StrategyEditor({
               value={s.targetPreset || "default"}
               onChange={(e) => patch("targetPreset", e.target.value as Strategy["targetPreset"])}
             >
-              <option value="default">Preset Multi (Forex, Métaux &amp; Indices)</option>
-              <option value="boom">Boom500</option>
-              <option value="boom900">Boom900</option>
-              <option value="crash">Crash900</option>
-              <option value="crash500">Crash500</option>
+              <option value="default">Preset Multi (EUR/GBP, USD/CAD, Nasdaq)</option>
+              <option value="boom">Boom900 (PF 1.31)</option>
+              <option value="boom900">Boom900 Démo</option>
+              <option value="crash">Crash1000 (PF 1.02)</option>
+              <option value="crash500">Crash500 (Désactivé)</option>
               <option value="vol75">Volatility 75 (1s)</option>
               <option value="vol50">Volatility 50 (1s)</option>
               <option value="rb100">Range Break 100</option>
               <option value="scalping">Scalping</option>
-              <option value="gold">Gold Trend / Liquidity</option>
+              <option value="gold">Gold (Exclu)</option>
             </select>
           </Field>
 

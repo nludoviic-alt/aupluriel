@@ -25,7 +25,13 @@ export function isCallPutAvailable(symbol: string): boolean {
 /** Symbols retired from every execution path after a production review.
  * Historical journal rows remain readable, but no automatic or manual order
  * may be created for them, even from a stale saved configuration. */
-export const DISABLED_TRADING_SYMBOLS = new Set(["CRASH1000"]);
+export const DISABLED_TRADING_SYMBOLS = new Set([
+  "BOOM500",
+  "CRASH500",
+  "BOOM1000",
+  "CRASH900",
+  "frxXAUUSD",
+]);
 
 export function isTradingSymbolDisabled(symbol: string): boolean {
   return DISABLED_TRADING_SYMBOLS.has(symbol);
@@ -482,15 +488,15 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   enableOanda: false, // retired 2026-08-14 — synthetics-only, OANDA never connects (see OANDA_ENABLED)
   enabled: false,
   mode: "demo",
-  stakeUsd: 5,
+  stakeUsd: 25,
   durationMinutes: 15,
   // MAJ 2026-08-12 (sweep tune-multi-preset sur bougies historiques Deriv) :
   // minConfidence 75, minTfAgreement 4 → 74.2% WR (+20.1pp edge sur le breakeven 54.1%), +$57.75 P&L sur 31 trades.
   minConfidence: 75,
   maxConfidence: 100,
   minTfAgreement: 4,
-  // 15 : en binaire, 3 pertes consécutives = -$15. Pause auto du bot.
-  maxDailyLossUsd: 15,
+  // 75 : 3 pertes consécutives de $25. Pause auto du bot.
+  maxDailyLossUsd: 75,
   // 200 (était 50, avant ça 12) : le vrai frein sur le volume de trades n'a
   // jamais été ce plafond — sur 10 jours en prod, le volume réel est de
   // 2-12 trades/jour, le plafond de 50 n'a jamais été atteint. Relevé encore

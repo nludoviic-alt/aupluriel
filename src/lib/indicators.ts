@@ -12,7 +12,17 @@ export function sma(values: number[], period: number): (number | null)[] {
   return out;
 }
 
+const emaCache = new WeakMap<number[], Map<number, (number | null)[]>>();
+
 export function ema(values: number[], period: number): (number | null)[] {
+  let periodMap = emaCache.get(values);
+  if (!periodMap) {
+    periodMap = new Map();
+    emaCache.set(values, periodMap);
+  }
+  const cached = periodMap.get(period);
+  if (cached) return cached;
+
   const k = 2 / (period + 1);
   const out: (number | null)[] = [];
   let prev: number | null = null;
@@ -30,10 +40,21 @@ export function ema(values: number[], period: number): (number | null)[] {
     prev = values[i] * k + prev * (1 - k);
     out.push(prev);
   }
+  periodMap.set(period, out);
   return out;
 }
 
+const rsiCache = new WeakMap<number[], Map<number, (number | null)[]>>();
+
 export function rsi(values: number[], period = 14): (number | null)[] {
+  let periodMap = rsiCache.get(values);
+  if (!periodMap) {
+    periodMap = new Map();
+    rsiCache.set(values, periodMap);
+  }
+  const cached = periodMap.get(period);
+  if (cached) return cached;
+
   const out: (number | null)[] = [null];
   let avgGain = 0;
   let avgLoss = 0;
@@ -59,6 +80,7 @@ export function rsi(values: number[], period = 14): (number | null)[] {
       out.push(100 - 100 / (1 + rs));
     }
   }
+  periodMap.set(period, out);
   return out;
 }
 

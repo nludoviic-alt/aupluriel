@@ -42,7 +42,7 @@ export const Route = createFileRoute("/portfolio")({
 });
 
 type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
-const PORTFOLIO_PRESETS = ["default", "boom", "boom900", "vol75", "rb100", "vol50", "crash", "crash500", "scalping", "liquidity", "gold", "crash900", "boomv2", "scalpingv2", "liquidityv2", "goldv2"] as const;
+const PORTFOLIO_PRESETS = ["default", "boom", "crash", "scalping"] as const;
 
 interface PresetMeta {
   label: string;
@@ -54,8 +54,8 @@ interface PresetMeta {
 
 const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
   boom: {
-    label: "Boom500",
-    badge: "⚡ Boom500",
+    label: "Boom900",
+    badge: "⚡ Boom900",
     color: "text-rose-400",
     borderColor: "border-rose-500/30",
     bgTone: "bg-rose-500/10",
@@ -89,15 +89,15 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     bgTone: "bg-emerald-500/10",
   },
   crash: {
-    label: "Crash900",
-    badge: "📉 Crash900",
+    label: "Crash1000",
+    badge: "📉 Crash1000",
     color: "text-purple-400",
     borderColor: "border-purple-500/30",
     bgTone: "bg-purple-500/10",
   },
   crash500: {
-    label: "Crash500 — démo",
-    badge: "📉 Crash500",
+    label: "Crash500 (Exclu)",
+    badge: "❌ Crash500 Exclu",
     color: "text-violet-300",
     borderColor: "border-violet-500/30",
     bgTone: "bg-violet-500/10",
@@ -117,22 +117,22 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     bgTone: "bg-cyan-500/10",
   },
   liquidity: {
-    label: "Gold Liquidity Sweep",
-    badge: "🥇 Liquidity Sweep",
+    label: "Gold Liquidity (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-fuchsia-300",
     borderColor: "border-fuchsia-500/30",
     bgTone: "bg-fuchsia-500/10",
   },
   gold: {
-    label: "Gold Trend Pullback",
-    badge: "🥇 Trend Pullback",
+    label: "Or (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-lime-300",
     borderColor: "border-lime-500/30",
     bgTone: "bg-lime-500/10",
   },
   crash900: {
-    label: "Crash900 V2",
-    badge: "📉 Crash900",
+    label: "Crash900 (Exclu)",
+    badge: "❌ Crash900 Exclu",
     color: "text-orange-400",
     borderColor: "border-orange-500/30",
     bgTone: "bg-orange-500/10",
@@ -152,15 +152,15 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     bgTone: "bg-cyan-500/10",
   },
   liquidityv2: {
-    label: "Liquidity V2",
-    badge: "💧 Liquidity V2",
+    label: "Liquidity V2 (Exclu)",
+    badge: "💧 Liquidity V2 Exclu",
     color: "text-fuchsia-300",
     borderColor: "border-fuchsia-500/30",
     bgTone: "bg-fuchsia-500/10",
   },
   goldv2: {
-    label: "Gold Breakout",
-    badge: "🥇 Gold Breakout",
+    label: "Or (Exclu)",
+    badge: "❌ Or Exclu",
     color: "text-amber-300",
     borderColor: "border-amber-500/30",
     bgTone: "bg-amber-500/10",

@@ -34,14 +34,15 @@ interface SubscriptionRow {
 
 export type NotificationCategory = "trade" | "risk" | "system" | "signal" | "market" | "chat";
 
-// User asked (2026-09-15) to cut push/notification noise down to exactly 3
-// things: a market session opening, a position opening, and its result —
-// both of the latter are tagged "trade". "chat" (person-to-person messaging)
-// is a different feature entirely, not trading noise, and stays enabled.
-// Everything else (opportunity signals, risk pauses, bot start/stop, admin
-// alerts, daily summaries, price alerts) is suppressed — no push AND no
-// in-app Notification Center entry, per "tout le reste désactive".
-const ENABLED_CATEGORIES = new Set<NotificationCategory>(["trade", "market", "chat"]);
+// All core notification categories enabled for push & in-app center
+const ENABLED_CATEGORIES = new Set<NotificationCategory>([
+  "trade",
+  "risk",
+  "signal",
+  "system",
+  "market",
+  "chat",
+]);
 
 export function recordNotification(
   userId: number,

@@ -304,20 +304,20 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
 export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
-/** Boom indices retained after VPS production audit (2 446 trades, 8 août 2026) :
- * BOOM500 : -$40.91 sur 764 trades, WR 72.9%, PF 0.93 — était +$3.62 sur 701
- *   trades au 5 août. Détérioration sur 3 jours. Conservé avec TF=4/4 (était 2).
- * BOOM1000 exclu (2026-08-06) : -$34.75 sur 221 trades, WR 69.7%, PF 0.70.
- * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0%, PF 0.85.
- * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%, PF 0.43. */
-export const BOOM_SYMBOLS = ["BOOM500"];
+/** Boom indices retained after data-backed audit (lio23.db) :
+ * BOOM900 : +$32.89 sur 174 trades, WR 74.1%, PF 1.31 — seul symbole Boom rentable.
+ * BOOM500 exclu (-$86.22 sur 357 trades, PF 0.64).
+ * BOOM1000 exclu (-$43.01 sur 90 trades, PF 0.64).
+ * BOOM600 exclu (-$24.38 sur 79 trades, PF 0.75). */
+export const BOOM_SYMBOLS = ["BOOM900"];
 
-/** Mirror de BOOM_SYMBOLS pour Crash. Revu le 2026-08-08 avec 2 446 trades réels :
- * CRASH900 : +$169.06 sur 322 trades, WR 54.7%, PF 1.53 — solide, pilier du P&L.
- * CRASH1000 exclu (2026-08-06) : -$25.89 sur 270 trades, WR 63.0%, PF 0.94.
- * CRASH500 exclu : -$6.14 sur 37 trades, WR 70.3%, PF 0.61.
- * CRASH600 exclu : -$3.28 sur 35 trades, WR 74.3%, PF 0.77. */
-export const CRASH_SYMBOLS = ["CRASH900"];
+/** Crash indices retained after data-backed audit (lio23.db) :
+ * CRASH1000 : +$2.14 sur 176 trades, WR 72.2%, PF 1.02 — symbole Crash stable.
+ * CRASH500 exclu (-$59.27 sur 74 trades, PF 0.51).
+ * CRASH900 exclu (-$43.63 sur 59 trades, PF 0.49).
+ * CRASH600 exclu (-$14.83 sur 106 trades, PF 0.85). */
+export const CRASH_SYMBOLS = ["CRASH1000"];
+
 
 
 /**
@@ -422,9 +422,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   cooldownMinutes: 5,
   trailingStopPct: 0.20,
   trailingStopMinPeakUsd: 10,
-  // maxDailyLossUsd 30 : à $0.50 de perte par trade (SL 10%), $30 = 60 trades
-  // perdants. Garde-fou de RISQUE RÉEL qui borne la journée.
-  maxDailyLossUsd: 30,
+  // maxDailyLossUsd 75 : 3 pertes consécutives de $25.
+  maxDailyLossUsd: 75,
   // hourlyEdgeFilter on (audit VPS 2026-08-05) : les données montrent 04h,
   // 09h, 11h, 13h, 14h UTC comme heures perdantes récurrentes. Le filtre
   // dynamique auto-bloque les heures à P&L négatif récent.
@@ -669,7 +668,7 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-export const SCALPING_SYMBOLS = ["1HZ75V", "1HZ50V", "BOOM500", "CRASH500", "frxEURGBP", "frxUSDCAD"];
+export const SCALPING_SYMBOLS = ["1HZ75V", "1HZ50V", "BOOM900", "CRASH1000", "frxEURGBP", "frxUSDCAD"];
 
 export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
@@ -677,17 +676,10 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   symbols: SCALPING_SYMBOLS,
   minConfidence: 82,
   maxConfidence: 100,
-  stakeUsd: 1,
-  // Scaled down from BOOM_PRESET's $5 stake to this preset's $1 — not left at
-  // BOOM_PRESET's values verbatim. trailingStopMinPeakUsd follows the
-  // mechanical ÷5 (BOOM_PRESET's 30 → 6); maxDailyLossUsd is a deliberately
-  // stricter $5 (not the ÷5-implied $10) since this is still a tiny, unproven
-  // sample (see header comment) and Boom's own stopLossPctOfStake doesn't
-  // even apply here — Scalping sizes its stop structurally per-trade
-  // (computeStructuralStopUsd), not as a flat % of stake.
-  maxDailyLossUsd: 5,
+  stakeUsd: 25,
+  maxDailyLossUsd: 75,
   maxConsecutiveLosses: 3,
-  trailingStopMinPeakUsd: 6,
+  trailingStopMinPeakUsd: 30,
   maxSimultaneousTrades: 2,
   maxOpenPositions: 3,
   // mode is forced back to "demo" server-side on every start (see

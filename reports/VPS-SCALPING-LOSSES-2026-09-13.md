@@ -30,3 +30,9 @@ Le résultat doit mettre à jour le même compteur Démo/Réel que le Risk Manag
 16. **Retour arrière** : maintenir Scalping désactivé ; vérifier absence de positions ; revenir à la release `/home/ubuntu/releases/20260912T213943Z-8578fae/.output` avec le mécanisme atomique établi, puis redémarrer `lio23` et vérifier santé, sept presets restaurés, Scalping arrêté et portefeuille. Ne pas restaurer la base pour un retour de code sans migration : cela effacerait les transactions récentes. Sauvegardes : `/home/ubuntu/backups/scalping-stop-20260913T122800Z.db` et `/home/ubuntu/backups/scalping-fix-20260913T123416Z.db` ; état complet sauvegardé dans le fichier `-state.json` associé.
 
 Les comparaisons à 20/50/100 nouveaux trades ne sont pas disponibles : Scalping est arrêté. Aucun résultat futur n'est annoncé.
+
+## Contrôle post-déploiement — 12:38 UTC
+
+Déploiement GitHub Actions `34757531896` réussi. Manifest et symlink vérifiés : `/home/ubuntu/releases/20260913T123607Z-3b3f64a/.output`, commit `3b3f64a`. Service `lio23` actif, santé HTTP 200. Journal : sept bots restaurés à 12:37:38 UTC ; API authentifiée : les sept presets attendus sont `running=true`, avec scans récents et `lastError=null`. Les pauses de performance restent visibles dans les résultats de scan de Default, Boom et Vol75 ; leur statut synthétique peut encore afficher ACTIVE/COOLDOWN et ne constitue pas une validation de leur stratégie.
+
+Scalping : `enabled=false`, `running=false`, `operationalStatus=DISABLED`, aucun trade depuis l'arrêt. Aucune position locale ouverte/pending. Le compteur `demo::SCALPING_ENGINE` a été reconstruit de 1 à 7 pertes consécutives (incluant une perte antérieure aux six de l'incident) avec la dernière clôture réelle comme horodatage. État interne RECOVERY car le délai est passé ; cela ne réactive pas le preset désactivé. Aucun TypeError, ReferenceError ou SQLITE_ERROR dans la recherche ciblée des journaux du redémarrage.

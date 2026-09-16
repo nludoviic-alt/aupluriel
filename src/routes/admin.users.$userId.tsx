@@ -70,21 +70,21 @@ interface UserRecap {
 
 const presetLabels = {
   default: "Multi",
-  boom: "Boom500",
+  boom: "Boom900",
   boom900: "Boom900",
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
+  crash: "Crash1000",
+  crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
-  liquidity: "GOLD LIQUIDITY SWEEP",
-  gold: "GOLD TREND PULLBACK",
-  crash900: "Crash900 V2",
+  liquidity: "GOLD (EXCLU)",
+  gold: "GOLD (EXCLU)",
+  crash900: "Crash900 (Exclu)",
   boomv2: "Boom V2",
   scalpingv2: "Scalping V2",
-  liquidityv2: "Liquidity V2",
-  goldv2: "GOLD BREAKOUT",
+  liquidityv2: "Liquidity V2 (Exclu)",
+  goldv2: "GOLD (EXCLU)",
 } as const;
 
 type PresetKey = keyof typeof presetLabels;
@@ -92,20 +92,9 @@ type PresetKey = keyof typeof presetLabels;
 const PRESET_KEYS: readonly PresetKey[] = [
   "default",
   "boom",
-  "boom900",
-  "vol75",
-  "rb100",
-  "vol50",
   "crash",
-  "crash500",
   "scalping",
-  "liquidity",
-  "gold",
-  "crash900",
-  "boomv2",
-  "scalpingv2",
-  "liquidityv2",
-  "goldv2",
+  "vol75",
 ];
 
 const PRESET_ICONS: Record<PresetKey, string> = {
@@ -948,21 +937,20 @@ function ConfigChangesPanel({ changes, loading }: { changes: ConfigChangeEntry[]
 
 // ── Manual Trade Section (Prise Directe for admin) ──
 const TRADE_SYMBOLS = [
-  { value: "BOOM500", label: "BOOM 500", type: "binary" },
+  { value: "BOOM900", label: "BOOM 900", type: "binary" },
   { value: "BOOM1000", label: "BOOM 1000", type: "binary" },
-  { value: "CRASH900", label: "CRASH 900", type: "binary" },
+  { value: "CRASH1000", label: "CRASH 1000", type: "binary" },
   { value: "frxEURUSD", label: "EUR/USD", type: "binary" },
   { value: "frxEURGBP", label: "EUR/GBP", type: "binary" },
   { value: "frxUSDCAD", label: "USD/CAD", type: "binary" },
   { value: "frxGBPUSD", label: "GBP/USD", type: "multiplier" },
-  { value: "frxXAUUSD", label: "XAU/USD", type: "multiplier" },
   { value: "OTC_NDX", label: "OTC Nasdaq", type: "binary" },
   { value: "cryBTCUSD", label: "BTC/USD", type: "multiplier" },
 ];
 
 function ManualTradeSection({ userId, preset, botRunning }: { userId: number; preset: string; botRunning: boolean }) {
   const { confirm } = useConfirm();
-  const [symbol, setSymbol] = useState("CRASH900");
+  const [symbol, setSymbol] = useState("CRASH1000");
   const [direction, setDirection] = useState<"CALL" | "PUT" | "MULTUP" | "MULTDOWN">("PUT");
   const [stake, setStake] = useState(5);
   const [duration, setDuration] = useState(5);
@@ -996,8 +984,8 @@ function ManualTradeSection({ userId, preset, botRunning }: { userId: number; pr
     } finally { setExecuting(false); }
   }
 
-  function sniperCrash900() {
-    setSymbol("CRASH900");
+  function sniperCrash1000() {
+    setSymbol("CRASH1000");
     setDirection("PUT");
     setStake(5);
     setDuration(1);
@@ -1009,8 +997,8 @@ function ManualTradeSection({ userId, preset, botRunning }: { userId: number; pr
         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
           <Crosshair className="h-4 w-4" /> Prise Directe — Ordre Manuel Admin
         </div>
-        <button onClick={sniperCrash900} className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all cursor-pointer">
-          <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper
+        <button onClick={sniperCrash1000} className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition-all cursor-pointer">
+          <Crosshair className="h-3.5 w-3.5" /> CRASH1000 Sniper
         </button>
       </div>
 

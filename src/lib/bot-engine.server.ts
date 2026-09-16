@@ -272,29 +272,24 @@ export const ALL_PRESETS: readonly Preset[] = [
 export const ACTIVE_PRESETS: readonly Preset[] = [
   "default",
   "boom",
-  "boom900",
   "crash",
-  "crash500",
-  "vol75",
-  "vol50",
-  "rb100",
   "scalping",
-  "gold",
+  "vol75",
 ];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
 const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
-  boom: ["BOOM500"],
+  boom: ["BOOM900"],
   boom900: ["BOOM900"],
   vol75: ["1HZ75V"],
   rb100: ["RB100"],
   vol50: ["1HZ50V"],
-  crash: ["CRASH900"],
+  crash: ["CRASH1000"],
   crash500: ["CRASH500"],
-  liquidity: ["frxXAUUSD"],
-  gold: ["frxXAUUSD"],
-  goldv2: ["frxXAUUSD"],
+  liquidity: ["frxEURGBP"],
+  gold: ["frxEURGBP"],
+  goldv2: ["frxEURGBP"],
 };
 
 export function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
@@ -310,21 +305,21 @@ export function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): Aut
 // imports FROM this file and would make it circular.
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom500",
+  boom: "Boom900",
   boom900: "Boom900 — démo isolée",
   vol75: "Volatility 75 (1s) — démo",
   rb100: "Range Break 100 — démo",
   vol50: "Volatility 50 (1s) — démo",
-  crash: "Crash900",
-  crash500: "Crash500 — démo isolée",
+  crash: "Crash1000",
+  crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
-  liquidity: "GOLD LIQUIDITY SWEEP",
-  gold: "GOLD TREND PULLBACK",
-  crash900: "Crash900 V2",
+  liquidity: "GOLD (EXCLU)",
+  gold: "GOLD (EXCLU)",
+  crash900: "Crash900 (Exclu)",
   boomv2: "Boom V2 — contrôlé",
   scalpingv2: "Scalping V2 — Spike Hunter",
-  liquidityv2: "Liquidity V2 — XAU sweep",
-  goldv2: "GOLD BREAKOUT",
+  liquidityv2: "Liquidity V2 (Exclu)",
+  goldv2: "GOLD (EXCLU)",
 };
 
 /**
@@ -1323,12 +1318,18 @@ class ServerBotEngine {
     if (log.status === "open" && prevStatus !== "open") {
       void (async () => {
         const { sendPushToUser } = await import("./push.server");
+        const { sendTelegramToUser } = await import("./telegram.server");
         await sendPushToUser(this.userId, {
           title: `🟦 Trade ouvert — ${PRESET_LABEL[this.preset]}`,
           body: `${log.symbol} · ${log.direction} · mise $${log.stake.toFixed(2)} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
           url: "/autotrader",
           category: "trade",
         });
+        await sendTelegramToUser(
+          this.userId,
+          `🟦 <b>Trade ouvert — ${PRESET_LABEL[this.preset]}</b>\n\n📊 Symbole: <b>${log.symbol}</b>\n🧭 Direction: <b>${log.direction}</b>\n💵 Mise: <b>$${log.stake.toFixed(2)}</b>\n⚙️ Mode: <b>${this.config.mode === "live" ? "Réel" : "Démo"}</b>`,
+          "tradeOpen",
+        );
       })().catch((e) =>
         console.error(
           `[bot] Notification push échouée pour user ${this.userId}:`,
@@ -1341,6 +1342,7 @@ class ServerBotEngine {
     if ((log.status === "won" || log.status === "lost") && prevStatus !== log.status) {
       void (async () => {
         const { sendPushToUser } = await import("./push.server");
+        const { sendTelegramToUser } = await import("./telegram.server");
         const won = log.status === "won";
         await sendPushToUser(this.userId, {
           title: `${won ? "✅" : "🔴"} Trade fermé ${won ? "gagnant" : "perdant"} — ${PRESET_LABEL[this.preset]}`,
@@ -1348,6 +1350,11 @@ class ServerBotEngine {
           url: "/autotrader",
           category: "trade",
         });
+        await sendTelegramToUser(
+          this.userId,
+          `${won ? "✅" : "🔴"} <b>Trade fermé ${won ? "GAGNANT" : "PERDANT"} — ${PRESET_LABEL[this.preset]}</b>\n\n📊 Symbole: <b>${log.symbol}</b>\n🧭 Direction: <b>${log.direction}</b>\n💰 P&L: <b>${won ? "+" : ""}$${log.profit.toFixed(2)}</b>\n⚙️ Mode: <b>${this.config.mode === "live" ? "Réel" : "Démo"}</b>`,
+          "tradeClose",
+        );
       })().catch((e) =>
         console.error(
           `[bot] Notification push échouée pour user ${this.userId}:`,
@@ -1360,17 +1367,25 @@ class ServerBotEngine {
     if (log.status === "risk-stop") {
       void (async () => {
         const { sendPushToUser } = await import("./push.server");
+        const { sendTelegramToUser } = await import("./telegram.server");
         await sendPushToUser(this.userId, {
           title: `⏸ Bot en pause — ${PRESET_LABEL[this.preset]}`,
           body: log.note ?? "Protection de risque déclenchée.",
           url: "/autotrader",
+          category: "risk",
         });
+        await sendTelegramToUser(
+          this.userId,
+          `🚨 <b>Bot en Pause — ${PRESET_LABEL[this.preset]}</b>\n\n⚠️ Raison: ${log.note ?? "Protection de risque déclenchée."}`,
+          "risk",
+        );
       })().catch((e) =>
         console.error(
           `[bot] Notification push (pause risque) échouée pour user ${this.userId}:`,
           (e as Error).message,
         ),
       );
+      return;
     }
   }
 

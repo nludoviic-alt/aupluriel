@@ -212,11 +212,9 @@ const PAGE_META: Record<string, { label: string; icon: typeof LayoutDashboard }>
   "/autotrader": { label: "Auto-Trader", icon: Zap },
   "/backtest": { label: "Backtest", icon: FlaskConical },
   "/journal": { label: "Journal", icon: BarChart3 },
-  "/strategies": { label: "Stratégies", icon: Workflow },
   "/surveillance": { label: "Surveillance", icon: Activity },
   "/alerts": { label: "Alertes", icon: Bell },
   "/notifications": { label: "Notifications", icon: Bell },
-  "/carnet-de-notes": { label: "Notes", icon: NotebookPen },
   "/settings": { label: "Paramètres", icon: Settings },
   "/admin": { label: "Administration", icon: ShieldCheck },
 };
@@ -393,17 +391,10 @@ function RootComponent() {
           )}>
             {/* Header for main content */}
             <header className={cn(
-              "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/95 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)] transition-all duration-300 shrink-0",
+              "relative sticky top-0 z-30 flex h-[calc(5rem+env(safe-area-inset-top))] md:h-24 items-center gap-3 md:gap-4 overflow-hidden px-4 pt-[env(safe-area-inset-top)] md:px-6 md:pt-0 border-b border-white/[0.06] bg-background/98 backdrop-blur-md transition-all duration-300 shrink-0",
               isMessenger && "hidden md:flex"
             )}>
-              {/* Ambient glow blobs matching the orange theme */}
-              <div className="pointer-events-none absolute -top-28 -left-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
-              <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-amber-500/10 blur-[90px]" />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
-              {/* Animated shimmering accent line bridging orange and amber */}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-                <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.7),oklch(0.85_0.20_70/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
-              </div>
+
 
               {/* Desktop sidebar trigger */}
               <SidebarTrigger className="hidden md:flex rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.08] hover:border-white/10 transition-all p-2 h-10 w-10 cursor-pointer" />
@@ -529,34 +520,7 @@ function RootComponent() {
                 desktop-only, keeps the mobile header/main area focused. */}
             {showTicker && <div className="hidden md:block"><TickerBar /></div>}
 
-            {/* Permanent Push Activation Banner for unconfigured devices */}
-            {user && pushStatus === "default" && !pushBannerDismissed && !isMessenger && (
-              <div className="border-b border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-200 backdrop-blur-sm shrink-0">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Bell className="h-4 w-4 text-amber-400 shrink-0 animate-bounce" />
-                  <span className="truncate">
-                    <strong className="text-white">Activez les notifications</strong> pour recevoir les alertes de trades et de risque en direct sur cet appareil.
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    size="sm"
-                    disabled={pushBusy}
-                    onClick={handleEnablePush}
-                    className="h-7 px-3 bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs rounded-lg shadow-sm cursor-pointer"
-                  >
-                    {pushBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Activer"}
-                  </Button>
-                  <button
-                    onClick={() => setPushBannerDismissed(true)}
-                    className="text-muted-foreground hover:text-white p-1 transition-colors cursor-pointer"
-                    title="Masquer pour cette session"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
+
             <main id="main-content-area" className={cn(
               "flex-1 min-w-0 md:pb-0",
               isMessenger

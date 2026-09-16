@@ -18,15 +18,11 @@ const NAV_PRIMARY = [
   { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness, hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Opportunités", url: "/opportunities", icon: Target,        hover: "hover:bg-emerald-500/[0.04] hover:text-emerald-300" },
   { title: "Auto-Trader", url: "/autotrader", icon: Zap,               hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
-  { title: "Stratégies",  url: "/strategies", icon: Cpu,               hover: "hover:bg-teal-500/[0.04] hover:text-teal-300" },
 ];
 
 const NAV_MORE = [
   { title: "Backtest",        url: "/backtest",        icon: FlaskConical,     hover: "hover:bg-fuchsia-500/[0.04] hover:text-fuchsia-300" },
-  { title: "Statistiques",     url: "/stats",           icon: PieChart,         hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
-  { title: "Notes",          url: "/carnet-de-notes", icon: NotebookPen,      hover: "hover:bg-rose-500/[0.04] hover:text-rose-300" },
-  { title: "Skills",          url: "/skills",          icon: Wrench,           hover: "hover:bg-sky-500/[0.04] hover:text-sky-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];
 
@@ -38,7 +34,7 @@ export function MobileMenu() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredNavMore = NAV_MORE.filter(
-    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/skills" || !!user?.is_admin)
+    (item) => item.url !== "/backtest" || showBacktest
   );
 
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));

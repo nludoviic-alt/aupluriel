@@ -213,21 +213,21 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
 
 const presetLabels = {
   default: "Multi",
-  boom: "Boom500",
+  boom: "Boom900",
   boom900: "Boom900",
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
+  crash: "Crash1000",
+  crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
-  liquidity: "GOLD LIQUIDITY SWEEP",
-  gold: "GOLD TREND PULLBACK",
-  crash900: "Crash900 V2",
+  liquidity: "GOLD (EXCLU)",
+  gold: "GOLD (EXCLU)",
+  crash900: "Crash900 (Exclu)",
   boomv2: "Boom V2",
   scalpingv2: "Scalping V2",
-  liquidityv2: "Liquidity V2",
-  goldv2: "GOLD BREAKOUT",
+  liquidityv2: "Liquidity V2 (Exclu)",
+  goldv2: "GOLD (EXCLU)",
 } as const;
 
 type PresetKey = keyof typeof presetLabels;
@@ -235,35 +235,30 @@ type PresetKey = keyof typeof presetLabels;
 const PRESET_KEYS: readonly PresetKey[] = [
   "default",
   "boom",
-  "boom900",
   "crash",
-  "crash500",
-  "vol75",
-  "vol50",
-  "rb100",
   "scalping",
-  "gold",
+  "vol75",
 ];
 
 const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
 const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: string; desc: string }> = {
-  default: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "🌐", desc: "Forex, Or, Crypto" },
-  boom: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "🚀", desc: "Boom 500 Spike & Drift" },
+  default: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "🌐", desc: "EUR/GBP, USD/CAD, Nasdaq (TF=4)" },
+  boom: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "🚀", desc: "Boom 900 uniquement (PF 1.31)" },
   boom900: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom 900 Démo Isolée" },
   vol75: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "📈", desc: "Volatility 75 (1s) Trend Pullback" },
   rb100: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "↔", desc: "Range Break 100 Revers. & Cassure" },
   vol50: { on: "border-emerald-500/40 bg-emerald-500/[0.10]", dot: "bg-emerald-500", icon: "📊", desc: "Volatility 50 (1s) Trend Pullback & Retest" },
-  crash: { on: "border-rose-500/40 bg-rose-500/[0.10]", dot: "bg-rose-500", icon: "📉", desc: "Crash 900 Principal" },
-  crash500: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "📉", desc: "Crash 500 Démo Indépendant" },
-  scalping: { on: "border-cyan-500/40 bg-cyan-500/[0.10]", dot: "bg-cyan-500", icon: "⏱️", desc: "Boom 500 Scalping M1/M5" },
-  liquidity: { on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]", dot: "bg-fuchsia-500", icon: "↩", desc: "Or Liquidity Sweep" },
-  gold: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "🥇", desc: "Or Trend Pullback" },
-  crash900: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "📉", desc: "Crash 900 V2" },
+  crash: { on: "border-rose-500/40 bg-rose-500/[0.10]", dot: "bg-rose-500", icon: "📉", desc: "Crash 1000 uniquement (PF 1.02)" },
+  crash500: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "❌", desc: "Crash 500 (Désactivé -59.27$)" },
+  scalping: { on: "border-cyan-500/40 bg-cyan-500/[0.10]", dot: "bg-cyan-500", icon: "⏱️", desc: "Boom 900 Scalping M1/M5" },
+  liquidity: { on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]", dot: "bg-fuchsia-500", icon: "❌", desc: "Or (Exclu -37.46$)" },
+  gold: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "❌", desc: "Or (Exclu -37.46$)" },
+  crash900: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "❌", desc: "Crash 900 (Exclu -43.63$)" },
   boomv2: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom V2 Exposition Contrôlée" },
   scalpingv2: { on: "border-indigo-500/40 bg-indigo-500/[0.10]", dot: "bg-indigo-500", icon: "🎯", desc: "Scalping V2 Spike Hunter" },
-  liquidityv2: { on: "border-purple-500/40 bg-purple-500/[0.10]", dot: "bg-purple-500", icon: "💧", desc: "Liquidity V2 Sweep M15" },
-  goldv2: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "🥇", desc: "Or Breakout Session" },
+  liquidityv2: { on: "border-purple-500/40 bg-purple-500/[0.10]", dot: "bg-purple-500", icon: "❌", desc: "Liquidity V2 (Exclu)" },
+  goldv2: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "❌", desc: "Or (Exclu -37.46$)" },
 };
 
 const MOBILE_CARD_TINTS = [

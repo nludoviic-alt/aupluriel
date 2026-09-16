@@ -39,19 +39,14 @@ const tradingItems = [
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
   { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
-  { title: "Stratégies",       url: "/strategies",      icon: Cpu,              color: "text-teal-400",   glow: "shadow-teal-500/30" },
 ];
 
 const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
-  { title: "Piste",            url: "/piste",           icon: FlaskConical,     color: "text-amber-400",   glow: "shadow-amber-500/30" },
-  { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
-  { title: "Skills",           url: "/skills",          icon: Wrench,           color: "text-sky-400",    glow: "shadow-sky-500/30" },
 ];
 
 const toolItems = [
-  { title: "Notes",            url: "/carnet-de-notes", icon: NotebookPen,      color: "text-rose-400",   glow: "shadow-rose-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
@@ -221,9 +216,7 @@ export function AppSidebar() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredAnalysisItems = analysisItems.filter(
-    (item) => (item.url !== "/backtest" || showBacktest)
-      && (item.url !== "/skills" || !!user?.is_admin)
-      && (item.url !== "/piste" || !!user?.is_admin)
+    (item) => item.url !== "/backtest" || showBacktest
   );
 
   const filteredToolItems = toolItems;
@@ -245,12 +238,8 @@ export function AppSidebar() {
       {/* ── SIDEBAR HEADER ── */}
       {/* Same height, glass treatment, glow and shimmer accent as the main <header> in __root.tsx,
           so the two form one continuous header band across the full width. */}
-      <SidebarHeader className="relative h-24 shrink-0 justify-center gap-0 overflow-hidden px-5 border-b border-white/[0.06] bg-background/75 backdrop-blur-2xl shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)]">
-        <div className="pointer-events-none absolute -top-28 -right-16 h-56 w-56 rounded-full bg-orange-500/10 blur-[90px]" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-          <div className="h-full w-[250%] -translate-x-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.70_0.20_45/0.7),oklch(0.85_0.20_70/0.7),transparent)] bg-[length:40%_100%] animate-[shimmer_6s_linear_infinite]" />
-        </div>
+      <SidebarHeader className="relative h-24 shrink-0 justify-center gap-0 overflow-hidden px-5 border-b border-white/[0.06] bg-background/98 backdrop-blur-md">
+
         <RouterLink to="/" className="group/logo flex items-center gap-3.5 relative p-2 rounded-xl transition-all duration-300 hover:bg-white/[0.05] hover:shadow-lg hover:shadow-orange-500/10 active:scale-95 before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-r before:from-orange-500/0 before:via-orange-500/5 before:to-orange-500/0 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300">
           <div className="relative shrink-0">
             {/* Glow behind logo */}

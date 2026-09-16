@@ -24,7 +24,7 @@ export interface ManualOpportunityGuard {
 
 export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportunityGuard> = {
   boom: {
-    label: "Boom500 · validation haussière",
+    label: "Boom900 · validation haussière",
     direction: "CALL",
     stakeUsd: 25,
     maxDailyLossUsd: 75,
@@ -35,7 +35,7 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
     minTfAgreement: 4,
   },
   boomv2: {
-    label: "Boom500 V2 · validation haussière",
+    label: "Boom900 V2 · validation haussière",
     direction: "CALL",
     stakeUsd: 25,
     maxDailyLossUsd: 75,
@@ -46,7 +46,7 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
     minTfAgreement: 4,
   },
   crash: {
-    label: "Crash900 · continuation baissière",
+    label: "Crash1000 · continuation baissière",
     direction: "PUT",
     stakeUsd: 25,
     maxDailyLossUsd: 75,
@@ -54,21 +54,18 @@ export const MANUAL_OPPORTUNITY_GUARDS: Record<ManualGuardPreset, ManualOpportun
     maxConsecutiveLosses: 3,
     minConfidence: 85,
     maxConfidence: 100,
-    minTfAgreement: 3,
+    minTfAgreement: 4,
   },
   crash900: {
-    label: "Crash900 · continuation baissière",
+    label: "Crash1000 V2 · continuation baissière",
     direction: "PUT",
     stakeUsd: 25,
     maxDailyLossUsd: 75,
     maxTradesPerDay: 5,
     maxConsecutiveLosses: 3,
-    // Crash900 V2 is calibrated to accept its validated 75–100% window.
-    // Requiring 85% here made an app-labelled “Prendre” opportunity impossible
-    // to execute manually at 75–84%.
-    minConfidence: 75,
+    minConfidence: 85,
     maxConfidence: 100,
-    minTfAgreement: 3,
+    minTfAgreement: 4,
   },
 };
 

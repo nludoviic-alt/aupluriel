@@ -11,14 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as SurveillanceRouteImport } from './routes/surveillance'
-import { Route as StrategiesRouteImport } from './routes/strategies'
-import { Route as StatsRouteImport } from './routes/stats'
-import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
-import { Route as PisteRouteImport } from './routes/piste'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MessengerRouteImport } from './routes/messenger'
@@ -27,7 +23,6 @@ import { Route as ManualTraderRouteImport } from './routes/manual-trader'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as CarnetDeNotesRouteImport } from './routes/carnet-de-notes'
 import { Route as BacktestRouteImport } from './routes/backtest'
 import { Route as AutotraderRouteImport } from './routes/autotrader'
 import { Route as AlertsRouteImport } from './routes/alerts'
@@ -101,21 +96,6 @@ const SurveillanceRoute = SurveillanceRouteImport.update({
   path: '/surveillance',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StrategiesRoute = StrategiesRouteImport.update({
-  id: '/strategies',
-  path: '/strategies',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StatsRoute = StatsRouteImport.update({
-  id: '/stats',
-  path: '/stats',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SkillsRoute = SkillsRouteImport.update({
-  id: '/skills',
-  path: '/skills',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SignalsRoute = SignalsRouteImport.update({
   id: '/signals',
   path: '/signals',
@@ -134,11 +114,6 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PisteRoute = PisteRouteImport.update({
-  id: '/piste',
-  path: '/piste',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OpportunitiesRoute = OpportunitiesRouteImport.update({
@@ -179,11 +154,6 @@ const JournalRoute = JournalRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CarnetDeNotesRoute = CarnetDeNotesRouteImport.update({
-  id: '/carnet-de-notes',
-  path: '/carnet-de-notes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BacktestRoute = BacktestRouteImport.update({
@@ -504,7 +474,6 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
-  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -513,14 +482,10 @@ export interface FileRoutesByFullPath {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
-  '/skills': typeof SkillsRoute
-  '/stats': typeof StatsRoute
-  '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -587,7 +552,6 @@ export interface FileRoutesByTo {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
-  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -596,14 +560,10 @@ export interface FileRoutesByTo {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
-  '/skills': typeof SkillsRoute
-  '/stats': typeof StatsRoute
-  '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -671,7 +631,6 @@ export interface FileRoutesById {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
-  '/carnet-de-notes': typeof CarnetDeNotesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -680,14 +639,10 @@ export interface FileRoutesById {
   '/messenger': typeof MessengerRoute
   '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/signals': typeof SignalsRoute
-  '/skills': typeof SkillsRoute
-  '/stats': typeof StatsRoute
-  '/strategies': typeof StrategiesRoute
   '/surveillance': typeof SurveillanceRoute
   '/verify-email': typeof VerifyEmailRoute
   '/api/alerts': typeof ApiAlertsRoute
@@ -756,7 +711,6 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
-    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -765,14 +719,10 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
     | '/signals'
-    | '/skills'
-    | '/stats'
-    | '/strategies'
     | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
@@ -839,7 +789,6 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
-    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -848,14 +797,10 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
     | '/signals'
-    | '/skills'
-    | '/stats'
-    | '/strategies'
     | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
@@ -922,7 +867,6 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
-    | '/carnet-de-notes'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -931,14 +875,10 @@ export interface FileRouteTypes {
     | '/messenger'
     | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
     | '/signals'
-    | '/skills'
-    | '/stats'
-    | '/strategies'
     | '/surveillance'
     | '/verify-email'
     | '/api/alerts'
@@ -1006,7 +946,6 @@ export interface RootRouteChildren {
   AlertsRoute: typeof AlertsRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
-  CarnetDeNotesRoute: typeof CarnetDeNotesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
@@ -1015,14 +954,10 @@ export interface RootRouteChildren {
   MessengerRoute: typeof MessengerRoute
   NotificationsRoute: typeof NotificationsRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
-  PisteRoute: typeof PisteRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   SignalsRoute: typeof SignalsRoute
-  SkillsRoute: typeof SkillsRoute
-  StatsRoute: typeof StatsRoute
-  StrategiesRoute: typeof StrategiesRoute
   SurveillanceRoute: typeof SurveillanceRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   ApiAlertsRoute: typeof ApiAlertsRoute
@@ -1098,27 +1033,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SurveillanceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/strategies': {
-      id: '/strategies'
-      path: '/strategies'
-      fullPath: '/strategies'
-      preLoaderRoute: typeof StrategiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/stats': {
-      id: '/stats'
-      path: '/stats'
-      fullPath: '/stats'
-      preLoaderRoute: typeof StatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/skills': {
-      id: '/skills'
-      path: '/skills'
-      fullPath: '/skills'
-      preLoaderRoute: typeof SkillsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/signals': {
       id: '/signals'
       path: '/signals'
@@ -1145,13 +1059,6 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/piste': {
-      id: '/piste'
-      path: '/piste'
-      fullPath: '/piste'
-      preLoaderRoute: typeof PisteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/opportunities': {
@@ -1208,13 +1115,6 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/carnet-de-notes': {
-      id: '/carnet-de-notes'
-      path: '/carnet-de-notes'
-      fullPath: '/carnet-de-notes'
-      preLoaderRoute: typeof CarnetDeNotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backtest': {
@@ -1682,7 +1582,6 @@ const rootRouteChildren: RootRouteChildren = {
   AlertsRoute: AlertsRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
-  CarnetDeNotesRoute: CarnetDeNotesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,
@@ -1691,14 +1590,10 @@ const rootRouteChildren: RootRouteChildren = {
   MessengerRoute: MessengerRoute,
   NotificationsRoute: NotificationsRoute,
   OpportunitiesRoute: OpportunitiesRoute,
-  PisteRoute: PisteRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   SignalsRoute: SignalsRoute,
-  SkillsRoute: SkillsRoute,
-  StatsRoute: StatsRoute,
-  StrategiesRoute: StrategiesRoute,
   SurveillanceRoute: SurveillanceRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   ApiAlertsRoute: ApiAlertsRoute,

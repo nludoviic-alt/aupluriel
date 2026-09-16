@@ -65,26 +65,15 @@ export interface DerivTick {
 // offer CALL/PUT 15m→1h during their exchange's hours only.
 export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex" | "commodity" | "synthetic" | "indices" }[] = [
   // ── Synthétiques (24/7, CALL/PUT dès 15s) ──
-  // R_100/75/50/25/10 retirés (2026-08-08) : symboles invalides sur Deriv,
-  // causent des erreurs InvalidSymbol + RateLimit en boucle.
   { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
   { label: "Volatility 75 (1s)", deriv: "1HZ75V", market: "synthetic" },
   { label: "Range Break 100", deriv: "RB100", market: "synthetic" },
   { label: "Jump 100", deriv: "JD100", market: "synthetic" },
   { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },
-  { label: "Boom 1000", deriv: "BOOM1000", market: "synthetic" },
   { label: "Boom 900", deriv: "BOOM900", market: "synthetic" },
   { label: "Boom 600", deriv: "BOOM600", market: "synthetic" },
-  { label: "Boom 500", deriv: "BOOM500", market: "synthetic" },
-  // Crash — miroir de Boom (spikes vers le bas). Symboles calqués sur les 4
-  // Boom confirmés (1000/900/600/500) mais PAS encore vérifiés en direct :
-  // Boom lui-même a eu la surprise que plusieurs variantes marketing
-  // (100/150/200/300/50) n'existaient pas comme Multiplier malgré leur
-  // présence sur le site Deriv. À confirmer via un vrai appel proposal/
-  // contracts_for avant de leur faire confiance pour trader.
-  { label: "Crash 900", deriv: "CRASH900", market: "synthetic" },
+  { label: "Crash 1000", deriv: "CRASH1000", market: "synthetic" },
   { label: "Crash 600", deriv: "CRASH600", market: "synthetic" },
-  { label: "Crash 500", deriv: "CRASH500", market: "synthetic" },
   { label: "Bull Market", deriv: "RDBULL", market: "synthetic" },
   { label: "Bear Market", deriv: "RDBEAR", market: "synthetic" },
   // ── Indices boursiers (heures de bourse) ──
@@ -106,9 +95,8 @@ export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex"
   { label: "EUR/JPY", deriv: "frxEURJPY", market: "forex" },
   { label: "GBP/JPY", deriv: "frxGBPJPY", market: "forex" },
   // ── Matières premières ──
-  { label: "XAU/USD (Or)", deriv: "frxXAUUSD", market: "commodity" },
   { label: "XAG/USD (Argent)", deriv: "frxXAGUSD", market: "commodity" },
-  // ── Crypto (graphiques uniquement — pas de CALL/PUT) ──
+  // ── Crypto ──
   { label: "BTC/USD", deriv: "cryBTCUSD", market: "crypto" },
   { label: "ETH/USD", deriv: "cryETHUSD", market: "crypto" },
 ];

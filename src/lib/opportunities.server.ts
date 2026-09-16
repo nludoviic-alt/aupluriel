@@ -103,25 +103,25 @@ export interface OpportunitiesResponse {
 // they're retired (ACTIVE_PRESETS gate) and can never start, so scanning
 // them would surface an opportunity card the user can never act on.
 const PRESETS: Preset[] = (
-  ["boom", "vol75", "rb100", "crash", "crash500", "default", "liquidity", "gold", "goldv2"] as const
+  ["boom", "vol75", "rb100", "crash", "default"] as const
 ).filter((p) => ACTIVE_PRESETS.includes(p));
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom500",
+  boom: "Boom900",
   boom900: "Boom900",
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
+  crash: "Crash1000",
+  crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
-  liquidity: "Reversal liquidité",
-  gold: "Or Trend",
-  crash900: "Crash900 V2",
+  liquidity: "Or (Exclu)",
+  gold: "Or (Exclu)",
+  crash900: "Crash900 (Exclu)",
   boomv2: "Boom V2 — contrôlé",
   scalpingv2: "Scalping V2 — Spike Hunter",
-  liquidityv2: "Liquidity V2 — XAU sweep",
-  goldv2: "Gold V2 — session pullback",
+  liquidityv2: "Liquidity V2 (Exclu)",
+  goldv2: "Or (Exclu)",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {

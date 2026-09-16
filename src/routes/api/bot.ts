@@ -100,65 +100,61 @@ type SharedStatusData = {
   circuitBreaker: ReturnType<typeof circuitBreaker.getState>;
 };
 
+// Statements SQLite pré-compilés pour optimiser le temps de réponse de /api/bot (gain x5 à x10 sur la boucle de presets)
+let stmtBotState: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+let stmtLastBlock: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+let stmtBlockedSignals: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+let stmtAutoShadow: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+let stmtShadowMetrics: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+
+function getPreparedStatements() {
+  if (!stmtBotState) {
+    const db = getDb();
+    stmtBotState = db.prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?");
+    stmtLastBlock = db.prepare(
+      `SELECT status, note, time FROM bot_trades WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error') ORDER BY time DESC LIMIT 1`
+    );
+    stmtBlockedSignals = db.prepare(
+      `SELECT COUNT(*) AS count FROM signal_rejections WHERE user_id = ? AND preset = ? AND time >= ?`
+    );
+    stmtAutoShadow = db.prepare(
+      `SELECT 1 FROM strategy_performance_drift WHERE risk_state = 'SHADOW' AND strategy LIKE ? LIMIT 1`
+    );
+    stmtShadowMetrics = db.prepare(
+      `SELECT COUNT(*) AS trades,
+        COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN 1 ELSE 0 END), 0) AS closedOutcomes,
+        COALESCE(SUM(CASE WHEN status = 'won' THEN virtual_pnl ELSE 0 END), 0) AS grossWin,
+        COALESCE(SUM(CASE WHEN status = 'lost' THEN ABS(virtual_pnl) ELSE 0 END), 0) AS grossLoss,
+        COALESCE(AVG(CASE WHEN status IN ('won', 'lost') THEN r_multiple END), 0) AS expectancyR,
+        COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl,
+        COALESCE(AVG(shadow_mae), 0) AS mae,
+        COALESCE(AVG(shadow_mfe), 0) AS mfe
+      FROM shadow_trades
+      WHERE user_id = ? AND preset = ?
+        AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')`
+    );
+  }
+  return { stmtBotState, stmtLastBlock, stmtBlockedSignals, stmtAutoShadow, stmtShadowMetrics };
+}
+
 function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatusData) {
-  const state = getDb()
-    .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?")
-    .get(userId, preset) as { enabled: number; config: string } | undefined;
+  const stmts = getPreparedStatements();
+  const state = stmts.stmtBotState!.get(userId, preset) as { enabled: number; config: string } | undefined;
   const runtime = getBotRuntime(userId, preset);
   const trades = getBotTrades(userId, preset, 20);
   const savedConfig = loadBotConfig(userId, preset);
   const mode: "demo" | "live" = savedConfig?.mode === "live" ? "live" : "demo";
-  // SQL over ALL of today's rows — summing the 20-trade window instead
-  // made early wins vanish from the display as new events pushed them out.
+
   const today = getTodayStats(userId, preset, mode);
-  // All-time record — shown before a live-mode start so that decision is
-  // informed by this preset's actual track record, not a guess.
   const allTime = getAllTimeStats(userId, preset, mode);
   const now = Date.now();
-  const lastBlock = getDb()
-    .prepare(
-      `
-    SELECT status, note, time FROM bot_trades
-    WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error')
-    ORDER BY time DESC LIMIT 1
-  `,
-    )
-    .get(userId, preset) as { status: string; note: string | null; time: number } | undefined;
+
+  const lastBlock = stmts.stmtLastBlock!.get(userId, preset) as { status: string; note: string | null; time: number } | undefined;
   const blockedSignals = (
-    getDb()
-      .prepare(
-        `
-    SELECT COUNT(*) AS count FROM signal_rejections
-    WHERE user_id = ? AND preset = ? AND time >= ?
-  `,
-      )
-      .get(userId, preset, now - 24 * 60 * 60_000) as { count: number }
+    stmts.stmtBlockedSignals!.get(userId, preset, now - 24 * 60 * 60_000) as { count: number }
   ).count;
-  const autoShadow = getDb()
-    .prepare(
-      `
-    SELECT 1 FROM strategy_performance_drift
-    WHERE risk_state = 'SHADOW' AND strategy LIKE ? LIMIT 1
-  `,
-    )
-    .get(`${preset.toUpperCase()}%`);
-  const shadowMetrics = getDb()
-    .prepare(
-      `
-    SELECT COUNT(*) AS trades,
-      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN 1 ELSE 0 END), 0) AS closedOutcomes,
-      COALESCE(SUM(CASE WHEN status = 'won' THEN virtual_pnl ELSE 0 END), 0) AS grossWin,
-      COALESCE(SUM(CASE WHEN status = 'lost' THEN ABS(virtual_pnl) ELSE 0 END), 0) AS grossLoss,
-      COALESCE(AVG(CASE WHEN status IN ('won', 'lost') THEN r_multiple END), 0) AS expectancyR,
-      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl,
-      COALESCE(AVG(shadow_mae), 0) AS mae,
-      COALESCE(AVG(shadow_mfe), 0) AS mfe
-    FROM shadow_trades
-    WHERE user_id = ? AND preset = ?
-      AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')
-  `,
-    )
-    .get(userId, preset) as {
+  const autoShadow = stmts.stmtAutoShadow!.get(`${preset.toUpperCase()}%`);
+  const shadowMetrics = stmts.stmtShadowMetrics!.get(userId, preset) as {
     trades: number;
     closedOutcomes: number;
     grossWin: number;

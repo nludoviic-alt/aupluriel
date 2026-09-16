@@ -77,8 +77,8 @@ interface OptimizerAudit {
 
 const PRESET_LABELS: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom500",
-  crash: "Crash900",
+  boom: "Boom900",
+  crash: "Crash1000",
   scalping: "Scalping",
 };
 

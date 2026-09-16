@@ -84,26 +84,42 @@ export const BotDashboard = memo(function BotDashboard({ logs, lastScan, config,
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[color:var(--brand-cyan)]" />
-          Historique récent
-        </h2>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-          {winRate !== null && (
-            <span className={cn("font-semibold", winRate >= 55 ? "text-up" : winRate >= 45 ? "text-amber-400" : "text-down")}>
-              {winRate.toFixed(0)}% win
+      {/* Header avec badge Engine AU PLURIEL */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-3">
+        <div>
+          <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
+            <Activity className="h-4.5 w-4.5 text-cyan fill-current" />
+            <span>Historique & Métriques</span>
+            <span className="rounded-full bg-cyan-500/20 border border-cyan-500/40 px-2.5 py-0.5 text-[10px] font-black uppercase text-cyan-300">
+              Au Pluriel Engine v2
             </span>
-          )}
-          {avgProfit !== null && (
-            <span className={cn("font-semibold", avgProfit >= 0 ? "text-up" : "text-down")}>
-              {avgProfit >= 0 ? "+" : ""}${avgProfit.toFixed(2)} moy.
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {winRate !== null && (
+              <span className={cn("font-semibold", winRate >= 55 ? "text-up" : winRate >= 45 ? "text-amber-400" : "text-down")}>
+                {winRate.toFixed(0)}% win
+              </span>
+            )}
+            {avgProfit !== null && (
+              <span className={cn("font-semibold", avgProfit >= 0 ? "text-up" : "text-down")}>
+                {avgProfit >= 0 ? "+" : ""}${avgProfit.toFixed(2)} moy.
+              </span>
+            )}
+            <span className="flex items-center gap-1.5">
+              <span className={cn("h-1.5 w-1.5 rounded-full", running ? "bg-up animate-pulse" : "bg-muted-foreground/50")} />
+              {running ? "Actif" : "Arrêté"}
             </span>
-          )}
-          <span className="flex items-center gap-1.5">
-            <span className={cn("h-1.5 w-1.5 rounded-full", running ? "bg-up animate-pulse" : "bg-muted-foreground/50")} />
-            {running ? "Actif" : "Arrêté"}
+          </div>
+        </div>
+
+        {/* Protection badges */}
+        <div className="flex items-center gap-2">
+          <span className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            TF=4 Filter Strict
+          </span>
+          <span className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-2.5 py-1 text-[11px] font-bold text-blue-400 flex items-center gap-1.5">
+            Data Quality Guard
           </span>
         </div>
       </div>
