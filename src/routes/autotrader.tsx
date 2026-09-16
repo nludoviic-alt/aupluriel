@@ -936,7 +936,21 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     const fetchPositions = async () => {
       try {
         const pos = await getOpenPositions();
-        setLiveDerivPositions(pos);
+        // Most polls land while nothing changed (0 open positions is the
+        // common case for these tight-frequency strategies) — a fresh array
+        // reference every 5s re-renders this whole page for no reason. Skip
+        // the state update (and the re-render) when the set of contracts and
+        // their live P&L are identical to what's already shown; still
+        // update immediately whenever a position opens/closes/moves.
+        setLiveDerivPositions((prev) => {
+          if (
+            prev.length === pos.length &&
+            prev.every((p, i) => p.contractId === pos[i].contractId && p.profit === pos[i].profit)
+          ) {
+            return prev;
+          }
+          return pos;
+        });
       } catch {}
     };
     fetchPositions();
