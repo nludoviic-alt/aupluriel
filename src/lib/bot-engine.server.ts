@@ -110,6 +110,7 @@ import {
   analyzeSymbolCore,
   classifyOpportunity,
   computeAdaptiveStake,
+  computeOpportunityStake,
   computeAtrStopUsd,
   computeStructuralStopUsd,
   computeKellyFraction,

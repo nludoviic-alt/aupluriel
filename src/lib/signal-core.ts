@@ -631,6 +631,18 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
 };
 
 /**
+ * Adaptive Multi-Tier Stake Sizing based on opportunity confidence:
+ * - Standard Confidence (80% - 84%) => $5.00
+ * - High Confidence (85% - 89%) => $10.00
+ * - Maximum Confidence (>= 90%) => $15.00
+ */
+export function computeOpportunityStake(confidence: number): number {
+  if (confidence >= 90) return 15;
+  if (confidence >= 85) return 10;
+  return 5;
+}
+
+/**
  * Per-symbol risk overrides for Multiplier-mode trades — lets an instrument
  * run its OWN measured stop/target/agreement settings instead of inheriting
  * whatever the global AutoTraderConfig fields (tuned for BTC) happen to be.

@@ -27,6 +27,8 @@ import {
   subscribeToPush,
 } from "@/lib/push";
 
+import { computeOpportunityStake } from "@/lib/signal-core";
+
 export const Route = createFileRoute("/opportunities")({
   head: () => ({ meta: [{ title: "Opportunités — Au Pluriel" }] }),
   component: OpportunitiesPage,
@@ -517,6 +519,7 @@ function riskLabel(risk: OpportunityItem["risk"]) {
 function ActionStrip({ item, className }: { item: OpportunityItem; className?: string }) {
   const isTake = item.decision === "take";
   const [executing, setExecuting] = useState(false);
+  const tieredStake = computeOpportunityStake(item.confidence);
 
   async function handleDirectExecute() {
     if (!item.direction) return;
@@ -527,11 +530,11 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
         preset: item.preset,
         symbol: item.symbol,
         direction: item.direction,
-        stake: 25,
+        stake: tieredStake,
         durationMinutes: item.durationMinutes,
       });
       if (res.error) throw new Error(res.error);
-      toast.success(`⚡ Trade $25.00 sur ${item.label} (${item.directionLabel}) exécuté avec succès !`);
+      toast.success(`⚡ Trade $${tieredStake}.00 sur ${item.label} (${item.directionLabel}) exécuté avec succès !`);
       try { playOpenSound(); } catch { /* ignore sound errors */ }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur lors de l'exécution");
@@ -562,7 +565,7 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
             ) : (
               <>
                 <Zap className="h-4 w-4 fill-current text-current" />
-                <span>{isTake ? "Prendre & Exécuter ($25)" : "Exécuter Direct ($25)"}</span>
+                <span>{isTake ? `Prendre & Exécuter ($${tieredStake})` : `Exécuter Direct ($${tieredStake})`}</span>
               </>
             )}
           </button>
