@@ -167,8 +167,8 @@ function OpportunitiesPage() {
     }
   }
 
-  async function load() {
-    setLoading(true);
+  async function load(isSilent = false) {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
       const res = await api.get<OpportunitiesResponse>("/api/opportunities");
@@ -193,9 +193,9 @@ function OpportunitiesPage() {
   }
 
   useEffect(() => {
-    void load();
-    const refreshId = window.setInterval(() => void load(), 30_000);
-    const clockId = window.setInterval(() => setNow(Date.now()), 1_000);
+    void load(false);
+    const refreshId = window.setInterval(() => void load(true), 30_000);
+    const clockId = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => {
       window.clearInterval(refreshId);
       window.clearInterval(clockId);
