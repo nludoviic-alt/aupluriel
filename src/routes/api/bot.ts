@@ -579,11 +579,48 @@ export const Route = createFileRoute("/api/bot")({
             )
             .run(user.id, preset, JSON.stringify(next));
           updateConfigForUser(user.id, preset, next);
-
           return json({ ok: true, preset, config: next });
         }
 
-        return json({ error: "action start|stop|reset|update requise" }, 400);
+        if (body.action === "execute") {
+          const { symbol, direction, stake, durationMinutes } = body as {
+            symbol?: string;
+            direction?: string;
+            stake?: number;
+            durationMinutes?: number;
+          };
+          if (!symbol || !direction) {
+            return json({ error: "symbol et direction requis." }, 400);
+          }
+          const stakeUsd = Number(stake) > 0 ? Number(stake) : 25;
+          const duration = Number(durationMinutes) >= 1 ? Number(durationMinutes) : 5;
+
+          const { forceTradeForUser, startBotForUser } = await import("@/lib/bot-engine.server");
+
+          try {
+            const log = await forceTradeForUser(user.id, preset, {
+              symbol,
+              direction: direction as "CALL" | "PUT" | "MULTUP" | "MULTDOWN",
+              stake: stakeUsd,
+              durationMinutes: duration,
+            });
+            return json({ ok: true, trade: log });
+          } catch (e) {
+            // Engine not running yet — start it and execute
+            const currentConfig = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG, ...presetFieldsFor(preset), stakeUsd };
+            await startBotForUser(user.id, preset, currentConfig);
+            await new Promise((r) => setTimeout(r, 800));
+            const log = await forceTradeForUser(user.id, preset, {
+              symbol,
+              direction: direction as "CALL" | "PUT" | "MULTUP" | "MULTDOWN",
+              stake: stakeUsd,
+              durationMinutes: duration,
+            });
+            return json({ ok: true, trade: log });
+          }
+        }
+
+        return json({ error: "action start|stop|reset|update|execute requise" }, 400);
       },
     },
   },

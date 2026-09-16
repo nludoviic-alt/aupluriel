@@ -516,28 +516,71 @@ function riskLabel(risk: OpportunityItem["risk"]) {
 
 function ActionStrip({ item, className }: { item: OpportunityItem; className?: string }) {
   const isTake = item.decision === "take";
+  const [executing, setExecuting] = useState(false);
+
+  async function handleDirectExecute() {
+    if (!item.direction) return;
+    setExecuting(true);
+    try {
+      const res = await api.post<{ ok?: boolean; error?: string }>("/api/bot", {
+        action: "execute",
+        preset: item.preset,
+        symbol: item.symbol,
+        direction: item.direction,
+        stake: 25,
+        durationMinutes: item.durationMinutes,
+      });
+      if (res.error) throw new Error(res.error);
+      toast.success(`⚡ Trade $25.00 sur ${item.label} (${item.directionLabel}) exécuté avec succès !`);
+      try { playOpenSound(); } catch { /* ignore sound errors */ }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur lors de l'exécution");
+    } finally {
+      setExecuting(false);
+    }
+  }
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2 pt-2", className)}>
       {item.active ? (
-        <Link
-          to="/manual-trader"
-          search={{
-            symbol: item.symbol,
-            direction: item.direction || undefined,
-            preset: item.preset,
-            take: "1",
-          }}
-          className={cn(
-            "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-6 text-xs font-black uppercase tracking-wider transition-all shadow-md",
-            isTake
-              ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-              : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
-          )}
-        >
-          <Zap className="h-4 w-4 fill-current" />
-          {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
-        </Link>
+        <>
+          <button
+            onClick={() => void handleDirectExecute()}
+            disabled={executing || !item.direction}
+            className={cn(
+              "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-5 text-xs font-black uppercase tracking-wider transition-all shadow-md disabled:opacity-60",
+              isTake
+                ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                : "border-primary/50 bg-primary/20 text-primary hover:bg-primary/30"
+            )}
+          >
+            {executing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Exécution...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4 fill-current text-current" />
+                <span>{isTake ? "Prendre & Exécuter ($25)" : "Exécuter Direct ($25)"}</span>
+              </>
+            )}
+          </button>
+
+          <Link
+            to="/manual-trader"
+            search={{
+              symbol: item.symbol,
+              direction: item.direction || undefined,
+              preset: item.preset,
+              take: "1",
+            }}
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-xs font-bold text-foreground transition-all hover:bg-white/[0.08]"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>Ajuster</span>
+          </Link>
+        </>
       ) : (
         <span className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 px-6 text-xs font-black uppercase tracking-wider text-amber-200">
           Preset inactif
@@ -546,10 +589,10 @@ function ActionStrip({ item, className }: { item: OpportunityItem; className?: s
 
       <Link
         to="/signals"
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
+        className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground ml-auto"
       >
         <Eye className="h-3.5 w-3.5 text-primary" />
-        Observer
+        <span>Observer</span>
       </Link>
     </div>
   );
