@@ -105,26 +105,6 @@ async function tick(): Promise<void> {
           url: "/stats",
         });
       }
-
-      // ── 7-day win rate alert (once per week per user) ──
-      const wkKey = weekKey();
-      const alertKey = `${u.id}-${wkKey}`;
-      if (notifiedWinRateAlert.has(alertKey)) return;
-      const week = get7DayStats(u.id);
-      if (week.trades < MIN_TRADES_FOR_ALERT) return;
-      if (week.winRate >= BREAKEVEN_WIN_RATE) return;
-      notifiedWinRateAlert.add(alertKey);
-      if (notifiedWinRateAlert.size > 200) {
-        const [oldest] = notifiedWinRateAlert;
-        notifiedWinRateAlert.delete(oldest);
-      }
-
-      const pct = Math.round(week.winRate * 100);
-      await sendPushToUser(u.id, {
-        title: "Au Pluriel — Alerte win rate",
-        body: `Win rate 7 jours : ${pct}% — en dessous du breakeven (${Math.round(BREAKEVEN_WIN_RATE * 100)}%). Le bot perd de l'argent sur la semaine.`,
-        url: "/stats",
-      });
     }),
   );
 
