@@ -491,15 +491,15 @@ export const Route = createFileRoute("/api/bot")({
               );
             }
           }
+          // Seed with the pre-change configuration so updateConfigForUser can
+          // detect and reject an unapproved stake-tier increase even on a
+          // preset that has never been persisted before.
           getDb()
             .prepare(
               `
             INSERT INTO bot_state (user_id, preset, enabled, config, updated_at)
             VALUES (?, ?, 0, ?, unixepoch())
             ON CONFLICT(user_id, preset) DO NOTHING
-          // Seed with the pre-change configuration so updateConfigForUser can
-          // detect and reject an unapproved stake-tier increase even on a
-          // preset that has never been persisted before.
           `,
             )
             .run(user.id, preset, JSON.stringify(current));
