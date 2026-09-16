@@ -101,11 +101,11 @@ type SharedStatusData = {
 };
 
 // Statements SQLite pré-compilés pour optimiser le temps de réponse de /api/bot (gain x5 à x10 sur la boucle de presets)
-let stmtBotState: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
-let stmtLastBlock: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
-let stmtBlockedSignals: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
-let stmtAutoShadow: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
-let stmtShadowMetrics: ReturnType<ReturnType<typeof getDb>["prepare"]> | null = null;
+let stmtBotState: any = null;
+let stmtLastBlock: any = null;
+let stmtBlockedSignals: any = null;
+let stmtAutoShadow: any = null;
+let stmtShadowMetrics: any = null;
 
 function getPreparedStatements() {
   if (!stmtBotState) {

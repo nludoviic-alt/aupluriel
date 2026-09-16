@@ -28,6 +28,7 @@ import {
 } from "@/lib/push";
 
 import { computeOpportunityStake } from "@/lib/signal-core";
+import { playOpenSound } from "@/lib/sounds";
 
 export const Route = createFileRoute("/opportunities")({
   head: () => ({ meta: [{ title: "Opportunités — Au Pluriel" }] }),

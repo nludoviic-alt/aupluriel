@@ -1593,7 +1593,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     symbol: t.symbol,
                     contractType: t.direction,
                     buyPrice: t.stake,
-                    profit: t.pnl ?? 0,
+                    profit: t.profit ?? 0,
                   }))
               ).map((pos, idx) => {
                 const isUp = pos.contractType?.includes("CALL") || pos.contractType?.includes("UP") || pos.contractType === "BUY";
@@ -2180,8 +2180,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                           }}
                           className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-300 hover:text-rose-200 transition-all px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 active:scale-95 touch-manipulation animate-pulse"
                         >
-                          <Crosshair className="h-3.5 w-3.5" /> CRASH900 Sniper ·{" "}
-                          {Math.round(crash900Opp.confidence)}% · $25
+                          <Crosshair className="h-3.5 w-3.5" /> CRASH1000 Sniper ·{" "}
+                          {Math.round(crash1000Opp.confidence)}% · $25
                         </button>
                       );
                     })()}
