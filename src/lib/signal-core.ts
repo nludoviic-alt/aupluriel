@@ -27,10 +27,12 @@ export function isCallPutAvailable(symbol: string): boolean {
  * may be created for them, even from a stale saved configuration. */
 export const DISABLED_TRADING_SYMBOLS = new Set([
   "BOOM500",
-  "CRASH500",
+  "BOOM600",
+  "BOOM900",
   "BOOM1000",
-  "CRASH900",
+  "CRASH500",
   "frxXAUUSD",
+  "OTC_GDAXI",
 ]);
 
 export function isTradingSymbolDisabled(symbol: string): boolean {

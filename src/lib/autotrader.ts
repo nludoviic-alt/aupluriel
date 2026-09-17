@@ -242,7 +242,7 @@ export const MODERATE_PRESET: PresetConfig = {
   stakeUsd: 5,
   durationMinutes: 10,
   minConfidence: 78,          // Seuil optimisé vs 70% par défaut
-  minTfAgreement: 3,          // 3/4 TF en accord
+  minTfAgreement: 4,          // Les 4 TF doivent s'aligner (audit VPS)
   maxDailyLossUsd: 30,        // ~3% d'un capital de $1000
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
@@ -277,7 +277,7 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   stakeUsd: 10,
   durationMinutes: 5,
   minConfidence: 75,          // Relevé de 70% → réduit les faux signaux
-  minTfAgreement: 3,          // Relevé de 2 → meilleure qualité
+  minTfAgreement: 4,          // Relevé à 4 → audit VPS (TF=4 seul positif)
   maxDailyLossUsd: 80,        // ~4% d'un capital de $2000
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
@@ -397,7 +397,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
   minConfidence: 82,
   maxConfidence: 100,
-  minTfAgreement: 3,
+  minTfAgreement: 4,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
   durationMinutes: 5,
@@ -500,7 +500,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   stakeUsd: 25,
   minConfidence: 84,
   maxConfidence: 100,
-  minTfAgreement: 3,
+  minTfAgreement: 4,
   multiplierLevel: 100,
   atrStopMode: true,
   atrStopMultiple: 1.2,
@@ -527,7 +527,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 80, maxConfidence: 100, minTfAgreement: 2,
+  minConfidence: 80, maxConfidence: 100, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
@@ -565,7 +565,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
 export const VOL50_PRESET: Partial<AutoTraderConfig> = {
   ...VOL75_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
-  minConfidence: 78, maxConfidence: 100, minTfAgreement: 3,
+  minConfidence: 78, maxConfidence: 100, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 80,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
@@ -636,7 +636,7 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   // -$13.51 (88 trades) et TF=4 à -$7.87 (242 trades), alors que TF=3 est le
   // seul segment vraiment rentable : +$155.49 sur 420 trades. Relevé de 2 à 3
   // pour couper le segment TF=2 déficitaire tout en gardant le driver TF=3.
-  minTfAgreement: 3,
+  minTfAgreement: 4,
   multiplierLevel: 100,
 };
 
