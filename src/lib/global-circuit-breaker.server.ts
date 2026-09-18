@@ -66,6 +66,14 @@ class GlobalCircuitBreakerStore {
       this.trigger("Qualité d'exécution Deriv critique");
     } else if (this.dataQualityFailure && !this.active) {
       this.trigger("Qualité des données marché invalide ou périmée");
+    } else if (
+      this.active &&
+      !this.hardDailyDrawdownExceeded &&
+      !this.reconciliationDesync &&
+      !this.executionQualityCritical &&
+      !this.dataQualityFailure
+    ) {
+      this.reset();
     }
   }
 
