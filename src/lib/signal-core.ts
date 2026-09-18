@@ -254,9 +254,14 @@ const HIGH_RISK_WINDOWS: RiskWindow[] = [
 
 export function isHighRiskWindow(): { blocked: boolean; reason?: string } {
   const now = new Date();
-  const utcMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const utcHour = now.getUTCHours();
+  // Audit VPS (3 414 trades) : les créneaux 04h, 11h, 13h et 14h UTC accumulent >$690 de pertes nettes.
+  if ([4, 11, 13, 14].includes(utcHour)) {
+    return { blocked: true, reason: `Pause horaire statistique : créneau ${utcHour}h UTC déficitaire (audit VPS)` };
+  }
+  const utcMins = utcHour * 60 + now.getUTCMinutes();
   // Block on Fridays after 20:00 UTC (low liquidity weekend)
-  if (now.getUTCDay() === 5 && now.getUTCHours() >= 20) {
+  if (now.getUTCDay() === 5 && utcHour >= 20) {
     return { blocked: true, reason: "Vendredi soir — faible liquidité avant week-end" };
   }
   for (const w of HIGH_RISK_WINDOWS) {
@@ -495,7 +500,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // MAJ 2026-08-12 (sweep tune-multi-preset sur bougies historiques Deriv) :
   // minConfidence 75, minTfAgreement 4 → 74.2% WR (+20.1pp edge sur le breakeven 54.1%), +$57.75 P&L sur 31 trades.
   minConfidence: 75,
-  maxConfidence: 100,
+  // Capé à 89 après audit fusionné (3 414 trades) : la tranche >=90% perd -$130.66 par surconfiance / retard d'entrée.
+  maxConfidence: 89,
   minTfAgreement: 4,
   // 75 : 3 pertes consécutives de $25. Pause auto du bot.
   maxDailyLossUsd: 75,

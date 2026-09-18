@@ -396,7 +396,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
   // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
   minConfidence: 82,
-  maxConfidence: 100,
+  maxConfidence: 89,
   minTfAgreement: 4,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
@@ -499,7 +499,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   stakeMode: "fixed",
   stakeUsd: 25,
   minConfidence: 84,
-  maxConfidence: 100,
+  maxConfidence: 89,
   minTfAgreement: 4,
   multiplierLevel: 100,
   atrStopMode: true,
@@ -527,7 +527,7 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 80, maxConfidence: 100, minTfAgreement: 4,
+  minConfidence: 80, maxConfidence: 89, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
@@ -542,7 +542,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
   symbols: ["RB100"],
   mode: "demo",
   minConfidence: 80,
-  maxConfidence: 100,
+  maxConfidence: 89,
   minTfAgreement: 1,
   instrumentType: "multiplier",
   multiplierLevel: 20,
@@ -565,7 +565,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
 export const VOL50_PRESET: Partial<AutoTraderConfig> = {
   ...VOL75_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
-  minConfidence: 78, maxConfidence: 100, minTfAgreement: 4,
+  minConfidence: 78, maxConfidence: 89, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 80,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
@@ -631,7 +631,7 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   takeProfitPctOfStake: 5,
   stopLossPctOfStake: 10,
   minConfidence: 82,
-  maxConfidence: 100,
+  maxConfidence: 89,
   // 2026-09-15 : audit VPS des trades réels (842 clôturés) montre TF=2 à
   // -$13.51 (88 trades) et TF=4 à -$7.87 (242 trades), alors que TF=3 est le
   // seul segment vraiment rentable : +$155.49 sur 420 trades. Relevé de 2 à 3
@@ -650,7 +650,7 @@ export const CRASH500_PRESET: Partial<AutoTraderConfig> = {
   stakeMode: "percent",
   stakePercent: 0.25,
   minConfidence: 82,
-  maxConfidence: 100,
+  maxConfidence: 89,
   minTfAgreement: 4,
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 3,
