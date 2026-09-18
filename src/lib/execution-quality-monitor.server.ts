@@ -120,7 +120,9 @@ export class ExecutionMonitorStore {
     const technicalPropSR = technicalProposalCount ? this.proposalsSuccess / technicalProposalCount * 100 : 100;
     const technicalBuySR = technicalBuyCount ? this.buysSuccess / technicalBuyCount * 100 : 100;
     let health: ExecutionHealth = "HEALTHY";
-    if (technicalPropSR < 70 || technicalBuySR < 70) {
+    // Exiger un échantillon d'au moins 5 tentatives avant de déclencher une alerte CRITICAL
+    // afin d'éviter les faux positifs lors du démarrage à froid (ex: 1 échec sur 1 essai = 0%).
+    if ((technicalProposalCount >= 5 && technicalPropSR < 70) || (technicalBuyCount >= 5 && technicalBuySR < 70)) {
       health = "CRITICAL";
     } else if (technicalPropSR < 85 || technicalBuySR < 85 || avgProposalLat > 1500) {
       health = "POOR";
