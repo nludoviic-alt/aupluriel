@@ -17,9 +17,21 @@ export const EXECUTION_VERSION = "E2";
  * out of sync with the code (like the 2026-08-13 stakePercent/riskPct unit
  * bug) must change this hash, not silently keep the old one.
  */
+// ── Audit 2026-09-19 ─────────────────────────────────────────────────────────
+// Breakout routes (RETEST + DIRECT) temporairement désactivées : 0/3 trades
+// sur 3 jours, confidence 97-100% perdante à chaque fois — signal d'alarme
+// sur la logique breakout, pas sur la chance. Réactivation après investigation.
+// RB100_RANGE_TRADER : riskPct 0.20 → 0.33 (mise ~30 $ sur balance ~9 000 $,
+// justifié par 83% win rate sur 18 trades) ; TP élargi 1.63 → 2.20 ATR pour
+// extraire plus de gains du win rate élevé.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const BREAKOUT_ROUTES_ENABLED = false; // désactiver RETEST + DIRECT
+
 export const RB100_EFFECTIVE_CONFIG = {
   strategyVersion: STRATEGY_VERSION,
   multiplierLevel: 20, // RB100_PRESET.multiplierLevel (autotrader.ts)
+  breakoutRoutesEnabled: BREAKOUT_ROUTES_ENABLED,
   routes: {
     RB100_BREAKOUT_RETEST: {
       minScore: 76,
@@ -39,10 +51,10 @@ export const RB100_EFFECTIVE_CONFIG = {
     },
     RB100_RANGE_TRADER: {
       minScore: 72,
-      riskPct: 0.20,
+      riskPct: 0.33,        // audit 2026-09-19 : 0.20 → 0.33 (~30$ sur ~9k$)
       riskAbsMultiple: 1.25,
-      rewardAbsAtrMultiple: 1.63,
-      rewardAbsWidthMultiple: 0.45,
+      rewardAbsAtrMultiple: 2.20,   // audit 2026-09-19 : 1.63 → 2.20 ATR (TP élargi)
+      rewardAbsWidthMultiple: 0.60, // audit 2026-09-19 : 0.45 → 0.60 (TP fallback élargi)
       adxMaxFilter: 33,
       rangeWidthMinAtrMultiple: 2.0,
       wickMinPct: 0.15,
@@ -618,7 +630,11 @@ export function generateRb100Signal(
     };
 
     // EXECUTION CHECK 1: RETEST (MIN_SCORE = 76)
-    if (isRetestConfirmed && finalScore >= 76 && hardFiltersPassed) {
+    // [AUDIT 2026-09-19] BREAKOUT_ROUTES_ENABLED = false — routes RETEST et DIRECT
+    // désactivées temporairement (0% win rate sur 3 trades, investigation en cours).
+    if (!BREAKOUT_ROUTES_ENABLED && (isRetestConfirmed || finalScore >= 88)) {
+      // Routes breakout désactivées — laisser passer vers le router RANGE
+    } else if (isRetestConfirmed && finalScore >= 76 && hardFiltersPassed) {
       if (currentEvent) clearActiveBreakoutEvent(symbol);
       return {
         signal: {
@@ -640,7 +656,9 @@ export function generateRb100Signal(
     }
 
     // EXECUTION CHECK 2: DIRECT (MIN_SCORE = 88)
-    if (!isRetestConfirmed && finalScore >= 88 && hardFiltersPassed) {
+    if (!BREAKOUT_ROUTES_ENABLED) {
+      // Route DIRECT désactivée — voir BREAKOUT_ROUTES_ENABLED ci-dessus
+    } else if (!isRetestConfirmed && finalScore >= 88 && hardFiltersPassed) {
       return {
         signal: {
           strategy: "RB100_BREAKOUT_DIRECT",
@@ -776,8 +794,8 @@ export function generateRb100Signal(
         rawScore: rawRangeScore,
         finalScore: finalRangeScore,
         riskAbs: a * 1.25,
-        rewardAbs: Math.max(a * 1.63, width * 0.45),
-        riskPct: 0.20,
+        rewardAbs: Math.max(a * 2.20, width * 0.60), // audit 2026-09-19 : 1.63→2.20 ATR, 0.45→0.60 width
+        riskPct: 0.33,                                // audit 2026-09-19 : 0.20 → 0.33
         volatilityPct: (a / current.close) * 100,
         reason: `RB100 range ${direction === "CALL" ? "BUY borne basse" : "SELL borne haute"} · score ${finalRangeScore}/100`,
         snapshot,
