@@ -74,15 +74,28 @@ export function recordComponentOutcomesServer(
 function weightFor(
   sym: { wins: number; losses: number } | undefined,
   glob: { wins: number; losses: number } | undefined,
+  componentName?: string,
 ): number {
   const symTotal = (sym?.wins ?? 0) + (sym?.losses ?? 0);
   const globTotal = (glob?.wins ?? 0) + (glob?.losses ?? 0);
-  if (symTotal + globTotal < 3) return 1; // no data anywhere yet — original fixed behavior
+  let w = 1.0;
+  if (symTotal + globTotal >= 3) {
+    const priorWinRate = globTotal > 0 ? glob!.wins / globTotal : 0.5;
+    const blendedWinRate = ((sym?.wins ?? 0) + priorWinRate * PRIOR_STRENGTH) / (symTotal + PRIOR_STRENGTH);
+    w = 0.5 + blendedWinRate; // 0% winrate -> 0.5x, 50% -> 1.0x (neutral), 100% -> 1.5x
+    w = Math.min(MAX_WEIGHT, Math.max(MIN_WEIGHT, w));
+  }
 
-  const priorWinRate = globTotal > 0 ? glob!.wins / globTotal : 0.5;
-  const blendedWinRate = ((sym?.wins ?? 0) + priorWinRate * PRIOR_STRENGTH) / (symTotal + PRIOR_STRENGTH);
-  const w = 0.5 + blendedWinRate; // 0% winrate -> 0.5x, 50% -> 1.0x (neutral), 100% -> 1.5x
-  return Math.min(MAX_WEIGHT, Math.max(MIN_WEIGHT, w));
+  if (componentName) {
+    const c = componentName.toLowerCase();
+    if (c.includes("supertrend") || c.includes("ema") || c.includes("h1") || c.includes("trend")) {
+      w = Math.max(1.2, w);
+    } else if (c.includes("stoch") || c.includes("m1")) {
+      w = Math.min(1.0, w);
+    }
+  }
+
+  return Math.round(w * 100) / 100;
 }
 
 /** Learned weight multipliers for this symbol, from the shared cross-user stats. */
@@ -101,7 +114,7 @@ export function getLearnedWeightsServer(symbol: string): Partial<Record<SignalCo
   const names = new Set<string>([...symStats.keys(), ...globStats.keys()]);
   const weights: Partial<Record<SignalComponentName, number>> = {};
   for (const name of names) {
-    weights[name as SignalComponentName] = weightFor(symStats.get(name), globStats.get(name));
+    weights[name as SignalComponentName] = weightFor(symStats.get(name), globStats.get(name), name);
   }
   return weights;
 }
@@ -127,6 +140,6 @@ export function getComponentBreakdownServer(
     component: r.component,
     wins: r.wins,
     losses: r.losses,
-    weight: weightFor(r, glob.get(r.component)),
+    weight: weightFor(r, glob.get(r.component), r.component),
   }));
 }

@@ -1229,6 +1229,11 @@ export const EMPTY_ANALYSIS = (blockers: string[], volatilityPct = 0, volatility
  * logic the live engine uses. Shared by the live engines AND the historical
  * multi-timeframe backtest so they can never drift apart.
  */
+export function isCrashSymbol(symbol?: string): boolean {
+  if (!symbol) return false;
+  return symbol.toUpperCase().includes("CRASH");
+}
+
 export function aggregateTfSignals(
   tfSignals: TfSignalMap,
   volatilityPct: number,
@@ -1238,6 +1243,7 @@ export function aggregateTfSignals(
   dailySignal?: GeneratedSignal,
   vetoDaily: Veto4hMode = "off",
   opts?: {
+    symbol?: string;
     confluenceMode?: "vote" | "weighted";
     adxFilterMode?: "off" | "penalize" | "block";
     adxBlockThreshold?: number;
@@ -1341,6 +1347,10 @@ export function aggregateTfSignals(
     // Use weighted confidence as the base, then apply existing TAS bonus + pattern bonus
     // Override the vote-based direction with the weighted one
     const rawDirection = confluence.direction;
+    if (rawDirection === "PUT" && opts?.symbol && !isCrashSymbol(opts.symbol)) {
+      blockers.add(`Vente PUT / MULTDOWN désactivée sur ${opts.symbol} (filtre directionnel asymétrique: PUT réservé aux indices CRASH)`);
+      return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
+    }
     const signalBias = rawDirection === "CALL" ? "BUY" : "SELL";
     const trendAlignmentScore = Object.values(tfDirections).filter((d) => d === signalBias).length;
 
@@ -1396,7 +1406,10 @@ export function aggregateTfSignals(
   const sells = results.filter((r) => r === "SELL").length;
   const rawDirection: "CALL" | "PUT" | null = buys > sells ? "CALL" : sells > buys ? "PUT" : null;
 
-  if (!rawDirection) {
+  if (!rawDirection || (rawDirection === "PUT" && opts?.symbol && !isCrashSymbol(opts.symbol))) {
+    if (rawDirection === "PUT" && opts?.symbol && !isCrashSymbol(opts.symbol)) {
+      blockers.add(`Vente PUT / MULTDOWN désactivée sur ${opts.symbol} (filtre directionnel asymétrique: PUT réservé aux indices CRASH)`);
+    }
     return EMPTY_ANALYSIS([...blockers], volatilityPct, volatilityRatio, dominantTf, suggestedDuration);
   }
 
@@ -1582,6 +1595,7 @@ export async function analyzeSymbolCore(
     tfSignals, volatilityPct, volatilityRatio, opts.veto4h ?? "strong-only",
     minContractMinutes(symbolDeriv), dailySignal, opts.vetoDaily ?? "off",
     {
+      symbol: symbolDeriv,
       confluenceMode: opts.confluenceMode,
       adxFilterMode: opts.adxFilterMode,
       adxBlockThreshold: opts.adxBlockThreshold,

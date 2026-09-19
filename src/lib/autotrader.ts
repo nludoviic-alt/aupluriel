@@ -418,8 +418,8 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // WR 70.9% mais avg_loss $3.00 vs avg_win $1.03 → preset perdant.
   // Inversion TP 15 / SL 10 pour que les pertes soient enfin bornées
   // sous les gains.)
-  maxConsecutiveLosses: 3,
-  cooldownMinutes: 5,
+  maxConsecutiveLosses: 2,
+  cooldownMinutes: 45,
   trailingStopPct: 0.20,
   trailingStopMinPeakUsd: 10,
   // maxDailyLossUsd 75 : 3 pertes consécutives de $25.
@@ -507,11 +507,11 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
   riskRewardRatio: 2,
   partialTakeProfitPct: 50,
   moveSlToBreakeven: true,
-  maxHoldMinutes: 60,
+  durationMinutes: 15,
   maxDailyLossUsd: 75,
   maxTradesPerDay: 12,
-  maxConsecutiveLosses: 3,
-  cooldownMinutes: 10,
+  maxConsecutiveLosses: 2,
+  cooldownMinutes: 45,
   maxSimultaneousTrades: 1,
   maxOpenPositions: 1,
   trailingStopPct: 0,
@@ -531,8 +531,8 @@ export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
-  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
-  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 2,
+  cooldownMinutes: 45, maxSimultaneousTrades: 1, maxOpenPositions: 1,
   newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
@@ -553,8 +553,8 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
   riskRewardRatio: 1.5,
   maxDailyLossUsd: 75,
   maxTradesPerDay: 7,
-  maxConsecutiveLosses: 3,
-  cooldownMinutes: 3,
+  maxConsecutiveLosses: 2,
+  cooldownMinutes: 45,
   maxSimultaneousTrades: 1,
   maxOpenPositions: 1,
   newsFilter: false,
@@ -569,8 +569,8 @@ export const VOL50_PRESET: Partial<AutoTraderConfig> = {
   instrumentType: "multiplier", multiplierLevel: 80,
   stakeMode: "fixed", stakeUsd: 25,
   atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
-  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
-  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 2,
+  cooldownMinutes: 45, maxSimultaneousTrades: 1, maxOpenPositions: 1,
   newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
