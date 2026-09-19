@@ -16,6 +16,9 @@ export function createOrderIntentStore(db: Database.Database) {
     ON execution_order_intents(account_key) WHERE state IN ('reserved','sent','uncertain');`);
   return {
     reserve(accountKey: string) {
+      // Auto-nettoyage des réservations d'ordres périmées (>5 min) sans confirmation broker
+      db.prepare(`UPDATE execution_order_intents SET state='rejected', updated_at=? WHERE state IN ('reserved','sent') AND created_at < ?`)
+        .run(Date.now(), Date.now() - 5 * 60 * 1000);
       const id = randomUUID();
       try {
         db.prepare(`INSERT INTO execution_order_intents(id,account_key,state,created_at,updated_at)
