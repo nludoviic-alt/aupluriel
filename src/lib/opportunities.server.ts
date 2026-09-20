@@ -1,4 +1,4 @@
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "./autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, CRASH_PRESET, SCALPING_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { ACTIVE_PRESETS, getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -113,15 +113,15 @@ const PRESET_LABEL: Record<Preset, string> = {
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
   crash: "Crash1000",
-  crash500: "Crash500 (Désactivé)",
+  crash500: "Crash500",
   scalping: "Scalping",
-  liquidity: "Or (Exclu)",
-  gold: "Or (Exclu)",
-  crash900: "Crash900 (Exclu)",
-  boomv2: "Boom V2 — contrôlé",
-  scalpingv2: "Scalping V2 — Spike Hunter",
-  liquidityv2: "Liquidity V2 (Exclu)",
-  goldv2: "Or (Exclu)",
+  liquidity: "Or",
+  gold: "Or",
+  crash900: "Crash900",
+  boomv2: "Boom V2",
+  scalpingv2: "Scalping V2",
+  liquidityv2: "Liquidity V2",
+  goldv2: "Or V2",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
@@ -132,15 +132,15 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   rb100: RB100_PRESET,
   vol50: VOL50_PRESET,
   crash: CRASH_PRESET,
-  crash500: CRASH500_PRESET,
+  crash500: CRASH_PRESET,    // archivé — fallback sur Crash
   scalping: SCALPING_PRESET,
-  liquidity: LIQUIDITY_PRESET,
-  gold: GOLD_PRESET,
-  crash900: CRASH900_V2_PRESET,
-  boomv2: BOOM_V2_PRESET,
-  scalpingv2: SCALPING_V2_PRESET,
-  liquidityv2: LIQUIDITY_V2_PRESET,
-  goldv2: GOLD_V2_PRESET,
+  liquidity: DEFAULT_CONFIG, // archivé — fallback sur Default
+  gold: DEFAULT_CONFIG,      // archivé — fallback sur Default
+  crash900: CRASH_PRESET,    // archivé — fallback sur Crash
+  boomv2: BOOM_PRESET,       // archivé — fallback sur Boom
+  scalpingv2: SCALPING_PRESET, // archivé — fallback sur Scalping
+  liquidityv2: DEFAULT_CONFIG, // archivé — fallback sur Default
+  goldv2: DEFAULT_CONFIG,    // archivé — fallback sur Default
 };
 
 const SYMBOL_LABELS = new Map(SYMBOLS.map((s) => [s.deriv, s]));

@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { ACTIVE_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, CRASH_PRESET, SCALPING_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "@/lib/autotrader";
 
 function canonicalConfig(preset: Preset) {
   if (preset === "boom") return { ...DEFAULT_CONFIG, ...BOOM_PRESET };
@@ -16,15 +16,7 @@ function canonicalConfig(preset: Preset) {
   if (preset === "rb100") return { ...DEFAULT_CONFIG, ...RB100_PRESET, mode: "demo" as const };
   if (preset === "vol50") return { ...DEFAULT_CONFIG, ...VOL50_PRESET, mode: "demo" as const };
   if (preset === "crash") return { ...DEFAULT_CONFIG, ...CRASH_PRESET };
-  if (preset === "crash500") return { ...DEFAULT_CONFIG, ...CRASH500_PRESET, mode: "demo" as const };
   if (preset === "scalping") return { ...DEFAULT_CONFIG, ...SCALPING_PRESET, mode: "demo" as const };
-  if (preset === "liquidity") return { ...DEFAULT_CONFIG, ...LIQUIDITY_PRESET, mode: "demo" as const };
-  if (preset === "gold") return { ...DEFAULT_CONFIG, ...GOLD_PRESET, mode: "demo" as const };
-  if (preset === "crash900") return { ...DEFAULT_CONFIG, ...CRASH900_V2_PRESET, mode: "demo" as const };
-  if (preset === "boomv2") return { ...DEFAULT_CONFIG, ...BOOM_V2_PRESET, mode: "demo" as const };
-  if (preset === "scalpingv2") return { ...DEFAULT_CONFIG, ...SCALPING_V2_PRESET, mode: "demo" as const };
-  if (preset === "liquidityv2") return { ...DEFAULT_CONFIG, ...LIQUIDITY_V2_PRESET, mode: "demo" as const };
-  if (preset === "goldv2") return { ...DEFAULT_CONFIG, ...GOLD_V2_PRESET, mode: "demo" as const };
   return DEFAULT_CONFIG;
 }
 

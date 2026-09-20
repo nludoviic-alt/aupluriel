@@ -6,7 +6,6 @@
 import { getDb } from "./db.server";
 import { backtestLiquidityReversalServer, backtestMultiTfServer } from "./backtest.server";
 import { DEFAULT_CONFIG } from "./signal-core";
-import { LIQUIDITY_PRESET } from "./autotrader";
 import { mapWithConcurrency } from "./utils";
 import {
   ACTIVE_PRESETS,
@@ -115,7 +114,7 @@ async function recomputeVerdict(): Promise<void> {
 /** Dedicated replay for the experimental XAU/USD + Nasdaq reversal engine. */
 async function recomputeLiquidityVerdict(): Promise<void> {
   try {
-    const symbols = LIQUIDITY_PRESET.symbols ?? [];
+    const symbols = ["frxXAUUSD"]; // liquidity preset symbols (archivé)
     const results = await mapWithConcurrency(symbols, 2, (symbol) =>
       backtestLiquidityReversalServer(symbol, { durationMinutes: 15, testCandles: BACKTEST_CANDLES * 2 }).catch(() => null),
     );
@@ -218,7 +217,7 @@ async function sweepLiquidityUsers(verdict: AutoBacktestVerdict): Promise<void> 
       if (!saved) continue;
       const running = isBotRunning(user_id, "liquidity");
       if (verdict.favorable && !running) {
-        await startBotForUser(user_id, "liquidity", { ...LIQUIDITY_PRESET, ...saved, mode: "demo" } as Parameters<typeof startBotForUser>[2]);
+        await startBotForUser(user_id, "liquidity", { ...DEFAULT_CONFIG, ...saved, symbols: ["frxXAUUSD"], excludedSymbols: [], mode: "demo" } as Parameters<typeof startBotForUser>[2]);
         console.log(`[auto-backtest] liquidity démo démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {
         if (hasOpenPositions(user_id, "liquidity")) continue;

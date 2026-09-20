@@ -57,11 +57,7 @@ import {
   BOOM_PRESET,
   BOOM900_PRESET,
   CRASH_PRESET,
-  CRASH500_PRESET,
   SCALPING_PRESET,
-  SCALPING_V2_PRESET,
-  BOOM_V2_PRESET,
-  CRASH900_V2_PRESET,
   VOL75_PRESET,
   RB100_PRESET,
   VOL50_PRESET,
@@ -1288,19 +1284,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               ? RB100_PRESET
               : target === "vol50"
                 ? VOL50_PRESET
-                : target === "boomv2"
-                  ? BOOM_V2_PRESET
-                  : target === "crash"
-                    ? CRASH_PRESET
-                    : target === "crash500"
-                      ? CRASH500_PRESET
-                      : target === "scalping"
-                        ? SCALPING_PRESET
-                        : target === "scalpingv2"
-                          ? SCALPING_V2_PRESET
-                          : target === "crash900"
-                            ? CRASH900_V2_PRESET
-                            : DEFAULT_CONFIG;
+                : target === "crash"
+                  ? CRASH_PRESET
+                  : target === "scalping"
+                    ? SCALPING_PRESET
+                    : DEFAULT_CONFIG;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);

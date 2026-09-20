@@ -202,25 +202,21 @@ export const CONSERVATIVE_PRESET: PresetConfig = {
   expectedTradesPerDay: "2-4",
   mode: "demo",
   stakeMode: "percent",
-  stakePercent: 1,            // 1% du capital par trade
+  stakePercent: 1,
   stakeUsd: 2,
   durationMinutes: 15,
-  minConfidence: 82,          // Seuil élevé — qualité avant quantité
-  minTfAgreement: 4,          // Les 4 TF doivent s'aligner
-  maxDailyLossUsd: 15,        // ~3-5% d'un capital de $300-500
+  minConfidence: 82,
+  minTfAgreement: 4,
+  maxDailyLossUsd: 15,
   maxTradesPerDay: 4,
   maxConsecutiveLosses: 2,
   maxVolatilityPct: 2,
-  // Paires du panier Multi validé (pas dans DEFAULT_CONFIG.excludedSymbols —
-  // un symbole présent dans les deux listes disparaît silencieusement du scan).
-  // Pas d'indices synthétiques (R_*) : séries RNG, aucun edge réel possible,
-  // winrate long terme ~50% = perte structurelle face au payout.
   symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: true,
   stopOnRisk: true,
-  trailingStopUsd: 8,         // Protège les gains dès +$8 de pic
+  trailingStopUsd: 8,
   blockCorrelated: true,
   sessionEdgeMinutes: 15,
 };
@@ -238,24 +234,21 @@ export const MODERATE_PRESET: PresetConfig = {
   expectedTradesPerDay: "4-8",
   mode: "demo",
   stakeMode: "percent",
-  stakePercent: 1.5,          // 1.5% du capital par trade
+  stakePercent: 1.5,
   stakeUsd: 5,
   durationMinutes: 10,
-  minConfidence: 78,          // Seuil optimisé vs 70% par défaut
-  minTfAgreement: 4,          // Les 4 TF doivent s'aligner (audit VPS)
-  maxDailyLossUsd: 30,        // ~3% d'un capital de $1000
+  minConfidence: 78,
+  minTfAgreement: 4,
+  maxDailyLossUsd: 30,
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  // frxEURUSD, cryBTCUSD, frxGBPUSD sont dans DEFAULT_CONFIG.excludedSymbols —
-  // utiliser frxEURGBP et frxUSDCAD (panier Multi validé) évite le piège du
-  // symbole présent dans symbols ET excludedSymbols (silencieusement droppé).
   symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
   stopOnRisk: true,
-  trailingStopUsd: 15,        // Trailing stop à $15 de drawdown depuis pic
+  trailingStopUsd: 15,
   blockCorrelated: true,
   sessionEdgeMinutes: 0,
 };
@@ -273,24 +266,21 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   expectedTradesPerDay: "8-15",
   mode: "demo",
   stakeMode: "percent",
-  stakePercent: 2,            // 2% du capital par trade
+  stakePercent: 2,
   stakeUsd: 10,
   durationMinutes: 5,
-  minConfidence: 75,          // Relevé de 70% → réduit les faux signaux
-  minTfAgreement: 4,          // Relevé à 4 → audit VPS (TF=4 seul positif)
-  maxDailyLossUsd: 80,        // ~4% d'un capital de $2000
+  minConfidence: 75,
+  minTfAgreement: 4,
+  maxDailyLossUsd: 80,
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  // frxEURUSD, frxUSDJPY, frxXAUUSD, cryBTCUSD, cryETHUSD, frxGBPUSD sont tous
-  // dans DEFAULT_CONFIG.excludedSymbols. On garde OTC indices + frxEURGBP/
-  // frxUSDCAD du panier Multi.
   symbols: ["frxEURGBP", "frxUSDCAD", "OTC_NDX"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
   stopOnRisk: true,
-  trailingStopUsd: 30,        // Trailing stop à $30 — laisse respirer les positions
+  trailingStopUsd: 30,
   blockCorrelated: true,
   sessionEdgeMinutes: 0,
 };
@@ -582,43 +572,8 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
 }
 
 /**
- * CRASH preset — premier passage mesuré sur données réelles (skill
- * tune-boom-preset, sweep.ts --symbols=CRASH1000,CRASH500,CRASH600,CRASH900),
- * pas un simple clone de BOOM_PRESET.
- *
- * Fait confirmé au passage : les 4 symboles CRASH1000/500/600/900 renvoient
- * bien des bougies historiques réelles chez Deriv (candidat plausible avant
- * de le tester — BOOM_SYMBOLS avait eu la mauvaise surprise que plusieurs
- * variantes marketées n'existaient pas comme Multiplier malgré leur
- * présence sur le site).
- *
- * Sweep du 2026-08-01, 500 bougies (~125h), levier 100x (le palier confirmé
- * réel — même que Boom) :
- *   TP5% / SL30% / confiance 60 / TF 2/4 → 1112 trades, 88.4% WR, edge +2.7pp
- *   au-dessus du seuil de rentabilité (85.7%), +$100.65 total, seulement
- *   72/1112 trades expirés sans toucher ni stop ni objectif (6.5%).
- * Même ratio TP:SL que Boom (5:30) — cohérent avec Crash étant le miroir
- * structurel de Boom, mais confiance 60 (pas 55) mesurée séparément.
- *
- * Piste NON retenue ici : le sweep improve encore à 150x/200x (edge jusqu'à
- * +5.8pp) — mais rien ne confirme que ces paliers de levier sont réellement
- * sélectionnables chez Deriv pour Crash (Boom lui-même n'offre que certains
- * paliers précis). Ne pas les activer sans vérification live.
- *
- * Par symbole (combo gagnant) : CRASH600 domine largement (94.8% WR, edge
- * +9.1pp, $53 sur 310 trades) — CRASH1000/900 proches du seuil de
- * rentabilité (edge -0.8pp / -1.1pp), à surveiller une fois de vraies
- * données live disponibles, même logique qui a fait exclure BOOM600.
- *
- * Limite assumée : une seule fenêtre de 125h, pas un vrai walk-forward
- * optimiser/vérifier comme celui qui a validé BOOM_PRESET (deux fenêtres
- * distinctes, la seconde jamais vue par l'optimisation). Traiter comme un
- * signal réel fort, pas encore comme un résultat aussi solide que Boom.
- *
- * MAJ 2026-08-06 : le doute ci-dessus sur CRASH1000 est tranché — 247 vrais
- * trades sur 14 jours donnent -$9.97 (R:R ~0.50), et ça s'aggrave sur le
- * régime récent (-$35.66/28 trades depuis le 05/08 18h). Exclu de
- * CRASH_SYMBOLS ci-dessus ; seul CRASH900 reste.
+ * CRASH preset — premier passage mesuré sur données réelles.
+ * Seul CRASH900 retenu après audit production.
  */
 export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
@@ -632,34 +587,9 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   stopLossPctOfStake: 10,
   minConfidence: 82,
   maxConfidence: 89,
-  // 2026-09-15 : audit VPS des trades réels (842 clôturés) montre TF=2 à
-  // -$13.51 (88 trades) et TF=4 à -$7.87 (242 trades), alors que TF=3 est le
-  // seul segment vraiment rentable : +$155.49 sur 420 trades. Relevé de 2 à 3
-  // pour couper le segment TF=2 déficitaire tout en gardant le driver TF=3.
   minTfAgreement: 4,
   multiplierLevel: 100,
 };
-
-/** Crash500 is deliberately isolated from Crash900.  It is demo-only while
- * its two specialised engines accumulate enough independent journal data. */
-export const CRASH500_PRESET: Partial<AutoTraderConfig> = {
-  ...CRASH_PRESET,
-  symbolMode: "watchlist",
-  symbols: ["CRASH500"],
-  mode: "demo",
-  stakeMode: "percent",
-  stakePercent: 0.25,
-  minConfidence: 82,
-  maxConfidence: 89,
-  minTfAgreement: 4,
-  maxTradesPerDay: 15,
-  maxConsecutiveLosses: 3,
-  cooldownMinutes: 5,
-  maxSimultaneousTrades: 1,
-  atrStopMode: true,
-  multiplierLevel: 100,
-};
-
 
 export function isCrashPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
@@ -681,267 +611,13 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   trailingStopMinPeakUsd: 30,
   maxSimultaneousTrades: 2,
   maxOpenPositions: 3,
-  // mode is forced back to "demo" server-side on every start (see
-  // api/bot.ts) regardless of what's requested — this preset never trades
-  // real money, by design, until the comparison in step 10 of the plan says
-  // otherwise and a human explicitly decides to graduate it.
   mode: "demo",
 };
-
-/**
- * Demo-only experiment: an M15 sweep of a recent liquidity extreme, followed
- * by a close back into the range and RSI turn. It is intentionally a
- * separate preset so it cannot alter Multi's validated market list or risk
- * behaviour.
- *
- * Retargeted to XAU/USD only on 2026-08-07 (strategy-tournament Phase 2):
- * this header comment used to promise "XAU/USD and US Tech 100" while
- * `symbols` actually only ran OTC_NDX — a pre-existing drift bug, found
- * while preparing the tournament, not caused by it. The tournament backtest
- * (`.claude/skills/strategy-tournament`) showed this engine's best signal on
- * gold at +12.6pp edge over breakeven, but on only 6 trades — too small to
- * trust yet, which is exactly why this preset exists: to accumulate a real,
- * committed-in-advance sample (50 trades, extend once to 100 if PF lands in
- * the 1.0-1.2 ambiguous band) before deciding to keep or drop it.
- */
-export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
-  ...DEFAULT_CONFIG,
-  symbolMode: "watchlist",
-  symbols: ["frxXAUUSD"],
-  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
-  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
-  // dans symbols ET excludedSymbols, et le bot saute les signaux.
-  excludedSymbols: [],
-  instrumentType: "multiplier",
-  broker: "oanda",
-  enableOanda: true,
-  stakeUsd: 1,
-  stakeMode: "percent",
-  stakePercent: 0.25,
-  durationMinutes: 0,
-  minConfidence: 85,
-  maxConfidence: 100,
-  minTfAgreement: 4,
-  maxDailyLossUsd: 3,
-  maxTradesPerDay: 3,
-  maxConsecutiveLosses: 3,
-  maxSimultaneousTrades: 1,
-  maxOpenPositions: 1,
-  tradingSessions: ["london", "newyork"],
-  atrStopMode: true,
-  atrStopMultiple: 1.2,
-  riskRewardRatio: 2,
-  partialTakeProfitPct: 50,
-  moveSlToBreakeven: true,
-  maxHoldMinutes: 240,
-  // XAU/USD is sensitive to macro releases. This remains explicitly enabled
-  // even though it is also the global default: every Gold strategy must use
-  // the shared news block.
-  newsFilter: true,
-  mode: "demo",
-};
-
-/**
- * Gold preset — trend-following M15 strategy exclusively for XAU/USD.
- *
- * This is a DIFFERENT TRADING MECHANISM from the Multi engine, for the same
- * reason Scalping and Liquidity are isolated: the Multi engine's
- * mean-reversion filter (RSI > 70 blocks buying, RSI < 30 blocks selling)
- * systematically kills the best gold entries — gold can stay overbought or
- * oversold for extended periods during strong trends. The 6 real production
- * trades on frxXAUUSD with the Multi engine gave 16.7% win rate (−$37.46),
- * which is why the symbol was excluded from DEFAULT_CONFIG.
- *
- * The dedicated engine (gold-trend-signal.server.ts) is pure trend-following:
- * RSI > 70 is treated as STRENGTH (momentum confirmation), not as a sell
- * signal. See that file's header for the full gate list.
- *
- * Risk profile (demo-only, same caution as Liquidity):
- * - 1 symbol (frxXAUUSD), binary CALL/PUT
- * - London + New York sessions only (gold is erratic in the Asian session)
- * - 30-min expiry (gold needs more time than 15 min for a move to develop)
- * - $1 stake, $3 daily loss cap, 3 trades/day max — tiny until proven
- * - minConfidence 75 (the engine's base score; 5 gates must all agree)
- * - mode forced to "demo" server-side (same guard as Scalping/Liquidity)
- */
-export const GOLD_SYMBOLS = ["frxXAUUSD"];
-
-export const GOLD_PRESET: Partial<AutoTraderConfig> = {
-  ...DEFAULT_CONFIG,
-  symbolMode: "watchlist",
-  symbols: GOLD_SYMBOLS,
-  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
-  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
-  // dans symbols ET excludedSymbols, et le bot saute les signaux.
-  excludedSymbols: [],
-  // Position, not binary: the strategy has an ATR stop and R-multiple targets.
-  instrumentType: "multiplier",
-  broker: "oanda",
-  enableOanda: true,
-  stakeUsd: 1,
-  stakeMode: "percent",
-  // The engine derives the stake from 0.25% of balance and the ATR stop;
-  // this is retained as the explicit risk declaration, not as a stake %.
-  stakePercent: 0.25,
-  durationMinutes: 0,
-  minConfidence: 85,
-  maxConfidence: 100,
-  minTfAgreement: 4,
-  multiplierLevel: 20,
-  atrStopMode: true,
-  atrStopMultiple: 1.2,
-  riskRewardRatio: 2,
-  // TP1 is recognized at 1R (50% of the 2R target). Deriv's multiplier
-  // contract has no partial-close primitive; the tracking layer records it.
-  partialTakeProfitPct: 50,
-  moveSlToBreakeven: true,
-  maxHoldMinutes: 240,
-  maxDailyLossUsd: 3,
-  maxTradesPerDay: 3,
-  maxConsecutiveLosses: 3,
-  maxSimultaneousTrades: 1,
-  maxOpenPositions: 1,
-  tradingSessions: ["london", "newyork"],
-  // Gold's natural ATR% is 1.5-4% — the engine itself gates on this range,
-  // but keep the scan-level filter permissive so the engine can make the
-  // call (the engine's ATR% gate is more precise than the global one).
-  maxVolatilityPct: 6,
-  newsFilter: true,
-  mode: "demo",
-};
-
-/**
- * Experimental presets are deliberately separate records from their V1
- * counterparts.  A V2 result must never be added to the historical journal
- * of the original strategy: it tests a different market hypothesis.
- */
-export const BOOM_V2_PRESET: Partial<AutoTraderConfig> = {
-  ...BOOM_PRESET,
-  stakeUsd: 1,
-  maxDailyLossUsd: 5,
-  maxTradesPerDay: 5,
-  maxConsecutiveLosses: 2,
-  maxOpenPositions: 1,
-  maxSimultaneousTrades: 1,
-  mode: "demo",
-};
-
-/** M1/M5 Spike Hunter, distinct from Scalping V1's structural pullback. */
-export const SCALPING_V2_PRESET: Partial<AutoTraderConfig> = {
-  ...SCALPING_PRESET,
-  symbolMode: "watchlist",
-  symbols: ["BOOM500"],
-  minConfidence: 80,
-  maxConfidence: 95,
-  stakeUsd: 1,
-  maxDailyLossUsd: 5,
-  maxTradesPerDay: 5,
-  maxConsecutiveLosses: 2,
-  maxOpenPositions: 1,
-  maxSimultaneousTrades: 1,
-  mode: "demo",
-};
-
-/** XAU/USD liquidity-sweep/reintegration experiment, isolated from V1. */
-export const LIQUIDITY_V2_PRESET: Partial<AutoTraderConfig> = {
-  ...LIQUIDITY_PRESET,
-  symbols: ["frxXAUUSD"],
-  durationMinutes: 60,
-  stakeUsd: 1,
-  maxDailyLossUsd: 3,
-  maxTradesPerDay: 3,
-  maxConsecutiveLosses: 2,
-  maxOpenPositions: 1,
-  maxSimultaneousTrades: 1,
-  mode: "demo",
-};
-
-/** XAU/USD London/New York session breakout followed by a pullback. */
-export const GOLD_V2_PRESET: Partial<AutoTraderConfig> = {
-  ...GOLD_PRESET,
-  symbols: GOLD_SYMBOLS,
-  durationMinutes: 0,
-  minConfidence: 85,
-  maxConfidence: 100,
-  stakeUsd: 1,
-  maxDailyLossUsd: 3,
-  maxTradesPerDay: 3,
-  maxConsecutiveLosses: 3,
-  maxOpenPositions: 1,
-  maxSimultaneousTrades: 1,
-  mode: "demo",
-};
-
-export function isGoldPresetActive(config: AutoTraderConfig): boolean {
-  return config.symbolMode === "watchlist"
-    && config.symbols.length === GOLD_SYMBOLS.length
-    && GOLD_SYMBOLS.every((s) => config.symbols.includes(s));
-}
 
 export function isScalpingPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === SCALPING_SYMBOLS.length
     && SCALPING_SYMBOLS.every((s) => config.symbols.includes(s));
-}
-
-/**
- * Crash900 V2 preset — data-driven optimization of the Crash preset, focused
- * exclusively on CRASH900 with parameters derived from 316 production trades
- * (90 days, audit 2026-08-09).
- *
- * Key findings that shaped this preset:
- * - MULTDOWN dominates: 284 trades, 54.6% WR, PF 1.60 vs MULTUP PF 0.44.
- *   CRASH900 is a crash index — selling is the natural direction.
- * - London AM (08-12 UTC) is catastrophic: PF 0.46. All other sessions are
- *   profitable (Asia PF 1.91, NY PM PF 1.82, London PM/NY AM PF 1.60).
- * - Confidence <80% has the BEST profit factor (3.01) — the score is not
- *   calibrated for CRASH900. Lowering minConfidence to 75 captures the best
- *   bucket while avoiding the 85-89% dead zone (PF 0.83).
- * - TAS 3/4 beats TAS 4/4: 62.0% WR vs 46.8%. Less alignment = more wins.
- *
- * This preset uses the SAME confluence signal engine as the Crash preset
- * (no dedicated signal file) — the optimization is purely in the config:
- * different symbols, sessions, confidence threshold, and risk parameters.
- *
- * Risk profile (demo-only until validated):
- * - CRASH900 only, multiplier instrument
- * - $50 stake, $150 daily loss cap
- * - 5 max consecutive losses (the 90-day data showed a 9-loss streak)
- * - Asia + London PM + NY sessions (London AM 08-12 UTC excluded via
- *   tradingSessions — see bot-engine's session filter)
- */
-export const CRASH900_V2_SYMBOLS = ["CRASH900"];
-
-export const CRASH900_V2_PRESET: Partial<AutoTraderConfig> = {
-  ...CRASH_PRESET,
-  symbolMode: "watchlist",
-  symbols: CRASH900_V2_SYMBOLS,
-  excludedSymbols: ["CRASH500", "CRASH600", "CRASH1000"],
-  // Lower confidence threshold: <80% bucket has PF 3.01 on CRASH900.
-  // The 85-89% bucket is a dead zone (PF 0.83) — lowering to 75 captures
-  // the best signals while avoiding that zone.
-  minConfidence: 75,
-  maxConfidence: 100,
-  // TAS 3/4 has 62% WR vs 46.8% for 4/4 — keep minTfAgreement at 3.
-  minTfAgreement: 3,
-  stakeUsd: 50,
-  maxDailyLossUsd: 150,
-  maxTradesPerDay: 10,
-  maxConsecutiveLosses: 5,
-  cooldownMinutes: 30,
-  // Asia (00-07) + London PM/NY AM (13-17) + NY PM (18-23).
-  // London AM (08-12 UTC) excluded — PF 0.46 on that session.
-  tradingSessions: ["asia", "london", "newyork"],
-  maxSimultaneousTrades: 2,
-  maxOpenPositions: 2,
-  // TP/SL inherited from CRASH_PRESET (10/10) — balanced R:R for CRASH900.
-  mode: "demo",
-};
-
-export function isCrash900PresetActive(config: AutoTraderConfig): boolean {
-  return config.symbolMode === "watchlist"
-    && config.symbols.length === CRASH900_V2_SYMBOLS.length
-    && CRASH900_V2_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
 /** Custom user preset with performance tracking */

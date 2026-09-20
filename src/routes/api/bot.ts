@@ -45,16 +45,8 @@ import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
 import {
   BOOM_PRESET,
   BOOM900_PRESET,
-  BOOM_V2_PRESET,
   CRASH_PRESET,
-  CRASH500_PRESET,
-  CRASH900_V2_PRESET,
-  GOLD_PRESET,
-  GOLD_V2_PRESET,
-  LIQUIDITY_PRESET,
-  LIQUIDITY_V2_PRESET,
   SCALPING_PRESET,
-  SCALPING_V2_PRESET,
   VOL75_PRESET,
   RB100_PRESET,
   VOL50_PRESET,
@@ -81,15 +73,7 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "rb100") return RB100_PRESET;
   if (preset === "vol50") return VOL50_PRESET;
   if (preset === "crash") return CRASH_PRESET;
-  if (preset === "crash500") return CRASH500_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
-  if (preset === "liquidity") return LIQUIDITY_PRESET;
-  if (preset === "gold") return GOLD_PRESET;
-  if (preset === "crash900") return CRASH900_V2_PRESET;
-  if (preset === "boomv2") return BOOM_V2_PRESET;
-  if (preset === "scalpingv2") return SCALPING_V2_PRESET;
-  if (preset === "liquidityv2") return LIQUIDITY_V2_PRESET;
-  if (preset === "goldv2") return GOLD_V2_PRESET;
   return DEFAULT_CONFIG;
 }
 
