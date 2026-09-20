@@ -112,10 +112,8 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — OANDA-only presets,
-// synthetics-only going forward. See archive/oanda-gold-2026-08-14/README.md
-// to reinstate: their canonical config objects are still exported from
-// src/lib/autotrader.ts, just no longer wired into this picker.
+// presets actifs : default, boom, crash, scalping, vol75, rb100
+// liquidity/gold/crash500/crash900/boomv2/scalpingv2 archivés — supprimés de l'UI 2026-09-19
 type PresetKey =
   | "default"
   | "boom"
@@ -124,77 +122,31 @@ type PresetKey =
   | "rb100"
   | "vol50"
   | "crash"
-  | "crash500"
-  | "scalping"
-  | "gold"
-  | "liquidity"
-  | "crash900"
-  | "boomv2"
-  | "scalpingv2"
-  | "goldv2"
-  | "liquidityv2";
+  | "scalping";
 
 const presetLabels: Record<PresetKey, string> = {
-  default: "Multi",
-  boom: "Boom900",
-  boom900: "Boom900",
-  vol75: "Volatility 75 (1s)",
-  rb100: "Range Break 100",
-  vol50: "Volatility 50 (1s)",
-  crash: "Crash1000",
-  crash500: "Crash500 (Désactivé)",
+  default:  "Multi",
+  boom:     "Boom900",
+  boom900:  "Boom900",
+  vol75:    "Volatility 75 (1s)",
+  rb100:    "Range Break 100",
+  vol50:    "Volatility 50 (1s)",
+  crash:    "Crash1000",
   scalping: "Scalping",
-  gold: "Or (Exclu)",
-  liquidity: "Gold Liquidity (Exclu)",
-  crash900: "Crash900 (Exclu)",
-  boomv2: "Boom V2",
-  scalpingv2: "Scalping V2",
-  goldv2: "Gold (Exclu)",
-  liquidityv2: "Liquidity V2 (Exclu)",
 };
 
-// These are presentation labels only. The actual instruments and execution
-// rules remain in the server-side config for each independent preset.
 const PRESET_PRESENTATION: Record<
   PresetKey,
   { market: string; description: string; experimental?: boolean }
 > = {
-  default: { market: "EUR/GBP · USD/CAD · Nasdaq", description: "Symboles vérifiés (TF=4)" },
-  boom: { market: "BOOM900 uniquement", description: "Boom900 (PF 1.31) · BOOM500/1000 Exclus" },
-  boom900: {
-    market: "BOOM900 uniquement",
-    description: "Validation isolée (PF 1.31)",
-    experimental: true,
-  },
-  vol75: {
-    market: "VOLATILITY 75 (1s) uniquement",
-    description: "Démo · Trend Pullback + Breakout",
-    experimental: true,
-  },
-  rb100: {
-    market: "RANGE BREAK 100 uniquement",
-    description: "Démo · Range + Breakout Retest",
-    experimental: true,
-  },
-  vol50: {
-    market: "VOLATILITY 50 (1s) uniquement",
-    description: "Démo · Trend Pullback & Retest",
-    experimental: true,
-  },
-  crash: { market: "CRASH1000 uniquement", description: "Crash1000 (PF 1.02) · CRASH900 Exclu", experimental: true },
-  crash500: {
-    market: "Désactivé",
-    description: "Désactivé suite à audit (-59.27$)",
-    experimental: true,
-  },
-  scalping: { market: "BOOM900", description: "M1/M5 · stratégie distincte", experimental: true },
-  gold: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
-  liquidity: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
-  crash900: { market: "CRASH900 (Exclu)", description: "Exclu suite à audit (-43.63$)", experimental: true },
-  boomv2: { market: "BOOM900", description: "Démo · exposition contrôlée", experimental: true },
-  scalpingv2: { market: "BOOM900", description: "M1/M5 · Spike Hunter", experimental: true },
-  goldv2: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
-  liquidityv2: { market: "frxXAUUSD (Exclu)", description: "Désactivé suite à audit (-37.46$)" },
+  default:  { market: "EUR/GBP · USD/CAD · Nasdaq",    description: "Symboles vérifiés (TF=4)" },
+  boom:     { market: "BOOM900 uniquement",             description: "Boom900 (PF 1.31) · BOOM500/1000 Exclus" },
+  boom900:  { market: "BOOM900 uniquement",             description: "Validation isolée (PF 1.31)", experimental: true },
+  vol75:    { market: "VOLATILITY 75 (1s) uniquement",  description: "Démo · Trend Pullback + Breakout", experimental: true },
+  rb100:    { market: "RANGE BREAK 100 uniquement",     description: "Démo · Range Trader actif", experimental: true },
+  vol50:    { market: "VOLATILITY 50 (1s) uniquement",  description: "Démo · Trend Pullback & Retest", experimental: true },
+  crash:    { market: "CRASH1000 uniquement",           description: "Crash1000 · CRASH900 Exclu", experimental: true },
+  scalping: { market: "BOOM900",                        description: "M1/M5 · stratégie distincte", experimental: true },
 };
 
 const PRESET_META_MAP: Record<
@@ -243,13 +195,6 @@ const PRESET_META_MAP: Record<
     borderColor: "border-purple-500/30",
     bgTone: "bg-purple-500/10",
   },
-  crash500: {
-    label: "Crash500 (Exclu)",
-    badge: "❌ Crash500 Désactivé",
-    color: "text-violet-300",
-    borderColor: "border-violet-500/30",
-    bgTone: "bg-violet-500/10",
-  },
   default: {
     label: "Preset Multi",
     badge: "📊 Multi",
@@ -263,55 +208,6 @@ const PRESET_META_MAP: Record<
     color: "text-cyan-400",
     borderColor: "border-cyan-500/30",
     bgTone: "bg-cyan-500/10",
-  },
-  gold: {
-    label: "Or (Exclu)",
-    badge: "❌ Or Exclu",
-    color: "text-amber-300",
-    borderColor: "border-amber-500/30",
-    bgTone: "bg-amber-500/10",
-  },
-  liquidity: {
-    label: "Gold Liquidity (Exclu)",
-    badge: "❌ Or Exclu",
-    color: "text-fuchsia-300",
-    borderColor: "border-fuchsia-500/30",
-    bgTone: "bg-fuchsia-500/10",
-  },
-  crash900: {
-    label: "Crash900 (Exclu)",
-    badge: "❌ Crash900 Exclu",
-    color: "text-orange-400",
-    borderColor: "border-orange-500/30",
-    bgTone: "bg-orange-500/10",
-  },
-  boomv2: {
-    label: "Boom V2",
-    badge: "⚡ Boom V2",
-    color: "text-sky-300",
-    borderColor: "border-sky-500/30",
-    bgTone: "bg-sky-500/10",
-  },
-  scalpingv2: {
-    label: "Scalping V2",
-    badge: "🎯 Scalping V2",
-    color: "text-cyan-300",
-    borderColor: "border-cyan-500/30",
-    bgTone: "bg-cyan-500/10",
-  },
-  goldv2: {
-    label: "Or (Exclu)",
-    badge: "❌ Or Exclu",
-    color: "text-amber-300",
-    borderColor: "border-amber-500/30",
-    bgTone: "bg-amber-500/10",
-  },
-  liquidityv2: {
-    label: "Liquidity V2 (Exclu)",
-    badge: "💧 Liquidity V2 Exclu",
-    color: "text-fuchsia-300",
-    borderColor: "border-fuchsia-500/30",
-    bgTone: "bg-fuchsia-500/10",
   },
 };
 
@@ -329,6 +225,7 @@ const PRESET_ORDER = [
   "default",
   "boom",
   "crash",
+  "rb100",
   "scalping",
   "vol75",
 ] as const;
@@ -658,22 +555,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({
-    gold: false,
-    goldv2: false,
-    liquidity: false,
-    liquidityv2: false,
-    default: false,
-    boom: false,
-    boom900: false,
-    vol75: false,
-    rb100: false,
-    vol50: false,
-    crash: false,
-    crash500: false,
+    default:  false,
+    boom:     false,
+    boom900:  false,
+    vol75:    false,
+    rb100:    false,
+    vol50:    false,
+    crash:    false,
     scalping: false,
-    crash900: false,
-    boomv2: false,
-    scalpingv2: false,
   });
 
   // The visible-preset list is an account-level display choice. Stopped
@@ -1299,9 +1188,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           target === "vol75" ||
           target === "rb100" ||
           target === "vol50" ||
-          target === "crash500" ||
-          target === "scalping" ||
-          target.endsWith("v2")
+          target === "scalping"
         ? { ...DEFAULT_CONFIG, ...presetFields }
         : {
             ...DEFAULT_CONFIG,

@@ -4,8 +4,7 @@ import { SYMBOLS, normalizeContractDirection, type OpenPosition } from "@/lib/de
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
 
-// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — see
-// archive/oanda-gold-2026-08-14/README.md.
+// liquidity/gold/crash500/crash900/boomv2/scalpingv2 archivés 2026-09-19
 import type { Preset as PresetKey } from "@/lib/bot-engine.server";
 
 export function TradeJournalSection({
@@ -24,7 +23,7 @@ export function TradeJournalSection({
   liveDerivPositions?: OpenPosition[];
   cloudActive: boolean;
   selectedPreset: PresetKey;
-  presetLabels: Record<PresetKey, string>;
+  presetLabels: Partial<Record<PresetKey, string>>;
   logFilter: "all" | "won" | "lost" | "open" | "error";
   setLogFilter: (f: "all" | "won" | "lost" | "open" | "error") => void;
   confirm: (opts: any) => Promise<boolean>;
