@@ -55,7 +55,6 @@ import {
   reconcileOpenTrades,
   PRESETS,
   VOL75_PRESET,
-  RB100_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -107,14 +106,13 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-// preset actif : vol75 (rb100 conservé, non démarrable côté serveur).
+// preset actif : vol75. rb100 archivé le 2026-09-20 (VPS : 92 trades Range Trader, −0,87 $, 72 % de sorties timeout).
 // default/boom/crash/scalping archivés le 2026-09-20 ; liquidity/gold/crash500/crash900/
 // boomv2/scalpingv2 archivés le 2026-09-19 — retirés de l'UI.
-type PresetKey = "vol75" | "rb100";
+type PresetKey = "vol75";
 
 const presetLabels: Record<PresetKey, string> = {
   vol75: "Volatility 75 (1s)",
-  rb100: "Range Break 100",
 };
 
 const PRESET_PRESENTATION: Record<
@@ -122,7 +120,6 @@ const PRESET_PRESENTATION: Record<
   { market: string; description: string; experimental?: boolean }
 > = {
   vol75: { market: "VOLATILITY 75 (1s) uniquement", description: "Démo · Trend Pullback + Breakout", experimental: true },
-  rb100: { market: "RANGE BREAK 100 uniquement",    description: "Démo · Range Trader actif", experimental: true },
 };
 
 const PRESET_META_MAP: Record<
@@ -136,13 +133,6 @@ const PRESET_META_MAP: Record<
     borderColor: "border-lime-500/30",
     bgTone: "bg-lime-500/10",
   },
-  rb100: {
-    label: "Range Break 100",
-    badge: "↔ Range Break 100",
-    color: "text-amber-300",
-    borderColor: "border-amber-500/30",
-    bgTone: "bg-amber-500/10",
-  },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -155,7 +145,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = ["vol75", "rb100"] as const;
+const PRESET_ORDER = ["vol75"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -242,7 +232,7 @@ function loadCachedVisiblePresets(): PresetKey[] | null {
     const clean = parsed.filter((p): p is PresetKey =>
       (PRESET_ORDER as readonly string[]).includes(p as string),
     );
-    // Si le cache est plus ancien que PRESET_ORDER (ex: rb100 ajouté depuis),
+    // Si le cache est plus ancien que PRESET_ORDER (ex: un preset ajouté depuis),
     // ajouter les presets manquants à la fin pour qu'ils soient visibles.
     const missing = (PRESET_ORDER as readonly string[]).filter(
       (p) => !clean.includes(p as PresetKey),
@@ -489,7 +479,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({
     vol75: false,
-    rb100: false,
   });
 
   // The visible-preset list is an account-level display choice. Stopped
@@ -1066,7 +1055,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields = target === "rb100" ? RB100_PRESET : VOL75_PRESET;
+    const presetFields = VOL75_PRESET;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);

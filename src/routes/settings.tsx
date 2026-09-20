@@ -322,7 +322,7 @@ function SettingsPage() {
       } catch { /* non-fatal — the rest of settings still saved */ }
 
       // Sync local storage autotrader config drafts so Auto-Trader HUD immediately sees the new daily loss limit & stake
-      const presetsList = ["vol75", "rb100"];
+      const presetsList = ["vol75"];
       for (const p of presetsList) {
         const pKey = `lio23.autotrader_config.${p}`;
         try {

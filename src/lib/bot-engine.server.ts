@@ -273,7 +273,8 @@ export const ALL_PRESETS: readonly Preset[] = [
 export const ACTIVE_PRESETS: readonly Preset[] = ["vol75"];
 
 // ARCHIVÉS le 2026-09-20 (audit VPS 30 j : −82 $, PF 0,90, aucun edge) : default,
-// boom, crash, scalping. Ils restent dans ALL_PRESETS pour que l'historique
+// boom, crash, scalping, rb100 (rb100 : 92 trades Range Trader, −0,87 $, 72 % de
+// sorties MAX_HOLD_TIMEOUT à quelques centimes ; jamais dans cette liste). Ils restent dans ALL_PRESETS pour que l'historique
 // (journal, stats) reste lisible, mais ne peuvent plus démarrer — au redémarrage
 // restoreBots() force enabled=0 sur toute ligne bot_state hors de cette liste.
 // scalping : dépassement de stop non expliqué (rapport du 2026-09-13).
