@@ -235,7 +235,7 @@ function Dashboard() {
         <HealthPanel
           currentPnl={todayPnl ?? 0}
           maxDailyLoss={maxDailyLoss}
-          activePreset="default"
+          activePreset="vol75"
           winRate={winRate ?? 0}
           openPositionsCount={0}
         />
@@ -545,8 +545,8 @@ function BotStatusCard() {
         }
         toast.info("Bot serveur arrêté");
       } else {
-        // Start the first preset that has a saved config (prefer default)
-        const startPreset = status.presets?.["default"] ?? allPresets[0];
+        // Start the first preset that has a saved config (vol75 = seul preset actif)
+        const startPreset = status.presets?.["vol75"] ?? allPresets[0];
         if (!startPreset?.savedConfig) return;
         if (startPreset.savedConfig.mode === "live") {
           const { trades, winRate } = startPreset.allTimeStats;
@@ -569,7 +569,7 @@ function BotStatusCard() {
           });
           if (!ok) return;
         }
-        await api.post("/api/bot", { action: "start", preset: "default", config: startPreset.savedConfig });
+        await api.post("/api/bot", { action: "start", preset: "vol75", config: startPreset.savedConfig });
         toast.success(startPreset.savedConfig.mode === "live" ? "Bot démarré en LIVE — argent réel" : "Bot démarré");
       }
       await refresh();

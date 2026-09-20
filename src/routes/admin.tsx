@@ -232,13 +232,7 @@ const presetLabels = {
 
 type PresetKey = keyof typeof presetLabels;
 
-const PRESET_KEYS: readonly PresetKey[] = [
-  "default",
-  "boom",
-  "crash",
-  "scalping",
-  "vol75",
-];
+const PRESET_KEYS: readonly PresetKey[] = ["vol75"];
 
 const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
@@ -427,7 +421,7 @@ function AdminPage() {
     setVisiblePresets(null);
     api.get<{ visiblePresets: PresetKey[] }>(`/api/admin/visible-presets?userId=${target}`)
       .then((d) => setVisiblePresets(d.visiblePresets))
-      .catch(() => setVisiblePresets(["default", "boom", "crash"]));
+      .catch(() => setVisiblePresets(["vol75"]));
   }, [user?.is_admin, vpUserId]);
 
   async function toggleVisiblePreset(p: PresetKey) {
@@ -1457,7 +1451,7 @@ function AdminPage() {
         {/* Preset scope — compare accounts on one engine at a time instead of
             only the all-presets-combined total. */}
         <div className="flex flex-wrap items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-full sm:w-fit">
-          {(["all", "default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"] as const).map((p) => (
+          {(["all", "vol75"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setRecapPreset(p)}

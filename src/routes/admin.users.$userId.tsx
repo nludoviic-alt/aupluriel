@@ -89,13 +89,7 @@ const presetLabels = {
 
 type PresetKey = keyof typeof presetLabels;
 
-const PRESET_KEYS: readonly PresetKey[] = [
-  "default",
-  "boom",
-  "crash",
-  "scalping",
-  "vol75",
-];
+const PRESET_KEYS: readonly PresetKey[] = ["vol75"];
 
 const PRESET_ICONS: Record<PresetKey, string> = {
   default: "🌐",

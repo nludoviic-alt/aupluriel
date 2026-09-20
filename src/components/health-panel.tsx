@@ -13,7 +13,7 @@ interface HealthPanelProps {
 export function HealthPanel({
   currentPnl = 0,
   maxDailyLoss = 15,
-  activePreset = "default",
+  activePreset = "vol75",
   winRate = 0,
   openPositionsCount = 0,
 }: HealthPanelProps) {

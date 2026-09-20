@@ -54,13 +54,8 @@ import {
   loadDailyPnl,
   reconcileOpenTrades,
   PRESETS,
-  BOOM_PRESET,
-  BOOM900_PRESET,
-  CRASH_PRESET,
-  SCALPING_PRESET,
   VOL75_PRESET,
   RB100_PRESET,
-  VOL50_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -112,61 +107,28 @@ const PRESET_CONFIG_KEY = (preset: string) => `lio23.autotrader_config.${preset}
 // block the page after a single ordinary loss.
 const FALLBACK_MANUAL_DAILY_LOSS_CAP = 75;
 
-// presets actifs : default, boom, crash, scalping, vol75, rb100
-// liquidity/gold/crash500/crash900/boomv2/scalpingv2 archivés — supprimés de l'UI 2026-09-19
-type PresetKey =
-  | "default"
-  | "boom"
-  | "boom900"
-  | "vol75"
-  | "rb100"
-  | "vol50"
-  | "crash"
-  | "scalping";
+// preset actif : vol75 (rb100 conservé, non démarrable côté serveur).
+// default/boom/crash/scalping archivés le 2026-09-20 ; liquidity/gold/crash500/crash900/
+// boomv2/scalpingv2 archivés le 2026-09-19 — retirés de l'UI.
+type PresetKey = "vol75" | "rb100";
 
 const presetLabels: Record<PresetKey, string> = {
-  default:  "Multi",
-  boom:     "Boom900",
-  boom900:  "Boom900",
-  vol75:    "Volatility 75 (1s)",
-  rb100:    "Range Break 100",
-  vol50:    "Volatility 50 (1s)",
-  crash:    "Crash1000",
-  scalping: "Scalping",
+  vol75: "Volatility 75 (1s)",
+  rb100: "Range Break 100",
 };
 
 const PRESET_PRESENTATION: Record<
   PresetKey,
   { market: string; description: string; experimental?: boolean }
 > = {
-  default:  { market: "EUR/GBP · USD/CAD · Nasdaq",    description: "Symboles vérifiés (TF=4)" },
-  boom:     { market: "BOOM900 uniquement",             description: "Boom900 (PF 1.31) · BOOM500/1000 Exclus" },
-  boom900:  { market: "BOOM900 uniquement",             description: "Validation isolée (PF 1.31)", experimental: true },
-  vol75:    { market: "VOLATILITY 75 (1s) uniquement",  description: "Démo · Trend Pullback + Breakout", experimental: true },
-  rb100:    { market: "RANGE BREAK 100 uniquement",     description: "Démo · Range Trader actif", experimental: true },
-  vol50:    { market: "VOLATILITY 50 (1s) uniquement",  description: "Démo · Trend Pullback & Retest", experimental: true },
-  crash:    { market: "CRASH1000 uniquement",           description: "Crash1000 · CRASH900 Exclu", experimental: true },
-  scalping: { market: "BOOM900",                        description: "M1/M5 · stratégie distincte", experimental: true },
+  vol75: { market: "VOLATILITY 75 (1s) uniquement", description: "Démo · Trend Pullback + Breakout", experimental: true },
+  rb100: { market: "RANGE BREAK 100 uniquement",    description: "Démo · Range Trader actif", experimental: true },
 };
 
 const PRESET_META_MAP: Record<
   PresetKey,
   { label: string; badge: string; color: string; borderColor: string; bgTone: string }
 > = {
-  boom: {
-    label: "Boom900",
-    badge: "⚡ Boom900",
-    color: "text-rose-400",
-    borderColor: "border-rose-500/30",
-    bgTone: "bg-rose-500/10",
-  },
-  boom900: {
-    label: "Boom900",
-    badge: "⚡ Boom900",
-    color: "text-sky-300",
-    borderColor: "border-sky-500/30",
-    bgTone: "bg-sky-500/10",
-  },
   vol75: {
     label: "Volatility 75 (1s)",
     badge: "📈 Volatility 75 (1s)",
@@ -181,34 +143,6 @@ const PRESET_META_MAP: Record<
     borderColor: "border-amber-500/30",
     bgTone: "bg-amber-500/10",
   },
-  vol50: {
-    label: "Volatility 50 (1s)",
-    badge: "📊 Volatility 50 (1s)",
-    color: "text-emerald-300",
-    borderColor: "border-emerald-500/30",
-    bgTone: "bg-emerald-500/10",
-  },
-  crash: {
-    label: "Crash1000",
-    badge: "📉 Crash1000",
-    color: "text-purple-400",
-    borderColor: "border-purple-500/30",
-    bgTone: "bg-purple-500/10",
-  },
-  default: {
-    label: "Preset Multi",
-    badge: "📊 Multi",
-    color: "text-amber-400",
-    borderColor: "border-amber-500/30",
-    bgTone: "bg-amber-500/10",
-  },
-  scalping: {
-    label: "Preset Scalping",
-    badge: "🎯 Scalping",
-    color: "text-cyan-400",
-    borderColor: "border-cyan-500/30",
-    bgTone: "bg-cyan-500/10",
-  },
 };
 
 function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string): string {
@@ -221,14 +155,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
 /** Tab order on screen. The admin's mobile whitelist is filtered THROUGH this
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
-const PRESET_ORDER = [
-  "default",
-  "boom",
-  "crash",
-  "rb100",
-  "scalping",
-  "vol75",
-] as const;
+const PRESET_ORDER = ["vol75", "rb100"] as const;
 
 type OpportunityDecision = "take" | "wait" | "avoid";
 interface OpportunityItem {
@@ -410,7 +337,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       | undefined;
     return preset && preset in presetLabels ? preset : null;
   })();
-  const deepLinkPreset = deepLinkedPreset ?? "default";
+  const deepLinkPreset = deepLinkedPreset ?? "vol75";
   const [config, setConfig] = useState<AutoTraderConfig>(() => loadConfig(deepLinkPreset));
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
@@ -561,14 +488,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // One flag per preset — the stake/cap draft sync (below) must catch up
   // once per preset the first time it's viewed, not just once globally.
   const syncedFromServerRef = useRef<Record<PresetKey, boolean>>({
-    default:  false,
-    boom:     false,
-    boom900:  false,
-    vol75:    false,
-    rb100:    false,
-    vol50:    false,
-    crash:    false,
-    scalping: false,
+    vol75: false,
+    rb100: false,
   });
 
   // The visible-preset list is an account-level display choice. Stopped
@@ -778,30 +699,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     }
   }
 
-  async function revalidateBoom900Contract() {
-    setCloudBusy(true);
-    try {
-      const result = await api.post<{
-        validation: { status: string; error?: { message?: string } };
-      }>("/api/bot", { action: "revalidate-contract", preset: "boom900" });
-      await refreshCloud();
-      toast[result.validation.status === "AVAILABLE" ? "success" : "error"](
-        result.validation.status === "AVAILABLE"
-          ? "Contrat Boom900 valide : exécution réactivée."
-          : `Boom900 indisponible : ${result.validation.error?.message ?? result.validation.status}`,
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Revalidation Boom900 impossible");
-    } finally {
-      setCloudBusy(false);
-    }
-  }
-
   async function changeTradingMode(mode: TradingMode) {
-    if (selectedPreset === "crash" && mode !== "demo") {
-      toast.error("Crash900 est limité à la validation en démo.");
-      return;
-    }
     if (mode === config.mode) return;
     if (mode === "live") {
       const ok = await confirm({
@@ -877,7 +775,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     const isTakeAction = takeParam === "1" || strip(searchParams.get("action")) === "take";
 
     const targetPreset: PresetKey =
-      presetParam && presetParam in presetLabels ? presetParam : "default";
+      presetParam && presetParam in presetLabels ? presetParam : "vol75";
     if (presetParam && presetParam in presetLabels) selectPresetView(presetParam);
     const loaded = loadConfig(targetPreset);
 
@@ -1168,42 +1066,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   function selectPresetView(target: PresetKey) {
     if (target === selectedPreset) return;
     setSelectedPreset(target);
-    const presetFields =
-      target === "boom"
-        ? BOOM_PRESET
-        : target === "boom900"
-          ? BOOM900_PRESET
-          : target === "vol75"
-            ? VOL75_PRESET
-            : target === "rb100"
-              ? RB100_PRESET
-              : target === "vol50"
-                ? VOL50_PRESET
-                : target === "crash"
-                  ? CRASH_PRESET
-                  : target === "scalping"
-                    ? SCALPING_PRESET
-                    : DEFAULT_CONFIG;
+    const presetFields = target === "rb100" ? RB100_PRESET : VOL75_PRESET;
     // Try to load a previously saved per-preset config draft from localStorage.
     // Falls back to the canonical preset values if nothing is saved yet.
     const saved = loadConfig(target);
     const hasSavedOverride = localStorage.getItem(PRESET_CONFIG_KEY(target)) !== null;
-    const next: AutoTraderConfig = hasSavedOverride
-      ? saved
-      : target === "boom900" ||
-          target === "vol75" ||
-          target === "rb100" ||
-          target === "vol50" ||
-          target === "scalping"
-        ? { ...DEFAULT_CONFIG, ...presetFields }
-        : {
-            ...DEFAULT_CONFIG,
-            ...presetFields,
-            stakeUsd: config.stakeUsd,
-            maxDailyLossUsd: config.maxDailyLossUsd,
-            mode: config.mode,
-          };
-    if (target === "crash") next.mode = "demo";
+    const next: AutoTraderConfig = hasSavedOverride ? saved : { ...DEFAULT_CONFIG, ...presetFields };
     setConfig(next);
   }
 
@@ -1576,7 +1444,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             const pnlVal = st?.todayPnl ?? 0;
             const isOnline = !!st?.enabled && !!st?.running;
             const isSelected = selectedPreset === p;
-            const meta = PRESET_META_MAP[p] ?? PRESET_META_MAP.default;
+            const meta = PRESET_META_MAP[p] ?? PRESET_META_MAP.vol75;
             const configuredMarkets = formatConfiguredMarkets(
               st?.savedConfig?.symbols,
               PRESET_PRESENTATION[p]?.market ?? "Marchés configurés",
@@ -1802,11 +1670,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
             onRefresh={refreshOpportunities}
             onAuto={toggleCloud}
           />
-          {selectedPreset === "boom900" && (
-            <Button variant="outline" disabled={cloudBusy} onClick={revalidateBoom900Contract}>
-              REVALIDATE CONTRACT
-            </Button>
-          )}
           <TradeJournalSection
             journalTrades={journalTrades}
             liveDerivPositions={liveDerivPositions}
