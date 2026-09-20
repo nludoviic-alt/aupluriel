@@ -315,7 +315,13 @@ function loadCachedVisiblePresets(): PresetKey[] | null {
     const clean = parsed.filter((p): p is PresetKey =>
       (PRESET_ORDER as readonly string[]).includes(p as string),
     );
-    return clean.length ? clean : null;
+    // Si le cache est plus ancien que PRESET_ORDER (ex: rb100 ajouté depuis),
+    // ajouter les presets manquants à la fin pour qu'ils soient visibles.
+    const missing = (PRESET_ORDER as readonly string[]).filter(
+      (p) => !clean.includes(p as PresetKey),
+    ) as PresetKey[];
+    const merged = [...clean, ...missing];
+    return merged.length ? merged : null;
   } catch {
     return null;
   }
