@@ -1,15 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Activity, ArrowUpRight, Bot, BriefcaseBusiness,
-  Wallet, Zap, TrendingUp, TrendingDown,
-  BarChart2, Sparkles, Trophy, ChevronRight, Power, Settings2,
-  CheckCircle2, Clock3, ShieldAlert,
+  Activity, Bot, BriefcaseBusiness,
+  Wallet, TrendingUp, TrendingDown,
+  BarChart2, Trophy, ChevronRight, CalendarDays,
 } from "lucide-react";
-import { toast } from "sonner";
 import { PriceChart } from "@/components/price-chart";
-import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
 import { useDerivTicks } from "@/hooks/use-deriv";
 import { getProfitTable, SYMBOLS } from "@/lib/deriv";
 import { useDerivSession } from "@/hooks/use-deriv-session";
@@ -70,45 +67,6 @@ function useRealStats() {
   return { winRate, todayPnl, tradeCount };
 }
 
-type OpportunityDecision = "take" | "wait" | "avoid";
-
-interface DashboardOpportunity {
-  id: string;
-  presetLabel: string;
-  label: string;
-  decision: OpportunityDecision;
-  directionLabel: string;
-  confidence: number;
-  agreement: number;
-  risk: "faible" | "modere" | "eleve";
-  reasons: string[];
-}
-
-interface DashboardOpportunitiesResponse {
-  generatedAt: number;
-  opportunities: DashboardOpportunity[];
-  summary: Record<OpportunityDecision, number>;
-}
-
-/** The same server-side selection and thresholds used by Auto-Trader. */
-function useDashboardOpportunities() {
-  const [data, setData] = useState<DashboardOpportunitiesResponse | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    const refresh = () => {
-      api.get<DashboardOpportunitiesResponse>("/api/opportunities")
-        .then((next) => { if (mounted) setData(next); })
-        .catch(() => { /* Keep the last usable scan rather than showing stale local signals. */ });
-    };
-    refresh();
-    const id = window.setInterval(refresh, 30_000);
-    return () => { mounted = false; window.clearInterval(id); };
-  }, []);
-
-  return data;
-}
-
 function Dashboard() {
   const [chartSymbol, setChartSymbol] = useState(SYMBOLS[0]);
   const [marketFilter, setMarketFilter] = useState<"all" | "crypto" | "forex">("all");
@@ -132,7 +90,6 @@ function Dashboard() {
   const brokerBalances = useBrokerBalances();
   const { winRate, todayPnl, tradeCount } = useRealStats();
   const { user } = useAuth();
-  const opportunityScan = useDashboardOpportunities();
   const isForex = chartSymbol.market === "forex";
 
   const [maxDailyLoss, setMaxDailyLoss] = useState<number>(15);
@@ -201,20 +158,12 @@ function Dashboard() {
           {/* CTA buttons — pleine largeur sur mobile, inline sur sm+ */}
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2">
             <Link
-              to="/autotrader"
+              to="/effet-lundi"
               className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all hover:opacity-90 hover:scale-[1.02] sm:py-2.5"
               style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
             >
-              <Zap className="h-4 w-4" />
-              <span className="hidden xs:inline">Auto-Trader</span>
-              <span className="xs:hidden">Bot</span>
-            </Link>
-            <Link
-              to="/opportunities"
-              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-white/[0.08] sm:py-2.5"
-            >
-              <Sparkles className="h-4 w-4 text-orange-400" />
-              Opportunités
+              <CalendarDays className="h-4 w-4" />
+              Effet lundi
             </Link>
             <Link
               to="/portfolio"
@@ -227,15 +176,15 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* ── BOT STATUS (mobile only — Auto-Trader isn't in the bottom nav) ── */}
-      <BotStatusCard />
+      {/* ── EFFET LUNDI — seule stratégie active (suivi papier + exécution MT5 démo manuelle) ── */}
+      <IdxStatusCard />
 
       {/* ── LIVE HEALTH & GUARD MONITOR — desktop only ── */}
       <div className="mt-4 hidden md:block">
         <HealthPanel
           currentPnl={todayPnl ?? 0}
           maxDailyLoss={maxDailyLoss}
-          activePreset="vol75"
+          activePreset="idxseasonal"
           winRate={winRate ?? 0}
           openPositionsCount={0}
         />
@@ -308,14 +257,6 @@ function Dashboard() {
           delta={todayPnl !== null ? (todayPnl >= 0 ? "Contrats Deriv clôturés" : "Contrats Deriv clôturés") : "Deriv non connecté"}
           icon={todayPnl !== null && todayPnl >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
           tone={todayPnl !== null ? (todayPnl >= 0 ? "bull" : "bear") : "default"}
-        />
-        <KpiCard
-          className="col-span-2 lg:col-span-1"
-          label="Opportunités prêtes"
-          value={opportunityScan?.summary.take ?? "—"}
-          delta={opportunityScan ? `${opportunityScan.summary.wait} à surveiller · moteur serveur` : "Analyse serveur en cours"}
-          icon={<BarChart2 className="h-5 w-5" />}
-          tone="cyan"
         />
       </div>
 
@@ -430,9 +371,9 @@ function Dashboard() {
           {/* Quick actions */}
           <div className="grid grid-cols-2 gap-2">
             {[
-              { to: "/autotrader", icon: <Zap />, label: "Bot",      color: "violet" },
+              { to: "/effet-lundi", icon: <CalendarDays />, label: "Effet lundi", color: "violet" },
               { to: "/portfolio",  icon: <BriefcaseBusiness />, label: "Portfolio", color: "cyan" },
-              { to: "/opportunities", icon: <Sparkles />, label: "Opportunités", color: "up" },
+              { to: "/journal",    icon: <BarChart2 />, label: "Journal", color: "up" },
               { to: "/settings",   icon: <Wallet />, label: "Compte",   color: "amber" },
             ].map(({ to, icon, label, color }) => (
               <Link
@@ -457,32 +398,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* ── SERVER-SELECTED OPPORTUNITIES ── */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/15">
-              <Sparkles className="h-4 w-4 text-orange-400" />
-            </div>
-            <h2 className="text-base font-bold text-foreground sm:text-sm">Opportunités sélectionnées</h2>
-            {opportunityScan && (
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[color:var(--up)] animate-pulse" />
-            )}
-          </div>
-          <Link to="/opportunities" className="flex items-center gap-1 text-xs text-orange-500 hover:text-amber-400 transition-colors font-semibold">
-            Voir tout <ArrowUpRight className="h-3 w-3" />
-          </Link>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {!opportunityScan
-            ? [0, 1, 2].map((i) => <div key={i} className="glass-panel rounded-2xl h-52 animate-pulse" />)
-            : opportunityScan.opportunities
-              .filter((item) => item.decision !== "avoid")
-              .slice(0, 3)
-              .map((item) => <DashboardOpportunityCard key={item.id} item={item} />)}
-        </div>
-      </div>
-
       {/* Footer disclaimer */}
       <div className="flex items-start gap-3 rounded-xl border border-border/30 bg-muted/5 px-4 py-3">
         <Bot className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-0.5" />
@@ -494,158 +409,51 @@ function Dashboard() {
   );
 }
 
-// ── Bot status card (mobile only) ───────────────────────────────────────────────
-// Auto-Trader lost its bottom-nav slot in the app-like mobile redesign — this
-// keeps bot control one tap away from the Dashboard instead of two. Start
-// always reuses the user's last SAVED config (from /autotrader) rather than
-// blind-defaulting, so a quick tap here can't silently reset their stake or
-// flip live back to demo (see savedConfig in routes/api/bot.ts).
+// ── Carte « Effet lundi » ─────────────────────────────────────────────────────
+// Seule stratégie active depuis l'archivage des presets (2026-09-20). Lecture
+// seule : l'armement se fait depuis la page /effet-lundi.
 
-interface PresetStatus {
+interface IdxCardData {
   enabled: boolean;
-  running: boolean;
-  mode: "demo" | "live";
-  pausedUntil: number | null;
-  todayPnl: number;
-  todayCount: number;
-  allTimeStats: { trades: number; wins: number; losses: number; winRate: number; pnl: number };
-  savedConfig: { stakeUsd: number; maxDailyLossUsd: number; mode: "demo" | "live" } | null;
-}
-interface CloudBotStatus {
-  presets: Record<string, PresetStatus>;
-  brokerBalances?: Record<string, unknown>;
+  mode?: "paper" | "deriv";
+  killSwitch: { active: boolean; pf: number; n: number } | null;
+  stats: { count: number; open: number; pnl: number };
+  plan?: { legs: { entryAtMs: number; mt5Name: string }[] };
 }
 
-function BotStatusCard() {
-  const [status, setStatus] = useState<CloudBotStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-  const { confirmState, confirm } = useConfirm();
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await api.get<CloudBotStatus>("/api/bot");
-      setStatus(data);
-    } catch { /* signed out or server unreachable — leave as-is */ }
-  }, []);
-
+function IdxStatusCard() {
+  const [data, setData] = useState<IdxCardData | null>(null);
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 20_000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  async function toggle() {
-    if (busy || !status) return;
-    setBusy(true);
-    try {
-      if (enabled) {
-        // Stop all active presets
-        for (const [name, p] of Object.entries(status.presets ?? {})) {
-          if (p.enabled) await api.post("/api/bot", { action: "stop", preset: name });
-        }
-        toast.info("Bot serveur arrêté");
-      } else {
-        // Start the first preset that has a saved config (vol75 = seul preset actif)
-        const startPreset = status.presets?.["vol75"] ?? allPresets[0];
-        if (!startPreset?.savedConfig) return;
-        if (startPreset.savedConfig.mode === "live") {
-          const { trades, winRate } = startPreset.allTimeStats;
-          const sampleLine = trades < 20
-            ? `⚠️ Seulement ${trades} trade(s) enregistré(s) — échantillon trop faible pour juger la fiabilité.`
-            : `Historique : ${trades} trades, ${Math.round(winRate * 100)}% de réussite.`;
-          const ok = await confirm({
-            title: "Démarrer le bot en mode LIVE ?",
-            description: `Le bot va trader avec du VRAI argent, 24/7, même téléphone verrouillé. Mise : $${startPreset.savedConfig.stakeUsd} par trade. Limite journalière : $${startPreset.savedConfig.maxDailyLossUsd}.\n\n${sampleLine}`,
-            confirmLabel: "Démarrer en réel",
-            danger: true,
-          });
-          if (!ok) return;
-        } else {
-          // Demo — lighter confirmation so a stray tap can't start the bot.
-          const ok = await confirm({
-            title: "Démarrer le bot serveur (Démo) ?",
-            description: `Le bot va scanner les marchés et trader automatiquement sur ton compte de démonstration Deriv, 24/7, même téléphone verrouillé. Mise : $${startPreset.savedConfig.stakeUsd} par trade.`,
-            confirmLabel: "Démarrer",
-          });
-          if (!ok) return;
-        }
-        await api.post("/api/bot", { action: "start", preset: "vol75", config: startPreset.savedConfig });
-        toast.success(startPreset.savedConfig.mode === "live" ? "Bot démarré en LIVE — argent réel" : "Bot démarré");
-      }
-      await refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur bot serveur");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!status) return null;
-
-  // Aggregate across all presets: show "Actif" if ANY preset is running.
-  const allPresets = Object.values(status.presets ?? {});
-  const activePreset = allPresets.find((p) => p.enabled && p.running) ?? allPresets.find((p) => p.enabled);
-  const enabled = !!activePreset;
-  const isLive = activePreset?.mode === "live";
-  const paused = !!(activePreset?.pausedUntil && activePreset.pausedUntil > Date.now());
-  const canToggle = enabled || allPresets.some((p) => !!p.savedConfig);
-  const todayPnl = allPresets.reduce((s, p) => s + (p.todayPnl ?? 0), 0);
-
+    api.get<IdxCardData>("/api/idx-seasonal").then(setData).catch(() => {});
+  }, []);
+  const next = data?.plan?.legs[0]?.entryAtMs;
+  const state = !data ? "…" : data.killSwitch?.active ? "Kill-switch actif" : data.enabled ? "Armé" : "Désarmé";
   return (
-    <div className="md:hidden glass-panel rounded-2xl p-4 flex items-center justify-between gap-3">
-      <ConfirmDialog state={confirmState} />
+    <div className="glass-panel mt-4 flex items-center justify-between gap-3 rounded-2xl p-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className={cn(
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-          enabled ? (isLive ? "bg-[color:var(--down)]/15" : "bg-[color:var(--up)]/15") : "bg-muted/15",
-        )}>
-          <Zap className={cn("h-5 w-5", enabled ? (isLive ? "text-[color:var(--down)]" : "text-[color:var(--up)]") : "text-muted-foreground")} />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[color:var(--up)]/15">
+          <CalendarDays className="h-5 w-5 text-[color:var(--up)]" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-foreground">Bot Auto-Trader</span>
-            <span className={cn(
-              "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
-              isLive ? "bg-[color:var(--down)]/15 text-[color:var(--down)]" : "bg-[color:var(--up)]/15 text-[color:var(--up)]",
-            )}>
-              {isLive ? "Live" : "Démo"}
+            <span className="text-sm font-bold text-foreground">Effet lundi</span>
+            <span className="rounded-full bg-[color:var(--up)]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[color:var(--up)]">
+              {data?.mode === "deriv" ? "Démo" : "Papier"}
             </span>
           </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {paused ? "En pause (risque)" : enabled ? `Actif${allPresets.filter((p) => p.enabled).length > 1 ? ` (${allPresets.filter((p) => p.enabled).length} presets)` : ""}` : "Arrêté"}
-            {enabled && !paused && ` · ${todayPnl >= 0 ? "+" : ""}$${todayPnl.toFixed(2)} auj.`}
+          <div className="truncate text-xs text-muted-foreground">
+            {state}
+            {data && ` · ${data.stats.count} trade(s) papier`}
+            {next && ` · prochain lundi ${new Date(next).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}`}
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <Link
-          to="/autotrader"
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
-        >
-          <Settings2 className="h-4 w-4" />
-        </Link>
-        {canToggle ? (
-          <button
-            onClick={toggle}
-            disabled={busy}
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl transition-colors disabled:opacity-50",
-              enabled
-                ? "bg-[color:var(--down)]/15 text-[color:var(--down)] hover:bg-[color:var(--down)]/25"
-                : "bg-[color:var(--up)]/15 text-[color:var(--up)] hover:bg-[color:var(--up)]/25",
-            )}
-          >
-            <Power className="h-4 w-4" />
-          </button>
-        ) : (
-          <Link
-            to="/autotrader"
-            className="rounded-xl bg-orange-500/15 px-3 py-2 text-xs font-bold text-orange-400 transition-colors hover:bg-orange-500/25"
-          >
-            Configurer
-          </Link>
-        )}
-      </div>
+      <Link
+        to="/effet-lundi"
+        className="shrink-0 rounded-xl bg-orange-500/15 px-3 py-2 text-xs font-bold text-orange-400 transition-colors hover:bg-orange-500/25"
+      >
+        Ordres du lundi
+      </Link>
     </div>
   );
 }
@@ -681,45 +489,5 @@ function KpiCard({ label, value, delta, tone = "default", icon, className }: {
         {delta && <div className="mt-2 text-xs text-white/40">{delta}</div>}
       </div>
     </div>
-  );
-}
-
-function DashboardOpportunityCard({ item }: { item: DashboardOpportunity }) {
-  const isTake = item.decision === "take";
-  const isWait = item.decision === "wait";
-  const Icon = isTake ? CheckCircle2 : isWait ? Clock3 : ShieldAlert;
-  const tone = isTake
-    ? "border-[color:var(--up)]/30 bg-[color:var(--up)]/10"
-    : isWait
-      ? "border-amber-500/30 bg-amber-500/10"
-      : "border-[color:var(--down)]/30 bg-[color:var(--down)]/10";
-  const text = isTake ? "text-[color:var(--up)]" : isWait ? "text-amber-300" : "text-[color:var(--down)]";
-  const label = isTake ? "Prendre" : isWait ? "Surveiller" : "Éviter";
-
-  return (
-    <article className={cn("rounded-2xl border p-5", tone)}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className={cn("flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider", text)}>
-            <Icon className="h-3.5 w-3.5" /> {label} · {item.presetLabel}
-          </div>
-          <h3 className="mt-2 text-lg font-black tracking-tight text-foreground">{item.label}</h3>
-          <p className={cn("mt-0.5 text-xs font-bold", text)}>{item.directionLabel}</p>
-        </div>
-        <div className="text-right">
-          <div className={cn("font-mono-tabular text-xl font-black", text)}>{Math.round(item.confidence)}%</div>
-          <div className="text-[10px] text-muted-foreground">confiance</div>
-        </div>
-      </div>
-      <p className="mt-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-        {item.reasons[0] ?? `${item.agreement}/4 unités de temps alignées · risque ${item.risk}`}
-      </p>
-      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-bold transition-opacity hover:opacity-90 sm:hidden shadow-lg", isTake ? "bg-up text-black shadow-up/25" : "bg-orange-500 text-white shadow-orange-500/25")}>
-        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
-      </Link>
-      <Link to="/manual-trader" className={cn("mt-4 hidden sm:inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
-        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
-      </Link>
-    </article>
   );
 }

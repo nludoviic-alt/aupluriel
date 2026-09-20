@@ -1,9 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
-  LayoutDashboard, Zap, BriefcaseBusiness, FlaskConical,
-  BarChart3, PieChart, CandlestickChart, Settings,
-  ShieldCheck, LogOut, X, Wrench, Target, Cpu, NotebookPen,
+  LayoutDashboard, CalendarDays, BriefcaseBusiness, BarChart3, PieChart, CandlestickChart, Settings,
+  ShieldCheck, LogOut, X, Wrench, Cpu, NotebookPen,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,12 +15,10 @@ import { NotificationCenterSidebarItem } from "@/components/notification-center"
 const NAV_PRIMARY = [
   { title: "Dashboard",   url: "/",           icon: LayoutDashboard,   hover: "hover:bg-violet-500/[0.04] hover:text-violet-300" },
   { title: "Portfolio",   url: "/portfolio",  icon: BriefcaseBusiness, hover: "hover:bg-cyan-500/[0.04] hover:text-cyan-300" },
-  { title: "Opportunités", url: "/opportunities", icon: Target,        hover: "hover:bg-emerald-500/[0.04] hover:text-emerald-300" },
-  { title: "Auto-Trader", url: "/autotrader", icon: Zap,               hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
+  { title: "Effet lundi", url: "/effet-lundi", icon: CalendarDays,               hover: "hover:bg-amber-500/[0.04] hover:text-amber-300" },
 ];
 
 const NAV_MORE = [
-  { title: "Backtest",        url: "/backtest",        icon: FlaskConical,     hover: "hover:bg-fuchsia-500/[0.04] hover:text-fuchsia-300" },
   { title: "Journal",         url: "/journal",         icon: BarChart3,        hover: "hover:bg-orange-500/[0.04] hover:text-orange-300" },
   { title: "Paramètres",      url: "/settings",        icon: Settings,         hover: "hover:bg-slate-500/[0.04] hover:text-slate-300" },
 ];

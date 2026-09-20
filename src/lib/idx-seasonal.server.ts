@@ -22,11 +22,12 @@
 // Par défaut : suivi papier (voir PAPER_MODE plus bas), aucun ordre envoyé.
 
 import { getDb } from "./db.server";
+import { IDX_UNIVERSE } from "./idx-seasonal-plan";
 import { DerivTradingConnection, fetchRecentTicksServer, getMarketState } from "./deriv.server";
 
 export const IDX_SEASONAL_PRESET = "idxseasonal";
 
-// Les 10 indices validés en OOS (RESEARCH-A). Deriv OTC index CFDs.
+// Indices retenus (RESEARCH-A, resserré le 2026-09-20). Prix : Deriv OTC index.
 //
 // Un binaire Deriv sur indice DOIT expirer pendant les heures de marché
 // ("Contract must expire during trading hours" — testé le 2026-09-03). Chaque
@@ -34,21 +35,10 @@ export const IDX_SEASONAL_PRESET = "idxseasonal";
 // sa durée de hold, choisies pour que l'expiration tombe ~30-60 min avant la
 // clôture. entryHourUtc : le tick tourne toutes les 5 min, on entre au 1er tick
 // de cette heure (tradedThisUtcDay évite les doublons).
-const IDX_CONFIG: Record<string, { entryHourUtc: number; durationMin: number }> = {
-  // US (session ~13:30-20:00 UTC) — entrée 14:00, expiration 19:00
-  OTC_NDX: { entryHourUtc: 14, durationMin: 300 },
-  OTC_SPC: { entryHourUtc: 14, durationMin: 300 },
-  OTC_DJI: { entryHourUtc: 14, durationMin: 300 },
-  // Europe (session ~08:00-16:30 UTC) — entrée 08:00, expiration 15:00
-  OTC_GDAXI: { entryHourUtc: 8, durationMin: 420 },
-  OTC_FCHI: { entryHourUtc: 8, durationMin: 420 },
-  OTC_SX5E: { entryHourUtc: 8, durationMin: 420 },
-  OTC_SSMI: { entryHourUtc: 8, durationMin: 420 },
-  // Asie (sessions ~00:00-06:00 / 01:30-08:00 UTC)
-  OTC_N225: { entryHourUtc: 1, durationMin: 240 },
-  OTC_HSI: { entryHourUtc: 2, durationMin: 300 },
-  OTC_AS51: { entryHourUtc: 1, durationMin: 240 },
-};
+// Univers : voir idx-seasonal-plan.ts (S&P 500 et Nasdaq 100 depuis le 2026-09-20).
+const IDX_CONFIG: Record<string, { entryHourUtc: number; durationMin: number }> = Object.fromEntries(
+  IDX_UNIVERSE.map((l) => [l.symbol, { entryHourUtc: l.entryHourUtc, durationMin: l.durationMin }]),
+);
 const SYMBOLS = Object.keys(IDX_CONFIG);
 
 const TICK_MS = 5 * 60_000;

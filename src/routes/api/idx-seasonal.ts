@@ -3,6 +3,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/db.server";
 import { getFullUserFromRequest, requireAdmin } from "@/lib/auth.server";
+import { MT5_LOTS, MT5_ROLLOVER_HINT_GMT, nextMondayPlan } from "@/lib/idx-seasonal-plan";
 
 // Inliné plutôt qu'importé de idx-seasonal.server.ts : évite de tirer tout le
 // module scheduler (DerivTradingConnection…) dans le bundle de cette route.
@@ -105,6 +106,7 @@ export const Route = createFileRoute("/api/idx-seasonal")({
 
         return json({
           mode: paperMode ? "paper" : "deriv",
+          plan: { ...nextMondayPlan(), lots: MT5_LOTS, rolloverGmt: MT5_ROLLOVER_HINT_GMT },
           enabled: state?.enabled === 1,
           canToggle,
           updatedAt: state?.updated_at ?? null,

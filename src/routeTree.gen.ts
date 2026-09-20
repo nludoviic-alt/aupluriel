@@ -23,6 +23,7 @@ import { Route as ManualTraderRouteImport } from './routes/manual-trader'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as EffetLundiRouteImport } from './routes/effet-lundi'
 import { Route as BacktestRouteImport } from './routes/backtest'
 import { Route as AutotraderRouteImport } from './routes/autotrader'
 import { Route as AlertsRouteImport } from './routes/alerts'
@@ -154,6 +155,11 @@ const JournalRoute = JournalRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EffetLundiRoute = EffetLundiRouteImport.update({
+  id: '/effet-lundi',
+  path: '/effet-lundi',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BacktestRoute = BacktestRouteImport.update({
@@ -474,6 +480,7 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/effet-lundi': typeof EffetLundiRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -552,6 +559,7 @@ export interface FileRoutesByTo {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/effet-lundi': typeof EffetLundiRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -631,6 +639,7 @@ export interface FileRoutesById {
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
+  '/effet-lundi': typeof EffetLundiRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/journal': typeof JournalRoute
   '/login': typeof LoginRoute
@@ -711,6 +720,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/effet-lundi'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -789,6 +799,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/effet-lundi'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -867,6 +878,7 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/autotrader'
     | '/backtest'
+    | '/effet-lundi'
     | '/forgot-password'
     | '/journal'
     | '/login'
@@ -946,6 +958,7 @@ export interface RootRouteChildren {
   AlertsRoute: typeof AlertsRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
+  EffetLundiRoute: typeof EffetLundiRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   JournalRoute: typeof JournalRoute
   LoginRoute: typeof LoginRoute
@@ -1115,6 +1128,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/effet-lundi': {
+      id: '/effet-lundi'
+      path: '/effet-lundi'
+      fullPath: '/effet-lundi'
+      preLoaderRoute: typeof EffetLundiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backtest': {
@@ -1582,6 +1602,7 @@ const rootRouteChildren: RootRouteChildren = {
   AlertsRoute: AlertsRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
+  EffetLundiRoute: EffetLundiRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   JournalRoute: JournalRoute,
   LoginRoute: LoginRoute,

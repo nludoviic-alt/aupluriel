@@ -19,7 +19,13 @@ interface IdxTrade {
   closedAt: number | null;
   exitReason: string | null;
 }
+interface IdxPlanLeg {
+  symbol: string; mt5Name: string; label: string;
+  entryHourUtc: number; durationMin: number; entryAtMs: number; exitAtMs: number;
+}
+interface IdxPlan { mondayUtc: string; lots: number; rolloverGmt: string; legs: IdxPlanLeg[] }
 interface IdxSeasonalData {
+  plan?: IdxPlan;
   mode?: "paper" | "deriv";
   enabled: boolean;
   canToggle?: boolean;
@@ -98,7 +104,7 @@ export function IdxSeasonalPanel() {
             <p className="text-[11px] text-muted-foreground">
               {data.mode === "deriv"
                 ? "Effet lundi haussier · 10 indices actions · binaire CALL, hold séance · démo"
-                : "Effet lundi haussier · 10 indices actions · LONG open→close · suivi papier, aucun ordre envoyé (1 000 $ notionnel, coût 0,03 % inclus)"}
+                : "Effet lundi haussier · S&P 500 + Nasdaq 100 · LONG open→close · registre papier (1 000 $ notionnel, coût 0,03 % inclus) ; exécution manuelle sur MT5 démo"}
             </p>
           </div>
         </div>
@@ -129,6 +135,40 @@ export function IdxSeasonalPanel() {
           )}
         </div>
       </div>
+
+      {data.plan && (
+        <div className="rounded-2xl border border-sky-500/25 bg-sky-500/[0.06] p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-black text-foreground">Ordres du lundi — compte MT5 démo</h3>
+            <span className="text-[11px] text-muted-foreground">
+              {new Date(data.plan.legs[0].entryAtMs).toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long" })}
+            </span>
+          </div>
+          {data.killSwitch?.active || !data.enabled ? (
+            <p className="text-xs text-rose-200">
+              {data.enabled ? "Kill-switch actif : ne passe aucun ordre." : "Stratégie désarmée : ne passe aucun ordre."}
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {data.plan.legs.map((l) => (
+                <li key={l.symbol} className="rounded-xl bg-black/20 px-3 py-2 text-xs leading-relaxed">
+                  <span className="font-black text-emerald-300">ACHETER (BUY)</span>{" "}
+                  <span className="font-bold text-foreground">{l.mt5Name}</span> — {data.plan!.lots} lot, sans SL/TP
+                  <br />
+                  <span className="text-muted-foreground">
+                    Entrée à {fmtTime(l.entryAtMs)} · <b className="text-foreground">Clôturer à {fmtTime(l.exitAtMs)}</b>
+                    {" "}(heure locale)
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            Clôture obligatoire avant {data.plan.rolloverGmt} GMT : une position gardée la nuit paie le swap. Le registre
+            papier ci-dessous est la référence théorique ; note l'écart avec ton exécution réelle.
+          </p>
+        </div>
+      )}
 
       {data.killSwitch?.active && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200">

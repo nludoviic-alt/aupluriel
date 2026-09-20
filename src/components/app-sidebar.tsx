@@ -1,9 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  FlaskConical,
+  CalendarDays,
   CandlestickChart,
-  Zap,
   Settings,
   BriefcaseBusiness,
   BarChart3,
@@ -13,7 +12,6 @@ import {
   ChevronRight,
   Cpu,
   Wrench,
-  Target,
   NotebookPen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,12 +35,10 @@ import { NotificationCenterSidebarItem } from "@/components/notification-center"
 const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
-  { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
-  { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
+  { title: "Effet lundi",      url: "/effet-lundi",     icon: CalendarDays,     color: "text-amber-400",  glow: "shadow-amber-500/30" },
 ];
 
 const analysisItems = [
-  { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
 ];
 

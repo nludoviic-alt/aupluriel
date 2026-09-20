@@ -3,15 +3,15 @@ import test from "node:test";
 import { ACTIVE_PRESETS, lockPresetSymbols, startBotForUser } from "../bot-engine.server";
 import { DEFAULT_CONFIG } from "../signal-core";
 
-test("only vol75 is startable; default/boom/crash/scalping and V2 are archived", () => {
-  assert.deepEqual([...ACTIVE_PRESETS], ["vol75"]);
-  for (const archived of ["default", "boom", "crash", "scalping", "crash900"] as const) {
+test("no trading preset is startable; every historical preset is archived", () => {
+  assert.deepEqual([...ACTIVE_PRESETS], []);
+  for (const archived of ["default", "boom", "crash", "scalping", "vol75", "rb100", "crash900"] as const) {
     assert.ok(!ACTIVE_PRESETS.includes(archived), `${archived} must be archived`);
   }
 });
 
-test("archived Crash/Scalping/Multi/Boom are rejected before account access or broker execution", async () => {
-  for (const preset of ["crash", "scalping", "default", "boom"] as const) {
+test("archived presets are rejected before account access or broker execution", async () => {
+  for (const preset of ["crash", "scalping", "default", "boom", "vol75", "rb100"] as const) {
     await assert.rejects(startBotForUser(-1, preset, DEFAULT_CONFIG), /désactivé/);
   }
 });
