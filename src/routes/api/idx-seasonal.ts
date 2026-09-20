@@ -66,20 +66,35 @@ export const Route = createFileRoute("/api/idx-seasonal")({
           .prepare("SELECT enabled, updated_at FROM idx_seasonal_state WHERE id = 1")
           .get() as { enabled: number; updated_at: number } | undefined;
 
-        const rows = db
-          .prepare(
-            `SELECT id, symbol, direction, stake, payout, status, profit, duration_minutes,
-                    entry_price, time, closed_at, exit_reason
-               FROM bot_trades WHERE preset = ? ORDER BY time DESC LIMIT 100`,
-          )
-          .all(IDX_SEASONAL_PRESET) as TradeRow[];
+        // Même règle que idx-seasonal.server.ts : suivi papier par défaut, trades
+        // dans idx_paper_trades (jamais dans bot_trades).
+        const paperMode = process.env.IDX_SEASONAL_EXEC !== "deriv";
+        const rows = (paperMode
+          ? db
+              .prepare(
+                `SELECT id, symbol, direction, notional AS stake, 0 AS payout, status, profit,
+                        duration_minutes, entry_price, time, closed_at, exit_reason
+                   FROM idx_paper_trades WHERE status != 'void' ORDER BY time DESC LIMIT 100`,
+              )
+              .all()
+          : db
+              .prepare(
+                `SELECT id, symbol, direction, stake, payout, status, profit, duration_minutes,
+                        entry_price, time, closed_at, exit_reason
+                   FROM bot_trades WHERE preset = ? ORDER BY time DESC LIMIT 100`,
+              )
+              .all(IDX_SEASONAL_PRESET)) as TradeRow[];
 
-        const windowRows = db
-          .prepare(
-            `SELECT profit FROM bot_trades
-              WHERE preset = ? AND status IN ('won','lost') AND time >= ?`,
-          )
-          .all(IDX_SEASONAL_PRESET, Date.now() - KILL_SWITCH_WINDOW_MS) as { profit: number }[];
+        const windowRows = (paperMode
+          ? db
+              .prepare(`SELECT profit FROM idx_paper_trades WHERE status IN ('won','lost') AND time >= ?`)
+              .all(Date.now() - KILL_SWITCH_WINDOW_MS)
+          : db
+              .prepare(
+                `SELECT profit FROM bot_trades
+                  WHERE preset = ? AND status IN ('won','lost') AND time >= ?`,
+              )
+              .all(IDX_SEASONAL_PRESET, Date.now() - KILL_SWITCH_WINDOW_MS)) as { profit: number }[];
         let killSwitch: { active: boolean; pf: number; n: number } | null = null;
         if (windowRows.length >= KILL_SWITCH_MIN_TRADES) {
           let gp = 0, gl = 0;
@@ -89,6 +104,7 @@ export const Route = createFileRoute("/api/idx-seasonal")({
         }
 
         return json({
+          mode: paperMode ? "paper" : "deriv",
           enabled: state?.enabled === 1,
           canToggle,
           updatedAt: state?.updated_at ?? null,

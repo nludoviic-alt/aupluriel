@@ -20,6 +20,7 @@ interface IdxTrade {
   exitReason: string | null;
 }
 interface IdxSeasonalData {
+  mode?: "paper" | "deriv";
   enabled: boolean;
   canToggle?: boolean;
   updatedAt: number | null;
@@ -95,7 +96,9 @@ export function IdxSeasonalPanel() {
           <div>
             <h2 className="text-lg font-black text-foreground">Index Seasonal <span className="text-sky-400/70 text-xs font-semibold">piste A</span></h2>
             <p className="text-[11px] text-muted-foreground">
-              Effet lundi haussier · 10 indices actions · binaire CALL, hold séance · démo
+              {data.mode === "deriv"
+                ? "Effet lundi haussier · 10 indices actions · binaire CALL, hold séance · démo"
+                : "Effet lundi haussier · 10 indices actions · LONG open→close · suivi papier, aucun ordre envoyé (1 000 $ notionnel, coût 0,03 % inclus)"}
             </p>
           </div>
         </div>

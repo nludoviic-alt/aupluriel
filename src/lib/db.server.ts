@@ -396,6 +396,28 @@ function migrate(db: Database.Database) {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
+    -- Positions PAPIER de "Index Seasonal" (aucun ordre Deriv : le hold de 4-7 h
+    -- n'est pas exprimable en binaire OTC). Table dédiée, PAS bot_trades : le
+    -- risk-manager, les plafonds de perte journaliers, stake-scaling et les stats
+    -- globales lisent bot_trades sans filtrer le preset — un P&L virtuel de
+    -- 1 000 $ de notionnel y compterait comme une vraie perte démo.
+    CREATE TABLE IF NOT EXISTS idx_paper_trades (
+      id               TEXT    PRIMARY KEY,
+      user_id          INTEGER NOT NULL,
+      symbol           TEXT    NOT NULL,
+      direction        TEXT    NOT NULL DEFAULT 'CALL',
+      notional         REAL    NOT NULL,
+      status           TEXT    NOT NULL,  -- open | won | lost | void
+      profit           REAL    NOT NULL DEFAULT 0,
+      entry_price      REAL    NOT NULL,
+      exit_price       REAL,
+      duration_minutes INTEGER NOT NULL,
+      time             INTEGER NOT NULL,  -- epoch ms (entrée)
+      closed_at        INTEGER,
+      exit_reason      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_idx_paper_trades_time ON idx_paper_trades(time DESC);
+
     -- Web Push subscriptions — one row per browser/device a user opted in
     -- from (a phone and a laptop are two rows). endpoint is the push
     -- service's unique URL for that subscription, so it doubles as the
