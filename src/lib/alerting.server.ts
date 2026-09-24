@@ -9,8 +9,7 @@ export type AlertType =
   | "DRAWDOWN_LIMIT_REACHED"
   | "HIGH_REJECTION_RATE"
   | "PORTFOLIO_MISMATCH"
-  | "UNUSUAL_TRADE_SILENCE"
-  | "LOSS_STREAK_STATE_MISMATCH";
+  | "UNUSUAL_TRADE_SILENCE";
 
 export interface AlertPayload {
   userId: number;

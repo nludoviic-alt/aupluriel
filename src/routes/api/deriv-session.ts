@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/deriv-session")({
         const accRes = await fetch(`${TRADING_V1}/accounts`, { headers });
         if (!accRes.ok) {
           const text = await accRes.text();
-          return json({ error: `Authentification échouée (${accRes.status}): ${text.slice(0, 200)}` }, 401);
+          return json({ error: `Authentification Deriv échouée (${accRes.status}): ${text.slice(0, 200)}` }, 502);
         }
         const accData = (await accRes.json()) as { data: DerivAccount[] };
         const accounts = accData.data ?? [];

@@ -28,8 +28,6 @@ export interface FeatureFlags {
   RESTART_RECOVERY_ENABLED: boolean;
   CONFIG_REGISTRY_ENABLED: boolean;
   CHANGE_IMPACT_TRACKER_ENABLED: boolean;
-  // --- R5: Loss Streak Circuit Breaker ---
-  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: boolean;
 }
 
 export const FEATURE_FLAGS: FeatureFlags = {
@@ -56,14 +54,6 @@ export const FEATURE_FLAGS: FeatureFlags = {
   RESTART_RECOVERY_ENABLED: true,
   CONFIG_REGISTRY_ENABLED: true,
   CHANGE_IMPACT_TRACKER_ENABLED: true,
-  // --- R5: Loss Streak Circuit Breaker ---
-  // TRUE = new NORMAL/PAUSED/RECOVERY breaker (risk_version becomes "R5").
-  // Backfill run and verified 2026-08-16 against production: CRASH_ENGINE
-  // (Ludovic/Juluo/Stella) and VOL75_1S_TREND_PULLBACK (Ludovic/Juluo) all
-  // initialized into RECOVERY from their real last-loss timestamps. Set
-  // back to false for an instant rollback to the old permanent-latch
-  // behavior without touching the DB.
-  RISK_LOSS_STREAK_CIRCUIT_BREAKER_ENABLED: true,
 };
 
 export function getFeatureFlags(): FeatureFlags {

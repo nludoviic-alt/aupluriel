@@ -4,9 +4,7 @@ import type { ServerCandle } from "./deriv.server";
 import { hashConfig } from "./config-registry.server";
 
 export const STRATEGY_VERSION = "V3.1";
-// Risk-tagging version now lives in risk-version.server.ts's
-// currentRiskVersion() — this file no longer keeps its own copy to avoid a
-// second, unused source of truth for the same value.
+export const RISK_VERSION = "R4";
 export const EXECUTION_VERSION = "E2";
 
 /**
