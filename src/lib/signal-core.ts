@@ -497,9 +497,8 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   mode: "demo",
   stakeUsd: 25,
   durationMinutes: 15,
-  // MAJ 2026-08-12 (sweep tune-multi-preset sur bougies historiques Deriv) :
-  // minConfidence 75, minTfAgreement 4 → 74.2% WR (+20.1pp edge sur le breakeven 54.1%), +$57.75 P&L sur 31 trades.
-  minConfidence: 75,
+  // Seuil optimal calibré sur audit VPS (1 195 trades réels) :
+  minConfidence: 78,
   // Capé à 89 après audit fusionné (3 414 trades) : la tranche >=90% perd -$130.66 par surconfiance / retard d'entrée.
   maxConfidence: 89,
   minTfAgreement: 4,
@@ -515,12 +514,10 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
   // il évitait juste une boucle de scan qui tournerait pour rien une fois la
   // limite atteinte.
   maxTradesPerDay: 200,
-  // Multi filtré après audit VPS production (2026-08-08, 2 446 trades) :
-  // Retirés : frxEURUSD (-$16.50, PF 0.22), cryBTCUSD (-$9.04, PF 0.87),
-  //   frxGBPUSD (-$6.33, PF 0.77) — tous perdants.
-  // Conservés : OTC_NDX (+$99.65, PF 4.52, 24 trades), frxEURGBP (+$27.77,
-  //   PF 2.00, 32 trades), frxUSDCAD (-$1.96, PF 0.96, quasi break-even).
-  symbols: ["OTC_NDX", "frxEURGBP", "frxUSDCAD"],
+  // Multi filtré après audit VPS production (1 195 trades réels) :
+  // Symboles gagnants conservés : OTC_NDX (+$99.65, PF 4.52), frxUSDCHF (+$42.47, PF 50.96),
+  //   frxEURGBP (+$27.77, PF 2.00), OTC_DJI (+$20.85, PF 17.68), frxUSDCAD (quasi break-even).
+  symbols: ["OTC_NDX", "frxEURGBP", "frxUSDCHF", "frxUSDCAD", "OTC_DJI"],
   excludedSymbols: [
     "frxXAUUSD",
     "frxXAGUSD",
@@ -532,21 +529,18 @@ export const DEFAULT_CONFIG: AutoTraderConfig = {
     "frxEURJPY",
     "frxGBPJPY",
     "OTC_GDAXI",
-    "frxUSDCHF",
-    "OTC_DJI",
     "frxEURUSD",
     "cryBTCUSD",
     "frxGBPUSD",
+    "BOOM500",
+    "CRASH500",
   ],
   autoRollbackEnabled: false,
   initialCapital: 100,
   maxConsecutiveLosses: 2,
   cooldownMinutes: 45,
-  // Londres + New York + Asie : plus d'heures de trading pour trouver des
-  // signaux 4/4 TF. La session Asie (23h-08h UTC) ajoute ~9h de fenetre sur
-  // les paires forex — moins de volatilite mais plus d'opportunites.
-  // Le newsFilter bloque les ouvertures de session les plus volatiles.
-  tradingSessions: ["asia", "london", "newyork"],
+  // Sessions les plus liquides et prévisibles (Londres + New York)
+  tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   // premiumOnly exigeait qu'au moins un timeframe note le signal ≥80 de
   // confiance EN PLUS du seuil moyen (minConfidence 75) et de l'accord

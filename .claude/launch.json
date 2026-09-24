@@ -4,8 +4,8 @@
     {
       "name": "lio23",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "npm run dev -- --port ${PORT:-8081} --strictPort"],
-      "port": 8081,
+      "runtimeArgs": ["-c", "npm run dev -- --port ${PORT:-8080} --strictPort"],
+      "port": 8080,
       "autoPort": true
     }
   ]

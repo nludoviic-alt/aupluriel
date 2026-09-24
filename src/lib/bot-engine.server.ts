@@ -267,21 +267,16 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** Presets available for activation. Crash900 is reopened for demo validation
- * only; the September audit does not establish a robust profitable baseline.
- * Archived presets remain readable through ALL_PRESETS. */
-export const ACTIVE_PRESETS: readonly Preset[] = [];
-
-// ARCHIVÉS le 2026-09-20 (audit VPS 30 j : −82 $, PF 0,90, aucun edge) : default,
-// boom, crash, scalping, rb100, vol75 (PF 0,68 sur 50 trades, en pause de sécurité ; test de porte
-// négatif sur V75/V100/Step Index). La liste est VIDE : plus aucun bot de trading n'est démarrable ;
-// la seule stratégie active est idxseasonal (scheduler autonome, voir idx-seasonal-plan.ts) (rb100 : 92 trades Range Trader, −0,87 $, 72 % de
-// sorties MAX_HOLD_TIMEOUT à quelques centimes ; jamais dans cette liste). Ils restent dans ALL_PRESETS pour que l'historique
-// (journal, stats) reste lisible, mais ne peuvent plus démarrer — au redémarrage
-// restoreBots() force enabled=0 sur toute ligne bot_state hors de cette liste.
-// scalping : dépassement de stop non expliqué (rapport du 2026-09-13).
-// Réactiver = ajouter le nom ici ET décider d'une nouvelle source de signal
-// (DECISION-2026-09-03.md), pas re-régler les seuils.
+/** Presets available for activation. Reactivated per user request:
+ * default (Multi), boom (Boom900), crash (Crash1000), scalping, vol75 (Volatility 75), rb100 (Range Break 100). */
+export const ACTIVE_PRESETS: readonly Preset[] = [
+  "default",
+  "boom",
+  "crash",
+  "scalping",
+  "vol75",
+  "rb100",
+];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, CalendarDays, ShieldCheck, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Zap, ShieldCheck, Target } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
@@ -15,8 +15,8 @@ export function BottomNav() {
 
   const primaryItems = [
     { title: "Dashboard",   url: "/",           icon: LayoutDashboard },
-    { title: "Effet lundi", url: "/effet-lundi", icon: CalendarDays },
-    { title: "Journal",     url: "/journal",    icon: BarChart3 },
+    { title: "Opportunités", url: "/opportunities", icon: Target },
+    { title: "Auto-Trader", url: "/autotrader", icon: Zap },
   ];
 
   const items = user?.is_admin ? [...primaryItems, ADMIN_ITEM] : primaryItems;

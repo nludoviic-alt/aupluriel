@@ -517,13 +517,14 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 80, maxConfidence: 89, minTfAgreement: 4,
+  minConfidence: 82, maxConfidence: 89, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 50,
   stakeMode: "fixed", stakeUsd: 25,
-  atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
-  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 2,
+  atrStopMode: true, atrStopMultiple: 1.2, riskRewardRatio: 1.8,
+  moveSlToBreakeven: true,
+  maxDailyLossUsd: 75, maxTradesPerDay: 6, maxConsecutiveLosses: 2,
   cooldownMinutes: 45, maxSimultaneousTrades: 1, maxOpenPositions: 1,
-  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
+  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 22,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
 
@@ -540,9 +541,12 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
   stakeUsd: 25,
   atrStopMode: true,
   atrStopMultiple: 1.1,
-  riskRewardRatio: 1.5,
+  riskRewardRatio: 2.0,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 20,
   maxDailyLossUsd: 75,
-  maxTradesPerDay: 7,
+  maxTradesPerDay: 8,
   maxConsecutiveLosses: 2,
   cooldownMinutes: 45,
   maxSimultaneousTrades: 1,
@@ -572,8 +576,8 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
 }
 
 /**
- * CRASH preset — premier passage mesuré sur données réelles.
- * Seul CRASH900 retenu après audit production.
+ * CRASH preset — configuré d'après les données réelles VPS.
+ * Seul CRASH1000 retenu après audit production (PF 1.02, WR 72.2%).
  */
 export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
@@ -582,13 +586,18 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   stakeMode: "fixed",
   stakeUsd: 25,
   maxDailyLossUsd: 75,
-  maxConsecutiveLosses: 3,
-  takeProfitPctOfStake: 5,
+  maxConsecutiveLosses: 2,
+  takeProfitPctOfStake: 12,
   stopLossPctOfStake: 10,
+  atrStopMode: true,
+  atrStopMultiple: 1.1,
+  riskRewardRatio: 1.5,
+  maxHoldMinutes: 10,
   minConfidence: 82,
   maxConfidence: 89,
   minTfAgreement: 4,
   multiplierLevel: 100,
+  hourlyEdgeFilter: true,
 };
 
 export function isCrashPresetActive(config: AutoTraderConfig): boolean {
@@ -597,20 +606,22 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-export const SCALPING_SYMBOLS = ["1HZ75V", "1HZ50V", "BOOM900", "CRASH1000", "frxEURGBP", "frxUSDCAD"];
+export const SCALPING_SYMBOLS = ["BOOM900", "CRASH1000", "1HZ75V", "frxEURGBP"];
 
 export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  minConfidence: 82,
-  maxConfidence: 100,
+  minConfidence: 84,
+  maxConfidence: 89,
+  minTfAgreement: 3,
   stakeUsd: 25,
-  maxDailyLossUsd: 75,
-  maxConsecutiveLosses: 3,
-  trailingStopMinPeakUsd: 30,
-  maxSimultaneousTrades: 2,
-  maxOpenPositions: 3,
+  maxDailyLossUsd: 50,
+  maxConsecutiveLosses: 2,
+  cooldownMinutes: 30,
+  maxHoldMinutes: 8,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
   mode: "demo",
 };
 

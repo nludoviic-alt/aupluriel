@@ -3,16 +3,18 @@ import test from "node:test";
 import { ACTIVE_PRESETS, lockPresetSymbols, startBotForUser } from "../bot-engine.server";
 import { DEFAULT_CONFIG } from "../signal-core";
 
-test("no trading preset is startable; every historical preset is archived", () => {
-  assert.deepEqual([...ACTIVE_PRESETS], []);
-  for (const archived of ["default", "boom", "crash", "scalping", "vol75", "rb100", "crash900"] as const) {
-    assert.ok(!ACTIVE_PRESETS.includes(archived), `${archived} must be archived`);
+test("reactivated production presets are available in ACTIVE_PRESETS", () => {
+  for (const active of ["default", "boom", "crash", "scalping", "vol75", "rb100"] as const) {
+    assert.ok(ACTIVE_PRESETS.includes(active), `${active} must be active`);
+  }
+  for (const retired of ["crash900", "boomv2", "gold", "liquidity"] as const) {
+    assert.ok(!ACTIVE_PRESETS.includes(retired as any), `${retired} must not be in ACTIVE_PRESETS`);
   }
 });
 
-test("archived presets are rejected before account access or broker execution", async () => {
-  for (const preset of ["crash", "scalping", "default", "boom", "vol75", "rb100"] as const) {
-    await assert.rejects(startBotForUser(-1, preset, DEFAULT_CONFIG), /désactivé/);
+test("non-active presets are rejected before account access or broker execution", async () => {
+  for (const preset of ["crash900", "boomv2", "gold", "liquidity"] as const) {
+    await assert.rejects(startBotForUser(-1, preset as any, DEFAULT_CONFIG), /désactivé/);
   }
 });
 

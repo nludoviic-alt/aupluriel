@@ -42,7 +42,14 @@ export const Route = createFileRoute("/portfolio")({
 });
 
 type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
-const PORTFOLIO_PRESETS = ["vol75"] as const;
+const PORTFOLIO_PRESETS = [
+  "default",
+  "boom",
+  "crash",
+  "scalping",
+  "vol75",
+  "rb100",
+] as const;
 
 interface PresetMeta {
   label: string;

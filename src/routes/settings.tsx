@@ -316,13 +316,12 @@ function SettingsPage() {
       // wrote to a separate field the bot never reads, which is why this
       // field could show one number here while the Dashboard's "Quota
       // risque du jour" (same value, read from bot_state) showed another.
-      // Scoped to the single active preset (vol75); Default/Boom/Crash/Scalping are archived.
       try {
-        await api.post("/api/bot", { action: "update", preset: "vol75", config: { maxDailyLossUsd: maxDailyLoss } });
+        await api.post("/api/bot", { action: "update", preset: "default", config: { maxDailyLossUsd: maxDailyLoss } });
       } catch { /* non-fatal — the rest of settings still saved */ }
 
       // Sync local storage autotrader config drafts so Auto-Trader HUD immediately sees the new daily loss limit & stake
-      const presetsList = ["vol75"];
+      const presetsList = ["default", "boom", "crash", "scalping", "vol75", "rb100"];
       for (const p of presetsList) {
         const pKey = `lio23.autotrader_config.${p}`;
         try {
