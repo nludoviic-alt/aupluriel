@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apprentissage IA"
+  short_description: "Évaluer l apprentissage adaptatif du bot"
+  default_prompt: "Utilise $ai-learning pour contrôler les poids appris du bot."

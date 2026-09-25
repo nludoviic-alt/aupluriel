@@ -4,10 +4,10 @@
 // Only executes trades when strict signal quality thresholds are met.
 
 import { fetchCandles, proposalContract, proposalMultiplierContract, buyContract, subscribeContract, getProfitTable, getOpenPositions, GRANULARITY, getBalance } from "./deriv";
-import { relayPush } from "./notify-push";
 import { generateSignal, rsi, macd, ema, bollinger } from "./indicators";
 import { evaluateStrategies } from "./strategies";
 import { getLearnedWeights, recordComponentOutcomes } from "./indicator-weights";
+import { api } from "./api";
 import {
   DEFAULT_CONFIG,
   TIMEFRAMES,
@@ -81,15 +81,16 @@ async function proposeAndBuyMultiplier(params: {
   multiplier: number;
   stopLossUsd: number;
   takeProfitUsd: number;
-}, maxAttempts = 3): Promise<{ contractId: number; buyPrice: number }> {
+}, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
   let lastError: Error | null = null;
+  let currentMultiplier = params.multiplier;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const proposal = await proposalMultiplierContract({
         symbol: params.symbol,
         amount: params.amount,
         contractType: params.direction,
-        multiplier: params.symbol.startsWith("cry") ? Math.min(params.multiplier, 10) : params.multiplier,
+        multiplier: currentMultiplier,
         stopLossUsd: params.stopLossUsd,
         takeProfitUsd: params.takeProfitUsd,
       });
@@ -98,7 +99,38 @@ async function proposeAndBuyMultiplier(params: {
       return { contractId: bought.contractId, buyPrice: bought.buyPrice };
     } catch (e) {
       lastError = e as Error;
-      if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) break;
+      const errMsg = lastError.message;
+
+      // Auto-guérison : même logique que le moteur serveur
+      // (deriv.server.ts) — Deriv rejette parfois le multiplicateur demandé
+      // (ex: crypto à 10x refusé, doit être ~100x) et donne la plage acceptée
+      // dans le message d'erreur ; on l'extrait et on retente avec la valeur
+      // la plus proche au lieu d'abandonner immédiatement.
+      if (errMsg.toLowerCase().includes("multiplier") || errMsg.toLowerCase().includes("limit_order")) {
+        const numbers = errMsg.match(/\b\d+\b/g)?.map(Number).filter((n) => n >= 1 && n <= 1000);
+        if (numbers && numbers.length > 0) {
+          const closest = numbers.reduce((prev, curr) =>
+            Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+          );
+          if (closest !== currentMultiplier) {
+            currentMultiplier = closest;
+            continue;
+          }
+        } else {
+          let fallbackMultipliers = [20, 50, 100];
+          if (params.symbol.startsWith("cry")) fallbackMultipliers = [10, 20, 50, 100];
+          else if (!params.symbol.startsWith("frx")) fallbackMultipliers = [100, 200, 500];
+          const closest = fallbackMultipliers.reduce((prev, curr) =>
+            Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
+          );
+          if (closest !== currentMultiplier) {
+            currentMultiplier = closest;
+            continue;
+          }
+        }
+      }
+
+      if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(errMsg)) break;
       if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
     }
   }
@@ -179,11 +211,11 @@ export const CONSERVATIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 4,
   maxConsecutiveLosses: 2,
   maxVolatilityPct: 2,
-  // Paires forex majeures uniquement — pas d'indices synthétiques (R_*) : ce
-  // sont des séries générées par RNG chez Deriv, aucun edge réel possible,
-  // winrate long terme ~50% = perte structurelle face au payout (voir
-  // DEFAULT_CONFIG.symbols dans signal-core.ts).
-  symbols: ["frxEURUSD", "frxUSDCHF"],
+  // Paires du panier Multi validé (pas dans DEFAULT_CONFIG.excludedSymbols —
+  // un symbole présent dans les deux listes disparaît silencieusement du scan).
+  // Pas d'indices synthétiques (R_*) : séries RNG, aucun edge réel possible,
+  // winrate long terme ~50% = perte structurelle face au payout.
+  symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: true,
@@ -215,9 +247,10 @@ export const MODERATE_PRESET: PresetConfig = {
   maxTradesPerDay: 8,
   maxConsecutiveLosses: 3,
   maxVolatilityPct: 3,
-  // Pas d'indices synthétiques (R_*) — mêmes raisons que le preset
-  // Conservateur. cryBTCUSD couvre les heures hors session forex (Multiplier).
-  symbols: ["frxEURUSD", "frxGBPUSD", "cryBTCUSD"],
+  // frxEURUSD, cryBTCUSD, frxGBPUSD sont dans DEFAULT_CONFIG.excludedSymbols —
+  // utiliser frxEURGBP et frxUSDCAD (panier Multi validé) évite le piège du
+  // symbole présent dans symbols ET excludedSymbols (silencieusement droppé).
+  symbols: ["frxEURGBP", "frxUSDCAD"],
   tradingSessions: ["london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -249,9 +282,10 @@ export const AGGRESSIVE_PRESET: PresetConfig = {
   maxTradesPerDay: 15,
   maxConsecutiveLosses: 4,
   maxVolatilityPct: 5,
-  // Pas d'indices synthétiques (R_*, 1HZ*) — mêmes raisons que les autres
-  // presets. Panier élargi forex + or + crypto pour le volume visé.
-  symbols: ["frxEURUSD", "frxGBPUSD", "frxUSDJPY", "frxXAUUSD", "cryBTCUSD", "cryETHUSD"],
+  // frxEURUSD, frxUSDJPY, frxXAUUSD, cryBTCUSD, cryETHUSD, frxGBPUSD sont tous
+  // dans DEFAULT_CONFIG.excludedSymbols. On garde OTC indices + frxEURGBP/
+  // frxUSDCAD du panier Multi.
+  symbols: ["frxEURGBP", "frxUSDCAD", "OTC_NDX"],
   tradingSessions: ["asia", "london", "newyork"],
   adaptiveStake: true,
   premiumOnly: false,
@@ -270,32 +304,39 @@ export const PRESETS: Record<RiskProfile, PresetConfig> = {
 // ── Quick-switch presets (Default vs Boom 1000 vs Crash vs Scalping) ─────────
 export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 
-/** The 3 Boom indices Deriv actually offers as Multiplier that are
- * profitable (confirmed live — Boom 100/150/200/300/50 don't exist on
- * Deriv Options/Multipliers at all; BOOM600 excluded after production
- * audit: 62.7% WR, -$46.95 over 150 trades). */
-export const BOOM_SYMBOLS = ["BOOM500", "BOOM900"];
+/** Boom indices retained after VPS production audit (2 446 trades, 8 août 2026) :
+ * BOOM500 : -$40.91 sur 764 trades, WR 72.9%, PF 0.93 — était +$3.62 sur 701
+ *   trades au 5 août. Détérioration sur 3 jours. Conservé avec TF=4/4 (était 2).
+ * BOOM1000 exclu (2026-08-06) : -$34.75 sur 221 trades, WR 69.7%, PF 0.70.
+ * BOOM900 exclu : -$60.96 sur 338 trades, WR 66.0%, PF 0.85.
+ * BOOM600 exclu : -$47.69 sur 154 trades, WR 63.0%, PF 0.43. */
+export const BOOM_SYMBOLS = ["BOOM500"];
 
-/** Mirror of BOOM_SYMBOLS for Crash — same 4 numeric variants, NOT yet
- * confirmed live the way BOOM_SYMBOLS was. Treat as a starting guess until a
- * real proposal/contracts_for call against Deriv confirms these four order. */
-export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
+/** Mirror de BOOM_SYMBOLS pour Crash. Revu le 2026-08-08 avec 2 446 trades réels :
+ * CRASH900 : +$169.06 sur 322 trades, WR 54.7%, PF 1.53 — solide, pilier du P&L.
+ * CRASH1000 exclu (2026-08-06) : -$25.89 sur 270 trades, WR 63.0%, PF 0.94.
+ * CRASH500 exclu : -$6.14 sur 37 trades, WR 70.3%, PF 0.61.
+ * CRASH600 exclu : -$3.28 sur 35 trades, WR 74.3%, PF 0.77. */
+export const CRASH_SYMBOLS = ["CRASH900"];
+
 
 /**
- * BOOM preset — scalping haute fréquence sur les 3 index Boom rentables.
+ * BOOM500 preset — stratégie dédiée à BOOM500 uniquement (voir BOOM_SYMBOLS),
+ * voir BOOM_SYMBOLS ci-dessus).
  *
  * Philosophie : beaucoup de trades courts, on ferme dès qu'un trade est en
  * gain (même quelques centimes) plutôt que d'attendre un objectif ambitieux.
  * Trades/positions illimités (pas de plafond artificiel — seule limite
- * réelle : 1 position par symbole, donc 3 max avec 3 symboles), mais la
+ * réelle : 1 position par symbole, donc 1 seule à la fois avec BOOM500 seul), mais la
  * protection anti-série-de-pertes reste active (maxConsecutiveLosses).
  *
  * Différences clés vs Default :
- * - 3 symboles (BOOM1000/500/900), pas de scan all-markets
+ * - 1 seul symbole (BOOM500), pas de scan all-markets
  * - instrumentType multiplier : aucun Boom n'a de Rise/Fall sur Deriv
  * - Durée 5 min (min autorisé par Deriv pour les synthétiques)
  * - Confiance 55 : très permissif, on veut du volume
- * - Accord TF 2/4 : minimum pour valider un signal
+ * - Accord TF 4/4 : audit VPS 8 août 2026 (2 446 trades) montre TF=2 = -$299.84
+ *   (PF 0.62, catastrophique), TF=4 = +$75.39 (PF 1.07, seul rentable)
  * - Volatilité max 20% : les Boom font des spikes, on accepte tout
  * - maxConsecutiveLosses 4, trailingStopPct 0.20 : garde-fous de perte conservés (demandé)
  * - trailingStopMinPeakUsd 15, maxDailyLossUsd 50, hourlyEdgeFilter off :
@@ -304,7 +345,7 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
  *   au bout de quelques trades. Détail dans les commentaires ci-dessous.
  * - maxSimultaneousTrades / maxOpenPositions / maxTradesPerDay / maxDailyProfitUsd :
  *   plafonds retirés (trades illimités, demandé) — bornés en pratique par
- *   1 position/symbole × 4 symboles
+ *   1 position/symbole × 2 symboles
  * - multiplierLevel 100 (au lieu du défaut générique 20) : mesuré par sweep
  *   réel — à 20x la distance de prix du TP/SL dépassait le mouvement typique
  *   de Boom en 60 min (93% des trades expiraient sans jamais toucher ni l'un
@@ -326,7 +367,8 @@ export const CRASH_SYMBOLS = ["CRASH1000", "CRASH900"];
  * - stakeMode fixed : mise constante, pas de Kelly
  */
 export const BOOM_PRESET: Partial<AutoTraderConfig> = {
-  // ── 3 symboles Boom (BOOM600 exclu — 62.7% WR, -$46.95 sur 150 trades) ──
+  // ── 1 seul symbole Boom retenu (BOOM500) — BOOM600/900/1000 tous exclus
+  //    sur données réelles, voir le commentaire de BOOM_SYMBOLS ci-dessus ──
   symbolMode: "watchlist",
   symbols: BOOM_SYMBOLS,
   // Pas de excludedSymbols ici : c'est une curation indépendante (ex. BOOM600
@@ -338,11 +380,24 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // maintenant explicitement excludedSymbols au lieu de le laisser ici.
   // ── Instrument — aucun Boom n'a de Rise/Fall sur Deriv, Multiplier only ──
   instrumentType: "multiplier",
+  // New two-engine Boom500 validation remains demo-only until each engine has
+  // an independently measured sample.
+  mode: "demo",
+  // Sweep tune-boom-preset 2026-08-05 : BOOM1000 performe mieux avec SL 10%
+  // (edge +10.7pp, +$11.22) qu'avec SL 20% (edge +6.0pp, +$8.82). BOOM500
+  // garde SL 20% (edge +1.1pp, optimal pour lui). Pas d'override TP/SL par
+  // symbole possible actuellement (symbolInstrumentOverrides ne gère que le
+  // type d'instrument, pas TP/SL). SL 20% conservé car partagé entre les deux.
   symbolInstrumentOverrides: {},
-  // ── Signaux — très permissif pour du volume ──
-  minConfidence: 80,
-  maxConfidence: 89,
-  minTfAgreement: 2,
+  // ── Signaux — audit VPS 2026-08-08 (2 446 trades) :
+  // bucket 80-89 = -$162.70 (PF 0.93), bucket 70-79 = +$54.46 (PF 1.22).
+  // BOOM500 : -$40.91 sur 764 trades (WR 72.9%, PF 0.93) — était +$3.62
+  //   sur 701 trades au 5 août. Détérioration sur 3 jours.
+  // TF=2 (ancien réglage) = -$299.84 (PF 0.62) → relevé à 4/4.
+  // Configuration Boom500 : entrée BUY >=85, setup premium >=95.
+  minConfidence: 88,
+  maxConfidence: 100,
+  minTfAgreement: 3,
   premiumOnly: false,
   // ── Durée — 5 min (min pour synthétiques) ──
   durationMinutes: 5,
@@ -357,56 +412,50 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   // gains suivis d'UNE perte normale).
   // Règle appliquée : le giveback toléré doit couvrir les maxConsecutiveLosses
   // pertes d'affilée, sinon une série normale tue la journée.
-  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 20% = $1.00
-  //   4 pertes    = $4.00  →  peak × 0.20 > $4.00  →  peak > $20
-  // (stopLossPctOfStake est passé de 30% à 20% le 2026-08-02, voir plus bas —
-  // trailingStopMinPeakUsd=30 reste donc plus conservateur que le minimum
-  // requis, pas un oubli de recalibrage.)
-  maxConsecutiveLosses: 4,
-  cooldownMinutes: 15,
+  //   perte/trade = stakeUsd × stopLossPctOfStake = $5 × 10% = $0.50
+  //   4 pertes    = $2.00  →  peak × 0.20 > $2.00  →  peak > $10
+  // (SL passé de 15% à 10% le 2026-08-09 après audit VPS 30 jours :
+  // WR 70.9% mais avg_loss $3.00 vs avg_win $1.03 → preset perdant.
+  // Inversion TP 15 / SL 10 pour que les pertes soient enfin bornées
+  // sous les gains.)
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 5,
   trailingStopPct: 0.20,
-  trailingStopMinPeakUsd: 30,
-  // maxDailyLossUsd 50 (au lieu des 15 hérités de DEFAULT_CONFIG) : à $1.00
-  // de perte par trade (SL 20%), $50 = 50 trades perdants, atteignable en
-  // haute fréquence avant la pause jusqu'à minuit UTC. C'est le garde-fou de
-  // RISQUE RÉEL qui borne la journée (le trailing stop ci-dessus, lui, ne
-  // s'arme quasiment jamais avec un TP de $0.50 : il faudrait des centaines
-  // de trades pour un pic de $30). À revoir avant tout passage en mode live.
-  maxDailyLossUsd: 50,
-  // hourlyEdgeFilter off : il bloque une heure UTC dès que 5 trades y ont un
-  // P&L cumulé négatif (voir getBlockedHours dans signal-core.ts). Conçu pour
-  // le preset Default (2-12 trades/jour, une heure atteint rarement 5 trades),
-  // il devient un frein permanent en haute fréquence — sur un synthétique RNG
-  // la moitié des heures finissent négatives par pur hasard, et une heure
-  // bloquée ne peut plus se rétablir puisqu'elle ne trade plus.
-  hourlyEdgeFilter: false,
+  trailingStopMinPeakUsd: 10,
+  // maxDailyLossUsd 30 : à $0.50 de perte par trade (SL 10%), $30 = 60 trades
+  // perdants. Garde-fou de RISQUE RÉEL qui borne la journée.
+  maxDailyLossUsd: 30,
+  // hourlyEdgeFilter on (audit VPS 2026-08-05) : les données montrent 04h,
+  // 09h, 11h, 13h, 14h UTC comme heures perdantes récurrentes. Le filtre
+  // dynamique auto-bloque les heures à P&L négatif récent.
+  hourlyEdgeFilter: true,
   // ── Volume — le vrai plafond est 1 position par symbole (le scan saute un
   // symbole déjà en position), donc 3 positions simultanées avec 3 symboles.
   // maxOpenPositions/maxTradesPerDay sont volontairement hors d'atteinte. ──
-  maxSimultaneousTrades: 2,
-  maxOpenPositions: 3,
-  maxTradesPerDay: 100_000,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  maxTradesPerDay: 15,
   maxDailyProfitUsd: 0,
-  // ── Take-profit/stop-loss + levier — recalibrés après audit production
-  //    (8 juillet → 2 août, 874 trades Boom clôturés).
+  // ── Take-profit/stop-loss + levier — recalibrés après audit VPS production
+  //    (1 422 trades, 9 août 2026).
   // 1) multiplierLevel 100x confirmé : à 20x, 93% des trades n'atteignaient
   //    ni TP ni SL en 60 min. À 100x, les trades se résolvent sur TP/SL.
-  // 2) TP relevé de 5% à 10% après analyse des données réelles :
-  //    TP 5% / SL 30% → break-even à 85.7% de wins. BOOM500 (86.3%) et
-  //    BOOM900 (82.2%) passent juste, mais BOOM1000 (74.1%) perd.
-  //    TP 10% / SL 30% → break-even à 75%. Gain $0.50 au lieu de $0.25.
-  //    BOOM500 : EV +$0.23/trade (was +$0.08), BOOM900 : +$0.14 (was +$0.07),
-  //    BOOM1000 : EV -$0.02 (was -$0.20) — quasi break-even au lieu de perte.
-  //    MULTDOWN (79.3% WR, -$203.86 avec TP 5%) devient EV +$0.09/trade.
-  // 3) Contrepartie : le win rate baissera (TP plus distant), mais l'EV
-  //    s'améliore sur tous les symboles. Les garde-fous (maxConsecutiveLosses,
-  //    cooldown, maxDailyLoss) restent calibrés sur SL 20% = $1.00/trade.
+  // 2) TP 15% / SL 10% : inversion du ratio précédent (TP 10 / SL 15).
+  //    Données 30 jours : WR 70.9% mais avg_win $1.03, avg_loss $3.00
+  //    (R:R réel 0.34, pas 0.67 théorique) → preset perdant à -$202.
+  //    Inverser : TP $1.60, SL $1.07 sur $10.66 stake moyen.
+  //    EV = 0.71 × $1.60 - 0.29 × $1.07 = +$0.80/trade (était négatif).
+  // 3) Contrepartie : le win rate baissera (TP plus large = moins de hits),
+  //    mais l'EV s'améliore structurellement car les pertes sont enfin
+  //    bornées sous les gains.
   multiplierLevel: 100,
-  takeProfitPctOfStake: 10,
-  stopLossPctOfStake: 20,
-  atrStopMode: false,
-  partialTakeProfitPct: 0,
-  maxHoldMinutes: 60,
+  // Boom500 : stop initial 1,1 ATR et cible principale 1,8R.
+  atrStopMode: true,
+  atrStopMultiple: 1.1,
+  riskRewardRatio: 1.8,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 8,
   // ── Pas de filtres inutiles sur synthétique 24/7 ──
   newsFilter: false,
   blockCorrelated: false,
@@ -425,9 +474,107 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   stopOnRisk: true,
   progressiveStakeReduction: false,
   // ── Kelly off sur synthétique (pas d'edge mesurable fiable) ──
-  stakeMode: "fixed",
+  stakeMode: "percent",
+  stakePercent: 0.25,
   // ── ADX filter off sur Boom (RNG = pas de vrai trend) ──
   adxFilterMode: "off",
+};
+
+/**
+ * BOOM900 — validation isolée, BOOM900 uniquement.
+ *
+ * Ce preset ne remplace pas BOOM_PRESET (BOOM500) et ne doit jamais hériter
+ * de ses résultats. BOOM900 a été déficitaire dans l'audit production du
+ * 2026-08-08 (PF 0,85 sur 338 trades) : il est donc verrouillé en démo.
+ *
+ * Sweep historique 2026-08-10, 1 200 bougies M15 (~300 h), levier 100x,
+ * maintien 60 min : TP 5% / SL 20% atteignaient les barrières (101 stops,
+ * 573 TP, 31 sorties délai) avec un edge de +1,6 pp. Ce n'est pas une preuve
+ * d'edge hors échantillon : une seule position et $1 de mise limitent la
+ * collecte de données avant toute décision ultérieure.
+ */
+export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["BOOM900"],
+  mode: "demo",
+  // Deriv currently rejects BOOM900 amounts above $0.90 on this account.
+  stakeUsd: 0.9,
+  minConfidence: 80,
+  maxConfidence: 100,
+  minTfAgreement: 3,
+  multiplierLevel: 100,
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 60,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 12,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 10,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  trailingStopPct: 0,
+  trailingStopMinPeakUsd: 0,
+  hourlyEdgeFilter: true,
+  minSymbolWinRate: 0.50,
+  symbolWinRateLookback: 20,
+};
+
+/** Volatility 75 (1s) — dedicated demo engine. The 50x multiplier is the
+ * lowest multiplier accepted by the connected Deriv account (validated by a
+ * read-only proposal on 2026-08-11). */
+export const VOL75_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
+  minConfidence: 74, maxConfidence: 100, minTfAgreement: 3,
+  instrumentType: "multiplier", multiplierLevel: 50,
+  stakeMode: "percent", stakePercent: 0.25,
+  atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
+  maxDailyLossUsd: 2, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
+  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
+  maxVolatilityPct: 100, progressiveStakeReduction: true,
+};
+
+export const RB100_PRESET: Partial<AutoTraderConfig> = {
+  symbolMode: "watchlist",
+  symbols: ["RB100"],
+  mode: "demo",
+  minConfidence: 72,
+  maxConfidence: 100,
+  minTfAgreement: 1,
+  instrumentType: "multiplier",
+  multiplierLevel: 20,
+  stakeMode: "percent",
+  stakePercent: 0.20,
+  atrStopMode: true,
+  atrStopMultiple: 1.1,
+  riskRewardRatio: 1.5,
+  maxDailyLossUsd: 2,
+  maxTradesPerDay: 7,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 3,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  newsFilter: false,
+  maxVolatilityPct: 100,
+  progressiveStakeReduction: true,
+};
+
+export const VOL50_PRESET: Partial<AutoTraderConfig> = {
+  ...VOL75_PRESET,
+  symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
+  minConfidence: 76, maxConfidence: 100, minTfAgreement: 3,
+  instrumentType: "multiplier", multiplierLevel: 80,
+  stakeMode: "percent", stakePercent: 0.25,
+  atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 1.8,
+  maxDailyLossUsd: 2, maxTradesPerDay: 8, maxConsecutiveLosses: 3,
+  cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
+  maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
 
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
@@ -469,26 +616,52 @@ export function isBoomPresetActive(config: AutoTraderConfig): boolean {
  * optimiser/vérifier comme celui qui a validé BOOM_PRESET (deux fenêtres
  * distinctes, la seconde jamais vue par l'optimisation). Traiter comme un
  * signal réel fort, pas encore comme un résultat aussi solide que Boom.
+ *
+ * MAJ 2026-08-06 : le doute ci-dessus sur CRASH1000 est tranché — 247 vrais
+ * trades sur 14 jours donnent -$9.97 (R:R ~0.50), et ça s'aggrave sur le
+ * régime récent (-$35.66/28 trades depuis le 05/08 18h). Exclu de
+ * CRASH_SYMBOLS ci-dessus ; seul CRASH900 reste.
  */
 export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   // Pas de excludedSymbols ici non plus — même raison que BOOM_PRESET plus haut.
-  // Revalidation Deriv récente (300 bougies, 330 trades candidats, levier
-  // 100x) : TP 5% / SL 20% a produit +$17.59, 82.4% de réussite contre
-  // 80% requis, avec seulement 14 sorties au temps. TP 10% / SL 20% était
-  // plus faible sur la même fenêtre (+$12.58) et davantage dépendant du timeout.
+  // Sweep tune-crash-preset 2026-08-05 (150 bougies, 163 trades, levier 100x) :
+  // TP 5% / SL 10% = +$10, edge +8.2pp, 74.8% WR (breakeven 66.7%).
+  // SL 10% surpasse SL 20% (+$9.12, edge +2.8pp) — le stop serré coupe les
+  // pertes plus tôt sans sacrifier les gains (TP 5% atteint rapidement).
+  // CRASH1000: 76.1% WR, +$6.25 | CRASH900: 73.3% WR, +$3.75.
   takeProfitPctOfStake: 5,
-  stopLossPctOfStake: 20,
-  // Noyau prod retenu le 2026-08-02 : CRASH1000/900 avec accord TF 3+.
-  // La confiance reste large (70-100) car ce preset manque encore de marge ;
-  // le vrai filtre est le symbole + TF, pas un bucket 80-89 comme Boom.
-  minConfidence: 70,
-  maxConfidence: 100,
-  minTfAgreement: 3,
+  stopLossPctOfStake: 10,
+  // MAJ 2026-08-12 (sweep tune-crash-preset sur bougies historiques Deriv) :
+  // TP 5% / SL 10% / minConfidence 55 / minTfAgreement 2 → 79.5% WR, edge +12.9pp, +$85.00 P&L sur 88 trades.
+  minConfidence: 55,
+  maxConfidence: 89,
+  minTfAgreement: 2,
   multiplierLevel: 100,
 };
+
+/** Crash500 is deliberately isolated from Crash900.  It is demo-only while
+ * its two specialised engines accumulate enough independent journal data. */
+export const CRASH500_PRESET: Partial<AutoTraderConfig> = {
+  ...CRASH_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["CRASH500"],
+  mode: "demo",
+  stakeMode: "percent",
+  stakePercent: 0.25,
+  minConfidence: 88,
+  maxConfidence: 100,
+  minTfAgreement: 4,
+  maxTradesPerDay: 15,
+  maxConsecutiveLosses: 3,
+  cooldownMinutes: 5,
+  maxSimultaneousTrades: 1,
+  atrStopMode: true,
+  multiplierLevel: 100,
+};
+
 
 export function isCrashPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
@@ -496,13 +669,11 @@ export function isCrashPresetActive(config: AutoTraderConfig): boolean {
     && CRASH_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
-/** Scalping is deliberately BOOM500 only — the price-action signal in
- * scalping-signal.server.ts was backtested on real Deriv M1 candles across
- * several instruments and only BOOM500 held up (+0.35R/trade, PF 1.79, 895
- * trades / 13.9 days). Volatility 10 and Volatility 10 (1s) were both far
- * weaker on the same test, so this list is a backtest result, not a
- * preference. */
-export const SCALPING_SYMBOLS = ["BOOM500"];
+/** Scalping V2 watchlist: BOOM1000 retained after VPS audit.
+ * BOOM500 retiré du scalping : WR 36.1%, -$3.14 sur 36 trades — performance
+ * catastrophique en mode scalping (contrairement au preset Boom où il
+ * performe bien avec TP/SL différents et levier 100x). */
+export const SCALPING_SYMBOLS = ["BOOM1000"];
 
 /**
  * "Scalping" preset (2026-08-02) — an isolated, low-risk M1/M5 price-action
@@ -532,10 +703,11 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist",
   symbols: SCALPING_SYMBOLS,
-  // Keep scalping in the same conservative confidence band as the current
-  // production test. The sample is still tiny, so volume stays intentionally
-  // constrained until it proves itself.
-  minConfidence: 80,
+  // Audit VPS 2026-08-08 (2 446 trades) : bucket 80-89 = -$162.70 (PF 0.93),
+  // bucket 70-79 = +$54.46 (PF 1.22). minTfAgreement 4/4 hérité de BOOM_PRESET.
+  // BOOM1000 : -$34.75 sur 221 trades (PF 0.70), CRASH1000 : -$25.89 sur 270
+  //   trades (PF 0.94) — mais scalping utilise un moteur de signaux différent.
+  minConfidence: 85,
   maxConfidence: 89,
   stakeUsd: 1,
   // Scaled down from BOOM_PRESET's $5 stake to this preset's $1 — not left at
@@ -558,35 +730,259 @@ export const SCALPING_PRESET: Partial<AutoTraderConfig> = {
 };
 
 /**
- * Demo-only experiment for XAU/USD and US Tech 100: an M15 sweep of a recent
- * liquidity extreme, followed by a close back into the range and RSI turn.
- * It is intentionally a separate preset so it cannot alter Multi's validated
- * market list or risk behaviour.
+ * Demo-only experiment: an M15 sweep of a recent liquidity extreme, followed
+ * by a close back into the range and RSI turn. It is intentionally a
+ * separate preset so it cannot alter Multi's validated market list or risk
+ * behaviour.
+ *
+ * Retargeted to XAU/USD only on 2026-08-07 (strategy-tournament Phase 2):
+ * this header comment used to promise "XAU/USD and US Tech 100" while
+ * `symbols` actually only ran OTC_NDX — a pre-existing drift bug, found
+ * while preparing the tournament, not caused by it. The tournament backtest
+ * (`.claude/skills/strategy-tournament`) showed this engine's best signal on
+ * gold at +12.6pp edge over breakeven, but on only 6 trades — too small to
+ * trust yet, which is exactly why this preset exists: to accumulate a real,
+ * committed-in-advance sample (50 trades, extend once to 100 if PF lands in
+ * the 1.0-1.2 ambiguous band) before deciding to keep or drop it.
  */
 export const LIQUIDITY_PRESET: Partial<AutoTraderConfig> = {
   ...DEFAULT_CONFIG,
   symbolMode: "watchlist",
-  symbols: ["frxXAUUSD", "OTC_NDX"],
+  symbols: ["frxXAUUSD"],
+  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
+  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
+  // dans symbols ET excludedSymbols, et le bot saute les signaux.
   excludedSymbols: [],
-  instrumentType: "binary",
+  instrumentType: "multiplier",
+  broker: "oanda",
+  enableOanda: true,
   stakeUsd: 1,
-  durationMinutes: 15,
-  minConfidence: 80,
-  maxConfidence: 95,
+  stakeMode: "percent",
+  stakePercent: 0.25,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
   minTfAgreement: 4,
   maxDailyLossUsd: 3,
-  maxTradesPerDay: 2,
-  maxConsecutiveLosses: 2,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 3,
   maxSimultaneousTrades: 1,
   maxOpenPositions: 1,
   tradingSessions: ["london", "newyork"],
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 240,
+  // XAU/USD is sensitive to macro releases. This remains explicitly enabled
+  // even though it is also the global default: every Gold strategy must use
+  // the shared news block.
+  newsFilter: true,
   mode: "demo",
 };
+
+/**
+ * Gold preset — trend-following M15 strategy exclusively for XAU/USD.
+ *
+ * This is a DIFFERENT TRADING MECHANISM from the Multi engine, for the same
+ * reason Scalping and Liquidity are isolated: the Multi engine's
+ * mean-reversion filter (RSI > 70 blocks buying, RSI < 30 blocks selling)
+ * systematically kills the best gold entries — gold can stay overbought or
+ * oversold for extended periods during strong trends. The 6 real production
+ * trades on frxXAUUSD with the Multi engine gave 16.7% win rate (−$37.46),
+ * which is why the symbol was excluded from DEFAULT_CONFIG.
+ *
+ * The dedicated engine (gold-trend-signal.server.ts) is pure trend-following:
+ * RSI > 70 is treated as STRENGTH (momentum confirmation), not as a sell
+ * signal. See that file's header for the full gate list.
+ *
+ * Risk profile (demo-only, same caution as Liquidity):
+ * - 1 symbol (frxXAUUSD), binary CALL/PUT
+ * - London + New York sessions only (gold is erratic in the Asian session)
+ * - 30-min expiry (gold needs more time than 15 min for a move to develop)
+ * - $1 stake, $3 daily loss cap, 3 trades/day max — tiny until proven
+ * - minConfidence 75 (the engine's base score; 5 gates must all agree)
+ * - mode forced to "demo" server-side (same guard as Scalping/Liquidity)
+ */
+export const GOLD_SYMBOLS = ["frxXAUUSD"];
+
+export const GOLD_PRESET: Partial<AutoTraderConfig> = {
+  ...DEFAULT_CONFIG,
+  symbolMode: "watchlist",
+  symbols: GOLD_SYMBOLS,
+  // Override excludedSymbols : DEFAULT_CONFIG exclut frxXAUUSD, mais ce preset
+  // trade EXCLUSIVEMENT frxXAUUSD — sans ce override, le symbole est à la fois
+  // dans symbols ET excludedSymbols, et le bot saute les signaux.
+  excludedSymbols: [],
+  // Position, not binary: the strategy has an ATR stop and R-multiple targets.
+  instrumentType: "multiplier",
+  broker: "oanda",
+  enableOanda: true,
+  stakeUsd: 1,
+  stakeMode: "percent",
+  // The engine derives the stake from 0.25% of balance and the ATR stop;
+  // this is retained as the explicit risk declaration, not as a stake %.
+  stakePercent: 0.25,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
+  minTfAgreement: 4,
+  multiplierLevel: 20,
+  atrStopMode: true,
+  atrStopMultiple: 1.2,
+  riskRewardRatio: 2,
+  // TP1 is recognized at 1R (50% of the 2R target). Deriv's multiplier
+  // contract has no partial-close primitive; the tracking layer records it.
+  partialTakeProfitPct: 50,
+  moveSlToBreakeven: true,
+  maxHoldMinutes: 240,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 3,
+  maxSimultaneousTrades: 1,
+  maxOpenPositions: 1,
+  tradingSessions: ["london", "newyork"],
+  // Gold's natural ATR% is 1.5-4% — the engine itself gates on this range,
+  // but keep the scan-level filter permissive so the engine can make the
+  // call (the engine's ATR% gate is more precise than the global one).
+  maxVolatilityPct: 6,
+  newsFilter: true,
+  mode: "demo",
+};
+
+/**
+ * Experimental presets are deliberately separate records from their V1
+ * counterparts.  A V2 result must never be added to the historical journal
+ * of the original strategy: it tests a different market hypothesis.
+ */
+export const BOOM_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...BOOM_PRESET,
+  stakeUsd: 1,
+  maxDailyLossUsd: 5,
+  maxTradesPerDay: 5,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** M1/M5 Spike Hunter, distinct from Scalping V1's structural pullback. */
+export const SCALPING_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...SCALPING_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["BOOM500"],
+  minConfidence: 80,
+  maxConfidence: 95,
+  stakeUsd: 1,
+  maxDailyLossUsd: 5,
+  maxTradesPerDay: 5,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** XAU/USD liquidity-sweep/reintegration experiment, isolated from V1. */
+export const LIQUIDITY_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...LIQUIDITY_PRESET,
+  symbols: ["frxXAUUSD"],
+  durationMinutes: 60,
+  stakeUsd: 1,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 2,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+/** XAU/USD London/New York session breakout followed by a pullback. */
+export const GOLD_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...GOLD_PRESET,
+  symbols: GOLD_SYMBOLS,
+  durationMinutes: 0,
+  minConfidence: 85,
+  maxConfidence: 100,
+  stakeUsd: 1,
+  maxDailyLossUsd: 3,
+  maxTradesPerDay: 3,
+  maxConsecutiveLosses: 3,
+  maxOpenPositions: 1,
+  maxSimultaneousTrades: 1,
+  mode: "demo",
+};
+
+export function isGoldPresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === GOLD_SYMBOLS.length
+    && GOLD_SYMBOLS.every((s) => config.symbols.includes(s));
+}
 
 export function isScalpingPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === SCALPING_SYMBOLS.length
     && SCALPING_SYMBOLS.every((s) => config.symbols.includes(s));
+}
+
+/**
+ * Crash900 V2 preset — data-driven optimization of the Crash preset, focused
+ * exclusively on CRASH900 with parameters derived from 316 production trades
+ * (90 days, audit 2026-08-09).
+ *
+ * Key findings that shaped this preset:
+ * - MULTDOWN dominates: 284 trades, 54.6% WR, PF 1.60 vs MULTUP PF 0.44.
+ *   CRASH900 is a crash index — selling is the natural direction.
+ * - London AM (08-12 UTC) is catastrophic: PF 0.46. All other sessions are
+ *   profitable (Asia PF 1.91, NY PM PF 1.82, London PM/NY AM PF 1.60).
+ * - Confidence <80% has the BEST profit factor (3.01) — the score is not
+ *   calibrated for CRASH900. Lowering minConfidence to 75 captures the best
+ *   bucket while avoiding the 85-89% dead zone (PF 0.83).
+ * - TAS 3/4 beats TAS 4/4: 62.0% WR vs 46.8%. Less alignment = more wins.
+ *
+ * This preset uses the SAME confluence signal engine as the Crash preset
+ * (no dedicated signal file) — the optimization is purely in the config:
+ * different symbols, sessions, confidence threshold, and risk parameters.
+ *
+ * Risk profile (demo-only until validated):
+ * - CRASH900 only, multiplier instrument
+ * - $50 stake, $150 daily loss cap
+ * - 5 max consecutive losses (the 90-day data showed a 9-loss streak)
+ * - Asia + London PM + NY sessions (London AM 08-12 UTC excluded via
+ *   tradingSessions — see bot-engine's session filter)
+ */
+export const CRASH900_V2_SYMBOLS = ["CRASH900"];
+
+export const CRASH900_V2_PRESET: Partial<AutoTraderConfig> = {
+  ...CRASH_PRESET,
+  symbolMode: "watchlist",
+  symbols: CRASH900_V2_SYMBOLS,
+  excludedSymbols: ["CRASH500", "CRASH600", "CRASH1000"],
+  // Lower confidence threshold: <80% bucket has PF 3.01 on CRASH900.
+  // The 85-89% bucket is a dead zone (PF 0.83) — lowering to 75 captures
+  // the best signals while avoiding that zone.
+  minConfidence: 75,
+  maxConfidence: 100,
+  // TAS 3/4 has 62% WR vs 46.8% for 4/4 — keep minTfAgreement at 3.
+  minTfAgreement: 3,
+  stakeUsd: 50,
+  maxDailyLossUsd: 150,
+  maxTradesPerDay: 10,
+  maxConsecutiveLosses: 5,
+  cooldownMinutes: 30,
+  // Asia (00-07) + London PM/NY AM (13-17) + NY PM (18-23).
+  // London AM (08-12 UTC) excluded — PF 0.46 on that session.
+  tradingSessions: ["asia", "london", "newyork"],
+  maxSimultaneousTrades: 2,
+  maxOpenPositions: 2,
+  // TP/SL inherited from CRASH_PRESET (10/10) — balanced R:R for CRASH900.
+  mode: "demo",
+};
+
+export function isCrash900PresetActive(config: AutoTraderConfig): boolean {
+  return config.symbolMode === "watchlist"
+    && config.symbols.length === CRASH900_V2_SYMBOLS.length
+    && CRASH900_V2_SYMBOLS.every((s) => config.symbols.includes(s));
 }
 
 /** Custom user preset with performance tracking */
@@ -660,20 +1056,6 @@ export function updatePresetPerformance(
     presets[idx].performance = { ...stats, lastUsed: Date.now() };
     saveCustomPresets(presets);
   }
-}
-
-// ─── Risk notification ─────────────────────────────────────────────────────────
-
-export function notifyRiskStop(reasons: string[]) {
-  relayPush("Au Pluriel — Auto-trader arrêté (risque détecté)", reasons.join("\n"), "/autotrader");
-}
-
-export function notifyTradeTaken(symbol: string, direction: string, confidence: number) {
-  relayPush(
-    `Au Pluriel — Trade pris sur ${symbol}`,
-    `${direction} · Confiance ${confidence}% · Position favorable (PREMIUM)`,
-    "/autotrader"
-  );
 }
 
 // ─── Real Kelly-criterion stake ────────────────────────────────────────────────
@@ -874,6 +1256,8 @@ export async function openPreviewTrade(
       const last = candles[candles.length - 1]?.close ?? entryPrice;
       const won = direction === "CALL" ? last > entryPrice : last < entryPrice;
       const profit = won ? stakeUsd * payoutRatio : -stakeUsd;
+      addToCumulativePnl(profit);
+      addToDailyPnl(profit);
       emit({ ...base, status: won ? "won" : "lost", profit, payout: won ? stakeUsd + profit : 0, closedAt: Date.now() });
     } catch {
       emit({ ...base, status: "error", profit: 0 });
@@ -893,6 +1277,7 @@ export async function forceDemoTrade(
   durationMinutes: number,
   onEvent: TradeEventHandler,
   multiplierSettings: Pick<AutoTraderConfig, "multiplierLevel" | "stopLossPctOfStake" | "takeProfitPctOfStake"> = DEFAULT_CONFIG,
+  signalMeta?: Pick<TradeLog, "confidence" | "tfAgreement">,
 ): Promise<void> {
   const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
   if (!isSymbolTradeable(symbolDeriv, isMultiplier ? "multiplier" : "binary")) {
@@ -908,6 +1293,23 @@ export async function forceDemoTrade(
     else logs.unshift(log);
     saveTradeLog(logs);
     clearTradeLogCache();
+    // Persist manual trades to server DB so admin can see them
+    if (log.status === "open" || log.status === "won" || log.status === "lost" || log.status === "error") {
+      api.post("/api/trades", {
+        id: log.id,
+        time: log.time,
+        symbol: log.symbol,
+        direction: log.direction,
+        stake: log.stake,
+        payout: log.payout ?? 0,
+        status: log.status,
+        profit: log.profit ?? 0,
+        confidence: log.confidence ?? 0,
+        tf_agreement: log.tfAgreement ?? 0,
+        contract_id: log.contractId ?? null,
+        closed_at: log.closedAt ?? null,
+      }).catch(() => { /* silent — don't block the trade flow */ });
+    }
     onEvent(log);
   };
 
@@ -929,12 +1331,12 @@ export async function forceDemoTrade(
     payout: 0,
     status: "pending",
     profit: 0,
-    confidence: 0,
-    tfAgreement: 0,
+    confidence: signalMeta?.confidence ?? 0,
+    tfAgreement: signalMeta?.tfAgreement ?? 0,
     note: isMultiplier ? "Prise manuelle · Multiplicateur" : "Prise manuelle · CALL/PUT",
     entryPrice: entryPrice || undefined,
     ...(isMultiplier
-      ? { multiplier: symbolDeriv.startsWith("cry") ? Math.min(multiplierSettings.multiplierLevel, 10) : multiplierSettings.multiplierLevel, stopLossUsd, takeProfitUsd }
+      ? { multiplier: multiplierSettings.multiplierLevel, stopLossUsd, takeProfitUsd }
       : { durationMinutes, expiry: Date.now() + durationMinutes * 60_000 }),
   };
   emit(pending);
@@ -1159,6 +1561,10 @@ export async function backtestMultiTf(
     testCandles = 150, // number of 15m entry points tested (~37.5h of opportunities)
     veto4h = "strong-only",
     vetoDaily = "strong-only",
+    confluenceMode = "weighted",
+    adxFilterMode = "block",
+    adxBlockThreshold = 20,
+    adxStrongThreshold = 25,
   }: {
     minConfidence?: number;
     minTfAgreement?: number;
@@ -1167,6 +1573,10 @@ export async function backtestMultiTf(
     testCandles?: number;
     veto4h?: Veto4hMode;
     vetoDaily?: Veto4hMode;
+    confluenceMode?: "vote" | "weighted";
+    adxFilterMode?: "off" | "penalize" | "block";
+    adxBlockThreshold?: number;
+    adxStrongThreshold?: number;
   } = {},
 ): Promise<MultiTfBacktestResult> {
   const LOOKBACK = 250; // same per-TF depth analyzeSymbol() fetches live
@@ -1203,7 +1613,12 @@ export async function backtestMultiTf(
       const slice = sliceAsOf(bySrc[tf], asOfEpoch, LOOKBACK);
       if (slice.length >= 60) tfSignals[tf] = generateSignal(slice, { weights: learnedWeights });
     }
-    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily);
+    const analysis = aggregateTfSignals(tfSignals, 0, 1, veto4h, 0, undefined, vetoDaily, {
+      confluenceMode,
+      adxFilterMode,
+      adxBlockThreshold,
+      adxStrongThreshold,
+    });
     if (!analysis.direction) continue;
     if (analysis.confidence < minConfidence) continue;
     if (analysis.agreement < minTfAgreement) continue;

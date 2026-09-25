@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Bell,
   Bot,
   CheckCircle2,
   Clock3,
@@ -14,8 +15,17 @@ import {
   Target,
   Zap,
 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { relayPush } from "@/lib/notify-push";
+import {
+  getExistingPushSubscription,
+  isIosNonSafari,
+  isIosNonStandalone,
+  isPushSupported,
+  subscribeToPush,
+} from "@/lib/push";
 
 export const Route = createFileRoute("/opportunities")({
   head: () => ({ meta: [{ title: "Opportunités — Au Pluriel" }] }),
@@ -23,12 +33,15 @@ export const Route = createFileRoute("/opportunities")({
 });
 
 type Decision = "take" | "wait" | "avoid";
-type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity";
+// liquidity/gold/liquidityv2/goldv2 retired 2026-08-14 — see
+// archive/oanda-gold-2026-08-14/README.md.
+type Preset = "default" | "boom" | "boom900" | "vol75" | "rb100" | "crash" | "crash500" | "scalping" | "crash900" | "boomv2" | "scalpingv2";
 
 interface OpportunityItem {
   id: string;
   preset: Preset;
   presetLabel: string;
+  active?: boolean;
   symbol: string;
   label: string;
   market: string;
@@ -100,9 +113,15 @@ const DECISION_COPY: Record<Decision, { label: string; icon: typeof Target; soft
 const PRESET_STYLE: Record<Preset, string> = {
   default: "border-violet-500/30 bg-violet-500/10 text-violet-300",
   boom: "border-orange-500/30 bg-orange-500/10 text-orange-300",
+  boom900: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+  vol75: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+  rb100: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
   crash: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  scalping: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
-  liquidity: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300",
+  crash500: "border-red-500/30 bg-red-500/10 text-red-300",
+  scalping: "border-blue-500/30 bg-blue-500/10 text-blue-300",
+  crash900: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+  boomv2: "border-orange-400/30 bg-orange-400/10 text-orange-200",
+  scalpingv2: "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
 };
 
 function money(v: number) {
@@ -118,13 +137,54 @@ function OpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Decision>("all");
+  const [showResearch, setShowResearch] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [hasPushSub, setHasPushSub] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    getExistingPushSubscription().then((sub) => setHasPushSub(!!sub)).catch(() => {});
+  }, []);
+
+  async function handleSubscribePush() {
+    setPushLoading(true);
+    try {
+      if (isIosNonSafari()) {
+        toast.error("Sur iOS, veuillez utiliser Safari pour activer les notifications Push.");
+        return;
+      }
+      if (isIosNonStandalone()) {
+        toast.info("Sur iPhone/iPad: Touchez Partager ➔ 'Sur l'écran d'accueil' pour recevoir les notifications Push réelles avec l'écran verrouillé.", { duration: 8000 });
+      }
+      await subscribeToPush();
+      setHasPushSub(true);
+      toast.success("🔔 Notifications Push Mobile activées avec succès !");
+      relayPush("⚡ Radar d'Opportunités Actif", "Vous recevrez désormais les signaux d'opportunités en direct sur votre téléphone.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur activation push");
+    } finally {
+      setPushLoading(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setData(await api.get<OpportunitiesResponse>("/api/opportunities"));
+      const res = await api.get<OpportunitiesResponse>("/api/opportunities");
+      setData(res);
+
+      // Trigger real OS mobile push notification when a high confidence trade is ready
+      if (res.summary.take > 0 && res.opportunities.length > 0) {
+        const top = res.opportunities.find((o) => o.decision === "take");
+        if (top) {
+          relayPush(
+            `⚡ Signal Opportunité : ${top.label}`,
+            `Signal prêt (${top.directionLabel}) · Confiance ${Math.round(top.confidence)}% · Preset ${top.presetLabel}`,
+            `/manual-trader?symbol=${top.symbol}&direction=${top.direction}&preset=${top.preset}&take=1`
+          );
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur de chargement");
     } finally {
@@ -144,12 +204,23 @@ function OpportunitiesPage() {
 
   const scanAgeSeconds = data ? Math.max(0, Math.floor((now - data.generatedAt) / 1_000)) : null;
 
-  const visible = useMemo(() => {
+  const scoped = useMemo(() => {
     const rows = data?.opportunities ?? [];
-    return filter === "all" ? rows : rows.filter((o) => o.decision === filter);
-  }, [data?.opportunities, filter]);
+    return showResearch ? rows : rows.filter((o) => o.active);
+  }, [data?.opportunities, showResearch]);
 
-  const topTake = data?.opportunities.find((o) => o.decision === "take");
+  const visible = useMemo(() => {
+    const rows = scoped;
+    return filter === "all" ? rows : rows.filter((o) => o.decision === filter);
+  }, [scoped, filter]);
+
+  const topTake = scoped.find((o) => o.decision === "take");
+  const summary = {
+    take: scoped.filter((o) => o.decision === "take").length,
+    wait: scoped.filter((o) => o.decision === "wait").length,
+    avoid: scoped.filter((o) => o.decision === "avoid").length,
+    presets: new Set(scoped.map((o) => o.preset)).size,
+  };
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6 px-4 py-4 sm:px-6 lg:px-8">
@@ -170,7 +241,7 @@ function OpportunitiesPage() {
                 En direct
               </span>
             </div>
-            <p className="text-xs font-semibold text-muted-foreground/80 mt-0.5">
+            <p className="text-xs font-semibold text-muted-foreground/80 mt-0.5 hidden md:block">
               Analyse algorithmique continue · Détection de signaux optimaux & analyse de risques multi-marchés.
             </p>
             {scanAgeSeconds !== null && (
@@ -181,14 +252,30 @@ function OpportunitiesPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => void load()}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground disabled:opacity-60 self-start sm:self-auto"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <RefreshCw className="h-4 w-4 text-primary" />}
-          <span>Actualiser le Radar</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleSubscribePush}
+            disabled={pushLoading}
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all shadow-sm",
+              hasPushSub
+                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                : "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+            )}
+          >
+            <Bell className={cn("h-4 w-4", hasPushSub ? "text-emerald-400" : "text-amber-400 animate-bounce")} />
+            <span>{hasPushSub ? "Push Mobile Actif" : "Notifications Mobile"}</span>
+          </button>
+
+          <button
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <RefreshCw className="h-4 w-4 text-primary" />}
+            <span>Actualiser le Radar</span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -199,10 +286,10 @@ function OpportunitiesPage() {
 
       {/* ── Summary KPI Strip ── */}
       <div className="grid gap-3.5 grid-cols-2 md:grid-cols-4">
-        <SummaryCard label="À prendre (Signal prêt)" value={data?.summary.take ?? 0} tone="emerald" />
-        <SummaryCard label="À attendre (En formation)" value={data?.summary.wait ?? 0} tone="amber" />
-        <SummaryCard label="À éviter (Risqué)" value={data?.summary.avoid ?? 0} tone="rose" />
-        <SummaryCard label="Presets surveillés" value={data?.summary.presets ?? 0} tone="cyan" />
+        <SummaryCard label="À prendre (Signal prêt)" value={summary.take} tone="emerald" />
+        <SummaryCard label="À attendre (En formation)" value={summary.wait} tone="amber" />
+        <SummaryCard label="À éviter (Risqué)" value={summary.avoid} tone="rose" />
+        <SummaryCard label="Presets actifs surveillés" value={summary.presets} tone="cyan" />
       </div>
 
       {/* ── Hero Feature: Meilleure Opportunité ── */}
@@ -242,13 +329,7 @@ function OpportunitiesPage() {
               )}
             </div>
 
-            <div className="shrink-0 flex flex-col sm:flex-row lg:flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
-              <Link
-                to="/autotrader"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-up px-5 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-400 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-              >
-                <Zap className="h-4 w-4" /> Trader en 1-Clic
-              </Link>
+            <div className="shrink-0 flex flex-col gap-2.5 pt-3 lg:pt-0 border-t border-white/10 lg:border-t-0 lg:border-l lg:border-white/10 lg:pl-6">
               <ActionStrip item={topTake} />
             </div>
           </div>
@@ -271,6 +352,17 @@ function OpportunitiesPage() {
             {f === "all" ? "Toutes les Opportunités" : DECISION_COPY[f].label}
           </button>
         ))}
+        <button
+          onClick={() => setShowResearch((value) => !value)}
+          className={cn(
+            "ml-auto shrink-0 rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-wider transition-all",
+            showResearch
+              ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
+              : "border-white/10 bg-white/[0.02] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground",
+          )}
+        >
+          {showResearch ? "Masquer recherche" : "Voir recherche inactive"}
+        </button>
       </div>
 
       {/* ── Opportunity Grid ── */}
@@ -354,6 +446,7 @@ function OpportunityCard({ item }: { item: OpportunityItem }) {
             <span className={cn("rounded-xl border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider", PRESET_STYLE[item.preset])}>
               {item.presetLabel}
             </span>
+            {!item.active && <span className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-200">Recherche · inactif</span>}
           </div>
 
           <h3 className="truncate text-lg font-black tracking-tight text-foreground">{item.label}</h3>
@@ -422,42 +515,41 @@ function riskLabel(risk: OpportunityItem["risk"]) {
 }
 
 function ActionStrip({ item, className }: { item: OpportunityItem; className?: string }) {
+  const isTake = item.decision === "take";
+
   return (
-    <div className={cn("flex flex-wrap gap-2 pt-2", className)}>
+    <div className={cn("flex flex-wrap items-center gap-2 pt-2", className)}>
+      {item.active ? (
+        <Link
+          to="/manual-trader"
+          search={{
+            symbol: item.symbol,
+            direction: item.direction || undefined,
+            preset: item.preset,
+            take: "1",
+          }}
+          className={cn(
+            "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-6 text-xs font-black uppercase tracking-wider transition-all shadow-md",
+            isTake
+              ? "border-up/50 bg-up text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+              : "border-white/10 bg-white/[0.04] text-foreground hover:bg-white/[0.08]",
+          )}
+        >
+          <Zap className="h-4 w-4 fill-current" />
+          {isTake ? "Prendre ce Trade" : "Ouvrir en Prise Directe"}
+        </Link>
+      ) : (
+        <span className="inline-flex h-11 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 px-6 text-xs font-black uppercase tracking-wider text-amber-200">
+          Preset inactif
+        </span>
+      )}
+
       <Link
         to="/signals"
         className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
       >
         <Eye className="h-3.5 w-3.5 text-primary" />
         Observer
-      </Link>
-      <a
-        href="https://mt5-demo-web.deriv.com/terminal"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
-      >
-        <ArrowUpRight className="h-3.5 w-3.5" />
-        Manuel
-      </a>
-      <Link
-        to="/autotrader"
-        className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-black uppercase tracking-wider transition-all",
-          item.decision === "take"
-            ? "border-up/40 bg-up/20 text-up hover:bg-up/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-            : "border-white/10 bg-white/[0.03] text-muted-foreground hover:bg-white/[0.08]",
-        )}
-      >
-        <Bot className="h-3.5 w-3.5" />
-        Auto
-      </Link>
-      <Link
-        to="/autotrader"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-muted-foreground transition-all hover:bg-white/[0.08] hover:text-foreground"
-        title="Réglages du preset"
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5" />
       </Link>
     </div>
   );

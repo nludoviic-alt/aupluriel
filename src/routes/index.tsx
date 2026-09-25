@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrokerBalances } from "@/hooks/use-broker-balances";
 import { api } from "@/lib/api";
+import { HealthPanel } from "@/components/health-panel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -134,6 +135,17 @@ function Dashboard() {
   const opportunityScan = useDashboardOpportunities();
   const isForex = chartSymbol.market === "forex";
 
+  const [maxDailyLoss, setMaxDailyLoss] = useState<number>(15);
+
+  useEffect(() => {
+    api.get<{ presets?: Record<string, { savedConfig?: { maxDailyLossUsd?: number } }> }>("/api/bot")
+      .then((res) => {
+        const cfg = res.presets?.default?.savedConfig?.maxDailyLossUsd;
+        if (cfg) setMaxDailyLoss(cfg);
+      })
+      .catch(() => {});
+  }, []);
+
   const priceChange = useMemo(() => {
     if (series.length < 2) return null;
     const first = series[0].price;
@@ -218,6 +230,17 @@ function Dashboard() {
       {/* ── BOT STATUS (mobile only — Auto-Trader isn't in the bottom nav) ── */}
       <BotStatusCard />
 
+      {/* ── LIVE HEALTH & GUARD MONITOR — desktop only ── */}
+      <div className="mt-4 hidden md:block">
+        <HealthPanel
+          currentPnl={todayPnl ?? 0}
+          maxDailyLoss={maxDailyLoss}
+          activePreset="default"
+          winRate={winRate ?? 0}
+          openPositionsCount={0}
+        />
+      </div>
+
       {/* ── BROKER BALANCES ── */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <KpiCard
@@ -231,6 +254,7 @@ function Dashboard() {
           const b = brokerBalances?.deriv;
           return (
             <KpiCard
+              className="order-first sm:order-none"
               label="Deriv"
               value={b ? b.balance.toFixed(2) : balanceDisplay ?? "0.00"}
               delta={b ? b.currency : derivBalance?.currency ?? "USD"}
@@ -242,6 +266,7 @@ function Dashboard() {
           const b = brokerBalances?.kraken;
           return (
             <KpiCard
+              className="hidden sm:flex"
               label="Kraken"
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "USD"}
@@ -253,21 +278,11 @@ function Dashboard() {
           const b = brokerBalances?.binance;
           return (
             <KpiCard
+              className="hidden sm:flex"
               label="Binance"
               value={b ? b.balance.toFixed(2) : "0.00"}
               delta={b ? b.currency : "USDT"}
               tone="binance"
-            />
-          );
-        })()}
-        {(() => {
-          const b = brokerBalances?.oanda;
-          return (
-            <KpiCard
-              label="OANDA"
-              value={b ? b.balance.toFixed(2) : "0.00"}
-              delta={b ? b.currency : "CAD"}
-              tone="oanda"
             />
           );
         })()}
@@ -637,7 +652,7 @@ function BotStatusCard() {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-type Tone = "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "oanda" | "kraken" | "binance";
+type Tone = "default" | "bull" | "bear" | "cyan" | "violet" | "amber" | "deriv" | "kraken" | "binance";
 
 const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; dot: string }> = {
   default: { panel: "glass-panel",        value: "text-foreground",               icon: "text-muted-foreground",          dot: "bg-muted-foreground/40" },
@@ -647,7 +662,6 @@ const TONE_STYLES: Record<Tone, { panel: string; value: string; icon: string; do
   violet:  { panel: "glass-panel-violet", value: "text-white",                     icon: "text-white/60",                   dot: "bg-[color:var(--brand-violet)]" },
   amber:   { panel: "glass-panel-amber",  value: "text-[color:var(--brand-amber)]",icon: "text-[color:var(--brand-amber)]", dot: "bg-[color:var(--brand-amber)]" },
   deriv:   { panel: "bg-red-500/[0.06] border border-red-500/20",       value: "text-foreground", icon: "text-red-400", dot: "bg-red-500" },
-  oanda:   { panel: "bg-emerald-500/[0.06] border border-emerald-500/20", value: "text-foreground", icon: "text-emerald-400", dot: "bg-emerald-500" },
   kraken:  { panel: "bg-violet-500/[0.06] border border-violet-500/20",  value: "text-foreground", icon: "text-violet-400", dot: "bg-violet-500" },
   binance: { panel: "bg-amber-500/[0.06] border border-amber-500/20",    value: "text-foreground", icon: "text-amber-400", dot: "bg-amber-500" },
 };
@@ -700,8 +714,11 @@ function DashboardOpportunityCard({ item }: { item: DashboardOpportunity }) {
       <p className="mt-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
         {item.reasons[0] ?? `${item.agreement}/4 unités de temps alignées · risque ${item.risk}`}
       </p>
-      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
-        {isTake ? "Préparer l'ordre manuel" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
+      <Link to="/manual-trader" className={cn("mt-4 inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-bold transition-opacity hover:opacity-90 sm:hidden shadow-lg", isTake ? "bg-up text-black shadow-up/25" : "bg-orange-500 text-white shadow-orange-500/25")}>
+        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
+      </Link>
+      <Link to="/manual-trader" className={cn("mt-4 hidden sm:inline-flex items-center gap-1.5 text-xs font-bold transition-opacity hover:opacity-75", text)}>
+        {isTake ? "Prendre l'ordre" : "Voir l'analyse complète"} <ArrowUpRight className="h-3.5 w-3.5" />
       </Link>
     </article>
   );

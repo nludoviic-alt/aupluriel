@@ -20,8 +20,7 @@ export const Route = createFileRoute("/api/admin/users")({
             `SELECT u.id, u.email, u.username, u.email_verified, u.status, u.is_admin, u.chat_enabled, u.admin_note, u.created_at,
                     CASE WHEN us.deriv_token IS NOT NULL AND us.deriv_token != '' THEN 1 ELSE 0 END AS has_deriv,
                     CASE WHEN us.kraken_api_key IS NOT NULL AND us.kraken_api_key != '' THEN 1 ELSE 0 END AS has_kraken,
-                    CASE WHEN us.binance_api_key IS NOT NULL AND us.binance_api_key != '' THEN 1 ELSE 0 END AS has_binance,
-                    CASE WHEN us.oanda_api_key IS NOT NULL AND us.oanda_api_key != '' THEN 1 ELSE 0 END AS has_oanda
+                    CASE WHEN us.binance_api_key IS NOT NULL AND us.binance_api_key != '' THEN 1 ELSE 0 END AS has_binance
              FROM users u
              LEFT JOIN user_settings us ON us.user_id = u.id
              ORDER BY u.created_at DESC`,

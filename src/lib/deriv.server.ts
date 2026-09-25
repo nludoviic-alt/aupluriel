@@ -8,8 +8,10 @@
 //
 // Requires Node ≥ 22 (global WebSocket).
 
+import { FEATURE_FLAGS } from "./feature-flags.server";
+
 const DERIV_APP_ID = 1089;
-const PUBLIC_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+const PUBLIC_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
 const DERIV_REST_APP_ID = "33zECGFcSA3ZubKPdQJqm";
 
@@ -41,7 +43,14 @@ export function effectiveMultiplier(symbol: string, requestedMultiplier: number)
   return symbol.startsWith("cry") ? Math.min(requestedMultiplier, 10) : requestedMultiplier;
 }
 
+export type DerivPortfolioResult =
+  | { success: true; positions: Array<{ contractId: number; symbol: string; buyPrice: number; profit: number }> }
+  | { success: false; error: string };
+
 type Msg = Record<string, unknown>;
+export class DerivApiError extends Error {
+  constructor(public code: string, message: string) { super(message); }
+}
 type Listener = (msg: Msg) => void;
 
 export interface ServerCandle {
@@ -121,7 +130,10 @@ class DerivSocket {
         if (msg.req_id !== id) return;
         clearTimeout(timer);
         off();
-        if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
+        if (msg.error) {
+          const error = msg.error as { code?: string; message?: string };
+          reject(new DerivApiError(String(error.code ?? "DERIV_ERROR"), String(error.message ?? "Deriv error")));
+        }
         else resolve(msg as T);
       });
       try {
@@ -146,6 +158,62 @@ class DerivSocket {
 
 let publicSocket: DerivSocket | null = null;
 
+// All server engines share one public Deriv socket. A per-engine concurrency
+// cap is not enough: several users/presets can otherwise burst dozens of
+// ticks_history requests together. Serialize, coalesce, and briefly cache.
+const PUBLIC_HISTORY_SPACING_MS = 300;
+const PUBLIC_HISTORY_CACHE_MS = 8_000;
+const PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS = 5_000;
+const PUBLIC_HISTORY_MAX_ATTEMPTS = 3;
+let publicHistoryQueue: Promise<void> = Promise.resolve();
+let nextPublicHistoryAt = 0;
+const publicHistoryCache = new Map<string, { expiresAt: number; value: unknown }>();
+const publicHistoryInflight = new Map<string, Promise<unknown>>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(error: unknown): boolean {
+  const apiError = error instanceof DerivApiError ? `${error.code} ${error.message}` : String(error);
+  return /rate[ _-]?limit|too many requests/i.test(apiError);
+}
+
+function queuePublicHistoryRequest<T>(request: () => Promise<T>): Promise<T> {
+  const run = publicHistoryQueue.then(async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < PUBLIC_HISTORY_MAX_ATTEMPTS; attempt++) {
+      const waitMs = Math.max(0, nextPublicHistoryAt - Date.now());
+      if (waitMs > 0) await sleep(waitMs);
+      nextPublicHistoryAt = Date.now() + PUBLIC_HISTORY_SPACING_MS;
+      try {
+        return await request();
+      } catch (error) {
+        lastError = error;
+        if (!isRateLimitError(error) || attempt === PUBLIC_HISTORY_MAX_ATTEMPTS - 1) throw error;
+        // Deriv limits the shared public socket, not one user or preset.
+        nextPublicHistoryAt = Math.max(nextPublicHistoryAt, Date.now() + PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS * (attempt + 1));
+      }
+    }
+    throw lastError;
+  });
+  publicHistoryQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function getPublicHistory<T>(key: string, request: () => Promise<T>, cacheMs = PUBLIC_HISTORY_CACHE_MS): Promise<T> {
+  const cached = publicHistoryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T);
+  const inflight = publicHistoryInflight.get(key);
+  if (inflight) return inflight as Promise<T>;
+  const pending = queuePublicHistoryRequest(request).then((value) => {
+    publicHistoryCache.set(key, { value, expiresAt: Date.now() + cacheMs });
+    return value;
+  }).finally(() => publicHistoryInflight.delete(key));
+  publicHistoryInflight.set(key, pending);
+  return pending;
+}
+
 function getPublicSocket(): DerivSocket {
   if (!publicSocket) publicSocket = new DerivSocket(async () => PUBLIC_WS_URL, "deriv-public");
   return publicSocket;
@@ -156,21 +224,42 @@ function getPublicSocket(): DerivSocket {
 export function closePublicSocket(): void {
   publicSocket?.close();
   publicSocket = null;
+  publicHistoryCache.clear();
+  publicHistoryInflight.clear();
+  nextPublicHistoryAt = 0;
 }
 
 export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number, end: number | "latest" = "latest"): Promise<ServerCandle[]> {
-  const res = await getPublicSocket().request<{
-    candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
-  }>({
-    ticks_history: symbol,
-    style: "candles",
-    granularity: granularitySeconds,
-    count,
-    end,
+  const key = `candles:${symbol}:${granularitySeconds}:${count}:${end}`;
+  return getPublicHistory(key, async () => {
+    const res = await getPublicSocket().request<{
+      candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
+    }>({
+      ticks_history: symbol,
+      style: "candles",
+      granularity: granularitySeconds,
+      count,
+      end,
+    });
+    return (res.candles ?? []).map((c) => ({
+      epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
+    }));
+  }, end === "latest" ? PUBLIC_HISTORY_CACHE_MS : 60_000);
+}
+
+/** Recent tick prices for micro-momentum confirmation.  Consumers must not
+ * infer a spike from the number of ticks returned: the count is transport
+ * metadata, not a market signal. */
+export async function fetchRecentTicksServer(symbol: string, count = 120): Promise<number[]> {
+  return getPublicHistory(`ticks:${symbol}:${count}`, async () => {
+    const res = await getPublicSocket().request<{ history?: { prices?: Array<string | number> } }>({
+      ticks_history: symbol,
+      style: "ticks",
+      count,
+      end: "latest",
+    });
+    return (res.history?.prices ?? []).map(Number).filter(Number.isFinite);
   });
-  return (res.candles ?? []).map((c) => ({
-    epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
-  }));
 }
 
 // ─── Per-user authenticated trading connection ────────────────────────────────
@@ -214,6 +303,37 @@ export class DerivTradingConnection {
       this.currency = otp.currency;
       return otp.url;
     }, "deriv-trading");
+  }
+
+  /** Read-only contract gate. It never sends `buy`: a valid proposal is the
+   * only prerequisite for a Boom900 multiplier order. */
+  async validateMultiplierContract(params: { symbol: string; direction: "CALL" | "PUT"; multiplier: number; amount: number }) {
+    const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
+    const at = Date.now();
+    try {
+      const active = await this.socket.request<{ active_symbols?: Array<{ symbol?: string; underlying_symbol?: string }> }>({ active_symbols: "brief" });
+      const activeSymbols = active.active_symbols ?? [];
+      // Some Deriv Options sessions acknowledge active_symbols with an empty
+      // list (observed even for BOOM500/CRASH900 that are tradable on the
+      // same account). Keep the mandatory metadata request, but only reject
+      // when it returned an actual, non-empty catalogue that excludes symbol.
+      // contracts_for + proposal remain the definitive account-level gate.
+      if (activeSymbols.length > 0 && !activeSymbols.some((s) => s.symbol === params.symbol || s.underlying_symbol === params.symbol)) {
+        return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "SYMBOL_UNAVAILABLE", message: "Symbole absent de active_symbols" } };
+      }
+      const contracts = await this.socket.request<{ contracts_for?: { available?: Array<{ contract_type?: string }> } }>({ contracts_for: params.symbol });
+      if (!(contracts.contracts_for?.available ?? []).some((c) => c.contract_type === contractType)) return { status: "CONTRACT_UNAVAILABLE" as const, at, contractType, error: { code: "CONTRACT_UNAVAILABLE", message: `${contractType} indisponible pour ${params.symbol}` } };
+      const proposal = await this.socket.request<{ proposal?: { id: string; ask_price: number } }>({
+        proposal: 1, amount: roundToCurrency(params.amount, this.currency), basis: "stake", contract_type: contractType,
+        currency: this.currency, underlying_symbol: params.symbol, multiplier: params.multiplier,
+      });
+      return { status: "AVAILABLE" as const, at, contractType, currency: this.currency, amount: params.amount, proposalId: proposal.proposal?.id, askPrice: proposal.proposal?.ask_price };
+    } catch (error) {
+      const e = error instanceof DerivApiError ? error : new DerivApiError("TEMPORARY_ERROR", (error as Error).message);
+      const lower = e.message.toLowerCase();
+      const status = lower.includes("stake amount") || lower.includes("amount") ? "INVALID_STAKE" : lower.includes("multiplier") ? "INVALID_MULTIPLIER" : lower.includes("authorize") || lower.includes("account") ? "ACCOUNT_RESTRICTED" : "TEMPORARILY_DISABLED";
+      return { status, at, contractType, currency: this.currency, amount: params.amount, error: { code: e.code, message: e.message } };
+    }
   }
 
   get isOpen(): boolean {
@@ -319,8 +439,15 @@ export class DerivTradingConnection {
     takeProfitUsd: number;
   }, maxAttempts = 4): Promise<{ contractId: number; buyPrice: number }> {
     const contractType = params.direction === "CALL" ? "MULTUP" : "MULTDOWN";
+    // Every multiplier order, irrespective of feature flags or symbol, must
+    // receive a current valid proposal before it can reach `buy`.
+    const validation = await this.validateMultiplierContract(params);
+    if (validation.status !== "AVAILABLE") {
+      const detail = validation.error;
+      throw new DerivApiError(detail?.code ?? validation.status, detail?.message ?? `${params.symbol} ${validation.status}`);
+    }
     let lastError: Error | null = null;
-    let currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
+    const currentMultiplier = effectiveMultiplier(params.symbol, params.multiplier);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -347,41 +474,7 @@ export class DerivTradingConnection {
         return { contractId: buy.buy.contract_id, buyPrice: Number(buy.buy.buy_price) };
       } catch (e) {
         lastError = e as Error;
-        const errMsg = lastError.message;
-        
-        // Auto-guérison : si le multiplicateur ou la limit_order est invalide
-        if (errMsg.toLowerCase().includes("multiplier") || errMsg.toLowerCase().includes("limit_order")) {
-          // Extraction des multiplicateurs autorisés dans le message d'erreur
-          const numbers = errMsg.match(/\b\d+\b/g)?.map(Number).filter(n => n >= 1 && n <= 1000);
-          if (numbers && numbers.length > 0) {
-            const closest = numbers.reduce((prev, curr) => 
-              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
-            );
-            if (closest !== currentMultiplier) {
-              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via message d'erreur)`);
-              currentMultiplier = closest;
-              continue; // Réessayer immédiatement
-            }
-          } else {
-            // Fallback en dur si aucun chiffre n'est extrait
-            let fallbackMultipliers = [20, 50, 100];
-            if (params.symbol.startsWith("cry")) {
-              fallbackMultipliers = [10, 20, 50, 100];
-            } else if (!params.symbol.startsWith("frx")) {
-              fallbackMultipliers = [100, 200, 500];
-            }
-            const closest = fallbackMultipliers.reduce((prev, curr) => 
-              Math.abs(curr - currentMultiplier) < Math.abs(prev - currentMultiplier) ? curr : prev
-            );
-            if (closest !== currentMultiplier) {
-              console.log(`[bot] Auto-guérison : Ajustement du multiplicateur pour ${params.symbol} de ${currentMultiplier} à ${closest} (via fallback)`);
-              currentMultiplier = closest;
-              continue; // Réessayer immédiatement
-            }
-          }
-        }
-        
-        if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(lastError.message)) {
+        if (/price|amount|stake|decimal|invalid|not available|not offered|multiplier|limit_order/i.test(lastError.message)) {
           break;
         }
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
@@ -428,6 +521,29 @@ export class DerivTradingConnection {
       }));
     } catch {
       return [];
+    }
+  }
+
+  async getOpenPositions(): Promise<DerivPortfolioResult> {
+    try {
+      const res = await this.socket.request<{
+        portfolio?: {
+          contracts?: Array<{
+            contract_id: number;
+            symbol: string;
+            buy_price: number;
+          }>;
+        };
+      }>({ portfolio: 1 });
+      const positions = (res.portfolio?.contracts ?? []).map((c) => ({
+        contractId: c.contract_id,
+        symbol: c.symbol,
+        buyPrice: Number(c.buy_price || 0),
+        profit: 0,
+      }));
+      return { success: true, positions };
+    } catch (e) {
+      return { success: false, error: (e as Error).message ?? "Failed to fetch portfolio" };
     }
   }
 

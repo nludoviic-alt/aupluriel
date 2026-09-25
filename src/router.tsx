@@ -9,6 +9,11 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
+    // Route chunks are large on the execution screens. Start loading them on
+    // intent (hover/focus) so navigation from Piste is instantaneous instead
+    // of waiting for the click to fetch and parse the page bundle.
+    defaultPreload: "intent",
+    defaultPreloadDelay: 80,
     defaultPreloadStaleTime: 0,
   });
 

@@ -1,10 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Zap, ShieldCheck, X, Menu, Target } from "lucide-react";
-import { useSidebar } from "@/components/ui/sidebar";
+import { LayoutDashboard, Zap, ShieldCheck, Target } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
-
 import { useVisualViewportFrame } from "@/hooks/use-keyboard-open";
 
 const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const;
@@ -12,7 +10,6 @@ const ADMIN_ITEM = { title: "Admin", url: "/admin", icon: ShieldCheck } as const
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => (p === "/" ? pathname === "/" : pathname.startsWith(p));
-  const { toggleSidebar, openMobile } = useSidebar();
   const { user } = useAuth();
   const { keyboardOpen } = useVisualViewportFrame();
 
@@ -39,39 +36,19 @@ export function BottomNav() {
               onClick={() => { if (!active) haptic("light"); }}
               className={cn(
                 "flex-1 flex flex-col items-center justify-center gap-1 transition-all duration-200 relative",
-                active ? "text-primary" : "text-muted-foreground",
+                active ? "text-primary font-bold" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {active && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full bg-primary" />
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full bg-primary shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
               )}
-              <item.icon className={cn("h-5 w-5 transition-transform duration-200", active && "scale-110")} />
-              <span className={cn("text-[10px] font-medium leading-none", active && "text-primary")}>
+              <item.icon className={cn("h-5 w-5 transition-transform duration-200", active && "scale-110 text-primary")} />
+              <span className={cn("text-[10px] font-semibold leading-none", active && "text-primary font-bold")}>
                 {item.title}
               </span>
             </Link>
           );
         })}
-
-        {/* Hamburger "Plus" */}
-        <button
-          onClick={() => { haptic("light"); toggleSidebar(); }}
-          className={cn(
-            "flex-1 flex flex-col items-center justify-center gap-1 relative transition-all duration-200",
-            openMobile ? "text-primary" : "text-muted-foreground active:text-foreground",
-          )}
-        >
-          {openMobile && (
-            <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full bg-primary" />
-          )}
-          <div className="relative h-5 w-5">
-            <Menu className={cn("absolute inset-0 h-5 w-5 transition-all duration-200", openMobile ? "opacity-0 rotate-90 scale-50" : "opacity-100 rotate-0 scale-100")} />
-            <X    className={cn("absolute inset-0 h-5 w-5 transition-all duration-200", openMobile ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50")} />
-          </div>
-          <span className="text-[10px] font-medium leading-none">
-            {openMobile ? "Fermer" : "Plus"}
-          </span>
-        </button>
       </div>
     </nav>
   );

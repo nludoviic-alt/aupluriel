@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, BarChart3, CheckCircle2, Download, Info, Microscope, TrendingDown } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, Clock, Download, Eye, FileText, Info, Microscope, Shield, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { type TradeLog } from "@/lib/autotrader";
 import { api } from "@/lib/api";
@@ -40,6 +41,7 @@ function JournalPage() {
   const { user } = useAuth();
   const [logs, setLogs] = useState<TradeLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTrade, setSelectedTrade] = useState<TradeLog | null>(null);
   // Symbols currently in the watchlist of at least one of the three presets
   // (default/boom/crash), minus whatever each preset excludes. Retired
   // symbols (e.g. BOOM600, excluded after real losses) stay in bot_trades
@@ -411,9 +413,247 @@ function JournalPage() {
               </div>
             </div>
           )}
+
+          {/* ── Table des trades enregistrés & Inspection de Snapshot Immuable ── */}
+          <div className="glass-panel rounded-xl p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-[color:var(--brand-cyan)]" />
+                  Historique des trades & Snapshots de configuration
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Cliquez sur "Inspecter" pour reconstruire les indicateurs, les filtres et la configuration immuable du preset au moment du signal.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/30 uppercase tracking-wider text-muted-foreground sticky top-0 bg-slate-900 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Date &amp; Heure</th>
+                    <th className="px-3 py-2 text-left">Paire</th>
+                    <th className="px-3 py-2 text-left">Direction</th>
+                    <th className="px-3 py-2 text-left">Preset</th>
+                    <th className="px-3 py-2 text-right">Mise</th>
+                    <th className="px-3 py-2 text-right">P&amp;L</th>
+                    <th className="px-3 py-2 text-center">Résultat</th>
+                    <th className="px-3 py-2 text-center">Conf.</th>
+                    <th className="px-3 py-2 text-center">Snapshot</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30 font-mono">
+                  {visibleLogs.slice(0, 100).map((trade) => {
+                    const isWon = trade.status === "won";
+                    const isLost = trade.status === "lost";
+                    return (
+                      <tr key={trade.id} className="hover:bg-white/[0.03] transition-colors">
+                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                          {new Date(trade.time).toLocaleDateString("fr-FR")} {new Date(trade.time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </td>
+                        <td className="px-3 py-2 font-bold text-foreground">{trade.symbol}</td>
+                        <td className={cn("px-3 py-2 font-semibold", trade.direction === "CALL" || trade.direction === "MULTUP" ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                          {trade.direction}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{trade.preset || trade.strategy || "—"}</td>
+                        <td className="px-3 py-2 text-right text-foreground">${trade.stake.toFixed(2)}</td>
+                        <td className={cn("px-3 py-2 text-right font-bold", isWon ? "text-[color:var(--bull)]" : isLost ? "text-[color:var(--bear)]" : "text-muted-foreground")}>
+                          {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={cn("inline-block px-1.5 py-0.5 text-[10px] font-sans font-semibold rounded", isWon ? "bg-emerald-500/20 text-emerald-400" : isLost ? "bg-red-500/20 text-red-400" : "bg-muted text-muted-foreground")}>
+                            {trade.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center text-muted-foreground">{trade.confidence}%</td>
+                        <td className="px-3 py-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedTrade(trade)}
+                            className="h-6 px-2 text-[10px] gap-1 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10"
+                          >
+                            <Eye className="h-3 w-3" /> Inspecter
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <TradeSnapshotModal trade={selectedTrade} onClose={() => setSelectedTrade(null)} />
         </>
       )}
     </div>
+  );
+}
+
+function parseSnapshotData(data: Record<string, unknown> | string | undefined): Record<string, unknown> | null {
+  if (!data) return null;
+  if (typeof data === "object") return data;
+  try {
+    const parsed = JSON.parse(data);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function TradeSnapshotModal({
+  trade,
+  onClose,
+}: {
+  trade: TradeLog | null;
+  onClose: () => void;
+}) {
+  if (!trade) return null;
+
+  const configObj = parseSnapshotData(trade.configSnapshot);
+  const indicatorObj = parseSnapshotData(trade.indicatorValues);
+  const timeFilterObj = parseSnapshotData(trade.timeFilterDecision);
+  const riskManagerObj = parseSnapshotData(trade.riskManagerDecision);
+
+  const dateStr = new Date(trade.time).toLocaleString("fr-FR");
+
+  return (
+    <Dialog open={!!trade} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-slate-950 text-foreground border-white/10 p-5">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
+            <Eye className="h-5 w-5 text-[color:var(--brand-cyan)]" />
+            Snapshot Immuable — Trade {trade.id}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Reconstruction exacte des paramètres de la stratégie, indicateurs et filtres au moment du signal.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 text-xs mt-2">
+          {/* Signal Header summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div>
+              <span className="text-muted-foreground uppercase text-[10px]">Paire</span>
+              <p className="font-bold text-sm text-foreground">{trade.symbol}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground uppercase text-[10px]">Direction</span>
+              <p className={cn("font-bold text-sm", trade.direction === "CALL" || trade.direction === "MULTUP" ? "text-[color:var(--bull)]" : "text-[color:var(--bear)]")}>
+                {trade.direction}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground uppercase text-[10px]">Résultat</span>
+              <p className={cn("font-bold text-sm", trade.status === "won" ? "text-[color:var(--bull)]" : trade.status === "lost" ? "text-[color:var(--bear)]" : "text-muted-foreground")}>
+                {trade.status === "won" ? `+${trade.profit.toFixed(2)}$` : `${trade.profit.toFixed(2)}$`} ({trade.status})
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground uppercase text-[10px]">Mise</span>
+              <p className="font-bold text-sm text-foreground">${trade.stake.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {/* Justification & Note */}
+          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
+            <span className="font-semibold text-cyan-400 flex items-center gap-1.5 mb-1">
+              <FileText className="h-3.5 w-3.5" /> Explication du Signal
+            </span>
+            <p className="text-foreground/90 font-mono text-[11px] leading-relaxed">
+              {trade.note || "Aucune note explicative enregistrée."}
+            </p>
+          </div>
+
+          {/* Stratégie et Version */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02]">
+              <span className="text-muted-foreground text-[10px] uppercase">Preset Engine</span>
+              <p className="font-mono font-semibold text-foreground">{trade.preset ?? "default"}</p>
+            </div>
+            <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02]">
+              <span className="text-muted-foreground text-[10px] uppercase">Stratégie</span>
+              <p className="font-mono font-semibold text-foreground">{trade.strategy || "N/A"}</p>
+            </div>
+            <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02]">
+              <span className="text-muted-foreground text-[10px] uppercase">Version Config</span>
+              <p className="font-mono font-semibold text-foreground">{trade.strategyVersion || "V1"}</p>
+            </div>
+          </div>
+
+          {/* Indicateurs Calculés */}
+          <div className="rounded-lg border border-white/10 p-3 space-y-2 bg-white/[0.02]">
+            <h4 className="font-semibold flex items-center gap-1.5 text-foreground">
+              <Activity className="h-3.5 w-3.5 text-amber-400" /> Indicateurs au moment du Signal
+            </h4>
+            {indicatorObj ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                <div><span className="text-muted-foreground">Confiance:</span> <strong className="font-mono text-foreground">{String(indicatorObj.confidence ?? trade.confidence)}%</strong></div>
+                <div><span className="text-muted-foreground">TF Agreement:</span> <strong className="font-mono text-foreground">{String(indicatorObj.tfAgreement ?? trade.tfAgreement)}/4</strong></div>
+                <div><span className="text-muted-foreground">TAS Score:</span> <strong className="font-mono text-foreground">{String(indicatorObj.trendAlignmentScore ?? "N/A")}/4</strong></div>
+                <div><span className="text-muted-foreground">Volatilité ATR:</span> <strong className="font-mono text-foreground">{String(indicatorObj.volatilityPct ?? "N/A")}%</strong></div>
+                <div><span className="text-muted-foreground">Ratio Volatilité:</span> <strong className="font-mono text-foreground">{String(indicatorObj.volatilityRatio ?? "1")}x</strong></div>
+                <div><span className="text-muted-foreground">TF Dominant:</span> <strong className="font-mono text-foreground">{String(indicatorObj.dominantTf ?? "1m")}</strong></div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-[11px]">Confiance: {trade.confidence}% | TF Agreement: {trade.tfAgreement}</p>
+            )}
+          </div>
+
+          {/* Time Filter & Risk Manager Decisions */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02] space-y-1">
+              <h4 className="font-semibold flex items-center gap-1.5 text-foreground">
+                <Clock className="h-3.5 w-3.5 text-purple-400" /> Time Filter Decision
+              </h4>
+              {timeFilterObj ? (
+                <div className="space-y-1 text-[11px]">
+                  <p><span className="text-muted-foreground">Statut:</span> <strong className={timeFilterObj.isBlocked ? "text-red-400" : "text-emerald-400"}>{String(timeFilterObj.status)}</strong></p>
+                  <p><span className="text-muted-foreground">Heure UTC:</span> <span className="font-mono text-foreground">{String(timeFilterObj.hourUtc ?? "N/A")}h</span></p>
+                  <p><span className="text-muted-foreground">Multiplicateur Risque:</span> <span className="font-mono text-foreground">{String(timeFilterObj.riskMultiplier ?? 1)}x</span></p>
+                  {Boolean(timeFilterObj.reason) && <p className="text-muted-foreground italic text-[10px]">{String(timeFilterObj.reason)}</p>}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-[11px]">Time Filter non configuré (Legacy)</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02] space-y-1">
+              <h4 className="font-semibold flex items-center gap-1.5 text-foreground">
+                <Shield className="h-3.5 w-3.5 text-blue-400" /> Risk Manager V3 Decision
+              </h4>
+              {riskManagerObj ? (
+                <div className="space-y-1 text-[11px]">
+                  <p><span className="text-muted-foreground">Décision:</span> <strong className={riskManagerObj.decision === "REJECTED" ? "text-red-400" : "text-emerald-400"}>{String(riskManagerObj.decision)}</strong></p>
+                  <p><span className="text-muted-foreground">Mise calculée:</span> <span className="font-mono text-foreground">${Number(riskManagerObj.finalStakeCalculated ?? trade.stake).toFixed(2)}</span></p>
+                  <p><span className="text-muted-foreground">Drawdown Jour:</span> <span className="font-mono text-foreground">${Number(riskManagerObj.dailyPnl ?? 0).toFixed(2)}</span></p>
+                  {Boolean(riskManagerObj.explanation) && <p className="text-muted-foreground italic text-[10px]">{String(riskManagerObj.explanation)}</p>}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-[11px]">Risk Check V3 non configuré (Legacy)</p>
+              )}
+            </div>
+          </div>
+
+          {/* Config Snapshot (JSON Viewer / Key Values) */}
+          <div className="rounded-lg border border-white/10 p-3 bg-white/[0.02] space-y-2">
+            <h4 className="font-semibold text-foreground flex items-center justify-between">
+              <span>Config Snapshot Immuable (Preset Configuration)</span>
+              <span className="text-[10px] font-normal text-muted-foreground">{dateStr}</span>
+            </h4>
+            {configObj ? (
+              <pre className="max-h-48 overflow-y-auto rounded bg-black/60 p-2.5 font-mono text-[10px] text-cyan-300 border border-white/5 whitespace-pre-wrap leading-tight">
+                {JSON.stringify(configObj, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-muted-foreground text-[11px] italic">Snapshot immuable de configuration non disponible pour ce trade legacy.</p>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

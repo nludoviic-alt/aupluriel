@@ -16,17 +16,91 @@
 //   so a Railway restart resumes exactly where it left off.
 
 import { getDb } from "./db.server";
-import { DerivTradingConnection, effectiveMultiplier, fetchCandlesServer, closePublicSocket } from "./deriv.server";
-import { KrakenTradingConnection, isKrakenSymbol, derivToKrakenSymbol, fetchKrakenCandles, KRAKEN_DERIV_SYMBOLS, closeKrakenSocket } from "./kraken.server";
-import { BinanceTradingConnection, isBinanceSymbol, derivToBinanceSymbol, fetchBinanceCandles, BINANCE_DERIV_SYMBOLS, closeBinanceSocket } from "./binance.server";
-import { OandaTradingConnection, isOandaSymbol, derivToOandaSymbol, fetchOandaCandles, OANDA_DERIV_SYMBOLS, closeOandaSocket } from "./oanda.server";
+import { ConfigRegistry, hashConfig } from "./config-registry.server";
+import {
+  DerivApiError,
+  DerivTradingConnection,
+  effectiveMultiplier,
+  fetchCandlesServer,
+  fetchRecentTicksServer,
+  closePublicSocket,
+} from "./deriv.server";
+import {
+  KrakenTradingConnection,
+  isKrakenSymbol,
+  derivToKrakenSymbol,
+  fetchKrakenCandles,
+  KRAKEN_DERIV_SYMBOLS,
+  closeKrakenSocket,
+} from "./kraken.server";
+import {
+  BinanceTradingConnection,
+  isBinanceSymbol,
+  derivToBinanceSymbol,
+  fetchBinanceCandles,
+  BINANCE_DERIV_SYMBOLS,
+  closeBinanceSocket,
+} from "./binance.server";
+import {
+  OandaTradingConnection,
+  isOandaSymbol,
+  derivToOandaSymbol,
+  fetchOandaCandles,
+  OANDA_DERIV_SYMBOLS,
+  closeOandaSocket,
+} from "./oanda.server";
 import { recordComponentOutcomesServer } from "./indicator-weights.server";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import type { SignalComponent } from "./indicators";
 import { SYMBOLS } from "./deriv";
 import { mapWithConcurrency } from "./utils";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
-import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
+import {
+  generateLiquidityReversalSignal,
+  MIN_LIQUIDITY_CANDLES,
+} from "./liquidity-reversal-signal.server";
+import {
+  generateGoldTrendPullbackSignal,
+  MIN_GOLD_PULLBACK_H1_CANDLES,
+  MIN_GOLD_PULLBACK_M15_CANDLES,
+  MIN_GOLD_PULLBACK_M5_CANDLES,
+  MIN_GOLD_PULLBACK_M1_CANDLES,
+} from "./gold-trend-signal.server";
+import {
+  generateGoldSessionBreakoutSignal,
+  MIN_GOLD_SESSION_CANDLES,
+} from "./gold-session-breakout-signal.server";
+import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
+import { generateCrash500Signals } from "./crash500-signal.server";
+import { generateBoom500Signals } from "./boom500-signal.server";
+import { generateVol75Signal } from "./vol75-signal.server";
+import {
+  generateRb100Signal,
+  STRATEGY_VERSION as RB100_ENGINE_VERSION,
+  RB100_CONFIG_HASH,
+} from "./rb100-signal.server";
+import { generateVol50Signal } from "./vol50-signal.server";
+import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
+import { evaluateTimeFilter } from "./time-filter.server";
+import {
+  recordRiskShadowObservation,
+  settleDueRiskShadowObservations,
+  shouldObserveRiskRejection,
+} from "./risk-shadow-observation.server";
+import { recordFunnelStep } from "./signal-funnel.server";
+import { FEATURE_FLAGS } from "./feature-flags.server";
+import { logSafetyAlert } from "./r4-e2-audit.server";
+import { evaluateDataQuality } from "./data-quality-guard.server";
+import { classifyMarketRegime, isStrategyAllowedInRegime } from "./market-regime-router.server";
+import { executionMonitor } from "./execution-quality-monitor.server";
+import { circuitBreaker } from "./global-circuit-breaker.server";
+import {
+  assertStakeScalingApproved,
+  describeStakeScaling,
+  getEffectiveApprovedStakeScalingTier,
+  getStakeScalingPolicy,
+  scalingConfigFingerprint,
+} from "./stake-scaling.server";
 import {
   DEFAULT_CONFIG,
   analyzeSymbolCore,
@@ -43,9 +117,11 @@ import {
   is24x7Symbol,
   isCorrelatedWithActive,
   isSymbolTradeable,
+  isTradingSymbolDisabled,
   isHighRiskWindow,
   isInTradingSession,
   isHourBlocked,
+  isGranularHourBlocked,
   getInstrumentForSymbol,
   minContractMinutes,
   riskLevelFor,
@@ -59,6 +135,7 @@ import {
   type TradeLog,
   type TradingSession,
 } from "./signal-core";
+import { reconcileUserPositions } from "./trade-reconciliation-engine.server";
 
 // Maps a rejected classifyOpportunity() verdict onto the scan-log vocabulary
 // this file already used before the two decision engines were unified — so
@@ -75,7 +152,7 @@ const REASON_CODE_ACTION: Record<ClassifyReasonCode, ScanSymbolResult["action"]>
   "confidence-high": "too-confident",
   "agreement-low": "low-agreement",
   "not-premium": "not-premium",
-  "ok": "traded",
+  ok: "traded",
 };
 
 const SCAN_MS = 60_000;
@@ -85,6 +162,10 @@ const SCAN_MS = 60_000;
 // puis le bot réévalue. Une perte RÉALISÉE, elle, reste bloquante jusqu'à
 // minuit UTC : l'argent est réellement parti, contrairement au flottant.
 const REVERSIBLE_PAUSE_MS = 45 * 60_000;
+// A qualified signal is evaluated every minute.  Without a per-engine
+// cooldown, one unchanged setup would generate a push every minute while the
+// user is deciding whether to open it manually.
+const OPPORTUNITY_PUSH_COOLDOWN_MS = 5 * 60_000;
 
 // A user can run all four presets simultaneously — each is a fully
 // independent engine with its own bot_state row (composite user_id + preset
@@ -92,24 +173,180 @@ const REVERSIBLE_PAUSE_MS = 45 * 60_000;
 // underlying Deriv account they all trade on. "scalping" (2026-08-02) is
 // deliberately allowed to trade a symbol another preset also trades (BOOM500)
 // — see the `preset` column on bot_trades for how that stays unambiguous.
-export type Preset = "default" | "boom" | "crash" | "scalping" | "liquidity";
+export type Preset =
+  | "default"
+  | "boom"
+  | "boom900"
+  | "vol75"
+  | "rb100"
+  | "vol50"
+  | "crash"
+  | "crash500"
+  | "scalping"
+  | "liquidity"
+  | "gold"
+  | "crash900"
+  | "boomv2"
+  | "scalpingv2"
+  | "liquidityv2"
+  | "goldv2";
+
+/** A cooldown can be considered served after restart only when its journal
+ * entry is newer than the last closed trade that formed the streak. */
+export function isCooldownAlreadyServedAfterRestart(
+  lastClosed: { id: string; time: number } | undefined,
+  servedPause: { time: number } | undefined,
+): lastClosed is { id: string; time: number } {
+  return !!lastClosed && !!servedPause && servedPause.time >= lastClosed.time;
+}
+/** OANDA support is retired (2026-08-14) — synthetics-only going forward.
+ * A single switch rather than ripping out every `this.oandaConn` reference:
+ * the engine already treats OANDA as an optional fallback everywhere
+ * (`if (this.oandaConn) {...}`), so never constructing a connection is
+ * enough to fully disable it without touching that internal plumbing. */
+const OANDA_ENABLED = false;
+
+/** Gold strategies may never opt out of the macro-news safety block. */
+function isGoldPreset(preset: Preset): boolean {
+  return (
+    preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2"
+  );
+}
+
+/** Gold engines never inherit a legacy Deriv configuration on restore. */
+function lockGoldOanda(config: AutoTraderConfig): AutoTraderConfig {
+  return {
+    ...config,
+    mode: "demo",
+    broker: "oanda",
+    enableOanda: true,
+    enableDeriv: false,
+    instrumentType: "multiplier",
+    newsFilter: true,
+  };
+}
+function hasOpenGoldExposure(userId: number, except: Preset): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset IN ('gold','goldv2','liquidity','liquidityv2') AND preset != ? AND status IN ('open','pending')`,
+    )
+    .get(userId, except) as { n: number };
+  return row.n > 0;
+}
 function engineKey(userId: number, preset: Preset): string {
   return `${userId}:${preset}`;
 }
 
-export const ALL_PRESETS: readonly Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
+export const ALL_PRESETS: readonly Preset[] = [
+  "default",
+  "boom",
+  "boom900",
+  "vol75",
+  "rb100",
+  "vol50",
+  "crash",
+  "crash500",
+  "scalping",
+  "liquidity",
+  "gold",
+  "crash900",
+  "boomv2",
+  "scalpingv2",
+  "liquidityv2",
+  "goldv2",
+];
+/** All supported system presets eligible for user activation across Auto-Trader, Piste, Portfolio and Opportunities.
+ * The gold-family presets (gold/goldv2/liquidity/liquidityv2) are retired
+ * (2026-08-14): they required OANDA, and the account is synthetics-only
+ * going forward. Excluding them here is the existing retirement mechanism —
+ * restoreBots() force-disables any already-enabled row for a preset no
+ * longer in this list, and startBotForUser() rejects starting one. */
+export const ACTIVE_PRESETS: readonly Preset[] = ALL_PRESETS.filter((p) => !isGoldPreset(p));
+
+// These strategies are intentionally single-market. Persisted configurations
+// from before their separation must never be able to merge them back together.
+const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
+  boom: ["BOOM500"],
+  boom900: ["BOOM900"],
+  vol75: ["1HZ75V"],
+  rb100: ["RB100"],
+  vol50: ["1HZ50V"],
+  crash: ["CRASH900"],
+  crash500: ["CRASH500"],
+  liquidity: ["frxXAUUSD"],
+  gold: ["frxXAUUSD"],
+  goldv2: ["frxXAUUSD"],
+};
+
+function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
+  const symbols = LOCKED_PRESET_SYMBOLS[preset];
+  return symbols
+    ? { ...config, symbolMode: "watchlist", symbols: [...symbols], excludedSymbols: [] }
+    : config;
+}
+
+// Display names for user-facing text (push notifications) — kept local rather
+// than imported from opportunities.server.ts's own copy of this map, which
+// imports FROM this file and would make it circular.
+const PRESET_LABEL: Record<Preset, string> = {
+  default: "Multi",
+  boom: "Boom500",
+  boom900: "Boom900 — démo isolée",
+  vol75: "Volatility 75 (1s) — démo",
+  rb100: "Range Break 100 — démo",
+  vol50: "Volatility 50 (1s) — démo",
+  crash: "Crash900",
+  crash500: "Crash500 — démo isolée",
+  scalping: "Scalping",
+  liquidity: "GOLD LIQUIDITY SWEEP",
+  gold: "GOLD TREND PULLBACK",
+  crash900: "Crash900 V2",
+  boomv2: "Boom V2 — contrôlé",
+  scalpingv2: "Scalping V2 — Spike Hunter",
+  liquidityv2: "Liquidity V2 — XAU sweep",
+  goldv2: "GOLD BREAKOUT",
+};
+
+/**
+ * PERMANENT REGRESSION GUARD (2026-08-13, verify-trading-code audit):
+ * canonical stakePercent baseline for every preset that trades in "percent"
+ * stakeMode, expressed as % of balance per trade — the historical convention
+ * (1.00 = 1%, 0.25 = 0.25%) that stays authoritative. An uncommitted R4/E2
+ * rewrite briefly changed several presets to a whole-percent convention
+ * (25 = 25%, a 100x sizing increase) without updating every call site; that
+ * rewrite was rolled back (2026-08-13) and this guard is what now stands
+ * between a future accidental reintroduction of that bug and a live trade.
+ * Only presets with a demonstrated legacy baseline are listed — "default" is
+ * deliberately absent because its stakePercent is user-adjustable across
+ * three risk profiles (1/1.5/2%), so no single baseline can be asserted for it.
+ */
+const LEGACY_STAKE_PCT_BASELINE: Partial<Record<Preset, number>> = {
+  boom: 0.25,
+  boom900: 0.25,
+  vol75: 0.25,
+  vol50: 0.25,
+  crash: 0.25,
+  crash500: 0.25,
+  scalping: 0.25,
+  boomv2: 0.25,
+  scalpingv2: 0.25,
+  crash900: 0.25,
+  rb100: 0.2,
+  gold: 0.25,
+  liquidity: 0.25,
+  goldv2: 0.25,
+  liquidityv2: 0.25,
+};
 
 /** How many preset tabs the Auto-Trader shows on MOBILE. Used to cap this at
  * 3 (five tabs squeezed into a phone-width strip was unreadable), but that
  * blocked users from running/viewing every preset on mobile at once — removed
  * the artificial cap (2026-08-03), so it now just tracks the real preset
  * count. Desktop is unaffected and always renders all of them. */
-export const MAX_VISIBLE_PRESETS = ALL_PRESETS.length;
+export const MAX_VISIBLE_PRESETS = ACTIVE_PRESETS.length;
 
-/** Which presets a user sees on mobile before they've ever chosen. Scalping
- * is the one left out by default: it's the newest, demo-only experiment, so
- * it's the least costly to have to opt into. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "crash"];
+/** All 5 official production presets enabled and visible across mobile and desktop. */
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = [...ACTIVE_PRESETS];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -123,12 +360,15 @@ export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = ["default", "boom", "c
  */
 export function getVisiblePresets(userId: number): Preset[] {
   const row = getDb().prepare("SELECT visible_presets FROM users WHERE id = ?").get(userId) as
-    { visible_presets: string | null } | undefined;
+    | { visible_presets: string | null }
+    | undefined;
   if (!row?.visible_presets) return [...VISIBLE_PRESETS_DEFAULT];
   try {
     const parsed: unknown = JSON.parse(row.visible_presets);
     if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
-    const clean = [...new Set(parsed.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))];
+    const clean = [
+      ...new Set(parsed.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset))),
+    ];
     return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
   } catch {
     return [...VISIBLE_PRESETS_DEFAULT];
@@ -139,10 +379,13 @@ export function getVisiblePresets(userId: number): Preset[] {
  * a bad payload can't lock the tab strip into an unusable state. Returns what
  * was actually stored. */
 export function setVisiblePresets(userId: number, presets: readonly string[]): Preset[] {
-  const clean = [...new Set(presets.filter((p): p is Preset => ALL_PRESETS.includes(p as Preset)))]
-    .slice(0, MAX_VISIBLE_PRESETS);
+  const clean = [
+    ...new Set(presets.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset))),
+  ].slice(0, MAX_VISIBLE_PRESETS);
   const final = clean.length ? clean : [...VISIBLE_PRESETS_DEFAULT];
-  getDb().prepare("UPDATE users SET visible_presets = ? WHERE id = ?").run(JSON.stringify(final), userId);
+  getDb()
+    .prepare("UPDATE users SET visible_presets = ? WHERE id = ?")
+    .run(JSON.stringify(final), userId);
   return final;
 }
 
@@ -169,6 +412,8 @@ interface BotTradeRow {
   contract_id: number | null;
   closed_at: number | null;
   note: string | null;
+  strategy: string | null;
+  strategy_version: string | null;
   entry_price: number | null;
   duration_minutes: number | null;
   expiry: number | null;
@@ -176,6 +421,24 @@ interface BotTradeRow {
   multiplier: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  mode: "demo" | "live" | null;
+  preset: Preset | null;
+  config_snapshot: string | null;
+  indicator_values: string | null;
+  time_filter_decision: string | null;
+  risk_manager_decision: string | null;
+  risk_version: string | null;
+  execution_version: string | null;
+  config_hash: string | null;
+  requested_stake: number | null;
+  strategy_suggested_stake: number | null;
+  max_risk_allowed: number | null;
+  deriv_max_allowed: number | null;
+  stake_source: string | null;
+  estimated_max_loss: number | null;
+  risk_pct_of_equity: number | null;
+  stake_scaling_tier: number | null;
+  stake_scaling_reason: string | null;
 }
 
 function parseComponents(json: string | null): SignalComponent[] | undefined {
@@ -188,36 +451,313 @@ function parseComponents(json: string | null): SignalComponent[] | undefined {
   }
 }
 
+function parseJsonObject(json: string | null | undefined): Record<string, unknown> | undefined {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function logFromRow(r: BotTradeRow): TradeLog {
   return {
-    id: r.id, time: r.time, symbol: r.symbol, direction: r.direction, stake: r.stake,
-    payout: r.payout, status: r.status, profit: r.profit, confidence: r.confidence,
-    tfAgreement: r.tf_agreement, contractId: r.contract_id ?? undefined,
-    closedAt: r.closed_at ?? undefined, note: r.note ?? undefined,
-    entryPrice: r.entry_price ?? undefined, durationMinutes: r.duration_minutes ?? undefined,
+    id: r.id,
+    time: r.time,
+    symbol: r.symbol,
+    direction: r.direction,
+    stake: r.stake,
+    payout: r.payout,
+    status: r.status,
+    profit: r.profit,
+    confidence: r.confidence,
+    tfAgreement: r.tf_agreement,
+    contractId: r.contract_id ?? undefined,
+    closedAt: r.closed_at ?? undefined,
+    note: r.note ?? undefined,
+    strategy: r.strategy ?? undefined,
+    strategyVersion: r.strategy_version ?? undefined,
+    entryPrice: r.entry_price ?? undefined,
+    durationMinutes: r.duration_minutes ?? undefined,
     expiry: r.expiry ?? undefined,
     components: parseComponents(r.components),
-    multiplier: r.multiplier ?? undefined, stopLossUsd: r.stop_loss ?? undefined, takeProfitUsd: r.take_profit ?? undefined,
+    multiplier: r.multiplier ?? undefined,
+    stopLossUsd: r.stop_loss ?? undefined,
+    takeProfitUsd: r.take_profit ?? undefined,
+    preset: r.preset ?? undefined,
+    mode: r.mode ?? undefined,
+    configSnapshot: parseJsonObject(r.config_snapshot),
+    indicatorValues: parseJsonObject(r.indicator_values),
+    timeFilterDecision: parseJsonObject(r.time_filter_decision),
+    riskManagerDecision: parseJsonObject(r.risk_manager_decision),
+    riskVersion: r.risk_version ?? undefined,
+    executionVersion: r.execution_version ?? undefined,
+    configHash: r.config_hash ?? undefined,
+    requestedStake: r.requested_stake ?? undefined,
+    strategySuggestedStake: r.strategy_suggested_stake ?? undefined,
+    riskManagerCap: r.max_risk_allowed ?? undefined,
+    derivMaxAllowedStake: r.deriv_max_allowed ?? undefined,
+    stakeSource: r.stake_source ?? undefined,
+    estimatedMaxLoss: r.estimated_max_loss ?? undefined,
+    riskPctOfEquity: r.risk_pct_of_equity ?? undefined,
+    stakeScalingTier: r.stake_scaling_tier ?? undefined,
+    stakeScalingReason: r.stake_scaling_reason ?? undefined,
   };
 }
 
 function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo" | "live") {
-  getDb().prepare(`
-    INSERT INTO bot_trades (id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement, contract_id, closed_at, note, entry_price, duration_minutes, expiry, components, multiplier, stop_loss, take_profit, mode, preset)
-    VALUES (@id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement, @contract_id, @closed_at, @note, @entry_price, @duration_minutes, @expiry, @components, @multiplier, @stop_loss, @take_profit, @mode, @preset)
+  const latestVer = ConfigRegistry.getLatestVersion(userId, preset);
+  const strategyVersion = log.strategyVersion ?? latestVer?.version_tag ?? "v1.0.0";
+
+  const configSnapshotJson =
+    typeof log.configSnapshot === "string"
+      ? log.configSnapshot
+      : log.configSnapshot
+        ? JSON.stringify(log.configSnapshot)
+        : null;
+  const indicatorValuesJson =
+    typeof log.indicatorValues === "string"
+      ? log.indicatorValues
+      : log.indicatorValues
+        ? JSON.stringify(log.indicatorValues)
+        : null;
+  const timeFilterDecisionJson =
+    typeof log.timeFilterDecision === "string"
+      ? log.timeFilterDecision
+      : log.timeFilterDecision
+        ? JSON.stringify(log.timeFilterDecision)
+        : null;
+  const riskManagerDecisionJson =
+    typeof log.riskManagerDecision === "string"
+      ? log.riskManagerDecision
+      : log.riskManagerDecision
+        ? JSON.stringify(log.riskManagerDecision)
+        : null;
+  const riskObservationJson =
+    typeof log.riskObservation === "string"
+      ? log.riskObservation
+      : log.riskObservation
+        ? JSON.stringify(log.riskObservation)
+        : null;
+
+  // SQLite/better-sqlite3 can't bind Infinity — derivMaxAllowedStake is
+  // Infinity for every preset except Boom900, meaning "no broker cap",
+  // which NULL represents naturally.
+  const derivMaxAllowedForDb =
+    typeof log.derivMaxAllowedStake === "number" && Number.isFinite(log.derivMaxAllowedStake)
+      ? log.derivMaxAllowedStake
+      : null;
+  const boolToDb = (b: boolean | undefined): number | null => (b === undefined ? null : b ? 1 : 0);
+  const executionCapabilitiesJson = log.executionCapabilities
+    ? JSON.stringify(log.executionCapabilities)
+    : null;
+
+  getDb()
+    .prepare(
+      `
+    INSERT INTO bot_trades (
+      id, user_id, time, symbol, direction, stake, payout, status, profit, confidence, tf_agreement,
+      contract_id, closed_at, note, strategy, strategy_version, entry_price, duration_minutes, expiry,
+      components, multiplier, stop_loss, take_profit, mode, preset,
+      config_snapshot, indicator_values, time_filter_decision, risk_manager_decision,
+      risk_version, execution_version, config_hash,
+      requested_stake, strategy_suggested_stake, max_risk_allowed, deriv_max_allowed, final_stake, stake_source,
+      estimated_max_loss, risk_pct_of_equity, stake_scaling_tier, stake_scaling_reason,
+      exit_reason, entry_time, exit_time, hold_duration_seconds, configured_max_hold_seconds,
+      mfe_usd, mfe_r, mae_usd, mae_r, peak_unrealized_profit, worst_unrealized_loss, profit_given_back,
+      profit_at_timeout, r_at_timeout, mfe_before_timeout, mae_before_timeout, distance_to_tp_at_exit, distance_to_sl_at_exit,
+      time_to_tp_seconds, mfe_before_tp, mae_before_tp, max_progress_toward_tp_pct,
+      time_to_sl_seconds, mfe_before_sl, mae_before_sl, was_profitable_before_sl, max_profit_before_sl,
+      partial_tp_configured, partial_tp_mechanism_active, breakeven_configured, breakeven_mechanism_active,
+      execution_capabilities, data_quality
+    )
+    VALUES (
+      @id, @user_id, @time, @symbol, @direction, @stake, @payout, @status, @profit, @confidence, @tf_agreement,
+      @contract_id, @closed_at, @note, @strategy, @strategy_version, @entry_price, @duration_minutes, @expiry,
+      @components, @multiplier, @stop_loss, @take_profit, @mode, @preset,
+      @config_snapshot, @indicator_values, @time_filter_decision, @risk_manager_decision,
+      @risk_version, @execution_version, @config_hash,
+      @requested_stake, @strategy_suggested_stake, @max_risk_allowed, @deriv_max_allowed, @final_stake, @stake_source,
+      @estimated_max_loss, @risk_pct_of_equity, @stake_scaling_tier, @stake_scaling_reason,
+      @exit_reason, @entry_time, @exit_time, @hold_duration_seconds, @configured_max_hold_seconds,
+      @mfe_usd, @mfe_r, @mae_usd, @mae_r, @peak_unrealized_profit, @worst_unrealized_loss, @profit_given_back,
+      @profit_at_timeout, @r_at_timeout, @mfe_before_timeout, @mae_before_timeout, @distance_to_tp_at_exit, @distance_to_sl_at_exit,
+      @time_to_tp_seconds, @mfe_before_tp, @mae_before_tp, @max_progress_toward_tp_pct,
+      @time_to_sl_seconds, @mfe_before_sl, @mae_before_sl, @was_profitable_before_sl, @max_profit_before_sl,
+      @partial_tp_configured, @partial_tp_mechanism_active, @breakeven_configured, @breakeven_mechanism_active,
+      @execution_capabilities, @data_quality
+    )
     ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status, payout = excluded.payout, profit = excluded.profit,
-      contract_id = excluded.contract_id, closed_at = excluded.closed_at, note = excluded.note
-  `).run({
-    id: log.id, user_id: userId, time: log.time, symbol: log.symbol, direction: log.direction,
-    stake: log.stake, payout: log.payout, status: log.status, profit: log.profit,
-    confidence: log.confidence, tf_agreement: log.tfAgreement,
-    contract_id: log.contractId ?? null, closed_at: log.closedAt ?? null, note: log.note ?? null,
-    entry_price: log.entryPrice ?? null, duration_minutes: log.durationMinutes ?? null, expiry: log.expiry ?? null,
-    components: log.components?.length ? JSON.stringify(log.components) : null,
-    multiplier: log.multiplier ?? null, stop_loss: log.stopLossUsd ?? null, take_profit: log.takeProfitUsd ?? null,
-    mode, preset,
-  });
+      status = excluded.status,
+      payout = excluded.payout,
+      profit = excluded.profit,
+      contract_id = excluded.contract_id,
+      closed_at = excluded.closed_at,
+      note = excluded.note,
+      config_snapshot = COALESCE(excluded.config_snapshot, bot_trades.config_snapshot),
+      indicator_values = COALESCE(excluded.indicator_values, bot_trades.indicator_values),
+      time_filter_decision = COALESCE(excluded.time_filter_decision, bot_trades.time_filter_decision),
+      risk_manager_decision = COALESCE(excluded.risk_manager_decision, bot_trades.risk_manager_decision),
+      strategy_version = COALESCE(excluded.strategy_version, bot_trades.strategy_version),
+      risk_version = COALESCE(excluded.risk_version, bot_trades.risk_version),
+      execution_version = COALESCE(excluded.execution_version, bot_trades.execution_version),
+      config_hash = COALESCE(excluded.config_hash, bot_trades.config_hash),
+      requested_stake = COALESCE(excluded.requested_stake, bot_trades.requested_stake),
+      strategy_suggested_stake = COALESCE(excluded.strategy_suggested_stake, bot_trades.strategy_suggested_stake),
+      max_risk_allowed = COALESCE(excluded.max_risk_allowed, bot_trades.max_risk_allowed),
+      deriv_max_allowed = COALESCE(excluded.deriv_max_allowed, bot_trades.deriv_max_allowed),
+      final_stake = COALESCE(excluded.final_stake, bot_trades.final_stake),
+      stake_source = COALESCE(excluded.stake_source, bot_trades.stake_source),
+      estimated_max_loss = COALESCE(excluded.estimated_max_loss, bot_trades.estimated_max_loss),
+      risk_pct_of_equity = COALESCE(excluded.risk_pct_of_equity, bot_trades.risk_pct_of_equity),
+      stake_scaling_tier = COALESCE(excluded.stake_scaling_tier, bot_trades.stake_scaling_tier),
+      stake_scaling_reason = COALESCE(excluded.stake_scaling_reason, bot_trades.stake_scaling_reason),
+      exit_reason = COALESCE(excluded.exit_reason, bot_trades.exit_reason),
+      entry_time = COALESCE(excluded.entry_time, bot_trades.entry_time),
+      exit_time = COALESCE(excluded.exit_time, bot_trades.exit_time),
+      hold_duration_seconds = COALESCE(excluded.hold_duration_seconds, bot_trades.hold_duration_seconds),
+      configured_max_hold_seconds = COALESCE(excluded.configured_max_hold_seconds, bot_trades.configured_max_hold_seconds),
+      mfe_usd = COALESCE(excluded.mfe_usd, bot_trades.mfe_usd),
+      mfe_r = COALESCE(excluded.mfe_r, bot_trades.mfe_r),
+      mae_usd = COALESCE(excluded.mae_usd, bot_trades.mae_usd),
+      mae_r = COALESCE(excluded.mae_r, bot_trades.mae_r),
+      peak_unrealized_profit = COALESCE(excluded.peak_unrealized_profit, bot_trades.peak_unrealized_profit),
+      worst_unrealized_loss = COALESCE(excluded.worst_unrealized_loss, bot_trades.worst_unrealized_loss),
+      profit_given_back = COALESCE(excluded.profit_given_back, bot_trades.profit_given_back),
+      profit_at_timeout = COALESCE(excluded.profit_at_timeout, bot_trades.profit_at_timeout),
+      r_at_timeout = COALESCE(excluded.r_at_timeout, bot_trades.r_at_timeout),
+      mfe_before_timeout = COALESCE(excluded.mfe_before_timeout, bot_trades.mfe_before_timeout),
+      mae_before_timeout = COALESCE(excluded.mae_before_timeout, bot_trades.mae_before_timeout),
+      distance_to_tp_at_exit = COALESCE(excluded.distance_to_tp_at_exit, bot_trades.distance_to_tp_at_exit),
+      distance_to_sl_at_exit = COALESCE(excluded.distance_to_sl_at_exit, bot_trades.distance_to_sl_at_exit),
+      time_to_tp_seconds = COALESCE(excluded.time_to_tp_seconds, bot_trades.time_to_tp_seconds),
+      mfe_before_tp = COALESCE(excluded.mfe_before_tp, bot_trades.mfe_before_tp),
+      mae_before_tp = COALESCE(excluded.mae_before_tp, bot_trades.mae_before_tp),
+      max_progress_toward_tp_pct = COALESCE(excluded.max_progress_toward_tp_pct, bot_trades.max_progress_toward_tp_pct),
+      time_to_sl_seconds = COALESCE(excluded.time_to_sl_seconds, bot_trades.time_to_sl_seconds),
+      mfe_before_sl = COALESCE(excluded.mfe_before_sl, bot_trades.mfe_before_sl),
+      mae_before_sl = COALESCE(excluded.mae_before_sl, bot_trades.mae_before_sl),
+      was_profitable_before_sl = COALESCE(excluded.was_profitable_before_sl, bot_trades.was_profitable_before_sl),
+      max_profit_before_sl = COALESCE(excluded.max_profit_before_sl, bot_trades.max_profit_before_sl),
+      partial_tp_configured = COALESCE(excluded.partial_tp_configured, bot_trades.partial_tp_configured),
+      partial_tp_mechanism_active = COALESCE(excluded.partial_tp_mechanism_active, bot_trades.partial_tp_mechanism_active),
+      breakeven_configured = COALESCE(excluded.breakeven_configured, bot_trades.breakeven_configured),
+      breakeven_mechanism_active = COALESCE(excluded.breakeven_mechanism_active, bot_trades.breakeven_mechanism_active),
+      execution_capabilities = COALESCE(excluded.execution_capabilities, bot_trades.execution_capabilities),
+      data_quality = COALESCE(excluded.data_quality, bot_trades.data_quality)
+  `,
+    )
+    .run({
+      id: log.id,
+      user_id: userId,
+      time: log.time,
+      symbol: log.symbol,
+      direction: log.direction,
+      stake: log.stake,
+      payout: log.payout,
+      status: log.status,
+      profit: log.profit,
+      confidence: log.confidence,
+      tf_agreement: log.tfAgreement,
+      contract_id: log.contractId ?? null,
+      closed_at: log.closedAt ?? null,
+      note: log.note ?? null,
+      strategy: log.strategy ?? null,
+      strategy_version: strategyVersion,
+      risk_version: log.riskVersion ?? "R4",
+      execution_version: log.executionVersion ?? "E3",
+      config_hash: log.configHash ?? null,
+      requested_stake: log.requestedStake ?? null,
+      strategy_suggested_stake: log.strategySuggestedStake ?? null,
+      max_risk_allowed: log.riskManagerCap ?? null,
+      deriv_max_allowed: derivMaxAllowedForDb,
+      final_stake: log.stake,
+      stake_source: log.stakeSource ?? null,
+      estimated_max_loss: log.estimatedMaxLoss ?? null,
+      risk_pct_of_equity: log.riskPctOfEquity ?? null,
+      stake_scaling_tier: log.stakeScalingTier ?? null,
+      stake_scaling_reason: log.stakeScalingReason ?? null,
+      entry_price: log.entryPrice ?? null,
+      duration_minutes: log.durationMinutes ?? null,
+      expiry: log.expiry ?? null,
+      components: log.components?.length ? JSON.stringify(log.components) : null,
+      multiplier: log.multiplier ?? null,
+      stop_loss: log.stopLossUsd ?? null,
+      take_profit: log.takeProfitUsd ?? null,
+      mode,
+      preset,
+      config_snapshot: configSnapshotJson,
+      indicator_values: indicatorValuesJson,
+      time_filter_decision: timeFilterDecisionJson,
+      risk_manager_decision: riskManagerDecisionJson,
+      exit_reason: log.exitReason ?? null,
+      entry_time: log.entryTimeMs ?? null,
+      exit_time: log.exitTimeMs ?? null,
+      hold_duration_seconds: log.holdDurationSeconds ?? null,
+      configured_max_hold_seconds: log.configuredMaxHoldSeconds ?? null,
+      mfe_usd: log.mfeUsd ?? null,
+      mfe_r: log.mfeR ?? null,
+      mae_usd: log.maeUsd ?? null,
+      mae_r: log.maeR ?? null,
+      peak_unrealized_profit: log.peakUnrealizedProfit ?? null,
+      worst_unrealized_loss: log.worstUnrealizedLoss ?? null,
+      profit_given_back: log.profitGivenBack ?? null,
+      profit_at_timeout: log.profitAtTimeout ?? null,
+      r_at_timeout: log.rAtTimeout ?? null,
+      mfe_before_timeout: log.mfeBeforeTimeout ?? null,
+      mae_before_timeout: log.maeBeforeTimeout ?? null,
+      distance_to_tp_at_exit: log.distanceToTpAtExit ?? null,
+      distance_to_sl_at_exit: log.distanceToSlAtExit ?? null,
+      time_to_tp_seconds: log.timeToTpSeconds ?? null,
+      mfe_before_tp: log.mfeBeforeTp ?? null,
+      mae_before_tp: log.maeBeforeTp ?? null,
+      max_progress_toward_tp_pct: log.maxProgressTowardTpPct ?? null,
+      time_to_sl_seconds: log.timeToSlSeconds ?? null,
+      mfe_before_sl: log.mfeBeforeSl ?? null,
+      mae_before_sl: log.maeBeforeSl ?? null,
+      was_profitable_before_sl: boolToDb(log.wasProfitableBeforeSl),
+      max_profit_before_sl: log.maxProfitBeforeSl ?? null,
+      partial_tp_configured: boolToDb(log.partialTpConfigured),
+      partial_tp_mechanism_active: boolToDb(log.partialTpMechanismActive),
+      breakeven_configured: boolToDb(log.breakevenConfigured),
+      breakeven_mechanism_active: boolToDb(log.breakevenMechanismActive),
+      execution_capabilities: executionCapabilitiesJson,
+      data_quality: log.dataQuality ?? null,
+    });
+  if (riskObservationJson) {
+    getDb()
+      .prepare("UPDATE bot_trades SET risk_observation = ? WHERE id = ?")
+      .run(riskObservationJson, log.id);
+  }
+}
+
+/** Best-effort write of one shadow post-exit horizon snapshot (2026-08-13,
+ * analytical only). Never touches any column read by a trading decision. */
+function recordShadowObservation(
+  tradeId: string,
+  horizon: "5m" | "10m" | "20m" | "30m",
+  price: number,
+  hypotheticalPnl: number,
+  status: "PARTIAL" | "COMPLETE",
+): void {
+  try {
+    getDb()
+      .prepare(
+        `
+      UPDATE bot_trades SET
+        post_exit_price_${horizon} = ?,
+        hypothetical_pnl_${horizon} = ?,
+        shadow_capture_status = ?
+      WHERE id = ?
+    `,
+      )
+      .run(price, hypotheticalPnl, status, tradeId);
+  } catch {
+    /* best-effort analytics only */
+  }
 }
 
 function loadRecentTrades(userId: number, preset: Preset, limit = 50): TradeLog[] {
@@ -235,7 +775,9 @@ function loadRecentTrades(userId: number, preset: Preset, limit = 50): TradeLog[
  * both trade BOOM500 — never fight over re-tracking each other's positions. */
 function loadOpenOrPendingTrades(userId: number, preset: Preset): TradeLog[] {
   const rows = getDb()
-    .prepare(`SELECT * FROM bot_trades WHERE user_id = ? AND preset = ? AND status IN ('open', 'pending')`)
+    .prepare(
+      `SELECT * FROM bot_trades WHERE user_id = ? AND preset = ? AND status IN ('open', 'pending')`,
+    )
     .all(userId, preset) as BotTradeRow[];
   return rows.map(logFromRow);
 }
@@ -254,12 +796,18 @@ function loadOpenOrPendingTrades(userId: number, preset: Preset): TradeLog[] {
  */
 function getOpenFloatingPnl(userId: number, preset: Preset): number {
   const row = getDb()
-    .prepare(`SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`)
+    .prepare(
+      `SELECT COALESCE(SUM(profit), 0) AS floating FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`,
+    )
     .get(userId, preset) as { floating: number };
   return row.floating;
 }
 
-export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "live"): {
+export function getTodayStats(
+  userId: number,
+  preset: Preset,
+  mode?: "demo" | "live",
+): {
   pnl: number;
   floatingLoss: number;
   riskPnl: number;
@@ -276,7 +824,7 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
   start.setUTCHours(0, 0, 0, 0);
   const row = getDb()
     .prepare(
-       `SELECT
+      `SELECT
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl,
          COALESCE(SUM(CASE WHEN stake > 0 AND status IN ('pending','open','won','lost') THEN 1 ELSE 0 END), 0) AS count,
          COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
@@ -286,13 +834,13 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
        FROM bot_trades WHERE user_id = ? AND preset = ? AND time >= ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
     .get(userId, preset, start.getTime(), mode ?? null, mode ?? null) as {
-      pnl: number;
-      count: number;
-      wins: number;
-      losses: number;
-      totalWon: number;
-      totalLost: number;
-    };
+    pnl: number;
+    count: number;
+    wins: number;
+    losses: number;
+    totalWon: number;
+    totalLost: number;
+  };
   const floatingLoss = Math.min(0, getOpenFloatingPnl(userId, preset));
   return {
     ...row,
@@ -309,7 +857,11 @@ export function getTodayStats(userId: number, preset: Preset, mode?: "demo" | "l
  * showing someone else's win rate to justify THEIR real-money risk would be
  * misleading — this stays scoped to the user's own trades.
  */
-export function getAllTimeStats(userId: number, preset: Preset, mode?: "demo" | "live"): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
+export function getAllTimeStats(
+  userId: number,
+  preset: Preset,
+  mode?: "demo" | "live",
+): { trades: number; wins: number; losses: number; winRate: number; pnl: number } {
   const row = getDb()
     .prepare(
       `SELECT
@@ -318,9 +870,19 @@ export function getAllTimeStats(userId: number, preset: Preset, mode?: "demo" | 
          COALESCE(SUM(CASE WHEN status IN ('won','lost') THEN profit ELSE 0 END), 0) AS pnl
        FROM bot_trades WHERE user_id = ? AND preset = ? AND (? IS NULL OR mode = ? OR mode IS NULL)`,
     )
-    .get(userId, preset, mode ?? null, mode ?? null) as { wins: number; losses: number; pnl: number };
+    .get(userId, preset, mode ?? null, mode ?? null) as {
+    wins: number;
+    losses: number;
+    pnl: number;
+  };
   const trades = row.wins + row.losses;
-  return { trades, wins: row.wins, losses: row.losses, winRate: trades > 0 ? row.wins / trades : 0, pnl: row.pnl };
+  return {
+    trades,
+    wins: row.wins,
+    losses: row.losses,
+    winRate: trades > 0 ? row.wins / trades : 0,
+    pnl: row.pnl,
+  };
 }
 
 export function getRecentPerformance(
@@ -384,7 +946,9 @@ function computeKellyStakeServer(
 }
 
 export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig | null {
-  const row = getDb().prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
+  const row = getDb()
+    .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
+    .get(userId, preset) as { config: string } | undefined;
   if (!row) return null;
   // La config sauvegardée est reprise INTÉGRALEMENT, avec DEFAULT_CONFIG en
   // simple filet pour les champs absents (config ancienne, ou partielle).
@@ -403,16 +967,44 @@ export function loadBotConfig(userId: number, preset: Preset): AutoTraderConfig 
   // faire basculer un compte en réel.
   try {
     const saved = JSON.parse(row.config) as Partial<AutoTraderConfig>;
-    return {
+    const merged: AutoTraderConfig = {
       ...DEFAULT_CONFIG,
       ...saved,
-      stakeUsd: Math.min(100, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
-      maxDailyLossUsd: Math.min(500, Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd)),
+      stakeUsd:
+        preset === "boom900"
+          ? Math.min(0.9, Math.max(0.1, Number(saved.stakeUsd) || 0.9))
+          : Math.min(50, Math.max(1, Number(saved.stakeUsd) || DEFAULT_CONFIG.stakeUsd)),
+      // $200 is an explicitly supported demo risk ceiling for the four-core
+      // research basket.  Keeping the old $100 clamp made the saved value and
+      // the server's effective protection disagree silently.
+      maxDailyLossUsd: Math.min(
+        200,
+        Math.max(1, Number(saved.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd),
+      ),
       // "live" seulement si explicitement choisi — jamais de bascule silencieuse.
       mode: saved.mode === "live" ? "live" : "demo",
     };
+    // Guard: a legacy save could have symbols encoded as "[frxXAUUSD]".
+    // db.server repairs it at startup, while this fallback keeps an engine
+    // safe if a malformed row is encountered before that migration runs.
+    if (!Array.isArray(merged.symbols)) {
+      const rawValue = (saved as { symbols?: unknown }).symbols;
+      const rawSymbols = typeof rawValue === "string" ? rawValue.trim() : "";
+      merged.symbols =
+        rawSymbols.startsWith("[") && rawSymbols.endsWith("]")
+          ? rawSymbols
+              .slice(1, -1)
+              .split(",")
+              .map((symbol: string) => symbol.trim())
+              .filter(Boolean)
+          : DEFAULT_CONFIG.symbols;
+    }
+    if (!Array.isArray(merged.excludedSymbols))
+      merged.excludedSymbols = DEFAULT_CONFIG.excludedSymbols;
+    return lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(merged) : merged);
   } catch {
-    return { ...DEFAULT_CONFIG };
+    const fallback = { ...DEFAULT_CONFIG };
+    return lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(fallback) : fallback);
   }
 }
 
@@ -439,12 +1031,26 @@ class ServerBotEngine {
   // cooldown has been served, the symbol gets one real attempt to trade
   // again; only a genuinely NEW loss re-arms the cooldown.
   private servedCooldownFor = new Map<string, string>();
+  // Same idea as servedCooldownFor but for the PRESET-WIDE circuit breaker
+  // below (countConsecutiveLosses(logs) with no symbol filter): identifies
+  // which streak the preset's last risk-pause was served for, by the id of
+  // the most recent closed trade at pause time. Without this, a preset that
+  // stops trading during its own pause re-reads the SAME stale streak on
+  // every resume and immediately re-pauses — forever, since no new trade can
+  // occur while paused to ever produce a win and clear it. Observed live:
+  // Stella/crash cycled "5 pertes consécutives" → 45min pause → resume →
+  // re-pause every ~45min for 8.5+ hours (2026-08-07) with zero new trades
+  // in between. The per-symbol version of this exact bug was already fixed
+  // (see servedCooldownFor above); this preset-wide breaker never got the
+  // same fix when it was added after the 2026-08-04 incident.
+  private presetServedCooldownFor: string | undefined;
   private contractUnsubs = new Map<number, () => void>();
   private fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
   // Set by stopScanning() when a stop was requested while a position was still
   // open — non-null means "finish tearing down as soon as nothing is open."
   private pendingStopReason: string | null = null;
   private sessionPeakPnl = 0;
+  private opportunityPushes = new Map<string, { direction: "CALL" | "PUT"; sentAt: number }>();
   lastScan: ScanResult | null = null;
   lastError: string | null = null;
   private lastActiveSessions: TradingSession[] = [];
@@ -463,7 +1069,65 @@ class ServerBotEngine {
     this.binanceConn = binanceConn;
     this.oandaConn = oandaConn;
     this.logs = loadRecentTrades(userId, preset);
+    this.restoreCooldownMarkers();
     this.lastActiveSessions = currentActiveSessions();
+  }
+
+  /**
+   * A restart must not make an already-served losing streak look new. The
+   * marker is derived from the immutable journal rather than held only in a
+   * process-local Map, so deployments cannot cause a pause → resume → same
+   * pause loop without a new losing trade.
+   */
+  private restoreCooldownMarkers() {
+    const db = getDb();
+    const latestPresetLoss = db
+      .prepare(
+        `
+      SELECT id, time FROM bot_trades
+      WHERE user_id = ? AND preset = ? AND status IN ('won', 'lost')
+      ORDER BY time DESC LIMIT 1
+    `,
+      )
+      .get(this.userId, this.preset) as { id: string; time: number } | undefined;
+    const servedPresetPause = db
+      .prepare(
+        `
+      SELECT time FROM bot_trades
+      WHERE user_id = ? AND preset = ? AND status = 'risk-stop'
+        AND note LIKE '%pertes consécutives (tous symboles confondus)%'
+      ORDER BY time DESC LIMIT 1
+    `,
+      )
+      .get(this.userId, this.preset) as { time: number } | undefined;
+    if (isCooldownAlreadyServedAfterRestart(latestPresetLoss, servedPresetPause)) {
+      this.presetServedCooldownFor = latestPresetLoss.id;
+    }
+
+    for (const symbol of this.config.symbols) {
+      const latestSymbolLoss = db
+        .prepare(
+          `
+        SELECT id, time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND symbol = ? AND status IN ('won', 'lost')
+        ORDER BY time DESC LIMIT 1
+      `,
+        )
+        .get(this.userId, this.preset, symbol) as { id: string; time: number } | undefined;
+      const servedSymbolPause = db
+        .prepare(
+          `
+        SELECT time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND symbol = ? AND status = 'cooldown'
+          AND note LIKE '%pertes consécutives%'
+        ORDER BY time DESC LIMIT 1
+      `,
+        )
+        .get(this.userId, this.preset, symbol) as { time: number } | undefined;
+      if (isCooldownAlreadyServedAfterRestart(latestSymbolLoss, servedSymbolPause)) {
+        this.servedCooldownFor.set(symbol, latestSymbolLoss.id);
+      }
+    }
   }
 
   // Hot-swaps the config an in-flight engine reads on its next tick — used by
@@ -491,12 +1155,53 @@ class ServerBotEngine {
   }
 
   get pausedUntil(): number {
-    const row = getDb().prepare("SELECT paused_until FROM bot_state WHERE user_id = ? AND preset = ?").get(this.userId, this.preset) as { paused_until: number | null } | undefined;
+    const row = getDb()
+      .prepare("SELECT paused_until FROM bot_state WHERE user_id = ? AND preset = ?")
+      .get(this.userId, this.preset) as { paused_until: number | null } | undefined;
     return row?.paused_until ?? 0;
   }
 
   private setPausedUntil(ts: number | null) {
-    getDb().prepare("UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(ts, this.userId, this.preset);
+    getDb()
+      .prepare(
+        "UPDATE bot_state SET paused_until = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+      )
+      .run(ts, this.userId, this.preset);
+  }
+
+  /**
+   * Send a server-side, actionable manual-trading alert only for a signal
+   * that passed the same quality and execution filters as an automatic trade.
+   * This reaches subscribed devices even when /opportunities is closed.
+   */
+  private notifyManualOpportunity(
+    symbol: string,
+    direction: "CALL" | "PUT",
+    confidence: number,
+    agreement: number,
+  ) {
+    const now = Date.now();
+    const previous = this.opportunityPushes.get(symbol);
+    if (
+      previous &&
+      previous.direction === direction &&
+      now - previous.sentAt < OPPORTUNITY_PUSH_COOLDOWN_MS
+    )
+      return;
+    this.opportunityPushes.set(symbol, { direction, sentAt: now });
+
+    void (async () => {
+      const { sendPushToUser } = await import("./push.server");
+      const title = `⚡ Opportunité ${PRESET_LABEL[this.preset]} — ${symbol}`;
+      const body = `${direction} · confiance ${Math.round(confidence)}% · ${agreement} TF alignés. Ouvrir le trade manuel.`;
+      const url = `/manual-trader?symbol=${encodeURIComponent(symbol)}&direction=${direction}&preset=${this.preset}&take=1`;
+      await sendPushToUser(this.userId, { title, body, url, category: "signal" });
+    })().catch((e) =>
+      console.error(
+        `[bot] Notification opportunité échouée pour user ${this.userId}:`,
+        (e as Error).message,
+      ),
+    );
   }
 
   private emit(log: TradeLog) {
@@ -510,20 +1215,70 @@ class ServerBotEngine {
     this.finalizeIfIdle();
   }
 
-  /** Push the user only on winning trades — fire-and-forget so a push
-   * provider hiccup never breaks trade resolution. */
+  /** Push each automatic trade opening and resolution, plus risk pauses —
+   * fire-and-forget so a push provider hiccup never breaks trade resolution.
+   * Risk pauses are exactly the event a locked-phone user most needs to see
+   * (Réglages promises "pause risque envoyée même téléphone verrouillé"),
+   * but riskPause()'s emit() used to fall straight through this method's
+   * won-only check and notify nobody — the pause was only visible if the
+   * user happened to have the app open. Each risk-stop log has a unique id
+   * (see riskPause), so unlike "won" it needs no prevStatus transition guard
+   * — every risk-stop emit is a fresh pause, never a re-emit of the same one. */
   private notify(log: TradeLog, prevStatus: TradeLog["status"] | null) {
-    const won = log.status === "won" && prevStatus !== "won";
-    if (!won) return;
+    // A trade can be emitted several times while its broker subscription is
+    // live. Notify only on the status transition, never for price/P&L ticks.
+    if (log.status === "open" && prevStatus !== "open") {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(this.userId, {
+          title: `🟦 Trade ouvert — ${PRESET_LABEL[this.preset]}`,
+          body: `${log.symbol} · ${log.direction} · mise $${log.stake.toFixed(2)} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+          category: "trade",
+        });
+      })().catch((e) =>
+        console.error(
+          `[bot] Notification push échouée pour user ${this.userId}:`,
+          (e as Error).message,
+        ),
+      );
+      return;
+    }
 
-    void (async () => {
-      const { sendPushToUser } = await import("./push.server");
-      await sendPushToUser(this.userId, {
-        title: `Gagné +$${log.profit.toFixed(2)}`,
-        body: `${log.symbol} · ${log.direction} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
-        url: "/autotrader",
-      });
-    })().catch((e) => console.error(`[bot] Notification push échouée pour user ${this.userId}:`, (e as Error).message));
+    if ((log.status === "won" || log.status === "lost") && prevStatus !== log.status) {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        const won = log.status === "won";
+        await sendPushToUser(this.userId, {
+          title: `${won ? "✅" : "🔴"} Trade fermé ${won ? "gagnant" : "perdant"} — ${PRESET_LABEL[this.preset]}`,
+          body: `${log.symbol} · ${log.direction} · ${won ? "+" : ""}$${log.profit.toFixed(2)} · ${this.config.mode === "live" ? "Réel" : "Démo"}`,
+          url: "/autotrader",
+          category: "trade",
+        });
+      })().catch((e) =>
+        console.error(
+          `[bot] Notification push échouée pour user ${this.userId}:`,
+          (e as Error).message,
+        ),
+      );
+      return;
+    }
+
+    if (log.status === "risk-stop") {
+      void (async () => {
+        const { sendPushToUser } = await import("./push.server");
+        await sendPushToUser(this.userId, {
+          title: `⏸ Bot en pause — ${PRESET_LABEL[this.preset]}`,
+          body: log.note ?? "Protection de risque déclenchée.",
+          url: "/autotrader",
+        });
+      })().catch((e) =>
+        console.error(
+          `[bot] Notification push (pause risque) échouée pour user ${this.userId}:`,
+          (e as Error).message,
+        ),
+      );
+    }
   }
 
   /** Pause courte pour un déclencheur RÉVERSIBLE (perte flottante, trailing
@@ -546,7 +1301,11 @@ class ServerBotEngine {
       time: Date.now(),
       symbol: "—",
       direction: "CALL",
-      stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+      stake: 0,
+      payout: 0,
+      profit: 0,
+      confidence: 0,
+      tfAgreement: 0,
       status: "risk-stop",
       note: `${reasons.join(" · ")} — reprise auto à ${resumeLabel} UTC`,
     });
@@ -567,8 +1326,48 @@ class ServerBotEngine {
       const match = records.find((r) => r.contractId === log.contractId);
       if (match) {
         const won = match.profit > 0;
-        this.emit({ ...log, status: won ? "won" : "lost", profit: match.profit, closedAt: Date.now() });
-        try { recordComponentOutcomesServer(log.symbol, log.components, won); } catch { /* never break reconcile */ }
+        this.emit({
+          ...log,
+          status: won ? "won" : "lost",
+          profit: match.profit,
+          closedAt: Date.now(),
+        });
+        try {
+          recordComponentOutcomesServer(log.symbol, log.components, won);
+        } catch {
+          /* never break reconcile */
+        }
+      } else if (isOandaSymbol(log.symbol) && this.oandaConn) {
+        // OANDA has no Deriv profit-table record. Reattach using the real
+        // trade id stored in contract_id, and recover the live unit size for
+        // partial/maximum-hold closes.
+        try {
+          const trade = await this.oandaConn.getTradeInfo(String(log.contractId));
+          if (trade.state === "CLOSED") {
+            const won = trade.profit > 0;
+            this.emit({
+              ...log,
+              status: won ? "won" : "lost",
+              profit: trade.profit,
+              closedAt: Date.now(),
+            });
+            try {
+              recordComponentOutcomesServer(log.symbol, log.components, won);
+            } catch {
+              /* never break reconcile */
+            }
+          } else {
+            this.trackOandaPosition(log, String(log.contractId), Math.abs(trade.units));
+          }
+        } catch {
+          this.emit({
+            ...log,
+            status: "error",
+            profit: 0,
+            note: "Trade OANDA introuvable après redémarrage",
+            closedAt: Date.now(),
+          });
+        }
       } else if (log.direction === "MULTUP" || log.direction === "MULTDOWN") {
         // Multiplier positions don't expire — getProfitTable only lists SOLD
         // contracts, so no match here just means it's still open. Re-subscribe
@@ -577,7 +1376,13 @@ class ServerBotEngine {
       } else if (log.expiry && Date.now() < log.expiry + 2 * 60_000) {
         this.trackContract(log); // probably still open — re-subscribe
       } else {
-        this.emit({ ...log, status: "error", profit: 0, note: "Contrat introuvable après redémarrage", closedAt: Date.now() });
+        this.emit({
+          ...log,
+          status: "error",
+          profit: 0,
+          note: "Contrat introuvable après redémarrage",
+          closedAt: Date.now(),
+        });
       }
     }
   }
@@ -598,7 +1403,11 @@ class ServerBotEngine {
       this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
       // Shared learning: credit/blame this trade's signal components in the
       // cross-user stats so every user's trades train the same weights.
-      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+      try {
+        recordComponentOutcomesServer(openLog.symbol, openLog.components, won);
+      } catch {
+        /* never break resolution */
+      }
     };
 
     const unsub = this.conn.subscribeContract(contractId, (u) => {
@@ -636,6 +1445,33 @@ class ServerBotEngine {
     let resolved = false;
     let partialTaken = false;
 
+    // ── Exit-mechanism observability (2026-08-13, Zero Tweak: read-only,
+    // never influences any decision below) ──
+    // partialTakeProfitPct/moveSlToBreakeven are configured on this preset
+    // but Deriv's multiplier API has no partial-sell endpoint and nothing in
+    // this file ever reads moveSlToBreakeven — both are dead configuration
+    // here. Documented explicitly per trade so FALSE below means "mechanism
+    // does not exist in execution", never "condition didn't trigger".
+    const executionCapabilities = {
+      partialClose: false,
+      moveSlAfterEntry: false,
+      breakeven: false,
+      trailingStop: false,
+      maxHoldExit: true,
+      fullTp: true,
+      fullSl: true,
+    };
+    const partialTpConfigured = this.config.partialTakeProfitPct > 0;
+    const breakevenConfigured = this.config.moveSlToBreakeven;
+
+    let peakUnrealizedProfit = 0;
+    let worstUnrealizedLoss = 0;
+    let timeoutTriggered = false;
+    const stopLossUsd = openLog.stopLossUsd;
+    const takeProfitUsd = openLog.takeProfitUsd;
+    const toR = (usd: number) =>
+      stopLossUsd && stopLossUsd > 0 ? Math.round((usd / stopLossUsd) * 1000) / 1000 : null;
+
     const finalize = (profit: number) => {
       if (resolved) return;
       resolved = true;
@@ -644,13 +1480,99 @@ class ServerBotEngine {
       this.contractUnsubs.get(contractId)?.();
       this.contractUnsubs.delete(contractId);
       this.activeSymbols.delete(openLog.symbol);
-      this.emit({ ...openLog, status: profit > 0 ? "won" : "lost", profit, closedAt: Date.now() });
-      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, profit > 0); } catch { /* never break resolution */ }
+
+      const exitTimeMs = Date.now();
+      const holdDurationSeconds = Math.round((exitTimeMs - openLog.time) / 1000);
+      const nearTp = takeProfitUsd ? profit >= 0.95 * takeProfitUsd : false;
+      const nearSl = stopLossUsd ? profit <= -0.95 * stopLossUsd : false;
+      // MAX_HOLD_TIMEOUT is control-flow ground truth: we know for certain
+      // when it's our own timer that triggered the sell. Otherwise, Deriv's
+      // proposal_open_contract API exposes no direct "closed because of X"
+      // field (status is just sold/won/lost/open regardless of cause), so
+      // TAKE_PROFIT/STOP_LOSS are classified by comparing realized profit
+      // against the ORIGINAL stopLossUsd/takeProfitUsd set at placement —
+      // the most information the broker actually provides.
+      const exitReason: TradeLog["exitReason"] = timeoutTriggered
+        ? "MAX_HOLD_TIMEOUT"
+        : nearTp
+          ? "TAKE_PROFIT"
+          : nearSl
+            ? "STOP_LOSS"
+            : "OTHER";
+
+      const mfeUsd = peakUnrealizedProfit;
+      const maeUsd = worstUnrealizedLoss;
+      const profitGivenBack =
+        peakUnrealizedProfit > profit ? Math.round((peakUnrealizedProfit - profit) * 100) / 100 : 0;
+
+      const extra: Partial<TradeLog> = {
+        exitReason,
+        entryTimeMs: openLog.time,
+        exitTimeMs,
+        holdDurationSeconds,
+        configuredMaxHoldSeconds: this.config.maxHoldMinutes * 60,
+        mfeUsd,
+        mfeR: toR(mfeUsd),
+        maeUsd,
+        maeR: toR(maeUsd),
+        peakUnrealizedProfit,
+        worstUnrealizedLoss,
+        profitGivenBack,
+        partialTpConfigured,
+        partialTpMechanismActive: false,
+        breakevenConfigured,
+        breakevenMechanismActive: false,
+        executionCapabilities,
+        dataQuality: "INSTRUMENTED",
+      };
+      if (exitReason === "MAX_HOLD_TIMEOUT") {
+        extra.profitAtTimeout = profit;
+        extra.rAtTimeout = toR(profit);
+        extra.mfeBeforeTimeout = mfeUsd;
+        extra.maeBeforeTimeout = maeUsd;
+        extra.distanceToTpAtExit = takeProfitUsd
+          ? Math.round((takeProfitUsd - profit) * 100) / 100
+          : null;
+        extra.distanceToSlAtExit = stopLossUsd
+          ? Math.round((profit + stopLossUsd) * 100) / 100
+          : null;
+      } else if (exitReason === "TAKE_PROFIT") {
+        extra.timeToTpSeconds = holdDurationSeconds;
+        extra.mfeBeforeTp = mfeUsd;
+        extra.maeBeforeTp = maeUsd;
+      } else if (exitReason === "STOP_LOSS") {
+        extra.timeToSlSeconds = holdDurationSeconds;
+        extra.mfeBeforeSl = mfeUsd;
+        extra.maeBeforeSl = maeUsd;
+        extra.wasProfitableBeforeSl = peakUnrealizedProfit > 0;
+        extra.maxProfitBeforeSl = peakUnrealizedProfit;
+      }
+      if (takeProfitUsd) {
+        extra.maxProgressTowardTpPct =
+          Math.round((peakUnrealizedProfit / takeProfitUsd) * 1000) / 10;
+      }
+
+      this.emit({
+        ...openLog,
+        ...extra,
+        status: profit > 0 ? "won" : "lost",
+        profit,
+        closedAt: exitTimeMs,
+      });
+      try {
+        recordComponentOutcomesServer(openLog.symbol, openLog.components, profit > 0);
+      } catch {
+        /* never break resolution */
+      }
+      if (exitReason === "MAX_HOLD_TIMEOUT")
+        this.scheduleShadowObservation({ ...openLog, ...extra, profit, closedAt: exitTimeMs });
     };
 
     const unsub = this.conn.subscribeContract(contractId, (u) => {
       if (u.status === "open") {
         this.emit({ ...openLog, status: "open", profit: u.profit });
+        if (u.profit > peakUnrealizedProfit) peakUnrealizedProfit = u.profit;
+        if (u.profit < worstUnrealizedLoss) worstUnrealizedLoss = u.profit;
 
         // ── Partial profit taking ──
         // When floating profit reaches 50% of the take-profit target, we
@@ -688,6 +1610,7 @@ class ServerBotEngine {
     const remainingMs = Math.max(0, maxHoldMs - (Date.now() - openLog.time));
     const maxHoldTimer = setTimeout(async () => {
       if (resolved || this.stopped) return;
+      timeoutTriggered = true;
       try {
         await this.conn.sellContract(contractId);
         // The subscription's next "is_sold" update calls finalize with the real profit.
@@ -698,6 +1621,56 @@ class ServerBotEngine {
       }
     }, remainingMs);
     this.fallbackTimers.add(maxHoldTimer);
+  }
+
+  /**
+   * Shadow post-exit market observation (2026-08-13) — analytical only,
+   * never read by any trading decision. For a MAX_HOLD_TIMEOUT exit,
+   * schedules 4 lightweight price checks (+5/10/20/30 min) to see whether
+   * the trade would have become favorable had it stayed open longer. This
+   * is exactly the question point 16 of the audit needs answered before any
+   * maxHoldMinutes sweep is worth running.
+   */
+  private scheduleShadowObservation(closedLog: TradeLog & { closedAt: number }) {
+    if (closedLog.direction !== "MULTUP" && closedLog.direction !== "MULTDOWN") return;
+    const entryPrice = closedLog.entryPrice;
+    const multiplier = closedLog.multiplier;
+    if (!entryPrice || !multiplier) return;
+    const bias = closedLog.direction === "MULTUP" ? 1 : -1;
+    const horizons: Array<{ label: "5m" | "10m" | "20m" | "30m"; ms: number }> = [
+      { label: "5m", ms: 5 * 60_000 },
+      { label: "10m", ms: 10 * 60_000 },
+      { label: "20m", ms: 20 * 60_000 },
+      { label: "30m", ms: 30 * 60_000 },
+    ];
+    horizons.forEach(({ label, ms }, idx) => {
+      const dueAt = closedLog.closedAt + ms;
+      const delay = Math.max(0, dueAt - Date.now());
+      const isLast = idx === horizons.length - 1;
+      const timer = setTimeout(async () => {
+        this.fallbackTimers.delete(timer);
+        if (this.stopped) return;
+        try {
+          const ticks = await fetchRecentTicksServer(closedLog.symbol, 1);
+          const price = ticks[ticks.length - 1];
+          if (!Number.isFinite(price)) return;
+          const hypotheticalPnl =
+            Math.round(
+              closedLog.stake * multiplier * bias * ((price - entryPrice) / entryPrice) * 100,
+            ) / 100;
+          recordShadowObservation(
+            closedLog.id!,
+            label,
+            price,
+            hypotheticalPnl,
+            isLast ? "COMPLETE" : "PARTIAL",
+          );
+        } catch {
+          /* best-effort analytics only — never affects trading */
+        }
+      }, delay);
+      this.fallbackTimers.add(timer);
+    });
   }
 
   /**
@@ -719,7 +1692,11 @@ class ServerBotEngine {
       this.fallbackTimers.delete(maxHoldTimer);
       this.activeSymbols.delete(openLog.symbol);
       this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
-      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+      try {
+        recordComponentOutcomesServer(openLog.symbol, openLog.components, won);
+      } catch {
+        /* never break resolution */
+      }
     };
 
     // Poll order status every 30s
@@ -732,11 +1709,13 @@ class ServerBotEngine {
           const currentPrice = await this.krakenConn.getAssetPrice(openLog.symbol);
           const entryPrice = openLog.entryPrice ?? currentPrice;
           const isBuy = openLog.direction === "MULTUP";
-          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const priceDiff = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
           const profit = Math.round(priceDiff * volume * 100) / 100;
           finalize(profit > 0, profit);
         }
-      } catch { /* ignore poll errors */ }
+      } catch {
+        /* ignore poll errors */
+      }
     }, 30_000);
     this.fallbackTimers.add(pollTimer);
 
@@ -750,7 +1729,7 @@ class ServerBotEngine {
         const currentPrice = await this.krakenConn.getAssetPrice(openLog.symbol);
         const entryPrice = openLog.entryPrice ?? currentPrice;
         const isBuy = openLog.direction === "MULTUP";
-        const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+        const priceDiff = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
         const profit = Math.round(priceDiff * volume * 100) / 100;
         finalize(profit > 0, profit);
       } catch {
@@ -777,7 +1756,11 @@ class ServerBotEngine {
       this.fallbackTimers.delete(maxHoldTimer);
       this.activeSymbols.delete(openLog.symbol);
       this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
-      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+      try {
+        recordComponentOutcomesServer(openLog.symbol, openLog.components, won);
+      } catch {
+        /* never break resolution */
+      }
     };
 
     const pollTimer = setInterval(async () => {
@@ -788,7 +1771,7 @@ class ServerBotEngine {
           const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
           const entryPrice = openLog.entryPrice ?? currentPrice;
           const isBuy = openLog.direction === "MULTUP";
-          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const priceDiff = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
           const floatingProfit = priceDiff * baseAmount;
           const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
           if (floatingProfit >= partialTrigger) {
@@ -802,7 +1785,9 @@ class ServerBotEngine {
                 quoteAmount: 0,
                 baseAmount: partialAmount,
               });
-            } catch { /* ignore partial sell failure */ }
+            } catch {
+              /* ignore partial sell failure */
+            }
           }
         }
 
@@ -811,11 +1796,13 @@ class ServerBotEngine {
           const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
           const entryPrice = openLog.entryPrice ?? currentPrice;
           const isBuy = openLog.direction === "MULTUP";
-          const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+          const priceDiff = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
           const profit = Math.round(priceDiff * baseAmount * 100) / 100;
           finalize(profit > 0, profit);
         }
-      } catch { /* ignore poll errors */ }
+      } catch {
+        /* ignore poll errors */
+      }
     }, 30_000);
     this.fallbackTimers.add(pollTimer);
 
@@ -828,7 +1815,7 @@ class ServerBotEngine {
         const currentPrice = await this.binanceConn.getAssetPrice(openLog.symbol);
         const entryPrice = openLog.entryPrice ?? currentPrice;
         const isBuy = openLog.direction === "MULTUP";
-        const priceDiff = isBuy ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+        const priceDiff = isBuy ? currentPrice - entryPrice : entryPrice - currentPrice;
         const profit = Math.round(priceDiff * baseAmount * 100) / 100;
         finalize(profit > 0, profit);
       } catch {
@@ -855,7 +1842,11 @@ class ServerBotEngine {
       this.fallbackTimers.delete(maxHoldTimer);
       this.activeSymbols.delete(openLog.symbol);
       this.emit({ ...openLog, status: won ? "won" : "lost", profit, closedAt: Date.now() });
-      try { recordComponentOutcomesServer(openLog.symbol, openLog.components, won); } catch { /* never break resolution */ }
+      try {
+        recordComponentOutcomesServer(openLog.symbol, openLog.components, won);
+      } catch {
+        /* never break resolution */
+      }
     };
 
     const pollTimer = setInterval(async () => {
@@ -865,21 +1856,29 @@ class ServerBotEngine {
         if (!partialTaken && this.config.partialTakeProfitPct > 0 && openLog.takeProfitUsd) {
           const info = await this.oandaConn.getTradeInfo(tradeId);
           const partialTrigger = openLog.takeProfitUsd * (this.config.partialTakeProfitPct / 100);
-          if (info.unrealizedPL >= partialTrigger) {
+          if (info.profit >= partialTrigger) {
             partialTaken = true;
             // Close partialTakeProfitPct% of the position to lock in profits
-            const partialUnits = units * (this.config.partialTakeProfitPct / 100);
-            try {
-              await this.oandaConn.closeTrade(tradeId, partialUnits);
-            } catch { /* ignore partial close failure */ }
+            const partialUnits = Math.floor(units * (this.config.partialTakeProfitPct / 100));
+            // OANDA's common unit precision is 0. Do not send an invalid
+            // fractional close for the smallest permitted Gold position.
+            if (partialUnits >= 1) {
+              try {
+                await this.oandaConn.closeTrade(tradeId, partialUnits);
+              } catch {
+                /* ignore partial close failure */
+              }
+            }
           }
         }
 
         const info = await this.oandaConn.getTradeInfo(tradeId);
-        if (info.state === "CLOSE") {
-          finalize(info.unrealizedPL > 0, info.unrealizedPL);
+        if (info.state === "CLOSED") {
+          finalize(info.profit > 0, info.profit);
         }
-      } catch { /* ignore poll errors */ }
+      } catch {
+        /* ignore poll errors */
+      }
     }, 30_000);
     this.fallbackTimers.add(pollTimer);
 
@@ -890,7 +1889,7 @@ class ServerBotEngine {
       try {
         await this.oandaConn.closeTrade(tradeId, units);
         const info = await this.oandaConn.getTradeInfo(tradeId);
-        finalize(info.unrealizedPL > 0, info.unrealizedPL);
+        finalize(info.profit > 0, info.profit);
       } catch {
         finalize(false, -openLog.stake);
       }
@@ -899,10 +1898,96 @@ class ServerBotEngine {
   }
 
   start() {
-    this.tick().catch((e) => { this.lastError = (e as Error).message; });
+    this.tick().catch((e) => {
+      this.lastError = (e as Error).message;
+    });
     this.interval = setInterval(() => {
-      this.tick().catch((e) => { this.lastError = (e as Error).message; });
+      this.tick().catch((e) => {
+        this.lastError = (e as Error).message;
+      });
     }, SCAN_MS);
+  }
+
+  /**
+   * Admin force-trade: buys a contract directly via the engine's Deriv
+   * connection, bypassing the signal scan. Used by the admin user profile
+   * page to let an admin manually trade on behalf of a user.
+   */
+  async forceTrade(opts: {
+    symbol: string;
+    direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
+    stake: number;
+    durationMinutes: number;
+  }): Promise<TradeLog> {
+    if (this.stopped) throw new Error("Moteur arrêté — redémarrez le bot d'abord.");
+    const { symbol, direction, stake, durationMinutes } = opts;
+    if (isTradingSymbolDisabled(symbol)) {
+      throw new Error(`${symbol} est exclu globalement et ne peut pas être tradé.`);
+    }
+    const isMultiplier = direction === "MULTUP" || direction === "MULTDOWN";
+    const tradeId = `srv_admin_${Date.now()}_${symbol}`;
+    const pendingLog: TradeLog = {
+      id: tradeId,
+      time: Date.now(),
+      symbol,
+      direction,
+      stake,
+      payout: 0,
+      status: "pending",
+      profit: 0,
+      confidence: 100,
+      tfAgreement: 0,
+      note: "Trade manuel admin",
+      ...(isMultiplier
+        ? {
+            multiplier: this.config.multiplierLevel ?? 20,
+            stopLossUsd: stake * 0.5,
+            takeProfitUsd: stake,
+          }
+        : { durationMinutes, expiry: Date.now() + durationMinutes * 60_000 }),
+    };
+    this.emit(pendingLog);
+
+    try {
+      if (isMultiplier) {
+        const bought = await this.conn.proposeAndBuyMultiplier({
+          symbol,
+          amount: stake,
+          direction: direction === "MULTUP" ? "CALL" : "PUT",
+          multiplier: this.config.multiplierLevel ?? 20,
+          stopLossUsd: stake * 0.5,
+          takeProfitUsd: stake,
+        });
+        const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
+        this.emit(openLog);
+        this.trackMultiplierPosition(openLog);
+        return openLog;
+      } else {
+        const bought = await this.conn.proposeAndBuy({
+          symbol,
+          amount: stake,
+          contractType: direction,
+          durationMinutes,
+        });
+        const openLog: TradeLog = {
+          ...pendingLog,
+          status: "open",
+          payout: bought.payout,
+          contractId: bought.contractId,
+        };
+        this.emit(openLog);
+        this.trackContract(openLog);
+        return openLog;
+      }
+    } catch (e) {
+      this.emit({
+        ...pendingLog,
+        status: "error",
+        profit: 0,
+        note: `Échec admin: ${(e as Error).message}`,
+      });
+      throw e;
+    }
   }
 
   stop() {
@@ -945,7 +2030,9 @@ class ServerBotEngine {
     if (hasOpenPositions(this.userId, this.preset)) return;
     this.teardownConnections();
     engines.delete(engineKey(this.userId, this.preset));
-    console.log(`[bot] Moteur serveur finalisé pour user ${this.userId} preset ${this.preset} — dernière position close (${this.pendingStopReason})`);
+    console.log(
+      `[bot] Moteur serveur finalisé pour user ${this.userId} preset ${this.preset} — dernière position close (${this.pendingStopReason})`,
+    );
   }
 
   private nextUtcMidnight(): number {
@@ -956,22 +2043,32 @@ class ServerBotEngine {
 
   private async tick() {
     if (this.stopped || this.ticking) return;
-    if (Date.now() < this.pausedUntil) return;
+    // Pending analytical observations must still close while the trading
+    // engine is paused; this has no execution side effect.
+    void settleDueRiskShadowObservations();
+    const observationOnly = Date.now() < this.pausedUntil;
     this.ticking = true;
     try {
-      await this.runScan();
+      // A paused preset continues to evaluate only qualified signals in
+      // Shadow. Execution is blocked below before proposal/buy.
+      await this.runScan(observationOnly);
       this.lastError = null;
     } finally {
       this.ticking = false;
     }
   }
 
-  private async runScan() {
+  private async runScan(observationOnly = false) {
     const config = this.config;
     const logs = this.logs;
     // SQL over all of today's rows — the in-memory log is a capped window, so
     // computing daily P&L/count from it drops early wins as events accumulate.
     const { pnl, count } = getTodayStats(this.userId, this.preset);
+    let observationBlockReason:
+      | "RISK_PRESET_PAUSED"
+      | "RISK_TRAILING_PROTECTION"
+      | "RISK_DAILY_DD"
+      | null = observationOnly ? "RISK_PRESET_PAUSED" : null;
 
     // Check for session open/close changes
     const currentSessions = currentActiveSessions();
@@ -1011,21 +2108,70 @@ class ServerBotEngine {
               }).catch(() => {});
             }
           } catch (e) {
-            console.error(`[bot] Push de session échoué pour user ${this.userId}:`, (e as Error).message);
+            console.error(
+              `[bot] Push de session échoué pour user ${this.userId}:`,
+              (e as Error).message,
+            );
           }
         })();
       }
     }
     const scanResults: ScanSymbolResult[] = [];
-    const finishScan = () => { this.lastScan = { time: Date.now(), results: scanResults }; };
+    const finishScan = () => {
+      this.lastScan = { time: Date.now(), results: scanResults };
+    };
+
+    // ── Trade Reconciliation Pass ──
+    if (FEATURE_FLAGS.RECONCILIATION_ENABLED && this.conn) {
+      try {
+        const dbOpenTrades = getDb()
+          .prepare(
+            `
+          SELECT id, symbol, contract_id as derivContractId, entry_price as openPrice
+          FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
+        `,
+          )
+          .all(this.userId, this.preset) as any[];
+
+        if (dbOpenTrades.length > 0) {
+          const liveRes = await this.conn.getOpenPositions();
+          if (!liveRes.success) {
+            console.warn(
+              `[reconciliation] Annulée : échec de lecture du portefeuille Deriv (${liveRes.error})`,
+            );
+          } else {
+            const derivPositions = liveRes.positions.map((c) => ({
+              contract_id: String(c.contractId),
+              symbol: c.symbol,
+              buy_price: c.buyPrice,
+              profit: c.profit,
+            }));
+
+            reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+          }
+        }
+      } catch {
+        /* ignore reconciliation error */
+      }
+    }
 
     // ── Trailing stop / daily limits (pause-with-auto-resume) ──
     if (pnl > this.sessionPeakPnl) this.sessionPeakPnl = pnl;
-    if (config.trailingStopUsd > 0 && this.sessionPeakPnl > 0 && pnl < this.sessionPeakPnl - config.trailingStopUsd) {
+    if (
+      config.trailingStopUsd > 0 &&
+      this.sessionPeakPnl > 0 &&
+      pnl < this.sessionPeakPnl - config.trailingStopUsd
+    ) {
       // Même raisonnement que le trailing stop proportionnel plus bas :
       // protéger un pic n'est pas constater une perte définitive.
-      this.riskPause([`Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`], this.nextShortResume());
-      return finishScan();
+      this.riskPause(
+        [
+          `Trailing stop — pic +$${this.sessionPeakPnl.toFixed(2)}, maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
+        ],
+        this.nextShortResume(),
+      );
+      if (!observationOnly) return finishScan();
+      observationBlockReason = "RISK_TRAILING_PROTECTION";
     }
     // Proportional trailing stop: the allowed giveback scales with the size
     // of today's peak gain (e.g. 10% of +$100 = $10) instead of a flat $
@@ -1040,10 +2186,14 @@ class ServerBotEngine {
         // se déclenche (+$7.54 lors du déclenchement observé le 2026-07-29).
         // Couper la journée entière dans ce cas gelait le bot alors qu'il
         // était en gain.
-        this.riskPause([
-          `Trailing stop % — pic +$${this.sessionPeakPnl.toFixed(2)}, perte max autorisée ${(config.trailingStopPct * 100).toFixed(0)}% (-$${maxDrawdown.toFixed(2)}), maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
-        ], this.nextShortResume());
-        return finishScan();
+        this.riskPause(
+          [
+            `Trailing stop % — pic +$${this.sessionPeakPnl.toFixed(2)}, perte max autorisée ${(config.trailingStopPct * 100).toFixed(0)}% (-$${maxDrawdown.toFixed(2)}), maintenant ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
+          ],
+          this.nextShortResume(),
+        );
+        if (!observationOnly) return finishScan();
+        observationBlockReason = "RISK_TRAILING_PROTECTION";
       }
     }
     // Realized-only pnl let the bot keep opening positions while already deep
@@ -1054,9 +2204,10 @@ class ServerBotEngine {
     const riskPnl = pnl + floatingLoss;
     if (riskPnl <= -Math.abs(config.maxDailyLossUsd)) {
       if (config.stopOnRisk) {
-        const detail = floatingLoss < 0
-          ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
-          : `$${Math.abs(pnl).toFixed(2)}`;
+        const detail =
+          floatingLoss < 0
+            ? `$${Math.abs(pnl).toFixed(2)} réalisé + $${Math.abs(floatingLoss).toFixed(2)} flottant`
+            : `$${Math.abs(pnl).toFixed(2)}`;
         // La durée dépend de ce qui a VRAIMENT déclenché : si le plafond n'est
         // franchi que grâce au flottant, la perte peut encore se résorber —
         // pause courte. Si la perte réalisée seule suffit, l'argent est parti :
@@ -1067,15 +2218,33 @@ class ServerBotEngine {
           realizedAloneTriggers ? this.nextUtcMidnight() : this.nextShortResume(),
         );
       }
-      return finishScan();
+      if (!observationOnly) return finishScan();
+      observationBlockReason = "RISK_DAILY_DD";
     }
     if (config.maxDailyProfitUsd > 0 && pnl >= config.maxDailyProfitUsd) {
-      if (config.stopOnRisk) this.riskPause([`Objectif journalier atteint : +$${pnl.toFixed(2)}`], this.nextUtcMidnight());
+      if (config.stopOnRisk)
+        this.riskPause(
+          [`Objectif journalier atteint : +$${pnl.toFixed(2)}`],
+          this.nextUtcMidnight(),
+        );
       return finishScan();
     }
     if (count >= config.maxTradesPerDay) {
       for (const symbol of config.symbols) scanResults.push({ symbol, action: "daily-limit" });
       return finishScan();
+    }
+    if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+      const breaker = circuitBreaker.getState();
+      if (breaker.isActive) {
+        for (const symbol of config.symbols) {
+          scanResults.push({
+            symbol,
+            action: "risk-pause",
+            note: breaker.reason ?? "GLOBAL_KILL_SWITCH actif",
+          });
+        }
+        return finishScan();
+      }
     }
     // Global cap on TOTAL open positions — maxSimultaneousTrades only limits
     // NEW trades per tick, so successive ticks stacked positions without
@@ -1083,18 +2252,102 @@ class ServerBotEngine {
     // gates applied. activeSymbols survives restarts (rebuilt by reconcile()).
     if (this.activeSymbols.size >= config.maxOpenPositions) {
       for (const symbol of config.symbols) {
-        if (!this.activeSymbols.has(symbol)) scanResults.push({ symbol, action: "daily-limit", note: `${this.activeSymbols.size} positions ouvertes — plafond ${config.maxOpenPositions}` });
+        if (!this.activeSymbols.has(symbol))
+          scanResults.push({
+            symbol,
+            action: "daily-limit",
+            note: `${this.activeSymbols.size} positions ouvertes — plafond ${config.maxOpenPositions}`,
+          });
+      }
+      return finishScan();
+    }
+
+    // ── Preset-wide consecutive-loss circuit breaker ──
+    // maxConsecutiveLosses is also enforced per-symbol further below (each
+    // symbol tracks its own streak), but that alone can't see a preset
+    // bleeding across SEVERAL different symbols in a row. Incident
+    // 2026-08-04 : Default lost 4 straight trades across 3 different OTC
+    // symbols (GDAXI, SPC, DJI, GDAXI) — no single symbol's own streak ever
+    // reached 3, so the per-symbol cooldown never engaged and the account
+    // kept trading straight through it. countConsecutiveLosses(logs) with no
+    // symbol filter counts the streak across this preset's own trade stream.
+    const presetConsecutiveLosses = countConsecutiveLosses(logs);
+    if (presetConsecutiveLosses >= config.maxConsecutiveLosses) {
+      // Same "already served" check as the per-symbol breaker below: identify
+      // THIS streak by its most recent closed trade. If the pause already
+      // served was for this exact streak (no new trade since — expected,
+      // since the preset was blocked), the penalty is served: fall through
+      // and let it try again instead of reading the same stale history and
+      // re-pausing forever.
+      const streakTrade = logs.find((l) => l.status === "won" || l.status === "lost");
+      const streakKey = streakTrade?.id;
+      const alreadyServed = streakKey !== undefined && this.presetServedCooldownFor === streakKey;
+      if (!alreadyServed) {
+        if (config.stopOnRisk) {
+          this.riskPause(
+            [`${presetConsecutiveLosses} pertes consécutives (tous symboles confondus)`],
+            this.nextShortResume(),
+          );
+        }
+        if (streakKey !== undefined) this.presetServedCooldownFor = streakKey;
+        for (const symbol of config.symbols) scanResults.push({ symbol, action: "cooldown" });
+        return finishScan();
+      }
+      // Pause already served for this streak — fall through and attempt a
+      // trade. A fresh loss produces a new streakKey and re-arms the breaker
+      // normally; a win clears the streak (countConsecutiveLosses stops at
+      // the first "won") and this branch stops matching entirely.
+    }
+
+    // ── Auto-Adaptive Risk Manager Check (Rolling Window 30/100) ──
+    const riskMetrics = getPresetRiskMetrics(this.userId, this.preset);
+    if (riskMetrics.status === "PAUSED") {
+      for (const symbol of config.symbols) {
+        scanResults.push({ symbol, action: "cooldown", note: riskMetrics.reason });
       }
       return finishScan();
     }
 
     // ── Stake ──
     const balance = await this.conn.getBalance();
-    const currentBalance = balance?.balance;
-    const baseStake = config.stakeMode === "percent" && currentBalance && currentBalance > 0
-      ? Math.max(1, (currentBalance * config.stakePercent) / 100)
-      : config.stakeUsd;
+    // Gold presets routed to OANDA must size from the OANDA Practice equity,
+    // never from an unrelated Deriv wallet balance.
+    const oandaBalance =
+      isGoldPreset(this.preset) && this.config.broker === "oanda"
+        ? await this.oandaConn?.getBalance().catch(() => null)
+        : null;
+    const currentBalance = oandaBalance?.balance ?? balance?.balance;
+    const baseStake =
+      config.stakeMode === "percent" && currentBalance && currentBalance > 0
+        ? (currentBalance * config.stakePercent) / 100
+        : config.stakeUsd;
     const effectiveStake = config.adaptiveStake ? computeAdaptiveStake(baseStake, logs) : baseStake;
+    // Phase 1 observation snapshot. `baseDailyLossLimit` and
+    // `effectiveDailyLossLimit` deliberately remain identical: this records
+    // current behavior and never derives a limit from a temporarily reduced
+    // stake, avoiding an accidental double sanction after a loss streak.
+    const riskObservation = {
+      equity_at_signal: currentBalance ?? null,
+      BASE_DAILY_LOSS_LIMIT: config.maxDailyLossUsd,
+      EFFECTIVE_DAILY_LOSS_LIMIT: config.maxDailyLossUsd,
+      DAILY_LOSS_USED: Math.max(0, -riskPnl),
+      DAILY_LOSS_REMAINING: Math.max(0, config.maxDailyLossUsd - Math.max(0, -riskPnl)),
+      NOMINAL_RISK_PER_TRADE: baseStake,
+      EFFECTIVE_RISK_PER_TRADE: effectiveStake,
+      LOSS_STREAK_STATE: {
+        preset: presetConsecutiveLosses,
+        threshold: config.maxConsecutiveLosses,
+      },
+      TRAILING_PROTECTION_STATE: {
+        peakPnl: this.sessionPeakPnl,
+        trailingStopUsd: config.trailingStopUsd,
+        trailingStopPct: config.trailingStopPct,
+      },
+      AUTO_SHADOW_STATE: false,
+      COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null },
+      RISK_DECISION: "PENDING",
+      RISK_REJECTION_REASON: null,
+    };
 
     // ── Candidates + cheap pre-filters ──
     // Synthetic indices (R_*, 1HZ*, JD*, stpRNG, RDBULL/RDBEAR) are excluded even
@@ -1102,31 +2355,179 @@ class ServerBotEngine {
     // edge on them, and long-term winrate ~50% is a structural loss against the
     // payout (see DEFAULT_CONFIG.symbols comment).
     const excluded = new Set(config.excludedSymbols ?? []);
-    const candidateSymbols = (config.symbolMode === "all-markets"
-      ? SYMBOLS.filter((s) => s.market !== "synthetic" && isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config))).map((s) => s.deriv)
-      : config.symbols
-    ).filter((s) => !excluded.has(s));
+    const candidateSymbols = (
+      config.symbolMode === "all-markets"
+        ? SYMBOLS.filter(
+            (s) =>
+              s.market !== "synthetic" &&
+              isSymbolTradeable(s.deriv, getInstrumentForSymbol(s.deriv, config)),
+          ).map((s) => s.deriv)
+        : config.symbols
+    ).filter((s) => !excluded.has(s) && !isTradingSymbolDisabled(s));
+
+    const candleFetcher = async (symbol: string, granularity: number, count: number) => {
+      if (isKrakenSymbol(symbol) && this.krakenConn) {
+        return fetchKrakenCandles(symbol, granularity, count);
+      }
+      if (isBinanceSymbol(symbol) && this.binanceConn) {
+        return fetchBinanceCandles(symbol, granularity, count);
+      }
+      if (isOandaSymbol(symbol) && this.oandaConn) {
+        return fetchOandaCandles(
+          symbol,
+          granularity,
+          count,
+          this.oandaConn.apiKey,
+          this.oandaConn.accountId,
+          this.oandaConn.isPractice,
+        );
+      }
+      return fetchCandlesServer(symbol, granularity, count);
+    };
 
     const toAnalyze: string[] = [];
     for (const symbol of candidateSymbols) {
+      if (isGoldPreset(this.preset) && hasOpenGoldExposure(this.userId, this.preset)) {
+        scanResults.push({
+          symbol,
+          action: "correlated",
+          note: "Conflict Manager Gold : exposition d’un autre moteur déjà ouverte",
+        });
+        continue;
+      }
       const symInstrument = getInstrumentForSymbol(symbol, config);
-      if (!isSymbolTradeable(symbol, symInstrument)) { scanResults.push({ symbol, action: "not-tradeable" }); continue; }
-      if (this.activeSymbols.has(symbol)) { scanResults.push({ symbol, action: "open-trade" }); continue; }
+      if (!isSymbolTradeable(symbol, symInstrument)) {
+        scanResults.push({ symbol, action: "not-tradeable" });
+        continue;
+      }
+      if (this.activeSymbols.has(symbol)) {
+        scanResults.push({ symbol, action: "open-trade" });
+        continue;
+      }
+      // A preset that explicitly selects OANDA must never silently send a
+      // fallback order to Deriv. This matters most for Gold: its stop/target
+      // and its risk sizing are calculated for an OANDA spot position.
+      if (config.broker === "oanda") {
+        if (!isOandaSymbol(symbol)) {
+          scanResults.push({
+            symbol,
+            action: "not-tradeable",
+            note: "Symbole indisponible chez OANDA",
+          });
+          continue;
+        }
+        if (!this.oandaConn) {
+          scanResults.push({
+            symbol,
+            action: "session-closed",
+            note: "OANDA Practice non configuré",
+          });
+          continue;
+        }
+      }
       // ── Skip symbols from disabled brokers ──
-      if (isKrakenSymbol(symbol) && !(this.config.enableKraken ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Kraken désactivé" }); continue; }
-      if (isBinanceSymbol(symbol) && !(this.config.enableBinance ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Binance désactivé" }); continue; }
-      if (isOandaSymbol(symbol) && !(this.config.enableOanda ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "OANDA désactivé" }); continue; }
-      if (!isKrakenSymbol(symbol) && !isBinanceSymbol(symbol) && !isOandaSymbol(symbol) && !(this.config.enableDeriv ?? true)) { scanResults.push({ symbol, action: "session-closed", note: "Deriv désactivé" }); continue; }
+      if (isKrakenSymbol(symbol) && !(this.config.enableKraken ?? true)) {
+        scanResults.push({ symbol, action: "session-closed", note: "Kraken désactivé" });
+        continue;
+      }
+      if (isBinanceSymbol(symbol) && !(this.config.enableBinance ?? true)) {
+        scanResults.push({ symbol, action: "session-closed", note: "Binance désactivé" });
+        continue;
+      }
+      if (isOandaSymbol(symbol) && !(this.config.enableOanda ?? true)) {
+        scanResults.push({ symbol, action: "session-closed", note: "OANDA désactivé" });
+        continue;
+      }
+      if (
+        !isKrakenSymbol(symbol) &&
+        !isBinanceSymbol(symbol) &&
+        !isOandaSymbol(symbol) &&
+        !(this.config.enableDeriv ?? true)
+      ) {
+        scanResults.push({ symbol, action: "session-closed", note: "Deriv désactivé" });
+        continue;
+      }
       if (!isInTradingSession(config.tradingSessions, symbol, config.sessionEdgeMinutes)) {
         scanResults.push({ symbol, action: "session-closed" });
         continue;
       }
-      if (!is24x7Symbol(symbol) && config.newsFilter !== false) {
+      if (!is24x7Symbol(symbol) && (isGoldPreset(this.preset) || config.newsFilter !== false)) {
         const riskCheck = isHighRiskWindow();
-        if (riskCheck.blocked) { scanResults.push({ symbol, action: "news-block", note: riskCheck.reason }); continue; }
+        if (riskCheck.blocked) {
+          scanResults.push({ symbol, action: "news-block", note: riskCheck.reason });
+          continue;
+        }
       }
+      const currentHourUtc = new Date().getUTCHours();
+      const granularHourCheck = isGranularHourBlocked(this.preset, symbol, currentHourUtc, 30);
+      if (granularHourCheck.blocked) {
+        scanResults.push({ symbol, action: "session-closed", note: granularHourCheck.reason });
+        continue;
+      }
+      // ── Step 1: Data Quality Guard ──
+      recordFunnelStep(this.preset, `${this.preset.toUpperCase()}_ENGINE`, "scan");
+      let m1Candles: any[] = [];
+      let m5Candles: any[] = [];
+      let m15Candles: any[] = [];
+      try {
+        [m1Candles, m5Candles, m15Candles] = await Promise.all([
+          candleFetcher(symbol, 60, 20),
+          candleFetcher(symbol, 300, 20),
+          candleFetcher(symbol, 900, 20),
+        ]);
+      } catch {
+        /* handled by Data Quality Guard */
+      }
+
+      const latestEpoch =
+        m1Candles[m1Candles.length - 1]?.epoch ??
+        m5Candles[m5Candles.length - 1]?.epoch ??
+        m15Candles[m15Candles.length - 1]?.epoch;
+      const lastTickTimestamp = latestEpoch ? latestEpoch * 1000 : undefined;
+
+      const dataQuality = evaluateDataQuality({
+        symbol,
+        wsConnected: this.conn ? true : false,
+        lastTickTimestamp,
+        m1Candles,
+        m5Candles,
+        m15Candles,
+      });
+      if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+        circuitBreaker.updateAutoTriggers({
+          dataQualityFailure:
+            FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED &&
+            (dataQuality.status === "STALE" || dataQuality.status === "INVALID"),
+        });
+      }
+      if (FEATURE_FLAGS.DATA_QUALITY_GUARD_ENABLED && dataQuality.isBlocked) {
+        scanResults.push({ symbol, action: "session-closed", note: dataQuality.reason });
+        continue;
+      }
+
+      if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+        const executionCooldown = executionMonitor.isSymbolInExecutionCooldown(symbol);
+        if (executionCooldown.blocked) {
+          scanResults.push({ symbol, action: "cooldown", note: executionCooldown.reason });
+          continue;
+        }
+        const executionHealth = executionMonitor.getMetrics().health;
+        if (FEATURE_FLAGS.CIRCUIT_BREAKER_ENABLED) {
+          circuitBreaker.updateAutoTriggers({
+            executionQualityCritical: executionHealth === "CRITICAL",
+          });
+        }
+        if (executionHealth === "CRITICAL" && !FEATURE_FLAGS.OBSERVATION_MODE) {
+          scanResults.push({ symbol, action: "session-closed", note: "EXECUTION_HEALTH_CRITICAL" });
+          continue;
+        }
+      }
+
       const cooldownUntil = this.symbolCooldowns.get(symbol) ?? 0;
-      if (Date.now() < cooldownUntil) { scanResults.push({ symbol, action: "cooldown" }); continue; }
+      if (Date.now() < cooldownUntil) {
+        scanResults.push({ symbol, action: "cooldown" });
+        continue;
+      }
       if (cooldownUntil > 0) this.symbolCooldowns.delete(symbol);
 
       const consecutive = countConsecutiveLosses(logs, symbol);
@@ -1136,16 +2537,27 @@ class ServerBotEngine {
         // happened since — expected, since the symbol was blocked), the
         // penalty is served: let it try again this cycle instead of reading
         // the same stale history and re-blocking forever.
-        const streakTrade = logs.find((l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"));
+        const streakTrade = logs.find(
+          (l) => l.symbol === symbol && (l.status === "won" || l.status === "lost"),
+        );
         const streakKey = streakTrade?.id;
-        const alreadyServed = streakKey !== undefined && this.servedCooldownFor.get(symbol) === streakKey;
+        const alreadyServed =
+          streakKey !== undefined && this.servedCooldownFor.get(symbol) === streakKey;
         if (!alreadyServed) {
           this.symbolCooldowns.set(symbol, Date.now() + config.cooldownMinutes * 60_000);
           if (streakKey !== undefined) this.servedCooldownFor.set(symbol, streakKey);
           this.emit({
-            id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
-            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
-            status: "cooldown", note: `${consecutive} pertes consécutives — pause ${config.cooldownMinutes} min`,
+            id: `cd_${Date.now()}_${symbol}`,
+            time: Date.now(),
+            symbol,
+            direction: "CALL",
+            stake: 0,
+            payout: 0,
+            profit: 0,
+            confidence: 0,
+            tfAgreement: 0,
+            status: "cooldown",
+            note: `${consecutive} pertes consécutives — pause ${config.cooldownMinutes} min`,
           });
           scanResults.push({ symbol, action: "cooldown" });
           continue;
@@ -1168,8 +2580,15 @@ class ServerBotEngine {
           const until = this.nextUtcMidnight();
           this.symbolCooldowns.set(symbol, until);
           this.emit({
-            id: `cd_${Date.now()}_${symbol}`, time: Date.now(), symbol, direction: "CALL",
-            stake: 0, payout: 0, profit: 0, confidence: 0, tfAgreement: 0,
+            id: `cd_${Date.now()}_${symbol}`,
+            time: Date.now(),
+            symbol,
+            direction: "CALL",
+            stake: 0,
+            payout: 0,
+            profit: 0,
+            confidence: 0,
+            tfAgreement: 0,
             status: "cooldown",
             note: `Win rate ${(rolling.winRate * 100).toFixed(0)}% sur ${rolling.trades} trades — pause jusqu'à 00:00 UTC`,
           });
@@ -1183,19 +2602,6 @@ class ServerBotEngine {
     if (!toAnalyze.length) return finishScan();
 
     // ── Analysis (shared decision core + cross-user learned weights) ──
-    // Candle fetcher that routes symbols to the appropriate broker
-    const candleFetcher = async (symbol: string, granularity: number, count: number) => {
-      if (isKrakenSymbol(symbol) && this.krakenConn) {
-        return fetchKrakenCandles(symbol, granularity, count);
-      }
-      if (isBinanceSymbol(symbol) && this.binanceConn) {
-        return fetchBinanceCandles(symbol, granularity, count);
-      }
-      if (isOandaSymbol(symbol) && this.oandaConn) {
-        return fetchOandaCandles(symbol, granularity, count, this.oandaConn.apiKey, this.oandaConn.accountId, this.oandaConn.isPractice);
-      }
-      return fetchCandlesServer(symbol, granularity, count);
-    };
 
     // Scalping trades a completely different, finer-grained (M1/M5) signal —
     // see scalping-signal.server.ts's header for why it can't reuse
@@ -1203,69 +2609,457 @@ class ServerBotEngine {
     // distances) are stashed here, keyed by symbol, and consumed below when
     // computing stopLossUsd/takeProfitUsd for THIS tick only — never persisted.
     const scalpingLevels = new Map<string, { riskAbs: number; rewardAbs: number }>();
+    // Kept separate from the generic Crash engine: each CRASH500 execution is
+    // tagged in its journal note with the internal strategy that selected it.
+    const crash500Levels = new Map<
+      string,
+      { riskAbs: number; rewardAbs: number; strategy: string; reason: string }
+    >();
+    const boom500Levels = new Map<
+      string,
+      { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }
+    >();
+    const vol75Levels = new Map<
+      string,
+      { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }
+    >();
+    const rb100Levels = new Map<
+      string,
+      { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }
+    >();
+    const vol50Levels = new Map<
+      string,
+      { riskAbs: number; rewardAbs: number; strategy: string; reason: string; riskPct: number }
+    >();
 
-    const analyzed = this.preset === "scalping"
-      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
-          const m1 = await candleFetcher(symbol, 60, Math.max(MIN_M1_CANDLES + 10, 300));
-          const sig = m1.length >= MIN_M1_CANDLES ? generateScalpingSignal(m1) : null;
-          if (sig) scalpingLevels.set(symbol, { riskAbs: sig.riskAbs, rewardAbs: sig.rewardAbs });
-          const analysis: SymbolAnalysis = {
-            direction: sig?.direction ?? null,
-            confidence: sig?.confidence ?? 0,
-            agreement: sig ? 4 : 0, // both M5-trend and M1-confirmation already agreed, or there's no signal
-            premiumCount: 0,
-            volatilityPct: sig?.volatilityPct ?? 0,
-            volatilityRatio: 1,
-            blockers: sig ? [] : ["Pas de setup M5-tendance / repli M1 / confirmation"],
-            dominantTf: "1m",
-            suggestedDuration: 0,
-            trendAlignmentScore: sig ? 4 : 0,
-            patternBonus: 0,
-            // Deliberately no `components` — this isn't the indicator-based
-            // engine, so its outcomes must not feed the cross-user learned
-            // weights (indicator-weights.server.ts) meant for that system.
-          };
-          return { symbol, analysis };
-        })
-      : this.preset === "liquidity"
-      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
-          const m15 = await candleFetcher(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
-          const sig = m15.length >= MIN_LIQUIDITY_CANDLES ? generateLiquidityReversalSignal(m15) : null;
-          const analysis: SymbolAnalysis = {
-            direction: sig?.direction ?? null,
-            confidence: sig?.confidence ?? 0,
-            agreement: sig ? 4 : 0,
-            premiumCount: 0,
-            volatilityPct: sig?.volatilityPct ?? 0,
-            volatilityRatio: 1,
-            blockers: sig ? [] : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
-            dominantTf: "15m",
-            suggestedDuration: 15,
-            trendAlignmentScore: sig ? 4 : 0,
-            patternBonus: 0,
-          };
-          return { symbol, analysis };
-        })
-      : await mapWithConcurrency(toAnalyze, 4, async (symbol) => ({
-          symbol,
-          analysis: (await analyzeSymbolCore(symbol, candleFetcher, buildAnalyzeOptsServer(symbol, config))).analysis,
-        }));
+    const analyzed =
+      this.preset === "boom"
+        ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
+            const [m15, m5, m1, ticks] = await Promise.all([
+              candleFetcher(symbol, 900, 70),
+              candleFetcher(symbol, 300, 70),
+              candleFetcher(symbol, 60, 55),
+              fetchRecentTicksServer(symbol, 120).catch(() => []),
+            ]);
+            const candidates = generateBoom500Signals(m15, m5, m1, ticks);
+            // A qualified Spike BUY has priority; a Drift SELL may never be
+            // opened against a simultaneous spike setup.
+            const sig =
+              candidates.find((c) => c.strategy === "BOOM500_SPIKE_HUNTER_BUY") ?? candidates[0];
+            if (sig)
+              boom500Levels.set(symbol, {
+                ...sig,
+                riskPct: sig.strategy === "BOOM500_SPIKE_HUNTER_BUY" ? 0.25 : 0.2,
+              });
+            const analysis: SymbolAnalysis = {
+              direction: sig?.direction ?? null,
+              confidence: sig?.confidence ?? 0,
+              agreement: sig ? 4 : 0,
+              premiumCount: sig && sig.confidence >= 95 ? 1 : 0,
+              volatilityPct: sig?.volatilityPct ?? 0,
+              volatilityRatio: 1,
+              blockers: sig ? [] : ["Pas de setup Boom500 Spike BUY ou Drift SELL confirmé"],
+              dominantTf: "1m",
+              suggestedDuration: 0,
+              trendAlignmentScore: sig ? 4 : 0,
+              patternBonus: sig && sig.confidence >= 95 ? 10 : 0,
+            };
+            return { symbol, analysis };
+          })
+        : this.preset === "vol75"
+          ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
+              const [m15, m5, m1, ticks] = await Promise.all([
+                candleFetcher(symbol, 900, 230),
+                candleFetcher(symbol, 300, 230),
+                candleFetcher(symbol, 60, 80),
+                fetchRecentTicksServer(symbol, 180).catch(() => []),
+              ]);
+              const decision = generateVol75Signal(m15, m5, m1, ticks);
+              const sig = decision.signal;
+              if (sig) vol75Levels.set(symbol, { ...sig });
+              if (decision.rejection) {
+                getDb()
+                  .prepare(
+                    `INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`,
+                  )
+                  .run(
+                    `vol75_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    this.userId,
+                    "vol75",
+                    symbol,
+                    Date.now(),
+                    Math.round(decision.rejection.score),
+                    decision.rejection.reason,
+                    JSON.stringify(decision.rejection.diagnostics),
+                  );
+              }
+              const analysis: SymbolAnalysis = {
+                direction: sig?.direction ?? null,
+                confidence: sig?.confidence ?? decision.rejection?.score ?? 0,
+                agreement: sig ? 4 : 0,
+                premiumCount: sig && sig.confidence >= 92 ? 1 : 0,
+                volatilityPct: sig?.volatilityPct ?? 0,
+                volatilityRatio: 1,
+                blockers: sig ? [] : [decision.rejection?.reason ?? "NO_TRADE"],
+                dominantTf: "1m",
+                suggestedDuration: 0,
+                trendAlignmentScore: sig ? 4 : 0,
+                patternBonus: sig && sig.confidence >= 92 ? 10 : 0,
+              };
+              return { symbol, analysis };
+            })
+          : this.preset === "vol50"
+            ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
+                const [m15, m5, m1, ticks] = await Promise.all([
+                  candleFetcher(symbol, 900, 230),
+                  candleFetcher(symbol, 300, 230),
+                  candleFetcher(symbol, 60, 80),
+                  fetchRecentTicksServer(symbol, 180).catch(() => []),
+                ]);
+                const decision = generateVol50Signal(m15, m5, m1, ticks);
+                const sig = decision.signal;
+                if (sig) vol50Levels.set(symbol, { ...sig });
+                if (decision.rejection) {
+                  getDb()
+                    .prepare(
+                      `INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`,
+                    )
+                    .run(
+                      `vol50_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                      this.userId,
+                      "vol50",
+                      symbol,
+                      Date.now(),
+                      Math.round(decision.rejection.score),
+                      decision.rejection.reason,
+                      JSON.stringify(decision.rejection.diagnostics),
+                    );
+                }
+                const analysis: SymbolAnalysis = {
+                  direction: sig?.direction ?? null,
+                  confidence: sig?.confidence ?? decision.rejection?.score ?? 0,
+                  agreement: sig ? 4 : 0,
+                  premiumCount: sig && sig.confidence >= 91 ? 1 : 0,
+                  volatilityPct: sig?.volatilityPct ?? 0,
+                  volatilityRatio: 1,
+                  blockers: sig ? [] : [decision.rejection?.reason ?? "NO_TRADE"],
+                  dominantTf: "1m",
+                  suggestedDuration: 0,
+                  trendAlignmentScore: sig ? 4 : 0,
+                  patternBonus: sig && sig.confidence >= 91 ? 10 : 0,
+                };
+                return { symbol, analysis };
+              })
+            : this.preset === "rb100"
+              ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
+                  const [m15, m5, m1, ticks] = await Promise.all([
+                    candleFetcher(symbol, 900, 70),
+                    candleFetcher(symbol, 300, 70),
+                    candleFetcher(symbol, 60, 60),
+                    fetchRecentTicksServer(symbol, 180).catch(() => []),
+                  ]);
+                  const diagnosticMode = process.env.RB100_DIAGNOSTIC_MODE === "true" || true;
+                  const decision = generateRb100Signal(m15, m5, m1, ticks, {
+                    symbol,
+                    diagnosticMode,
+                  });
+                  const sig = decision.signal;
+                  if (sig) rb100Levels.set(symbol, { ...sig });
 
-    const ordered = config.symbolMode === "all-markets"
-      ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
-      : analyzed;
+                  const snapshot = sig?.snapshot ?? decision.rejection?.snapshot;
+                  if (snapshot) {
+                    try {
+                      getDb()
+                        .prepare(
+                          `INSERT INTO rb100_diagnostic_snapshots (id, time, symbol, strategy, strategy_version, market_state, raw_score, final_score, required_score, hard_filters_passed, primary_reason, no_trade_final_reason, snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                        )
+                        .run(
+                          snapshot.snapshotId,
+                          snapshot.timestamp,
+                          symbol,
+                          snapshot.strategy,
+                          snapshot.strategyVersion,
+                          snapshot.marketState,
+                          snapshot.rawScore,
+                          snapshot.finalScore,
+                          snapshot.requiredScore,
+                          snapshot.hardFiltersPassed ? 1 : 0,
+                          snapshot.primaryReason,
+                          snapshot.noTradeFinalReason,
+                          JSON.stringify(snapshot),
+                        );
+                    } catch {
+                      // ignore duplicate snapshot insert error
+                    }
+                  }
+
+                  if (decision.rejection) {
+                    const diagPayload = {
+                      ...decision.rejection.diagnostics,
+                      primaryReason: decision.rejection.primaryReason,
+                      allRejectionReasons: decision.rejection.allRejectionReasons,
+                      filterStatuses: decision.rejection.filterStatuses,
+                      snapshot: decision.rejection.snapshot,
+                    };
+                    getDb()
+                      .prepare(
+                        `INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`,
+                      )
+                      .run(
+                        `rb100_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        this.userId,
+                        "rb100",
+                        symbol,
+                        Date.now(),
+                        Math.round(decision.rejection.score),
+                        decision.rejection.reason,
+                        JSON.stringify(diagPayload),
+                      );
+                  }
+                  return {
+                    symbol,
+                    analysis: {
+                      direction: sig?.direction ?? null,
+                      confidence: sig?.confidence ?? decision.rejection?.score ?? 0,
+                      agreement: sig ? 4 : 0,
+                      premiumCount: sig && sig.confidence >= 92 ? 1 : 0,
+                      volatilityPct: sig?.volatilityPct ?? 0,
+                      volatilityRatio: 1,
+                      blockers: sig ? [] : [decision.rejection?.reason ?? "NO_TRADE"],
+                      dominantTf: "M15/M5/M1",
+                      suggestedDuration: 0,
+                      trendAlignmentScore: sig ? 4 : 0,
+                      patternBonus: sig && sig.confidence >= 92 ? 10 : 0,
+                      components: undefined,
+                    },
+                  };
+                })
+              : this.preset === "crash500"
+                ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
+                    const [m15, m5, m1, ticks] = await Promise.all([
+                      candleFetcher(symbol, 900, 70),
+                      candleFetcher(symbol, 300, 70),
+                      candleFetcher(symbol, 60, 55),
+                      fetchRecentTicksServer(symbol, 120).catch(() => []),
+                    ]);
+                    const candidates = generateCrash500Signals(m15, m5, m1, ticks);
+                    // Premium Spike Hunter has priority over Drift when both qualify.
+                    const sig =
+                      candidates.find(
+                        (candidate) =>
+                          candidate.strategy === "CRASH500_SPIKE_HUNTER_SELL" &&
+                          candidate.confidence >= 95,
+                      ) ?? candidates.sort((a, b) => b.confidence - a.confidence)[0];
+                    if (sig) crash500Levels.set(symbol, sig);
+                    const analysis: SymbolAnalysis = {
+                      direction: sig?.direction ?? null,
+                      confidence: sig?.confidence ?? 0,
+                      agreement: sig ? 4 : 0,
+                      premiumCount: sig?.confidence && sig.confidence >= 95 ? 1 : 0,
+                      volatilityPct: sig?.volatilityPct ?? 0,
+                      volatilityRatio: 1,
+                      blockers: sig
+                        ? []
+                        : ["Pas de setup Crash500 Spike SELL ou Drift BUY confirmé"],
+                      dominantTf: "1m",
+                      suggestedDuration: 0,
+                      trendAlignmentScore: sig ? 4 : 0,
+                      patternBonus: sig?.confidence && sig.confidence >= 95 ? 10 : 0,
+                    };
+                    return { symbol, analysis };
+                  })
+                : this.preset === "scalping"
+                  ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                      const m1 = await candleFetcher(
+                        symbol,
+                        60,
+                        Math.max(MIN_M1_CANDLES + 10, 300),
+                      );
+                      const sig = m1.length >= MIN_M1_CANDLES ? generateScalpingSignal(m1) : null;
+                      if (sig)
+                        scalpingLevels.set(symbol, {
+                          riskAbs: sig.riskAbs,
+                          rewardAbs: sig.rewardAbs,
+                        });
+                      const analysis: SymbolAnalysis = {
+                        direction: sig?.direction ?? null,
+                        confidence: sig?.confidence ?? 0,
+                        agreement: sig ? 4 : 0, // both M5-trend and M1-confirmation already agreed, or there's no signal
+                        premiumCount: 0,
+                        volatilityPct: sig?.volatilityPct ?? 0,
+                        volatilityRatio: 1,
+                        blockers: sig ? [] : ["Pas de setup M5-tendance / repli M1 / confirmation"],
+                        dominantTf: "1m",
+                        suggestedDuration: 0,
+                        trendAlignmentScore: sig ? 4 : 0,
+                        patternBonus: 0,
+                        // Deliberately no `components` — this isn't the indicator-based
+                        // engine, so its outcomes must not feed the cross-user learned
+                        // weights (indicator-weights.server.ts) meant for that system.
+                      };
+                      return { symbol, analysis };
+                    })
+                  : this.preset === "scalpingv2"
+                    ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                        const [m1, m5] = await Promise.all([
+                          candleFetcher(symbol, 60, 60),
+                          candleFetcher(symbol, 300, 30),
+                        ]);
+                        const sig = generateSpikeHunterSignal(symbol, m1, m5);
+                        const analysis: SymbolAnalysis = {
+                          direction: sig?.direction ?? null,
+                          confidence: sig?.confidence ?? 0,
+                          agreement: sig ? 4 : 0,
+                          premiumCount: 0,
+                          volatilityPct: 0,
+                          volatilityRatio: 1,
+                          blockers: sig
+                            ? []
+                            : ["Pas d'accumulation/distribution Spike Hunter M1/M5"],
+                          dominantTf: "1m",
+                          suggestedDuration: 0,
+                          trendAlignmentScore: sig ? 4 : 0,
+                          patternBonus: 0,
+                        };
+                        return { symbol, analysis };
+                      })
+                    : this.preset === "liquidity" || this.preset === "liquidityv2"
+                      ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                          const m15 = await candleFetcher(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
+                          const sig =
+                            m15.length >= MIN_LIQUIDITY_CANDLES
+                              ? generateLiquidityReversalSignal(m15)
+                              : null;
+                          const analysis: SymbolAnalysis = {
+                            direction: sig?.direction ?? null,
+                            confidence: sig?.confidence ?? 0,
+                            agreement: sig ? 4 : 0,
+                            premiumCount: 0,
+                            volatilityPct: sig?.volatilityPct ?? 0,
+                            volatilityRatio: 1,
+                            blockers: sig
+                              ? []
+                              : ["Pas de balayage/réintégration M15 confirmé par le RSI"],
+                            dominantTf: "15m",
+                            suggestedDuration: 60,
+                            trendAlignmentScore: sig ? 4 : 0,
+                            patternBonus: 0,
+                          };
+                          return { symbol, analysis };
+                        })
+                      : this.preset === "goldv2"
+                        ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                            const m15 = await candleFetcher(
+                              symbol,
+                              900,
+                              MIN_GOLD_SESSION_CANDLES + 5,
+                            );
+                            const sig =
+                              m15.length >= MIN_GOLD_SESSION_CANDLES
+                                ? generateGoldSessionBreakoutSignal(m15)
+                                : null;
+                            const analysis: SymbolAnalysis = {
+                              direction: sig?.direction ?? null,
+                              confidence: sig?.confidence ?? 0,
+                              agreement: sig ? 4 : 0,
+                              premiumCount: 0,
+                              volatilityPct: sig?.volatilityPct ?? 0,
+                              volatilityRatio: 1,
+                              blockers: sig
+                                ? []
+                                : ["Pas de cassure de session suivie d'un pullback validé"],
+                              dominantTf: "15m",
+                              suggestedDuration: 30,
+                              trendAlignmentScore: sig ? 4 : 0,
+                              patternBonus: 0,
+                            };
+                            return { symbol, analysis };
+                          })
+                        : this.preset === "gold"
+                          ? await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                              const [h1, m15, m5, m1] = await Promise.all([
+                                candleFetcher(symbol, 3600, MIN_GOLD_PULLBACK_H1_CANDLES + 5),
+                                candleFetcher(symbol, 900, MIN_GOLD_PULLBACK_M15_CANDLES + 5),
+                                candleFetcher(symbol, 300, MIN_GOLD_PULLBACK_M5_CANDLES + 5),
+                                candleFetcher(symbol, 60, MIN_GOLD_PULLBACK_M1_CANDLES + 5),
+                              ]);
+                              const sig = generateGoldTrendPullbackSignal(h1, m15, m5, m1);
+                              const analysis: SymbolAnalysis = {
+                                direction: sig?.direction ?? null,
+                                confidence: sig?.confidence ?? 0,
+                                agreement: sig ? 4 : 0,
+                                premiumCount: 0,
+                                volatilityPct: sig?.volatilityPct ?? 0,
+                                volatilityRatio: 1,
+                                blockers: sig
+                                  ? []
+                                  : ["Pas de séquence Trend Pullback H1→M15→M5→M1 complète"],
+                                dominantTf: "1m",
+                                suggestedDuration: 0,
+                                trendAlignmentScore: sig ? 4 : 0,
+                                patternBonus: 0,
+                              };
+                              return { symbol, analysis };
+                            })
+                          : await mapWithConcurrency(toAnalyze, 4, async (symbol) => {
+                              const core = await analyzeSymbolCore(
+                                symbol,
+                                candleFetcher,
+                                buildAnalyzeOptsServer(symbol, config),
+                              );
+                              let analysis = core.analysis;
+
+                              // ── Spike Hunter Layer for Boom & Crash ──
+                              if (
+                                (symbol.includes("BOOM") || symbol.includes("CRASH")) &&
+                                (!analysis.direction || analysis.confidence < 75)
+                              ) {
+                                const m1 = await candleFetcher(symbol, 60, 60).catch(() => []);
+                                const m5 = await candleFetcher(symbol, 300, 30).catch(() => []);
+                                const spikeSig = generateSpikeHunterSignal(symbol, m1, m5);
+                                if (spikeSig && spikeSig.confidence >= config.minConfidence) {
+                                  analysis = {
+                                    direction: spikeSig.direction,
+                                    confidence: spikeSig.confidence,
+                                    agreement: 4,
+                                    premiumCount: 1,
+                                    volatilityPct: 1,
+                                    volatilityRatio: 1,
+                                    blockers: [],
+                                    dominantTf: "1m",
+                                    suggestedDuration: 5,
+                                    trendAlignmentScore: 4,
+                                    patternBonus: 10,
+                                  };
+                                }
+                              }
+                              return { symbol, analysis };
+                            });
+
+    const ordered =
+      config.symbolMode === "all-markets"
+        ? [...analyzed].sort((a, b) => b.analysis.confidence - a.analysis.confidence)
+        : analyzed;
 
     let newTradesThisTick = 0;
 
     for (const { symbol, analysis } of ordered) {
       if (this.stopped) break;
       if (newTradesThisTick >= config.maxSimultaneousTrades) {
-        scanResults.push({ symbol, action: "daily-limit", note: `Limite ${config.maxSimultaneousTrades} trades/cycle` });
+        scanResults.push({
+          symbol,
+          action: "daily-limit",
+          note: `Limite ${config.maxSimultaneousTrades} trades/cycle`,
+        });
         continue;
       }
       // ── Time-of-day edge filter ──
       if (config.hourlyEdgeFilter && isHourBlocked(logs, config.hourlyEdgeLookback)) {
-        scanResults.push({ symbol, action: "no-signal", note: "Creneau horaire bloque (P&L negatif)" });
+        scanResults.push({
+          symbol,
+          action: "no-signal",
+          note: "Creneau horaire bloque (P&L negatif)",
+        });
         continue;
       }
       // ── Verdict conseiller ──
@@ -1281,21 +3075,35 @@ class ServerBotEngine {
       // binary symbol, which keep reading the global config fields below.
       const multiplierOverride = isMultiplier ? getMultiplierOverride(symbol) : undefined;
       const effectiveMinTfAgreement = multiplierOverride?.minTfAgreement ?? config.minTfAgreement;
+      let effectiveMinConfidence = config.minConfidence + riskMetrics.minConfidenceAdjustment;
       const thresholds = {
-        minConfidence: config.minConfidence,
+        minConfidence: effectiveMinConfidence,
         maxConfidence: config.maxConfidence,
         minTfAgreement: effectiveMinTfAgreement,
         maxVolatilityPct: config.maxVolatilityPct,
         premiumOnly: config.premiumOnly,
       };
+      const marketDataBlocker = analysis.blockers.find(
+        (blocker) => blocker === "MARKET_DATA_RATE_LIMIT" || blocker === "MARKET_DATA_UNAVAILABLE",
+      );
+      if (marketDataBlocker) {
+        scanResults.push({ symbol, action: "no-signal", note: marketDataBlocker });
+        continue;
+      }
       const verdict = classifyOpportunity(analysis, thresholds);
       if (verdict.decision !== "take") {
-        const note = verdict.reasonCode === "confidence-low" ? `Seuil: ${config.minConfidence}`
-          : verdict.reasonCode === "confidence-high" ? `Plafond: ${config.maxConfidence}`
-          : verdict.reasonCode === "agreement-low" ? `Seuil: ${effectiveMinTfAgreement}`
-          : verdict.reasonCode === "volatility-abs" ? `ATR ${analysis.volatilityPct.toFixed(2)}% > max`
-          : verdict.reasonCode === "volatility-ratio" ? `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale`
-          : undefined;
+        const note =
+          verdict.reasonCode === "confidence-low"
+            ? `Seuil: ${config.minConfidence}`
+            : verdict.reasonCode === "confidence-high"
+              ? `Plafond: ${config.maxConfidence}`
+              : verdict.reasonCode === "agreement-low"
+                ? `Seuil: ${effectiveMinTfAgreement}`
+                : verdict.reasonCode === "volatility-abs"
+                  ? `ATR ${analysis.volatilityPct.toFixed(2)}% > max`
+                  : verdict.reasonCode === "volatility-ratio"
+                    ? `Volatilité ${analysis.volatilityRatio.toFixed(1)}x la normale`
+                    : undefined;
         scanResults.push({
           symbol,
           action: REASON_CODE_ACTION[verdict.reasonCode],
@@ -1306,23 +3114,218 @@ class ServerBotEngine {
         });
         continue;
       }
-      // classifyOpportunity's "take" branch requires analysis.direction to be
-      // non-null (see the "no-direction" check inside it) — this re-narrows
-      // it for TypeScript's benefit, it can never actually continue here.
       if (!analysis.direction) continue;
+      const direction: "CALL" | "PUT" = analysis.direction;
 
-      // ── À partir d'ici : le conseiller dit "à prendre" — reste à vérifier
-      // qu'on PEUT exécuter maintenant (position corrélée, spread, plafond
-      // dynamique de confiance basé sur le payout, mise, durée, payout). Ce
-      // sont des contraintes d'exécution/compte, pas des questions de
-      // "est-ce une bonne opportunité". ──
-      if (config.blockCorrelated && isCorrelatedWithActive(symbol, analysis.direction, this.activeSymbols)) {
+      // Preserve the concrete strategy that generated this setup. Aggregating
+      // all variants under `${preset}_ENGINE` makes V1/V2 metrics, time
+      // filtering and risk pauses bleed into each other.
+      const strategyId =
+        boom500Levels.get(symbol)?.strategy ??
+        crash500Levels.get(symbol)?.strategy ??
+        vol75Levels.get(symbol)?.strategy ??
+        rb100Levels.get(symbol)?.strategy ??
+        vol50Levels.get(symbol)?.strategy ??
+        `${this.preset.toUpperCase()}_ENGINE`;
+      // ── Step 2: Setup Detected & Market Regime Classification ──
+      recordFunnelStep(this.preset, strategyId, "setup");
+      const regimeClassification = classifyMarketRegime({
+        symbol,
+        adx: analysis.volatilityRatio * 20,
+        atrRatio: analysis.volatilityRatio,
+        trendAlignmentScore: analysis.trendAlignmentScore,
+      });
+
+      const regimeRouting = isStrategyAllowedInRegime(strategyId, regimeClassification.regime);
+      if (FEATURE_FLAGS.MARKET_REGIME_ROUTER_ENABLED && !regimeRouting.allowed) {
+        scanResults.push({
+          symbol,
+          action: "session-closed",
+          direction,
+          confidence: analysis.confidence,
+          note: regimeRouting.reason,
+        });
+        continue;
+      }
+
+      // ── Step 3: Valid Signal Detected by Signal Engine ──
+      recordFunnelStep(this.preset, strategyId, "valid_signal");
+
+      // ── Step 4: Granular Time Performance Filter (SYMBOL + STRATEGY + VERSION + HOUR_UTC) ──
+      // Presets with their own dedicated signal engine (currently only RB100)
+      // are the real source of truth for their version tag — the engine's
+      // code IS the strategy, so its own exported constant is authoritative.
+      // Everything else falls back to ConfigRegistry's auto-incrementing
+      // config version tag (still "V1" until a real config change is saved
+      // through updateConfigForUser — see the ConfigRegistry fix below).
+      const currentStrategyVersion =
+        this.preset === "rb100"
+          ? RB100_ENGINE_VERSION
+          : (ConfigRegistry.getLatestVersion(this.userId, this.preset)?.version_tag ?? "V1");
+      const currentHourUtc = new Date().getUTCHours();
+      const timeFilter = evaluateTimeFilter(
+        symbol,
+        strategyId,
+        currentStrategyVersion,
+        currentHourUtc,
+      );
+
+      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.isBlocked) {
+        if (FEATURE_FLAGS.TIME_SHADOW_MODE_ENABLED) {
+          try {
+            getDb()
+              .prepare(
+                `
+              INSERT OR IGNORE INTO shadow_trades (id, user_id, preset, strategy, strategy_version, symbol, direction, entry_price, time)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+              )
+              .run(
+                `shad_${Date.now()}_${symbol}`,
+                this.userId,
+                this.preset,
+                strategyId,
+                currentStrategyVersion,
+                symbol,
+                direction,
+                (analysis as any).entryPrice || 0,
+                Date.now(),
+              );
+          } catch {
+            /* ignore shadow write failure */
+          }
+        }
+        if (!timeFilter.observationMode) {
+          scanResults.push({
+            symbol,
+            action: "session-closed",
+            direction,
+            confidence: analysis.confidence,
+            note: timeFilter.reason,
+          });
+          continue;
+        }
+      }
+
+      recordFunnelStep(this.preset, strategyId, "time_approved");
+
+      if (observationBlockReason) {
+        void recordRiskShadowObservation({
+          userId: this.userId,
+          preset: this.preset,
+          strategy: strategyId,
+          strategyVersion: currentStrategyVersion,
+          symbol,
+          direction,
+          score: analysis.confidence,
+          reason: observationBlockReason,
+          notionalStake: effectiveStake,
+          holdMinutes:
+            analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
+          riskObservation: {
+            ...riskObservation,
+            COHORT: {
+              strategy_version: currentStrategyVersion,
+              risk_version: "R4",
+              execution_version: "E3",
+              config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
+            },
+            RISK_DECISION: "SHADOW_ONLY",
+            RISK_REJECTION_REASON: observationBlockReason,
+            TRAILING_PROTECTION_STATE: {
+              ...riskObservation.TRAILING_PROTECTION_STATE,
+              active: observationBlockReason === "RISK_TRAILING_PROTECTION",
+            },
+            COOLDOWN_STATE: { presetPausedUntil: this.pausedUntil || null, active: true },
+          },
+        });
+        scanResults.push({
+          symbol,
+          action: "risk-pause",
+          direction,
+          confidence: analysis.confidence,
+          note: observationBlockReason,
+        });
+        continue;
+      }
+
+      if (FEATURE_FLAGS.STRATEGY_HEALTH_ENABLED) {
+        const stratHealth = getPresetRiskMetrics(this.userId, this.preset, strategyId);
+        if (stratHealth.status === "PAUSED") {
+          scanResults.push({
+            symbol,
+            action: "risk-pause",
+            direction,
+            confidence: analysis.confidence,
+            note: `Santé Stratégie [PAUSED]: ${stratHealth.reason}`,
+          });
+          continue;
+        }
+      }
+
+      // ── Step 5: Institutional Risk Manager V3 ──
+      const riskCheck = evaluateRiskCheck({
+        userId: this.userId,
+        preset: this.preset,
+        strategyId,
+        symbol,
+        direction,
+        confidenceScore: analysis.confidence,
+        currentEquity: currentBalance || 1000,
+        currentBalance: currentBalance || 1000,
+      });
+
+      if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && riskCheck.decision === "REJECTED") {
+        // Keep observing only the user-approved safety blocks. The rejected
+        // signal is never passed to proposal/buy and its notional is recorded
+        // solely for comparable hypothetical P&L reporting.
+        if (shouldObserveRiskRejection(riskCheck.reason)) {
+          void recordRiskShadowObservation({
+            userId: this.userId,
+            preset: this.preset,
+            strategy: strategyId,
+            strategyVersion: currentStrategyVersion,
+            symbol,
+            direction,
+            score: analysis.confidence,
+            reason: riskCheck.reason!,
+            notionalStake: effectiveStake,
+            holdMinutes:
+              analysis.suggestedDuration > 0 ? analysis.suggestedDuration : config.maxHoldMinutes,
+            riskObservation: {
+              ...riskObservation,
+              COHORT: {
+                strategy_version: currentStrategyVersion,
+                risk_version: "R4",
+                execution_version: "E3",
+                config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
+              },
+              RISK_DECISION: riskCheck.decision,
+              RISK_REJECTION_REASON: riskCheck.reason ?? null,
+              AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW",
+            },
+          });
+        }
+        scanResults.push({
+          symbol,
+          action: "risk-pause",
+          direction,
+          confidence: analysis.confidence,
+          note: `Risk Manager [${riskCheck.reason}]: ${riskCheck.explanation}`,
+        });
+        continue;
+      }
+
+      recordFunnelStep(this.preset, strategyId, "risk_approved");
+
+      if (config.blockCorrelated && isCorrelatedWithActive(symbol, direction, this.activeSymbols)) {
         scanResults.push({ symbol, action: "correlated" });
         continue;
       }
       const useKraken = isKrakenSymbol(symbol) && this.krakenConn !== null;
       const useBinance = isBinanceSymbol(symbol) && this.binanceConn !== null;
-      const useOanda = isOandaSymbol(symbol) && this.oandaConn !== null;
+      const useOanda =
+        config.broker === "oanda" && isOandaSymbol(symbol) && this.oandaConn !== null;
       const useAltBroker = useKraken || useBinance || useOanda;
 
       // ── Spread/slippage filter (alt brokers only) ──
@@ -1330,54 +3333,127 @@ class ServerBotEngine {
       // Skip the trade if the spread exceeds the configured max.
       if (config.maxSpreadPct > 0 && useAltBroker) {
         try {
-          const price = await (useKraken ? this.krakenConn!.getAssetPrice(symbol)
-            : useBinance ? this.binanceConn!.getAssetPrice(symbol)
-            : this.oandaConn!.getAssetPrice(symbol));
+          const price = await (useKraken
+            ? this.krakenConn!.getAssetPrice(symbol)
+            : useBinance
+              ? this.binanceConn!.getAssetPrice(symbol)
+              : this.oandaConn!.getAssetPrice(symbol));
           // Approximate spread check: compare entry price vs last candle close
           // A true bid/ask would need a separate API call; this is a lightweight proxy
           // that catches abnormal spread conditions (illiquid hours, post-news gaps)
           const recentCandles = await candleFetcher(symbol, 60, 2);
           if (recentCandles.length >= 2) {
             const lastClose = recentCandles[recentCandles.length - 1].close;
-            const spreadPct = Math.abs(price - lastClose) / lastClose * 100;
+            const spreadPct = (Math.abs(price - lastClose) / lastClose) * 100;
             if (spreadPct > config.maxSpreadPct) {
-              scanResults.push({ symbol, action: "volatility", note: `Spread ${spreadPct.toFixed(3)}% > max ${config.maxSpreadPct}%` });
+              scanResults.push({
+                symbol,
+                action: "volatility",
+                note: `Spread ${spreadPct.toFixed(3)}% > max ${config.maxSpreadPct}%`,
+              });
               continue;
             }
           }
-        } catch { /* ignore spread check failure */ }
+        } catch {
+          /* ignore spread check failure */
+        }
       }
 
       // Plancher de confiance dynamique basé sur le payout : uniquement un
       // durcissement optionnel AU-DESSUS du seuil déjà validé par le
       // conseiller (Math.max) — jamais plus permissif, sinon le bot pourrait
       // trader en dessous de ce que le conseiller aurait classé "à prendre".
-      let effectiveMinConfidence = config.minConfidence;
       if (config.dynamicMinConfidence && !isMultiplier && !useAltBroker) {
         // Pre-fetch payout to calibrate confidence threshold
-        const prePayout = await this.conn.getPayoutRatio({
-          symbol, amount: effectiveStake, contractType: analysis.direction, durationMinutes: Math.max(analysis.suggestedDuration, minContractMinutes(symbol)),
-        }).catch(() => null);
+        const prePayout = await this.conn
+          .getPayoutRatio({
+            symbol,
+            amount: effectiveStake,
+            contractType: analysis.direction,
+            durationMinutes: Math.max(analysis.suggestedDuration, minContractMinutes(symbol)),
+          })
+          .catch(() => null);
         if (prePayout !== null) {
-          effectiveMinConfidence = Math.max(config.minConfidence, computeDynamicMinConfidence(prePayout, config.dynamicConfidenceMargin, config.minConfidence));
+          effectiveMinConfidence = Math.max(
+            effectiveMinConfidence,
+            computeDynamicMinConfidence(
+              prePayout,
+              config.dynamicConfidenceMargin,
+              config.minConfidence,
+            ),
+          );
         }
       }
       if (analysis.confidence < effectiveMinConfidence) {
-        scanResults.push({ symbol, action: "low-confidence", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: `Seuil dyn: ${effectiveMinConfidence}` });
+        scanResults.push({
+          symbol,
+          action: "low-confidence",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          agreement: analysis.agreement,
+          note: `Seuil dyn: ${effectiveMinConfidence}`,
+        });
         continue;
       }
+
+      // REGRESSION GUARD (2026-08-13): block before any sizing math runs if
+      // this preset's live stakePercent has drifted >=10x from its canonical
+      // baseline (see LEGACY_STAKE_PCT_BASELINE above). Fires regardless of
+      // what the Risk Manager cap would have absorbed downstream, so a
+      // config-level anomaly (e.g. a future accidental x100 unit change) is
+      // never silently masked by that cap.
+      const legacyBaselinePct = LEGACY_STAKE_PCT_BASELINE[this.preset];
+      if (
+        config.stakeMode === "percent" &&
+        legacyBaselinePct &&
+        config.stakePercent >= legacyBaselinePct * 10
+      ) {
+        logSafetyAlert({
+          alertType: "STAKE_MIGRATION_ANOMALY",
+          userId: this.userId,
+          preset: this.preset,
+          symbol,
+          details: `STAKE_MIGRATION_ANOMALY: config.stakePercent (${config.stakePercent}) >= 10x last known-good baseline (${legacyBaselinePct}) for preset ${this.preset}`,
+        });
+        scanResults.push({ symbol, action: "risk-pause", note: "STAKE_MIGRATION_ANOMALY" });
+        continue;
+      }
+
+      // ── requestedStake: the user's own configured ceiling (fixed $ or
+      // equity × stakePercent). This is the ROOT authority on maximum stake
+      // — no specialized engine, risk multiplier, or drift adjustment below
+      // may ever cause the FINAL stake to exceed it. Enforced structurally
+      // by including it in the Priority 2 MIN() below (2026-08-13 fix: it
+      // used to be computed but never actually applied as a ceiling, which
+      // let vol75Level's own risk-based sizing silently replace a user's
+      // fixed $5 stake with $23.18 — caught by the STAKE_SAFETY_VIOLATION
+      // assertion further down, which correctly blocked the trade but left
+      // the bot paused with no way to size correctly until this was fixed).
+      const requestedStake = effectiveStake;
+      let stakeSource: string =
+        config.stakeMode === "percent" ? "PERCENT_USER_CAP" : "FIXED_USER_CAP";
 
       // Stake for THIS trade: Kelly (per-symbol measured edge from this user's
       // own bot_trades history) when enabled and enough of a sample exists,
       // otherwise the fixed/percent/adaptive stake already computed above.
       let stakeForTrade = effectiveStake;
+      // BOOM900's currently available Deriv multiplier contract caps the
+      // amount at $0.90. Keep this isolated: other presets retain their
+      // ordinary stake floor and cannot inherit this broker-specific cap.
+      if (this.preset === "boom900") stakeForTrade = Math.min(0.9, stakeForTrade);
       if (config.stakeMode === "kelly") {
         const kellyStake = computeKellyStakeServer(
-          this.userId, symbol, this.config.mode === "live" ? "live" : "demo",
-          currentBalance ?? effectiveStake, config.kellyFraction,
+          this.userId,
+          symbol,
+          this.config.mode === "live" ? "live" : "demo",
+          currentBalance ?? effectiveStake,
+          config.kellyFraction,
         );
         if (kellyStake !== null) {
-          stakeForTrade = config.adaptiveStake ? computeAdaptiveStake(kellyStake, logs) : kellyStake;
+          stakeForTrade = config.adaptiveStake
+            ? computeAdaptiveStake(kellyStake, logs)
+            : kellyStake;
+          stakeSource = "KELLY";
         }
       }
 
@@ -1386,7 +3462,192 @@ class ServerBotEngine {
         const consecLosses = countConsecutiveLosses(logs, symbol);
         if (consecLosses > 0) {
           stakeForTrade = computeProgressiveStake(stakeForTrade, consecLosses);
+          stakeSource = "PROGRESSIVE_REDUCTION";
         }
+      }
+
+      // Boom500's two strategies have independent risk budgets. This is
+      // calculated from balance, never from a martingale or tick count.
+      // NOTE: every *Level.riskPct below is a RISK SUGGESTION / internal cap
+      // from that engine's own signal — never an authorization to exceed
+      // requestedStake. That ceiling is enforced once, uniformly, at
+      // Priority 2 below, regardless of which branch here last wrote to
+      // stakeForTrade.
+      const boom500Level = this.preset === "boom" ? boom500Levels.get(symbol) : undefined;
+      const vol75Level = this.preset === "vol75" ? vol75Levels.get(symbol) : undefined;
+      const rb100Level = this.preset === "rb100" ? rb100Levels.get(symbol) : undefined;
+      const vol50Level = this.preset === "vol50" ? vol50Levels.get(symbol) : undefined;
+      if (boom500Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (boom500Level.riskPct / 100) * 100) / 100;
+        stakeSource = "BOOM500_LEVEL";
+      }
+      if (vol75Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (vol75Level.riskPct / 100) * 100) / 100;
+        stakeSource = "VOL75_LEVEL";
+      }
+      if (rb100Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (rb100Level.riskPct / 100) * 100) / 100;
+        stakeSource = "RB100_LEVEL";
+      }
+      if (vol50Level && currentBalance && currentBalance > 0) {
+        stakeForTrade = Math.round(currentBalance * (vol50Level.riskPct / 100) * 100) / 100;
+        stakeSource = "VOL50_LEVEL";
+      }
+      if (riskMetrics.stakeMultiplier > 0 && riskMetrics.stakeMultiplier < 1.0) {
+        stakeForTrade = Math.round(stakeForTrade * riskMetrics.stakeMultiplier * 100) / 100;
+        stakeSource = "DRIFT_MULTIPLIER";
+      }
+      if (FEATURE_FLAGS.GRANULAR_TIME_FILTER_ENABLED && timeFilter.riskMultiplier < 1) {
+        stakeForTrade = Math.round(stakeForTrade * timeFilter.riskMultiplier * 100) / 100;
+        stakeSource = "TIME_FILTER";
+      }
+      // Gold presets are sized from the stop, not from an arbitrary stake.
+      // With an ATR stop, the $ loss for a $1 multiplier position is
+      // proportional to multiplier × ATR%; solve that relation backwards.
+      // The 0.25%-of-equity target is still capped by the configured daily
+      // loss budget split across the permitted losing streak. If OANDA's
+      // minimum trade unit cannot respect that cap, placeMarketOrder rejects
+      // it before an order reaches the broker.
+      if (isGoldPreset(this.preset) && config.broker === "oanda" && isMultiplier) {
+        if (!currentBalance || currentBalance <= 0) {
+          scanResults.push({
+            symbol,
+            action: "no-signal",
+            note: "Solde indisponible : sizing risque 0,25% impossible",
+          });
+          continue;
+        }
+        const perTradeBudget = config.maxDailyLossUsd / Math.max(1, config.maxConsecutiveLosses);
+        const riskTarget = Math.min(currentBalance * 0.0025, perTradeBudget);
+        const effMultiplier = effectiveMultiplier(symbol, config.multiplierLevel);
+        const perStakeRisk = Math.min(
+          1,
+          Math.max(0.0001, (effMultiplier * analysis.volatilityPct * config.atrStopMultiple) / 100),
+        );
+        const minimumStop = computeAtrStopUsd(
+          1,
+          effMultiplier,
+          analysis.volatilityPct,
+          config.atrStopMultiple,
+          config.riskRewardRatio,
+        ).stopLossUsd;
+        if (riskTarget < minimumStop) {
+          scanResults.push({
+            symbol,
+            action: "no-signal",
+            note: `Risque cible $${riskTarget.toFixed(2)} inférieur au stop minimal $${minimumStop.toFixed(2)}`,
+          });
+          continue;
+        }
+        stakeForTrade = Math.round((riskTarget / perStakeRisk) * 100) / 100;
+        stakeSource = "GOLD_ATR";
+      }
+
+      // strategyRiskSuggestedStake: the accumulated output of every engine
+      // above (Kelly / progressive-reduction / Boom500-Vol75-RB100-Vol50
+      // Level / drift-multiplier / time-filter / Gold ATR), captured right
+      // before the hard ceilings below are applied.
+      const strategyRiskSuggestedStake = stakeForTrade;
+
+      // Priority 2: FINAL_STAKE = MIN(requestedStake, strategyRiskSuggestedStake, maxRiskAllowed, derivMaxAllowed)
+      // Nothing above this line — no specialized engine, no risk multiplier
+      // — can ever INCREASE the stake past what the user's own config
+      // (requestedStake) or the broker (derivMaxAllowed) allow. Only this
+      // MIN and the Risk Manager cap can reduce it further.
+      const scalingPolicy = getStakeScalingPolicy(this.preset);
+      // The scaling policy is dormant until a separately persisted approval.
+      // This preserves every existing stake exactly as-is. BOOM900's already
+      // verified Deriv cap is the only concrete broker ceiling at present.
+      const brokerCapKnown = scalingPolicy.brokerMaxStakeUsd !== null;
+      const derivMaxAllowed = scalingPolicy.brokerMaxStakeUsd ?? Infinity;
+      const approvedScalingTier = getEffectiveApprovedStakeScalingTier(
+        this.userId,
+        this.preset,
+        config,
+        { strategyVersion: currentStrategyVersion, riskVersion: "R4", executionVersion: "E3" },
+      );
+      const openExposure = getDb()
+        .prepare(
+          `
+        SELECT COALESCE(SUM(COALESCE(final_stake, stake)), 0) AS total
+        FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'
+      `,
+        )
+        .get(this.userId, this.preset) as { total: number };
+      // No approval means Infinity: legacy configurations keep their exact
+      // established sizing. Once a tier is approved, all declared policy
+      // ceilings actively reduce (never increase) the final stake.
+      const scalingRiskCap = approvedScalingTier
+        ? Math.min(
+            approvedScalingTier,
+            scalingPolicy.maxStakeUsd,
+            currentBalance && currentBalance > 0
+              ? (currentBalance * scalingPolicy.maxRiskPct) / 100
+              : 0,
+            Math.max(0, scalingPolicy.maxExposureUsd - (Number(openExposure.total) || 0)),
+          )
+        : Infinity;
+      const maxRiskAllowed = Math.min(riskCheck.stakeUsd, scalingRiskCap);
+      // This invariant is unconditional: feature flags may alter risk
+      // diagnostics but can never remove the cap from an executable stake.
+      stakeForTrade = Math.min(
+        strategyRiskSuggestedStake,
+        requestedStake,
+        maxRiskAllowed,
+        derivMaxAllowed,
+      );
+      // Attribute the binding constraint for the audit trail (stake_source),
+      // in order of authority: broker limit, then Risk Manager, then the
+      // user's own config ceiling, else the strategy suggestion computed
+      // above already labeled stakeSource correctly.
+      if (
+        Math.abs(stakeForTrade - derivMaxAllowed) < 0.005 &&
+        derivMaxAllowed < strategyRiskSuggestedStake - 0.005
+      ) {
+        stakeSource = "DERIV_CAP";
+      } else if (
+        Math.abs(stakeForTrade - maxRiskAllowed) < 0.005 &&
+        maxRiskAllowed < strategyRiskSuggestedStake - 0.005
+      ) {
+        stakeSource = "RISK_MANAGER";
+      } else if (
+        Math.abs(stakeForTrade - requestedStake) < 0.005 &&
+        requestedStake < strategyRiskSuggestedStake - 0.005
+      ) {
+        stakeSource = config.stakeMode === "percent" ? "PERCENT_USER_CAP" : "FIXED_USER_CAP";
+      }
+
+      // Pre-order stake invariant assertion (0 Violation Guard)
+      if (
+        stakeForTrade > requestedStake + 0.01 ||
+        stakeForTrade > maxRiskAllowed + 0.01 ||
+        stakeForTrade > derivMaxAllowed + 0.01
+      ) {
+        logSafetyAlert({
+          alertType: "STAKE_SAFETY_VIOLATION",
+          userId: this.userId,
+          preset: this.preset,
+          symbol,
+          details: `STAKE_SAFETY_VIOLATION: finalStake ($${stakeForTrade.toFixed(2)}) > MIN(requested $${requestedStake.toFixed(2)}, maxRisk $${maxRiskAllowed.toFixed(2)}, derivMax $${derivMaxAllowed})`,
+        });
+        scanResults.push({ symbol, action: "risk-pause", note: "STAKE_SAFETY_VIOLATION" });
+        continue;
+      }
+
+      // Priority 3: Deriv Minimum Check (NO SILENT ESCALATION)
+      // Boom900 is exempt: its multiplier contract is broker-capped at
+      // $0.90 (derivMaxAllowed above), below the generic $1 floor, so this
+      // check would reject every single Boom900 trade.
+      const DERIV_MINIMUM_STAKE = 1.0;
+      if (this.preset !== "boom900" && stakeForTrade < DERIV_MINIMUM_STAKE) {
+        scanResults.push({
+          symbol,
+          action: "risk-pause",
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          note: `STAKE_BELOW_DERIV_MINIMUM: Stake calculé ($${stakeForTrade.toFixed(2)}) inférieur au minimum Deriv ($${DERIV_MINIMUM_STAKE.toFixed(2)})`,
+        });
+        continue;
       }
 
       // Duration alignment and the payout-ratio floor are binary-only concepts
@@ -1398,8 +3659,11 @@ class ServerBotEngine {
         if (config.dynamicDuration) {
           // High volatility = shorter duration (capture the move faster)
           // Low volatility = longer duration (give the trade more time to develop)
-          const atrFactor = analysis.volatilityPct > 2 ? 0.7 : analysis.volatilityPct < 0.3 ? 1.5 : 1.0;
-          tradeDuration = Math.round(Math.max(analysis.suggestedDuration, minContractMinutes(symbol)) * atrFactor);
+          const atrFactor =
+            analysis.volatilityPct > 2 ? 0.7 : analysis.volatilityPct < 0.3 ? 1.5 : 1.0;
+          tradeDuration = Math.round(
+            Math.max(analysis.suggestedDuration, minContractMinutes(symbol)) * atrFactor,
+          );
           tradeDuration = Math.max(minContractMinutes(symbol), Math.min(60, tradeDuration));
         } else {
           tradeDuration = Math.max(analysis.suggestedDuration, minContractMinutes(symbol));
@@ -1409,16 +3673,32 @@ class ServerBotEngine {
         // the win rate needed just to break even. Read-only quote, no money
         // committed; a null result (quote unavailable) doesn't block the trade.
         const payoutRatio = await this.conn.getPayoutRatio({
-          symbol, amount: stakeForTrade, contractType: analysis.direction, durationMinutes: tradeDuration,
+          symbol,
+          amount: stakeForTrade,
+          contractType: analysis.direction,
+          durationMinutes: tradeDuration,
         });
         if (payoutRatio !== null && payoutRatio < config.minPayoutRatio) {
           scanResults.push({
-            symbol, action: "low-payout", direction: analysis.direction, confidence: analysis.confidence,
+            symbol,
+            action: "low-payout",
+            direction: analysis.direction,
+            confidence: analysis.confidence,
             note: `Payout ${(payoutRatio * 100).toFixed(0)}% < min ${(config.minPayoutRatio * 100).toFixed(0)}%`,
           });
           continue;
         }
       }
+
+      // The manual-trading notification is emitted only after every quality,
+      // correlation, confidence, spread and payout gate above has passed.
+      // It is therefore an actionable setup, not a generic market alert.
+      this.notifyManualOpportunity(
+        symbol,
+        analysis.direction,
+        analysis.confidence,
+        analysis.agreement,
+      );
 
       // ── Signal qualifies — place the trade ──
       // stats omitted (undefined) — no extra SQL in the 60s tick; the
@@ -1427,7 +3707,14 @@ class ServerBotEngine {
       // wording) is identical to what the advisor would show for this symbol.
       const tradeReasons = explainOpportunity("take", analysis, thresholds);
       const tradeRisk = riskLevelFor(analysis);
-      scanResults.push({ symbol, action: "traded", direction: analysis.direction, confidence: analysis.confidence, agreement: analysis.agreement, note: tradeReasons.join(" · ") });
+      scanResults.push({
+        symbol,
+        action: "traded",
+        direction: analysis.direction,
+        confidence: analysis.confidence,
+        agreement: analysis.agreement,
+        note: tradeReasons.join(" · "),
+      });
       newTradesThisTick++;
 
       // Reserve the symbol NOW, before any network round-trip. trackContract/
@@ -1452,7 +3739,33 @@ class ServerBotEngine {
           const entryCandles = await fetchCandlesServer(symbol, 60, 1);
           entryPrice = entryCandles[entryCandles.length - 1]?.close ?? 0;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
+
+      // A missing broker price must stop execution. Falling back to `1` made
+      // XAU/USD sizing explode (notional / 1) and produced an impossible
+      // 22,096-unit OANDA order. A signal remains valid, but it is not
+      // executable until OANDA supplies a real price on the next scan.
+      if (useOanda && (!Number.isFinite(entryPrice) || entryPrice <= 0)) {
+        this.activeSymbols.delete(symbol);
+        const note = "OANDA: prix d’entrée indisponible — ordre non envoyé";
+        scanResults.push({ symbol, action: "session-closed", note });
+        this.emit({
+          id: `srv_${Date.now()}_${symbol}`,
+          time: Date.now(),
+          symbol,
+          direction: analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN",
+          stake: stakeForTrade,
+          payout: 0,
+          profit: 0,
+          confidence: Math.round(analysis.confidence),
+          tfAgreement: analysis.agreement,
+          status: "error",
+          note,
+        });
+        continue;
+      }
 
       // stop_loss/take_profit are absolute $ amounts Deriv expects, derived
       // from the stake so they scale with adaptive/percent/Kelly sizing.
@@ -1468,34 +3781,210 @@ class ServerBotEngine {
       // at signal time (scalpingLevels, populated above), not ATR or a flat
       // % of stake — see scalping-signal.server.ts.
       const scalpingLevel = this.preset === "scalping" ? scalpingLevels.get(symbol) : undefined;
-      const { stopLossUsd, takeProfitUsd } = scalpingLevel
-        ? computeStructuralStopUsd(stakeForTrade, effMultiplier, entryPrice, scalpingLevel.riskAbs, scalpingLevel.rewardAbs)
-        : useAtrStop
-        ? computeAtrStopUsd(
-            stakeForTrade, effMultiplier, analysis.volatilityPct,
-            multiplierOverride?.atrStopMultiple ?? config.atrStopMultiple,
-            multiplierOverride?.riskRewardRatio ?? config.riskRewardRatio,
+      const crash500Level = this.preset === "crash500" ? crash500Levels.get(symbol) : undefined;
+      const structuralLevel =
+        scalpingLevel ?? crash500Level ?? boom500Level ?? vol75Level ?? rb100Level ?? vol50Level;
+      const { stopLossUsd, takeProfitUsd } = structuralLevel
+        ? computeStructuralStopUsd(
+            stakeForTrade,
+            effMultiplier,
+            entryPrice,
+            structuralLevel.riskAbs,
+            structuralLevel.rewardAbs,
           )
-        : {
-            stopLossUsd: Math.round(stakeForTrade * ((multiplierOverride?.stopLossPctOfStake ?? config.stopLossPctOfStake) / 100) * 100) / 100,
-            takeProfitUsd: Math.round(stakeForTrade * ((multiplierOverride?.takeProfitPctOfStake ?? config.takeProfitPctOfStake) / 100) * 100) / 100,
-          };
+        : useAtrStop
+          ? computeAtrStopUsd(
+              stakeForTrade,
+              effMultiplier,
+              analysis.volatilityPct,
+              multiplierOverride?.atrStopMultiple ?? config.atrStopMultiple,
+              multiplierOverride?.riskRewardRatio ?? config.riskRewardRatio,
+            )
+          : {
+              stopLossUsd:
+                Math.round(
+                  stakeForTrade *
+                    ((multiplierOverride?.stopLossPctOfStake ?? config.stopLossPctOfStake) / 100) *
+                    100,
+                ) / 100,
+              takeProfitUsd:
+                Math.round(
+                  stakeForTrade *
+                    ((multiplierOverride?.takeProfitPctOfStake ?? config.takeProfitPctOfStake) /
+                      100) *
+                    100,
+                ) / 100,
+            };
+      // Worst-case loss is conservatively the entire stake for every product.
+      // A displayed stop is not a guaranteed fill and must not understate risk.
+      const stakeScaling = describeStakeScaling(
+        requestedStake,
+        stakeForTrade,
+        stakeForTrade,
+        currentBalance ?? null,
+        this.preset,
+      );
 
-      const brokerLabel = useKraken ? "Kraken" : useBinance ? "Binance" : useOanda ? "OANDA" : "serveur";
+      const configSnapshot = {
+        preset: this.preset,
+        mode: this.config.mode ?? "demo",
+        broker: this.config.broker ?? "deriv",
+        stakeUsd: this.config.stakeUsd,
+        stakeMode: this.config.stakeMode,
+        stakePercent: this.config.stakePercent,
+        adaptiveStake: this.config.adaptiveStake,
+        progressiveStakeReduction: this.config.progressiveStakeReduction,
+        kellyFraction: this.config.kellyFraction,
+        minConfidence: this.config.minConfidence,
+        maxConfidence: this.config.maxConfidence,
+        minTfAgreement: this.config.minTfAgreement,
+        maxVolatilityPct: this.config.maxVolatilityPct,
+        premiumOnly: this.config.premiumOnly,
+        dynamicMinConfidence: this.config.dynamicMinConfidence,
+        maxDailyLossUsd: this.config.maxDailyLossUsd,
+        maxDailyProfitUsd: this.config.maxDailyProfitUsd,
+        maxTradesPerDay: this.config.maxTradesPerDay,
+        maxOpenPositions: this.config.maxOpenPositions,
+        maxSimultaneousTrades: this.config.maxSimultaneousTrades,
+        maxConsecutiveLosses: this.config.maxConsecutiveLosses,
+        cooldownMinutes: this.config.cooldownMinutes,
+        stopOnRisk: this.config.stopOnRisk,
+        trailingStopUsd: this.config.trailingStopUsd,
+        trailingStopPct: this.config.trailingStopPct,
+        tradingSessions: this.config.tradingSessions,
+        sessionEdgeMinutes: this.config.sessionEdgeMinutes,
+        hourlyEdgeFilter: this.config.hourlyEdgeFilter,
+        newsFilter: this.config.newsFilter,
+        multiplierLevel: this.config.multiplierLevel,
+        stopLossPctOfStake: this.config.stopLossPctOfStake,
+        takeProfitPctOfStake: this.config.takeProfitPctOfStake,
+        atrStopMultiple: this.config.atrStopMultiple,
+        riskRewardRatio: this.config.riskRewardRatio,
+        symbols: this.config.symbols,
+        symbolMode: this.config.symbolMode,
+        timestamp: Date.now(),
+      };
+      // RB100 has its own dedicated signal engine — its route-specific
+      // MIN_SCORE/riskPct/SL-TP constants live in RB100_EFFECTIVE_CONFIG,
+      // not in AutoTraderConfig, so RB100_CONFIG_HASH is the real fingerprint
+      // for it. Every other preset hashes its own configSnapshot (minus the
+      // per-call timestamp, which would otherwise make every trade produce a
+      // different hash regardless of whether the config actually changed).
+      const { timestamp: _configSnapshotTimestamp, ...configSnapshotForHash } = configSnapshot;
+      const configHash =
+        this.preset === "rb100"
+          ? RB100_CONFIG_HASH
+          : hashConfig(configSnapshotForHash as unknown as Record<string, unknown>);
+
+      const indicatorValues = {
+        confidence: Math.round(analysis.confidence),
+        tfAgreement: analysis.agreement,
+        volatilityPct: analysis.volatilityPct,
+        volatilityRatio: analysis.volatilityRatio,
+        trendAlignmentScore: analysis.trendAlignmentScore,
+        premiumCount: analysis.premiumCount,
+        dominantTf: analysis.dominantTf,
+        suggestedDuration: analysis.suggestedDuration,
+        patternBonus: analysis.patternBonus,
+        components: analysis.components ?? [],
+        structuralLevel: structuralLevel
+          ? {
+              riskAbs: "riskAbs" in structuralLevel ? structuralLevel.riskAbs : undefined,
+              rewardAbs: "rewardAbs" in structuralLevel ? structuralLevel.rewardAbs : undefined,
+              reason: "reason" in structuralLevel ? structuralLevel.reason : undefined,
+            }
+          : undefined,
+      };
+
+      const timeFilterDecision = {
+        status: timeFilter.isBlocked ? "BLOCKED" : "APPROVED",
+        isBlocked: timeFilter.isBlocked,
+        reason: timeFilter.reason,
+        riskMultiplier: timeFilter.riskMultiplier,
+        observationMode: timeFilter.observationMode,
+        hourUtc: currentHourUtc,
+      };
+
+      const riskManagerDecision = {
+        decision: riskCheck.decision,
+        reason: riskCheck.reason,
+        explanation: riskCheck.explanation,
+        stakeUsd: riskCheck.stakeUsd,
+        finalStakeCalculated: stakeForTrade,
+        dailyPnl: pnl,
+        sessionPeakPnl: this.sessionPeakPnl,
+        consecutiveLosses: presetConsecutiveLosses,
+        activePositionsCount: this.activeSymbols.size,
+        stakeScalingPolicy: stakeScaling.policy,
+        stakeScalingApprovedTier: approvedScalingTier,
+        brokerMaxAllowedStatus: brokerCapKnown ? "KNOWN" : "UNKNOWN",
+        equityAtSignal: currentBalance ?? null,
+        stakeScalingConfigFingerprint: scalingConfigFingerprint(config),
+      };
+
+      const brokerLabel = useKraken
+        ? "Kraken"
+        : useBinance
+          ? "Binance"
+          : useOanda
+            ? "OANDA"
+            : "serveur";
       const pendingLog: TradeLog = {
         id: `srv_${Date.now()}_${symbol}`,
         time: Date.now(),
         symbol,
-        direction: useAltBroker ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : (isMultiplier ? (analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN") : analysis.direction),
+        direction: useAltBroker
+          ? direction === "CALL"
+            ? "MULTUP"
+            : "MULTDOWN"
+          : isMultiplier
+            ? direction === "CALL"
+              ? "MULTUP"
+              : "MULTDOWN"
+            : direction,
         stake: stakeForTrade,
         payout: 0,
         status: "pending",
         profit: 0,
         confidence: Math.round(analysis.confidence),
         tfAgreement: analysis.agreement,
-        note: `${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        note: `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level) ? `${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.strategy} · ${(crash500Level ?? boom500Level ?? vol75Level ?? rb100Level)!.reason} · ` : ""}${brokerLabel} · TAS ${analysis.trendAlignmentScore}/4 · risque ${tradeRisk} · ${tradeReasons.join(" · ")}`,
+        strategy: strategyId,
+        strategyVersion: currentStrategyVersion,
+        riskVersion: "R4",
+        executionVersion: "E3",
+        configHash,
+        requestedStake,
+        strategySuggestedStake: strategyRiskSuggestedStake,
+        riskManagerCap: maxRiskAllowed,
+        // Unknown broker limits must remain unknown in the journal; Infinity
+        // is only the internal neutral MIN term and never a broker claim.
+        derivMaxAllowedStake: brokerCapKnown ? derivMaxAllowed : undefined,
+        stakeSource,
+        estimatedMaxLoss: stakeScaling.estimatedMaxLoss,
+        riskPctOfEquity: stakeScaling.riskPctOfEquity ?? undefined,
+        stakeScalingTier: stakeScaling.tier,
+        stakeScalingReason: stakeScaling.reason,
         entryPrice: entryPrice || undefined,
         components: analysis.components,
+        preset: this.preset,
+        mode: this.config.mode === "live" ? "live" : "demo",
+        configSnapshot,
+        indicatorValues,
+        timeFilterDecision,
+        riskManagerDecision,
+        riskObservation: {
+          ...riskObservation,
+          COHORT: {
+            strategy_version: currentStrategyVersion,
+            risk_version: "R4",
+            execution_version: "E3",
+            config_hash: hashConfig(this.config as unknown as Record<string, unknown>),
+          },
+          RISK_DECISION: riskCheck.decision,
+          RISK_REJECTION_REASON: riskCheck.reason ?? null,
+          AUTO_SHADOW_STATE: riskCheck.reason === "STRATEGY_AUTO_SHADOW",
+        },
         ...(useAltBroker
           ? { multiplier: 1, stopLossUsd, takeProfitUsd }
           : isMultiplier
@@ -1504,43 +3993,50 @@ class ServerBotEngine {
       };
       this.emit(pendingLog);
 
+      const executionStartedAt = Date.now();
       try {
         if (useKraken) {
           // Kraken spot: buy/sell the base asset at market price
           const volume = stakeForTrade / (entryPrice || 1);
-          const slPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
-            : entryPrice * (1 + stopLossUsd / stakeForTrade);
-          const tpPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
-            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+          const slPrice =
+            direction === "CALL"
+              ? entryPrice * (1 - stopLossUsd / stakeForTrade)
+              : entryPrice * (1 + stopLossUsd / stakeForTrade);
+          const tpPrice =
+            direction === "CALL"
+              ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
+              : entryPrice * (1 - takeProfitUsd / stakeForTrade);
 
           const bought = await this.krakenConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             volume,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
-          const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
+          const fakeContractId = Math.abs(
+            bought.orderId.split("").reduce((a, c) => (a << 5) - a + c.charCodeAt(0), 0),
+          );
           const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
           this.emit(openLog);
           this.trackKrakenPosition(openLog, bought.orderId, volume);
         } else if (useBinance) {
           // Binance spot: buy with USD amount or sell base amount
           const baseAmount = stakeForTrade / (entryPrice || 1);
-          const slPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 - stopLossUsd / stakeForTrade)
-            : entryPrice * (1 + stopLossUsd / stakeForTrade);
-          const tpPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
-            : entryPrice * (1 - takeProfitUsd / stakeForTrade);
+          const slPrice =
+            direction === "CALL"
+              ? entryPrice * (1 - stopLossUsd / stakeForTrade)
+              : entryPrice * (1 + stopLossUsd / stakeForTrade);
+          const tpPrice =
+            direction === "CALL"
+              ? entryPrice * (1 + takeProfitUsd / stakeForTrade)
+              : entryPrice * (1 - takeProfitUsd / stakeForTrade);
 
           const bought = await this.binanceConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             quoteAmount: stakeForTrade,
-            baseAmount: analysis.direction === "PUT" ? baseAmount : undefined,
+            baseAmount: direction === "PUT" ? baseAmount : undefined,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
@@ -1556,47 +4052,123 @@ class ServerBotEngine {
           // code and every position would ride to the maxHoldMinutes force-close
           // instead (audit finding).
           const leveredNotional = stakeForTrade * effMultiplier;
-          const units = Math.round((leveredNotional / (entryPrice || 1)) * 1000) / 1000;
-          const slPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 - stopLossUsd / leveredNotional)
-            : entryPrice * (1 + stopLossUsd / leveredNotional);
-          const tpPrice = analysis.direction === "CALL"
-            ? entryPrice * (1 + takeProfitUsd / leveredNotional)
-            : entryPrice * (1 - takeProfitUsd / leveredNotional);
+          const units = Math.round((leveredNotional / entryPrice) * 1000) / 1000;
+          const slPrice =
+            direction === "CALL"
+              ? entryPrice * (1 - stopLossUsd / leveredNotional)
+              : entryPrice * (1 + stopLossUsd / leveredNotional);
+          const tpPrice =
+            direction === "CALL"
+              ? entryPrice * (1 + takeProfitUsd / leveredNotional)
+              : entryPrice * (1 - takeProfitUsd / leveredNotional);
 
           const bought = await this.oandaConn!.placeMarketOrder({
             symbol,
-            direction: analysis.direction === "CALL" ? "BUY" : "SELL",
+            direction: direction === "CALL" ? "BUY" : "SELL",
             units,
             stopLossPrice: slPrice,
             takeProfitPrice: tpPrice,
           });
-          const fakeContractId = Math.abs(bought.orderId.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0));
-          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: fakeContractId };
+          const tradeId = Number(bought.orderId);
+          if (!Number.isSafeInteger(tradeId) || tradeId <= 0)
+            throw new Error("OANDA: identifiant de trade invalide");
+          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: tradeId };
           this.emit(openLog);
-          this.trackOandaPosition(openLog, bought.orderId, units);
+          this.trackOandaPosition(openLog, bought.orderId, bought.units);
         } else if (isMultiplier) {
           const bought = await this.conn.proposeAndBuyMultiplier({
-            symbol, amount: stakeForTrade, direction: analysis.direction,
-            multiplier: effMultiplier, stopLossUsd, takeProfitUsd,
+            symbol,
+            amount: stakeForTrade,
+            direction,
+            multiplier: effMultiplier,
+            stopLossUsd,
+            takeProfitUsd,
           });
-          const openLog: TradeLog = { ...pendingLog, status: "open", contractId: bought.contractId };
+          if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+            const latency = Date.now() - executionStartedAt;
+            executionMonitor.recordProposal(symbol, latency, true);
+            executionMonitor.recordBuy(symbol, latency, true);
+          }
+          recordFunnelStep(this.preset, strategyId, "proposal_valid");
+          recordFunnelStep(this.preset, strategyId, "executed");
+          const openLog: TradeLog = {
+            ...pendingLog,
+            status: "open",
+            contractId: bought.contractId,
+          };
           this.emit(openLog);
           this.trackMultiplierPosition(openLog);
         } else {
           const bought = await this.conn.proposeAndBuy({
             symbol,
             amount: stakeForTrade,
-            contractType: analysis.direction,
+            contractType: direction,
             durationMinutes: tradeDuration,
           });
-          const openLog: TradeLog = { ...pendingLog, status: "open", payout: bought.payout, contractId: bought.contractId };
+          if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED) {
+            const latency = Date.now() - executionStartedAt;
+            executionMonitor.recordProposal(symbol, latency, true);
+            executionMonitor.recordBuy(symbol, latency, true);
+          }
+          recordFunnelStep(this.preset, strategyId, "proposal_valid");
+          recordFunnelStep(this.preset, strategyId, "executed");
+          const openLog: TradeLog = {
+            ...pendingLog,
+            status: "open",
+            payout: bought.payout,
+            contractId: bought.contractId,
+          };
           this.emit(openLog);
           this.trackContract(openLog);
         }
       } catch (e) {
+        if (FEATURE_FLAGS.EXECUTION_MONITOR_ENABLED && !useAltBroker) {
+          const error =
+            e instanceof DerivApiError
+              ? { code: e.code, message: e.message }
+              : { code: "EXECUTION_ERROR", message: (e as Error).message };
+          const latency = Date.now() - executionStartedAt;
+          executionMonitor.recordProposal(symbol, latency, false, error.code, error.message);
+          executionMonitor.recordBuy(symbol, latency, false, error.code, error.message);
+        }
         this.activeSymbols.delete(symbol); // release the reservation — no position was actually opened
-        this.emit({ ...pendingLog, status: "error", profit: 0, note: `Échec: ${(e as Error).message}` });
+        this.emit({
+          ...pendingLog,
+          status: "error",
+          profit: 0,
+          note: `Échec: ${(e as Error).message}`,
+        });
+        if (this.preset === "boom900") {
+          const error =
+            e instanceof DerivApiError
+              ? { code: e.code, message: e.message }
+              : { code: "TEMPORARILY_DISABLED", message: (e as Error).message };
+          const status =
+            error.code === "SYMBOL_UNAVAILABLE" || error.code === "CONTRACT_UNAVAILABLE"
+              ? "CONTRACT_UNAVAILABLE"
+              : error.code === "INVALID_MULTIPLIER"
+                ? "INVALID_MULTIPLIER"
+                : /amount|stake/i.test(error.code) || /amount|stake/i.test(error.message)
+                  ? "INVALID_STAKE"
+                  : /authoriz|account|restrict/i.test(error.code) ||
+                      /authoriz|account|restrict/i.test(error.message)
+                    ? "ACCOUNT_RESTRICTED"
+                    : "TEMPORARILY_DISABLED";
+          const nextConfig = {
+            ...this.config,
+            boom900ContractStatus: {
+              status,
+              at: Date.now(),
+              contractType: analysis.direction === "CALL" ? "MULTUP" : "MULTDOWN",
+              multiplier: effMultiplier,
+              amount: stakeForTrade,
+              error,
+            },
+          } as AutoTraderConfig;
+          updateConfigForUser(this.userId, "boom900", nextConfig);
+          stopBotForUser(this.userId, "boom900", `Contrat Boom900 suspendu : ${error.code}`);
+          return finishScan();
+        }
         this.symbolCooldowns.set(symbol, Date.now() + 10 * 60_000);
       }
     }
@@ -1620,8 +4192,8 @@ class ServerBotEngine {
 // user can now have up to three engines registered at once (2026-08-01).
 const ENGINES_KEY = Symbol.for("lio23.bot_engines_registry");
 const engines: Map<string, ServerBotEngine> =
-  (globalThis as Record<symbol, unknown>)[ENGINES_KEY] as Map<string, ServerBotEngine>
-  ?? ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] = new Map<string, ServerBotEngine>());
+  ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] as Map<string, ServerBotEngine>) ??
+  ((globalThis as Record<symbol, unknown>)[ENGINES_KEY] = new Map<string, ServerBotEngine>());
 
 export function isBotRunning(userId: number, preset: Preset): boolean {
   return engines.has(engineKey(userId, preset));
@@ -1645,10 +4217,17 @@ function runningPresetsFor(userId: number): Preset[] {
 // every AutoTraderConfig field: things like mode or adaptiveStake toggle
 // don't have a comparable "did this help" question in the same way.
 const CONFIG_CHANGE_FIELDS: readonly (keyof AutoTraderConfig)[] = [
-  "stakeUsd", "maxDailyLossUsd", "maxDailyProfitUsd",
-  "minConfidence", "maxConfidence", "minTfAgreement",
-  "takeProfitPctOfStake", "stopLossPctOfStake", "multiplierLevel",
-  "symbols", "excludedSymbols",
+  "stakeUsd",
+  "maxDailyLossUsd",
+  "maxDailyProfitUsd",
+  "minConfidence",
+  "maxConfidence",
+  "minTfAgreement",
+  "takeProfitPctOfStake",
+  "stopLossPctOfStake",
+  "multiplierLevel",
+  "symbols",
+  "excludedSymbols",
 ];
 
 function stableStringify(v: unknown): string {
@@ -1660,7 +4239,14 @@ export type ConfigChangeSource = "user" | "admin" | "auto-rollback";
 /** Diffs `oldConfig` vs `newConfig` on CONFIG_CHANGE_FIELDS and, if anything
  * changed, records a config_changes row so the admin panel can show
  * performance right before vs. right after this exact edit. */
-function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderConfig | null, newConfig: AutoTraderConfig, changedBy: number | undefined, source: ConfigChangeSource): void {
+function logConfigChange(
+  userId: number,
+  preset: Preset,
+  oldConfig: AutoTraderConfig | null,
+  newConfig: AutoTraderConfig,
+  changedBy: number | undefined,
+  source: ConfigChangeSource,
+): void {
   if (!oldConfig) return; // first-ever config for this user/preset — nothing to diff against
   const fields: Record<string, { from: unknown; to: unknown }> = {};
   for (const key of CONFIG_CHANGE_FIELDS) {
@@ -1670,8 +4256,18 @@ function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderCo
   }
   if (Object.keys(fields).length === 0) return;
   getDb()
-    .prepare("INSERT INTO config_changes (id, user_id, preset, changed_at, changed_by, fields, source) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(`cfg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, userId, preset, Date.now(), changedBy ?? null, JSON.stringify(fields), source);
+    .prepare(
+      "INSERT INTO config_changes (id, user_id, preset, changed_at, changed_by, fields, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      `cfg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId,
+      preset,
+      Date.now(),
+      changedBy ?? null,
+      JSON.stringify(fields),
+      source,
+    );
 }
 
 /**
@@ -1685,14 +4281,69 @@ function logConfigChange(userId: number, preset: Preset, oldConfig: AutoTraderCo
  * from config-rollback-guardian.server.ts so its reverts are never mistaken
  * for a fresh human edit worth re-judging.
  */
-export function updateConfigForUser(userId: number, preset: Preset, config: AutoTraderConfig, changedBy?: number, source?: ConfigChangeSource): void {
+export function updateConfigForUser(
+  userId: number,
+  preset: Preset,
+  config: AutoTraderConfig,
+  changedBy?: number,
+  source?: ConfigChangeSource,
+): void {
+  config = lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(config) : config);
   const db = getDb();
-  const oldRow = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(userId, preset) as { config: string } | undefined;
+  const oldRow = db
+    .prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?")
+    .get(userId, preset) as { config: string } | undefined;
   const oldConfig = oldRow ? (JSON.parse(oldRow.config) as AutoTraderConfig) : null;
+  const approvalStrategyVersion =
+    preset === "rb100"
+      ? RB100_ENGINE_VERSION
+      : (ConfigRegistry.getLatestVersion(userId, preset)?.version_tag ?? "V1");
+  assertStakeScalingApproved(userId, preset, oldConfig ?? config, config, {
+    strategyVersion: approvalStrategyVersion,
+    riskVersion: "R4",
+    executionVersion: "E3",
+  });
 
-  db.prepare("UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?")
-    .run(JSON.stringify(config), userId, preset);
-  logConfigChange(userId, preset, oldConfig, config, changedBy, source ?? (changedBy ? "admin" : "user"));
+  db.prepare(
+    "UPDATE bot_state SET config = ?, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+  ).run(JSON.stringify(config), userId, preset);
+  logConfigChange(
+    userId,
+    preset,
+    oldConfig,
+    config,
+    changedBy,
+    source ?? (changedBy ? "admin" : "user"),
+  );
+
+  // Quant Engine Phase 1: Immutable Strategy Versioning & Zero Silent Changes Audit Log
+  try {
+    ConfigRegistry.saveConfigVersion({
+      userId,
+      preset,
+      newConfig: config as Record<string, any>,
+      createdBy: changedBy ?? null,
+      source: (source === "auto-rollback"
+        ? "rollback"
+        : (source ?? (changedBy ? "admin" : "user"))) as any,
+    });
+  } catch (err) {
+    // Was previously swallowed into server stdout only — a failure here
+    // means this config change has NO version row, NO hash, and NO audit
+    // trail (config_versions/config_audit_events), exactly the "Zero Silent
+    // Changes" guarantee this system exists to provide. Surface it into
+    // safety_alerts so it's visible in the R4/E2 admin dashboard instead of
+    // requiring someone to grep server logs to notice.
+    console.error("[ConfigRegistry] Failed to save strategy version snapshot:", err);
+    logSafetyAlert({
+      alertType: "CONFIG_HASH_MISSING",
+      userId,
+      preset,
+      symbol: "N/A",
+      details: `ConfigRegistry.saveConfigVersion failed for preset ${preset}: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+
   engines.get(engineKey(userId, preset))?.updateConfig(config);
 }
 
@@ -1707,16 +4358,63 @@ export function updateConfigForUser(userId: number, preset: Preset, config: Auto
  */
 export function hasOpenPositions(userId: number, preset: Preset): boolean {
   const row = getDb()
-    .prepare(`SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`)
+    .prepare(
+      `SELECT COUNT(*) AS n FROM bot_trades WHERE user_id = ? AND preset = ? AND status = 'open'`,
+    )
     .get(userId, preset) as { n: number };
   return row.n > 0;
 }
 
-export function getBotRuntime(userId: number, preset: Preset): { running: boolean; pausedUntil: number | null; lastScan: ScanResult | null; lastError: string | null } {
+export function getBotRuntime(
+  userId: number,
+  preset: Preset,
+): {
+  running: boolean;
+  pausedUntil: number | null;
+  lastScan: ScanResult | null;
+  lastError: string | null;
+} {
   const engine = engines.get(engineKey(userId, preset));
   if (!engine) return { running: false, pausedUntil: null, lastScan: null, lastError: null };
   const paused = engine.pausedUntil;
-  return { running: true, pausedUntil: paused > Date.now() ? paused : null, lastScan: engine.lastScan, lastError: engine.lastError };
+  return {
+    running: true,
+    pausedUntil: paused > Date.now() ? paused : null,
+    lastScan: engine.lastScan,
+    lastError: engine.lastError,
+  };
+}
+
+/** Manual Boom900 revalidation: only Deriv metadata + a proposal, never buy. */
+export async function revalidateBoom900ContractForUser(userId: number) {
+  const settings = getDb()
+    .prepare("SELECT deriv_token FROM user_settings WHERE user_id = ?")
+    .get(userId) as { deriv_token?: string } | undefined;
+  const config = loadBotConfig(userId, "boom900");
+  if (!settings?.deriv_token || !config)
+    throw new Error("Compte Deriv ou configuration Boom900 introuvable.");
+  const connection = new DerivTradingConnection(settings.deriv_token, "demo");
+  try {
+    const result = await connection.validateMultiplierContract({
+      symbol: "BOOM900",
+      direction: "CALL",
+      multiplier: config.multiplierLevel,
+      amount: config.stakeUsd,
+    });
+    const next = { ...config, boom900ContractStatus: result } as AutoTraderConfig;
+    updateConfigForUser(userId, "boom900", next);
+    // Re-enable only after a real valid proposal. An invalid proposal leaves
+    // the temporary suspension intact.
+    if (result.status === "AVAILABLE")
+      getDb()
+        .prepare(
+          "UPDATE bot_state SET enabled = 1, updated_at = unixepoch() WHERE user_id = ? AND preset = 'boom900'",
+        )
+        .run(userId);
+    return result;
+  } finally {
+    connection.close();
+  }
 }
 
 // Account/broker balances are the same regardless of which preset's engine
@@ -1737,8 +4435,21 @@ export async function getBrokerBalances(userId: number): Promise<{
 
   // Bot not running — fetch balances directly from stored credentials
   const settings = getDb()
-    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")
-    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string; binance_api_key?: string; binance_api_secret?: string; oanda_api_key?: string; oanda_account_id?: string; oanda_is_practice?: number } | undefined;
+    .prepare(
+      "SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?",
+    )
+    .get(userId) as
+    | {
+        deriv_token?: string;
+        kraken_api_key?: string;
+        kraken_api_secret?: string;
+        binance_api_key?: string;
+        binance_api_secret?: string;
+        oanda_api_key?: string;
+        oanda_account_id?: string;
+        oanda_is_practice?: number;
+      }
+    | undefined;
 
   if (!settings) return { deriv: null, kraken: null, binance: null, oanda: null };
 
@@ -1754,34 +4465,77 @@ export async function getBrokerBalances(userId: number): Promise<{
       ? new DerivTradingConnection(settings.deriv_token, mode).getBalance().catch(() => null)
       : null,
     enableKraken && settings.kraken_api_key && settings.kraken_api_secret
-      ? new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret).getBalance().catch(() => null)
+      ? new KrakenTradingConnection(settings.kraken_api_key, settings.kraken_api_secret)
+          .getBalance()
+          .catch(() => null)
       : null,
     enableBinance && settings.binance_api_key && settings.binance_api_secret
-      ? new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret).getBalance().catch(() => null)
+      ? new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret)
+          .getBalance()
+          .catch(() => null)
       : null,
-    enableOanda && settings.oanda_api_key && settings.oanda_account_id
-      ? new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice).getBalance().catch(() => null)
+    OANDA_ENABLED && enableOanda && settings.oanda_api_key && settings.oanda_account_id
+      ? new OandaTradingConnection(
+          settings.oanda_api_key,
+          settings.oanda_account_id,
+          !!settings.oanda_is_practice,
+        )
+          .getBalance()
+          .catch(() => null)
       : null,
   ]);
 
   return { deriv, kraken, binance, oanda };
 }
 
-export async function startBotForUser(userId: number, preset: Preset, config: AutoTraderConfig): Promise<void> {
+export async function startBotForUser(
+  userId: number,
+  preset: Preset,
+  config: AutoTraderConfig,
+): Promise<void> {
+  if (!ACTIVE_PRESETS.includes(preset))
+    throw new Error("Ce preset est désactivé et ne peut plus être démarré.");
+  config = lockPresetSymbols(preset, isGoldPreset(preset) ? lockGoldOanda(config) : config);
+  const saved = loadBotConfig(userId, preset);
+  const approvalStrategyVersion =
+    preset === "rb100"
+      ? RB100_ENGINE_VERSION
+      : (ConfigRegistry.getLatestVersion(userId, preset)?.version_tag ?? "V1");
+  assertStakeScalingApproved(userId, preset, saved ?? config, config, {
+    strategyVersion: approvalStrategyVersion,
+    riskVersion: "R4",
+    executionVersion: "E3",
+  });
   if (engines.has(engineKey(userId, preset))) return;
   // Defense-in-depth against a stale persisted config from before "simulation"
   // was removed as a selectable mode — TradingMode no longer allows it, so this
   // is a runtime-only guard against old bot_state/localStorage rows.
-  if ((config.mode as string) === "simulation") throw new Error("Mode simulation obsolète — repasse en Démo ou Live.");
+  if ((config.mode as string) === "simulation")
+    throw new Error("Mode simulation obsolète — repasse en Démo ou Live.");
 
-  const account = getDb().prepare("SELECT status, is_admin FROM users WHERE id = ?").get(userId) as { status: string; is_admin: number } | undefined;
+  const account = getDb().prepare("SELECT status, is_admin FROM users WHERE id = ?").get(userId) as
+    | { status: string; is_admin: number }
+    | undefined;
   if (!account || (!account.is_admin && account.status !== "approved")) {
     throw new Error("Ce compte n'est pas approuvé : démarrage du bot refusé.");
   }
 
   const settings = getDb()
-    .prepare("SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?")
-    .get(userId) as { deriv_token?: string; kraken_api_key?: string; kraken_api_secret?: string; binance_api_key?: string; binance_api_secret?: string; oanda_api_key?: string; oanda_account_id?: string; oanda_is_practice?: number } | undefined;
+    .prepare(
+      "SELECT deriv_token, kraken_api_key, kraken_api_secret, binance_api_key, binance_api_secret, oanda_api_key, oanda_account_id, oanda_is_practice FROM user_settings WHERE user_id = ?",
+    )
+    .get(userId) as
+    | {
+        deriv_token?: string;
+        kraken_api_key?: string;
+        kraken_api_secret?: string;
+        binance_api_key?: string;
+        binance_api_secret?: string;
+        oanda_api_key?: string;
+        oanda_account_id?: string;
+        oanda_is_practice?: number;
+      }
+    | undefined;
 
   // Deriv connection (forex/or binaire + multiplier)
   let derivToken: string | null = null;
@@ -1798,16 +4552,38 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
   // Binance connection (crypto spot — for users in regions where Binance is available)
   let binanceConn: BinanceTradingConnection | null = null;
   if (settings?.binance_api_key && settings?.binance_api_secret && (config.enableBinance ?? true)) {
-    binanceConn = new BinanceTradingConnection(settings.binance_api_key, settings.binance_api_secret);
+    binanceConn = new BinanceTradingConnection(
+      settings.binance_api_key,
+      settings.binance_api_secret,
+    );
   }
 
-  // OANDA connection (forex spot — for users in Canada)
+  // OANDA connection — retired, see OANDA_ENABLED.
   let oandaConn: OandaTradingConnection | null = null;
-  if (settings?.oanda_api_key && settings?.oanda_account_id && (config.enableOanda ?? true)) {
-    oandaConn = new OandaTradingConnection(settings.oanda_api_key, settings.oanda_account_id, !!settings.oanda_is_practice);
+  if (
+    OANDA_ENABLED &&
+    settings?.oanda_api_key &&
+    settings?.oanda_account_id &&
+    (config.enableOanda ?? true)
+  ) {
+    oandaConn = new OandaTradingConnection(
+      settings.oanda_api_key,
+      settings.oanda_account_id,
+      !!settings.oanda_is_practice,
+    );
   }
 
-  // Deriv is the universal fallback — every symbol Kraken/Binance/OANDA can
+  // Gold presets are an OANDA Practice-only experiment. They have different
+  // position sizing from Deriv, so an unavailable or live OANDA account is a
+  // hard start failure rather than an execution fallback.
+  if (isGoldPreset(preset)) {
+    if (config.mode !== "demo") throw new Error("Les presets Gold sont limités au mode Démo.");
+    if (config.broker !== "oanda" || !oandaConn || !settings?.oanda_is_practice) {
+      throw new Error("Les presets Gold exigent un compte OANDA Practice configuré et activé.");
+    }
+  }
+
+  // Deriv is the universal fallback for presets that select it — every symbol Kraken/Binance/OANDA can
   // trade also has a Deriv route (crypto via Multiplier, forex via CALL/PUT
   // or Multiplier), and the scan loop already falls back to it transparently
   // whenever an alt-broker connection is null (isKrakenSymbol(s) && this.
@@ -1820,19 +4596,48 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
   const needsDeriv = config.enableDeriv ?? true;
 
   if (needsDeriv && !derivToken) {
-    throw new Error("Deriv est activé mais aucun token enregistré — va dans Paramètres ou désactive Deriv.");
+    if (config.mode === "demo") {
+      const adminTokenRow = getDb()
+        .prepare(
+          "SELECT us.deriv_token FROM user_settings us JOIN users u ON u.id = us.user_id WHERE u.is_admin = 1 AND us.deriv_token IS NOT NULL AND us.deriv_token != '' LIMIT 1",
+        )
+        .get() as { deriv_token?: string } | undefined;
+      if (adminTokenRow?.deriv_token) {
+        derivToken = adminTokenRow.deriv_token;
+      }
+    }
   }
 
-  getDb().prepare(`
+  if (needsDeriv && !derivToken) {
+    throw new Error(
+      "Deriv est activé mais aucun token enregistré — renseigne ton Token Deriv dans les Paramètres.",
+    );
+  }
+
+  getDb()
+    .prepare(
+      `
     INSERT INTO bot_state (user_id, preset, enabled, config, paused_until, updated_at) VALUES (?, ?, 1, ?, NULL, unixepoch())
     ON CONFLICT(user_id, preset) DO UPDATE SET enabled = 1, config = excluded.config, paused_until = NULL, updated_at = unixepoch()
-  `).run(userId, preset, JSON.stringify(config));
+  `,
+    )
+    .run(userId, preset, JSON.stringify(config));
 
-  const engine = new ServerBotEngine(userId, preset, config, derivToken ?? "", krakenConn, binanceConn, oandaConn);
+  const engine = new ServerBotEngine(
+    userId,
+    preset,
+    config,
+    derivToken ?? "",
+    krakenConn,
+    binanceConn,
+    oandaConn,
+  );
   engines.set(engineKey(userId, preset), engine);
   await engine.reconcile().catch(() => {});
   engine.start();
-  console.log(`[bot] Moteur serveur démarré pour user ${userId} preset ${preset} (mode ${config.mode})`);
+  console.log(
+    `[bot] Moteur serveur démarré pour user ${userId} preset ${preset} (mode ${config.mode})`,
+  );
   void (async () => {
     try {
       const { sendPushToUser } = await import("./push.server");
@@ -1848,7 +4653,11 @@ export async function startBotForUser(userId: number, preset: Preset, config: Au
 }
 
 export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt manuel"): void {
-  getDb().prepare("UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?").run(userId, preset);
+  getDb()
+    .prepare(
+      "UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+    )
+    .run(userId, preset);
   const engine = engines.get(engineKey(userId, preset));
   if (engine) {
     // A full stop() tears down every contract subscription and timer —
@@ -1859,7 +4668,9 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
     // open position actually closes (engine.emit() finalizes it then).
     if (hasOpenPositions(userId, preset)) {
       engine.stopScanning(reason);
-      console.log(`[bot] Scan arrêté pour user ${userId} preset ${preset} (${reason}) — position(s) ouverte(s), moteur maintenu le temps qu'elles se clôturent`);
+      console.log(
+        `[bot] Scan arrêté pour user ${userId} preset ${preset} (${reason}) — position(s) ouverte(s), moteur maintenu le temps qu'elles se clôturent`,
+      );
     } else {
       engine.stop();
       engines.delete(engineKey(userId, preset));
@@ -1875,15 +4686,22 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
           url: "/autotrader",
         });
       } catch (e) {
-        console.error(`[bot] Push d'arrêt utilisateur échoué pour user ${userId}:`, (e as Error).message);
+        console.error(
+          `[bot] Push d'arrêt utilisateur échoué pour user ${userId}:`,
+          (e as Error).message,
+        );
       }
     })();
 
     void (async () => {
       try {
-        const admins = getDb().prepare("SELECT id FROM users WHERE is_admin = 1").all() as { id: number }[];
+        const admins = getDb().prepare("SELECT id FROM users WHERE is_admin = 1").all() as {
+          id: number;
+        }[];
         if (!admins.length) return;
-        const user = getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as { username: string } | undefined;
+        const user = getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as
+          | { username: string }
+          | undefined;
         if (!user) return;
 
         const { sendPushToUser } = await import("./push.server");
@@ -1894,7 +4712,10 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
         };
         await Promise.allSettled(admins.map((admin) => sendPushToUser(admin.id, payload)));
       } catch (e) {
-        console.error(`[bot] Notification Push admin échouée pour user ${userId}:`, (e as Error).message);
+        console.error(
+          `[bot] Notification Push admin échouée pour user ${userId}:`,
+          (e as Error).message,
+        );
       }
     })();
   }
@@ -1905,7 +4726,11 @@ export function stopBotForUser(userId: number, preset: Preset, reason = "Arrêt 
  * for an account revocation: stopping outright would orphan open positions. */
 export function suspendBotsForUser(userId: number, reason = "Compte suspendu"): void {
   const until = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
-  getDb().prepare("UPDATE bot_state SET enabled = 0, paused_until = ?, updated_at = unixepoch() WHERE user_id = ?").run(until, userId);
+  getDb()
+    .prepare(
+      "UPDATE bot_state SET enabled = 0, paused_until = ?, updated_at = unixepoch() WHERE user_id = ?",
+    )
+    .run(until, userId);
   console.log(`[bot] Tous les scans suspendus pour user ${userId} (${reason})`);
 }
 
@@ -1918,7 +4743,11 @@ export function suspendBotsForUser(userId: number, reason = "Compte suspendu"): 
  */
 export function shutdownAllEngines(): void {
   for (const engine of engines.values()) {
-    try { engine.stop(); } catch { /* closing anyway */ }
+    try {
+      engine.stop();
+    } catch {
+      /* closing anyway */
+    }
   }
   engines.clear();
   closePublicSocket();
@@ -1930,16 +4759,31 @@ export function shutdownAllEngines(): void {
 /** Called once at server boot: resume every (user, preset) bot that was
  * enabled before the restart — up to three per user now. */
 export async function restoreBots(): Promise<void> {
-  const rows = getDb().prepare(
-    "SELECT bs.user_id, bs.preset FROM bot_state bs JOIN users u ON u.id = bs.user_id WHERE bs.enabled = 1 AND (u.is_admin = 1 OR u.status = 'approved')",
-  ).all() as { user_id: number; preset: Preset }[];
+  const rows = getDb()
+    .prepare(
+      "SELECT bs.user_id, bs.preset FROM bot_state bs JOIN users u ON u.id = bs.user_id WHERE bs.enabled = 1 AND (u.is_admin = 1 OR u.status = 'approved')",
+    )
+    .all() as { user_id: number; preset: Preset }[];
   for (const { user_id, preset } of rows) {
+    if (!ACTIVE_PRESETS.includes(preset)) {
+      // Leave any already-open broker position untouched; this only prevents
+      // the retired engine from resuming scans after the restart.
+      getDb()
+        .prepare(
+          "UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = ?",
+        )
+        .run(user_id, preset);
+      continue;
+    }
     try {
       const config = loadBotConfig(user_id, preset);
       if (!config) continue;
       await startBotForUser(user_id, preset, config);
     } catch (e) {
-      console.error(`[bot] Restauration échouée pour user ${user_id} preset ${preset}:`, (e as Error).message);
+      console.error(
+        `[bot] Restauration échouée pour user ${user_id} preset ${preset}:`,
+        (e as Error).message,
+      );
     }
   }
   if (rows.length) console.log(`[bot] ${rows.length} bot(s) restauré(s) après redémarrage`);
@@ -1951,4 +4795,27 @@ export function getBotTrades(userId: number, preset: Preset, limit = 20): TradeL
 
 export function getOpenBotTrades(userId: number, preset: Preset): TradeLog[] {
   return loadOpenOrPendingTrades(userId, preset);
+}
+
+/**
+ * Admin force-trade: executes a manual trade on behalf of a user via their
+ * running bot engine's Deriv connection. Requires the engine to be running
+ * (so the Deriv connection is established). Returns the trade log.
+ */
+export async function forceTradeForUser(
+  userId: number,
+  preset: Preset,
+  opts: {
+    symbol: string;
+    direction: "CALL" | "PUT" | "MULTUP" | "MULTDOWN";
+    stake: number;
+    durationMinutes: number;
+  },
+): Promise<TradeLog> {
+  const engine = engines.get(engineKey(userId, preset));
+  if (!engine)
+    throw new Error(
+      `Bot non actif pour user ${userId} preset ${preset} — démarrez le bot d'abord.`,
+    );
+  return engine.forceTrade(opts);
 }

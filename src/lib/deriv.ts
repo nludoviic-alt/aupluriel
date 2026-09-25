@@ -5,7 +5,7 @@
 // Market data: legacy v3 public WS (no auth) — still serves the same symbols.
 
 export const DERIV_APP_ID = 1089;
-export const DERIV_WS_URL = `wss://ws.binaryws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+export const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
 
 let derivSessionUrl: string | null = null;
 let sessionUrlConsumed = false; // OTP URLs are single-use — never reconnect with one
@@ -58,12 +58,11 @@ export interface DerivTick {
 // offer CALL/PUT 15m→1h during their exchange's hours only.
 export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex" | "commodity" | "synthetic" | "indices" }[] = [
   // ── Synthétiques (24/7, CALL/PUT dès 15s) ──
-  { label: "Volatility 100", deriv: "R_100", market: "synthetic" },
-  { label: "Volatility 75", deriv: "R_75", market: "synthetic" },
-  { label: "Volatility 50", deriv: "R_50", market: "synthetic" },
-  { label: "Volatility 25", deriv: "R_25", market: "synthetic" },
-  { label: "Volatility 10", deriv: "R_10", market: "synthetic" },
+  // R_100/75/50/25/10 retirés (2026-08-08) : symboles invalides sur Deriv,
+  // causent des erreurs InvalidSymbol + RateLimit en boucle.
   { label: "Volatility 100 (1s)", deriv: "1HZ100V", market: "synthetic" },
+  { label: "Volatility 75 (1s)", deriv: "1HZ75V", market: "synthetic" },
+  { label: "Range Break 100", deriv: "RB100", market: "synthetic" },
   { label: "Jump 100", deriv: "JD100", market: "synthetic" },
   { label: "Step Index 100", deriv: "stpRNG", market: "synthetic" },
   { label: "Boom 1000", deriv: "BOOM1000", market: "synthetic" },
@@ -76,7 +75,6 @@ export const SYMBOLS: { label: string; deriv: string; market: "crypto" | "forex"
   // (100/150/200/300/50) n'existaient pas comme Multiplier malgré leur
   // présence sur le site Deriv. À confirmer via un vrai appel proposal/
   // contracts_for avant de leur faire confiance pour trader.
-  { label: "Crash 1000", deriv: "CRASH1000", market: "synthetic" },
   { label: "Crash 900", deriv: "CRASH900", market: "synthetic" },
   { label: "Crash 600", deriv: "CRASH600", market: "synthetic" },
   { label: "Crash 500", deriv: "CRASH500", market: "synthetic" },
@@ -181,6 +179,34 @@ let pubReqId = 0;
 const tickListenersBySymbol = new Map<string, Set<(tick: DerivTick) => void>>();
 const tickSharedListeners = new Map<string, Listener>();
 const tickSubIds = new Map<string, string>();
+// Fallback when Deriv's live `ticks` subscription rejects every symbol with
+// InvalidSymbol (observed 2026-08-06 — ticks_history/candles still works fine,
+// so this is a Deriv-side streaming outage, not a bad symbol). Polls the
+// latest 1-minute candle instead of giving up, so charts keep moving instead
+// of sitting on "en attente" forever. One poll loop per symbol, shared across
+// every subscriber the same way the real subscription is.
+const TICK_POLL_FALLBACK_MS = 2000;
+const tickPollTimers = new Map<string, ReturnType<typeof setInterval>>();
+
+function startTickPollFallback(symbol: string) {
+  if (tickPollTimers.has(symbol)) return;
+  const poll = async () => {
+    try {
+      const candles = await fetchCandles(symbol, 60, 1, 0);
+      const c = candles[candles.length - 1];
+      if (!c) return;
+      const tick: DerivTick = { epoch: Math.floor(Date.now() / 1000), quote: c.close, symbol };
+      for (const cb of tickListenersBySymbol.get(symbol) ?? []) cb(tick);
+    } catch { /* Deriv still unreachable this cycle — retry next tick */ }
+  };
+  tickPollTimers.set(symbol, setInterval(poll, TICK_POLL_FALLBACK_MS));
+  poll();
+}
+
+function stopTickPollFallback(symbol: string) {
+  const t = tickPollTimers.get(symbol);
+  if (t) { clearInterval(t); tickPollTimers.delete(symbol); }
+}
 
 function nextPubId(): number {
   pubReqId = (pubReqId + 1) % 9000000000;
@@ -200,8 +226,9 @@ function getPublicSocket(): Promise<WebSocket> {
   if (pubConnecting) return pubConnecting;
   pubConnecting = new Promise((resolve, reject) => {
     const ws = new WebSocket(DERIV_WS_URL);
-    ws.onerror = (e) => { pubConnecting = null; reject(e); };
-    ws.onclose = () => {
+    ws.onerror = (e) => { console.error("[Deriv] pubSocket error", e); pubConnecting = null; reject(e); };
+    ws.onclose = (ev) => {
+      console.warn("[Deriv] pubSocket closed", ev.code, ev.reason);
       pubSocket = null;
       pubConnecting = null;
       if (pubHeartbeat) { clearInterval(pubHeartbeat); pubHeartbeat = null; }
@@ -217,6 +244,7 @@ function getPublicSocket(): Promise<WebSocket> {
       } catch { /* ignore */ }
     };
     ws.onopen = () => {
+      console.log("[Deriv] pubSocket connected");
       pubSocket = ws;
       pubConnecting = null;
       pubHeartbeat = setInterval(() => {
@@ -238,7 +266,13 @@ async function pubRequest<T = Record<string, unknown>>(payload: Record<string, u
       if (msg.req_id === id) {
         pubListeners.delete(l);
         pendingPubReqs.delete(id);
-        if (msg.error) reject(new Error(String((msg.error as { message?: string }).message ?? "Deriv error")));
+        if (msg.error) {
+          const errMsg = (msg.error as { message?: string; code?: string }).message
+            ?? (msg.error as { code?: string }).code
+            ?? JSON.stringify(msg.error);
+          console.error(`[Deriv] pubRequest error for payload ${JSON.stringify(payload)}:`, errMsg, msg.error);
+          reject(new Error(errMsg));
+        }
         else resolve(msg as T);
       }
     };
@@ -423,7 +457,14 @@ export function subscribeTicks(
     };
     tickSharedListeners.set(symbol, l);
     pubListeners.add(l);
-    pubRequest({ ticks: symbol, subscribe: 1 }).catch(() => { /* ignore */ });
+    pubRequest({ ticks: symbol, subscribe: 1 }).then(() => {
+      console.log(`[Deriv] subscribed to ticks: ${symbol}`);
+    }).catch(() => {
+      // Silently fall back to candle polling — Deriv sometimes restricts
+      // tick streaming for certain app_ids while candles still work.
+      // The fallback keeps charts updating every 2s via ticks_history.
+      startTickPollFallback(symbol);
+    });
   }
   listeners.add(onTick);
 
@@ -439,6 +480,7 @@ export function subscribeTicks(
       const l = tickSharedListeners.get(symbol);
       if (l) pubListeners.delete(l);
       tickSharedListeners.delete(symbol);
+      stopTickPollFallback(symbol);
       const subId = tickSubIds.get(symbol);
       tickSubIds.delete(symbol);
       if (subId) pubRequest({ forget: subId }).catch(() => {});

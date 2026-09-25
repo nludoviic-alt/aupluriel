@@ -54,7 +54,7 @@ export function defaultSweepGrid(quick: boolean): SweepCombo[] {
   return combos;
 }
 
-interface RawEntry {
+export interface RawEntry {
   entryEpoch: number;
   entryPrice: number;
   direction: "CALL" | "PUT";
@@ -63,7 +63,7 @@ interface RawEntry {
   volatilityPct: number;
 }
 
-interface AnalyzedSymbol {
+export interface AnalyzedSymbol {
   entries: RawEntry[];
   c5m: ServerCandle[];
 }

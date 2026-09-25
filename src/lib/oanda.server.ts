@@ -73,7 +73,16 @@ export async function fetchOandaCandles(
   const oandaSymbol = OANDA_SYMBOL_MAP[symbol] ?? symbol;
   const granularity = getOandaGranularity(granularitySeconds);
   const baseUrl = isPractice ? OANDA_PRACTICE_URL : OANDA_REST_URL;
-  const url = `${baseUrl}/instruments/${oandaSymbol}/candles?granularity=${granularity}&count=${count}&price=Mid`;
+  // OANDA's v3 API wants the single-letter price code (M=mid, B=bid, A=ask),
+  // not the word "Mid" — the wrong value silently 400'd every OANDA candle
+  // fetch ("Invalid value specified for 'price'"), confirmed by testing this
+  // exact request directly against OANDA's API on 2026-08-07. Since routing
+  // only ever engages when a user has OANDA credentials AND the symbol is
+  // OANDA-mapped (isOandaSymbol + this.oandaConn in bot-engine.server.ts),
+  // this was silently breaking candle fetches for every OANDA-mapped forex
+  // symbol (EUR/GBP, USD/CAD, XAU/USD, ...) for any account with OANDA
+  // credentials configured, not just gold.
+  const url = `${baseUrl}/instruments/${oandaSymbol}/candles?granularity=${granularity}&count=${count}&price=M`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
@@ -113,6 +122,15 @@ export async function getOandaPrice(
 export interface OandaOrderResult {
   orderId: string;
   buyPrice: number;
+  units: number;
+}
+
+export interface OandaInstrumentSpec {
+  minimumTradeSize: number;
+  maximumOrderUnits: number | null;
+  tradeUnitsPrecision: number;
+  displayPrecision: number;
+  marginRate: number;
 }
 
 export interface OandaPositionUpdate {
@@ -171,6 +189,32 @@ export class OandaTradingConnection {
   }
 
   /**
+   * Order sizing and price precision are account-specific on OANDA (and can
+   * differ by regulatory division). Never guess them from a Deriv multiplier.
+   */
+  async getInstrumentSpec(symbol: string): Promise<OandaInstrumentSpec> {
+    const oandaSymbol = OANDA_SYMBOL_MAP[symbol] ?? symbol;
+    const result = await this.request(`/accounts/${this.accountId}/instruments?instruments=${encodeURIComponent(oandaSymbol)}`);
+    const instrument = (result as {
+      instruments?: Array<{
+        minimumTradeSize?: string;
+        maximumOrderUnits?: string;
+        tradeUnitsPrecision?: number;
+        displayPrecision?: number;
+        marginRate?: string;
+      }>;
+    }).instruments?.[0];
+    if (!instrument) throw new Error(`OANDA: instrument ${oandaSymbol} indisponible sur ce compte`);
+    return {
+      minimumTradeSize: Number(instrument.minimumTradeSize ?? 0),
+      maximumOrderUnits: instrument.maximumOrderUnits === undefined ? null : Number(instrument.maximumOrderUnits),
+      tradeUnitsPrecision: Number(instrument.tradeUnitsPrecision ?? 0),
+      displayPrecision: Number(instrument.displayPrecision ?? 5),
+      marginRate: Number(instrument.marginRate ?? 0),
+    };
+  }
+
+  /**
    * Place a market order on OANDA (spot forex).
    * OANDA uses units (in the base currency) and supports stop-loss/take-profit
    * natively in the same order via stopLoss/takeProfit fields.
@@ -186,7 +230,16 @@ export class OandaTradingConnection {
     takeProfitPrice?: number;
   }): Promise<OandaOrderResult> {
     const oandaSymbol = OANDA_SYMBOL_MAP[params.symbol] ?? params.symbol;
-    const side = params.direction === "BUY" ? params.units : -params.units;
+    const spec = await this.getInstrumentSpec(params.symbol);
+    const unitScale = 10 ** spec.tradeUnitsPrecision;
+    const normalizedUnits = Math.floor(params.units * unitScale + 1e-9) / unitScale;
+    if (!Number.isFinite(normalizedUnits) || normalizedUnits < spec.minimumTradeSize) {
+      throw new Error(`OANDA: taille ${normalizedUnits} sous le minimum ${spec.minimumTradeSize} pour ${oandaSymbol}`);
+    }
+    if (spec.maximumOrderUnits !== null && normalizedUnits > spec.maximumOrderUnits) {
+      throw new Error(`OANDA: taille ${normalizedUnits} au-dessus du maximum ${spec.maximumOrderUnits} pour ${oandaSymbol}`);
+    }
+    const side = params.direction === "BUY" ? normalizedUnits : -normalizedUnits;
 
     const orderBody: Record<string, unknown> = {
       order: {
@@ -201,20 +254,37 @@ export class OandaTradingConnection {
     // Add stop-loss and take-profit as child orders
     if (params.stopLossPrice) {
       (orderBody.order as Record<string, unknown>).stopLossOnFill = {
-        price: params.stopLossPrice.toFixed(5),
+        price: params.stopLossPrice.toFixed(spec.displayPrecision),
       };
     }
     if (params.takeProfitPrice) {
       (orderBody.order as Record<string, unknown>).takeProfitOnFill = {
-        price: params.takeProfitPrice.toFixed(5),
+        price: params.takeProfitPrice.toFixed(spec.displayPrecision),
       };
     }
 
     const result = await this.request(`/accounts/${this.accountId}/orders`, "POST", orderBody);
-    const orderFill = (result as { orderFillTransaction?: { id: string; price: string } }).orderFillTransaction;
-    if (!orderFill) throw new Error("OANDA: aucune transaction retournée");
+    const response = result as {
+      orderFillTransaction?: { id: string; price: string; units: string; tradeOpened?: { tradeID?: string } };
+      orderCancelTransaction?: { rejectReason?: string; reason?: string; id?: string };
+      orderRejectTransaction?: { rejectReason?: string; reason?: string; id?: string };
+    };
+    const orderFill = response.orderFillTransaction;
+    if (!orderFill) {
+      // OANDA can acknowledge an order request (HTTP 201) then cancel it,
+      // returning no fill. Preserve the broker reason rather than pretending
+      // this is an unexplained missing transaction.
+      const rejection = response.orderRejectTransaction ?? response.orderCancelTransaction;
+      const reason = rejection?.rejectReason ?? rejection?.reason ?? "aucune transaction retournée";
+      throw new Error(`OANDA: ordre non exécuté (${reason})`);
+    }
+    // `id` identifies the fill transaction, while /trades/{id} requires the
+    // actual opened trade id. Persisting the transaction id made restart
+    // reconciliation silently lose an OANDA position.
+    const tradeId = orderFill.tradeOpened?.tradeID;
+    if (!tradeId) throw new Error("OANDA: ordre exécuté sans tradeOpened.tradeID");
 
-    return { orderId: orderFill.id, buyPrice: Number(orderFill.price) };
+    return { orderId: tradeId, buyPrice: Number(orderFill.price), units: Math.abs(Number(orderFill.units)) };
   }
 
   /**
@@ -241,15 +311,15 @@ export class OandaTradingConnection {
   /**
    * Get the details of a specific trade.
    */
-  async getTradeInfo(tradeId: string): Promise<{ state: string; units: number; price: number; unrealizedPL: number }> {
+  async getTradeInfo(tradeId: string): Promise<{ state: string; units: number; price: number; profit: number }> {
     const result = await this.request(`/accounts/${this.accountId}/trades/${tradeId}`);
-    const trade = (result as { trade?: { state?: string; currentUnits?: string; price?: string; unrealizedPL?: string } }).trade;
+    const trade = (result as { trade?: { state?: string; currentUnits?: string; price?: string; unrealizedPL?: string; realizedPL?: string } }).trade;
     if (!trade) throw new Error("OANDA: trade introuvable");
     return {
       state: trade.state ?? "OPEN",
       units: Number(trade.currentUnits ?? 0),
       price: Number(trade.price ?? 0),
-      unrealizedPL: Number(trade.unrealizedPL ?? 0),
+      profit: Number(trade.state === "CLOSED" ? trade.realizedPL ?? 0 : trade.unrealizedPL ?? 0),
     };
   }
 
