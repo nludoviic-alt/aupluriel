@@ -5,7 +5,9 @@
 // Market data: legacy v3 public WS (no auth) — still serves the same symbols.
 
 export const DERIV_APP_ID = 1089;
-export const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+// Public market-data socket — see PUBLIC_WS_URL in deriv.server.ts (legacy
+// ws.derivws.com host returned HTTP 520 from 2026-09-25).
+export const DERIV_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 
 let derivSessionUrl: string | null = null;
 let sessionUrlConsumed = false; // OTP URLs are single-use — never reconnect with one

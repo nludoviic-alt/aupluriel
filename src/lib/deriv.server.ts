@@ -10,8 +10,10 @@
 
 import { FEATURE_FLAGS } from "./feature-flags.server";
 
-const DERIV_APP_ID = 1089;
-const PUBLIC_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+// Deriv's public market-data socket. The legacy `ws.derivws.com/websockets/v3`
+// host returned HTTP 520 from 2026-09-25; this endpoint speaks the same JSON
+// protocol without auth, but caps ticks_history at 1000 candles per call.
+const PUBLIC_WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 const TRADING_V1 = "https://api.derivws.com/trading/v1/options";
 const DERIV_REST_APP_ID = "33zECGFcSA3ZubKPdQJqm";
 
@@ -229,21 +231,37 @@ export function closePublicSocket(): void {
   nextPublicHistoryAt = 0;
 }
 
+const MAX_CANDLES_PER_REQUEST = 1000;
+
 export async function fetchCandlesServer(symbol: string, granularitySeconds: number, count: number, end: number | "latest" = "latest"): Promise<ServerCandle[]> {
   const key = `candles:${symbol}:${granularitySeconds}:${count}:${end}`;
   return getPublicHistory(key, async () => {
-    const res = await getPublicSocket().request<{
-      candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
-    }>({
-      ticks_history: symbol,
-      style: "candles",
-      granularity: granularitySeconds,
-      count,
-      end,
-    });
-    return (res.candles ?? []).map((c) => ({
-      epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
-    }));
+    // Page backwards when more than one request's worth is asked for, so a
+    // caller asking for 5000 candles never silently gets the newest 1000.
+    const byEpoch = new Map<number, ServerCandle>();
+    let pageEnd: number | "latest" = end;
+    while (byEpoch.size < count) {
+      const res = await getPublicSocket().request<{
+        candles?: Array<{ epoch: number; open: number; high: number; low: number; close: number }>;
+      }>({
+        ticks_history: symbol,
+        style: "candles",
+        granularity: granularitySeconds,
+        count: Math.min(MAX_CANDLES_PER_REQUEST, count - byEpoch.size),
+        end: pageEnd,
+      });
+      const page = res.candles ?? [];
+      const sizeBefore = byEpoch.size;
+      for (const c of page) {
+        byEpoch.set(c.epoch, {
+          epoch: c.epoch, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
+        });
+      }
+      // no older data (or no progress): stop instead of looping
+      if (page.length < MAX_CANDLES_PER_REQUEST || byEpoch.size === sizeBefore) break;
+      pageEnd = page[0].epoch - 1;
+    }
+    return [...byEpoch.values()].sort((a, b) => a.epoch - b.epoch).slice(-count);
   }, end === "latest" ? PUBLIC_HISTORY_CACHE_MS : 60_000);
 }
 
