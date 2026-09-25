@@ -49,9 +49,18 @@ test("Priority 3 — Deriv Minimum Stake Rejection (No Silent Escalation)", () =
 });
 
 test("Priority 4 — Loss Streak Order (3 Losses => PAUSED)", () => {
-  // Mock check for a non-existent strategy to verify baseline
+  // Mock check for a non-existent strategy to verify baseline. The user must
+  // exist: the R5 breaker persists its state in loss_streak_state, which has a
+  // foreign key on users(id).
+  const db = getDb();
+  db.prepare(
+    "INSERT OR IGNORE INTO users (email, username, password_hash, status) VALUES (?, ?, 'x', 'approved')",
+  ).run("safety-priority4@example.invalid", "safety-priority4");
+  const { id: userId } = db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get("safety-priority4@example.invalid") as { id: number };
   const res = evaluateRiskCheck({
-    userId: 999999,
+    userId,
     preset: "rb100",
     strategyId: "RB100_RANGE_TRADER",
     symbol: "RB100",

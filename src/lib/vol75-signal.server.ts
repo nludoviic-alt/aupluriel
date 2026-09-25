@@ -40,8 +40,17 @@ const data = (c: ServerCandle[]) => ({ close: c.map(x => x.close), high: c.map(x
 const slopeUp = (values: (number | null)[]) => n(last(values)) > n(values.at(-4));
 const slopeDown = (values: (number | null)[]) => n(last(values)) < n(values.at(-4));
 
+// Au Pluriel spec 2026-09-24, §9 initial configuration — backtest and forward
+// test in docs/VOL75_FORWARD_TEST.md.
+// Experimental: the spec's test grid is ADX 20/25/30, SL 1.3/1.5/2.0 ATR and
+// TP 1.5/2/2.5/3R; nothing here is validated until the OOS gate is positive.
+export const VOL75_MIN_ADX = 25; // was 15
+export const VOL75_SL_ATR = 1.5; // was 1.1
+export const VOL75_TP_R = 2.5; // was 1.8 ATR ≈ 1.64R
+export const VOL75_MIN_SCORE = 80; // was 74
+
 /** Dedicated Volatility 75 (1s) engine V2.
- * Softened combinatory score model with Hard Guards (ADX >= 15, ATR < 1.80, Pullback <= 0.35 ATR). */
+ * Softened combinatory score model with Hard Guards (ADX >= VOL75_MIN_ADX, ATR < 1.80, Pullback <= 0.35 ATR). */
 export function generateVol75Signal(m15: ServerCandle[], m5: ServerCandle[], m1: ServerCandle[], ticks: number[] = []): Vol75Decision {
   if (m15.length < 210 || m5.length < 210 || m1.length < 55) {
     return { rejection: { reason: "NO_TREND", score: 0, diagnostics: { detail: "Historique insuffisant" } } };
@@ -86,8 +95,8 @@ export function generateVol75Signal(m15: ServerCandle[], m5: ServerCandle[], m1:
   // HARD GUARD 1: Trend non-opposé M15
   if (!direction) return { rejection: { reason: "NO_TREND", score: 0, diagnostics } };
 
-  // HARD GUARD 2: ADX >= 15
-  if (adx5 < 15) return { rejection: { reason: "LOW_ADX", score: 15, diagnostics } };
+  // HARD GUARD 2: ADX >= VOL75_MIN_ADX
+  if (adx5 < VOL75_MIN_ADX) return { rejection: { reason: "LOW_ADX", score: 15, diagnostics } };
 
   // HARD GUARD 3: ATR Bounds (0.50 <= ATR <= 1.80)
   if (atrRatio < 0.50) return { rejection: { reason: "LOW_VOLATILITY", score: 20, diagnostics } };
@@ -175,15 +184,14 @@ export function generateVol75Signal(m15: ServerCandle[], m5: ServerCandle[], m1:
     wickPct: +(wickPct * 100).toFixed(1),
   };
 
-  // TARGET MIN_SCORE = 74
-  if (totalScore >= 74) {
+  if (totalScore >= VOL75_MIN_SCORE) {
     return {
       signal: {
         strategy: "VOL75_1S_TREND_PULLBACK",
         direction,
         confidence: totalScore,
-        riskAbs: atrNow * 1.1,
-        rewardAbs: atrNow * 1.8,
+        riskAbs: atrNow * VOL75_SL_ATR,
+        rewardAbs: atrNow * VOL75_SL_ATR * VOL75_TP_R,
         riskPct: 0.25,
         volatilityPct: (atrNow / current.close) * 100,
         reason: `Trend pullback ${direction === "CALL" ? "BUY" : "SELL"} · score ${totalScore}/100`,

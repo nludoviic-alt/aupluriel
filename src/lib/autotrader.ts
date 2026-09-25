@@ -526,7 +526,8 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 /** Volatility 75 (1s) — dedicated demo engine. The 50x multiplier is the
  * lowest multiplier accepted by the connected Deriv account (validated by a
  * read-only proposal on 2026-08-11). */
-export const VOL75_PRESET: Partial<AutoTraderConfig> = {
+// The historical vol75 definition, kept as-is because VOL50_PRESET builds on it.
+const VOL75_BASE: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
   minConfidence: 74, maxConfidence: 100, minTfAgreement: 3,
@@ -537,6 +538,25 @@ export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   cooldownMinutes: 3, maxSimultaneousTrades: 1, maxOpenPositions: 1,
   newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
+};
+
+export const VOL75_PRESET: Partial<AutoTraderConfig> = {
+  ...VOL75_BASE,
+  minConfidence: 80,
+  // Forward demo validation (2026-09-25), see docs/VOL75_FORWARD_TEST.md: in a
+  // 12-month candle backtest the module levels (ADX 25, SL 1.5
+  // ATR, TP 2.5R, score 80) beat a random-direction benchmark there, before
+  // commission. These fields make the live bot trade what was tested:
+  // - fixed small stake, no loss-driven resizing, so every trade is comparable;
+  // - 240 min max hold (the tested value — average hold was 12.8 min);
+  // - no rolling-win-rate or hourly-edge pauses: with TP 2.5R the expected win
+  //   rate is ~31 %, which minSymbolWinRate 0.30 would keep pausing on;
+  // - daily loss cap above 8 trades × a typical ~$0.6 stop at $5.
+  stakeMode: "fixed", stakeUsd: 5,
+  progressiveStakeReduction: false, adaptiveStake: false,
+  maxHoldMinutes: 240,
+  minSymbolWinRate: 0, hourlyEdgeFilter: false,
+  maxDailyLossUsd: 5,
 };
 
 export const RB100_PRESET: Partial<AutoTraderConfig> = {
@@ -565,7 +585,7 @@ export const RB100_PRESET: Partial<AutoTraderConfig> = {
 };
 
 export const VOL50_PRESET: Partial<AutoTraderConfig> = {
-  ...VOL75_PRESET,
+  ...VOL75_BASE,
   symbolMode: "watchlist", symbols: ["1HZ50V"], mode: "demo",
   minConfidence: 76, maxConfidence: 100, minTfAgreement: 3,
   instrumentType: "multiplier", multiplierLevel: 80,
