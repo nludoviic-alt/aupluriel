@@ -1,11 +1,11 @@
-import { createFileRoute, useNavigate, Outlet, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   ShieldCheck, Check, X, Trash2, Loader2, RefreshCw, KeyRound,
   ShieldOff, UserPlus, Dices, TrendingUp, TrendingDown, BookOpen,
   BrainCircuit, Users, ShieldAlert, Award, Search, Key, RefreshCcw,
   Mail, Ban, Copy, Send, Lightbulb, AlertTriangle, Pencil, StickyNote,
-  Lock, ChevronRight, Activity,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -27,8 +27,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog, useConfirm } from "@/components/confirm-dialog";
-import { OFFICIAL_PRESET_STRATEGIES, type PresetStrategyDef } from "@/lib/preset-strategies";
-import { R4E2PerformanceDashboard } from "@/components/r4-e2-performance-dashboard";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administration — Au Pluriel" }] }),
@@ -48,6 +46,7 @@ interface AdminUser {
   has_deriv: number;
   has_kraken: number;
   has_binance: number;
+  has_oanda: number;
 }
 
 interface BotStatus {
@@ -56,7 +55,7 @@ interface BotStatus {
   running: boolean;
   hasToken: boolean;
   mode: "demo" | "live" | null;
-  preset: "boom" | "crash" | "default" | "scalping" | "liquidity" | "gold" | "crash900";
+  preset: "boom" | "crash" | "default" | "scalping" | "liquidity";
   lastError: string | null;
   autoBacktestEnabled: boolean;
 }
@@ -211,85 +210,54 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   excludedSymbols: "Symboles exclus",
 };
 
-const presetLabels = {
-  default: "Multi",
-  boom: "Boom500",
-  boom900: "Boom900",
-  vol75: "Volatility 75 (1s)",
-  rb100: "Range Break 100",
-  vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
-  scalping: "Scalping",
-  liquidity: "GOLD LIQUIDITY SWEEP",
-  gold: "GOLD TREND PULLBACK",
-  crash900: "Crash900 V2",
-  boomv2: "Boom V2",
-  scalpingv2: "Scalping V2",
-  liquidityv2: "Liquidity V2",
-  goldv2: "GOLD BREAKOUT",
-} as const;
+const presetLabels = { default: "Multi", boom: "Boom", crash: "Crash", scalping: "Scalping", liquidity: "Reversal liquidité" } as const;
 
-type PresetKey = keyof typeof presetLabels;
-
-const PRESET_KEYS: readonly PresetKey[] = [
-  "default",
-  "boom",
-  "boom900",
-  "vol75",
-  "rb100",
-  "vol50",
-  "crash",
-  "crash500",
-  "scalping",
-  "liquidity",
-  "gold",
-  "crash900",
-  "boomv2",
-  "scalpingv2",
-  "liquidityv2",
-  "goldv2",
-];
-
+type PresetKey = "default" | "boom" | "crash" | "scalping" | "liquidity";
+const PRESET_KEYS: readonly PresetKey[] = ["default", "boom", "crash", "scalping", "liquidity"];
+// Mirrors MAX_VISIBLE_PRESETS in bot-engine.server.ts (can't import a
+// *.server.ts module from a client route) — the API rejects more than this,
+// so the UI must not let you select more either. No artificial cap anymore:
+// all presets can be shown on mobile.
 const MAX_VISIBLE_PRESETS = PRESET_KEYS.length;
 
+/** Static class strings only: Tailwind's JIT scanner can't see names built at
+ * runtime like `border-${accent}-500/40`, which would silently emit no CSS in
+ * the production build. */
 const presetCardStyles: Record<PresetKey, { on: string; dot: string; icon: string; desc: string }> = {
-  default: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "🌐", desc: "Forex, Or, Crypto" },
-  boom: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "🚀", desc: "Boom 500 Spike & Drift" },
-  boom900: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom 900 Démo Isolée" },
-  vol75: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "📈", desc: "Volatility 75 (1s) Trend Pullback" },
-  rb100: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "↔", desc: "Range Break 100 Revers. & Cassure" },
-  vol50: { on: "border-emerald-500/40 bg-emerald-500/[0.10]", dot: "bg-emerald-500", icon: "📊", desc: "Volatility 50 (1s) Trend Pullback & Retest" },
-  crash: { on: "border-rose-500/40 bg-rose-500/[0.10]", dot: "bg-rose-500", icon: "📉", desc: "Crash 900 Principal" },
-  crash500: { on: "border-violet-500/40 bg-violet-500/[0.10]", dot: "bg-violet-500", icon: "📉", desc: "Crash 500 Démo Indépendant" },
-  scalping: { on: "border-cyan-500/40 bg-cyan-500/[0.10]", dot: "bg-cyan-500", icon: "⏱️", desc: "Boom 500 Scalping M1/M5" },
-  liquidity: { on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]", dot: "bg-fuchsia-500", icon: "↩", desc: "Or Liquidity Sweep" },
-  gold: { on: "border-lime-500/40 bg-lime-500/[0.10]", dot: "bg-lime-500", icon: "🥇", desc: "Or Trend Pullback" },
-  crash900: { on: "border-orange-500/40 bg-orange-500/[0.10]", dot: "bg-orange-500", icon: "📉", desc: "Crash 900 V2" },
-  boomv2: { on: "border-sky-500/40 bg-sky-500/[0.10]", dot: "bg-sky-500", icon: "⚡", desc: "Boom V2 Exposition Contrôlée" },
-  scalpingv2: { on: "border-indigo-500/40 bg-indigo-500/[0.10]", dot: "bg-indigo-500", icon: "🎯", desc: "Scalping V2 Spike Hunter" },
-  liquidityv2: { on: "border-purple-500/40 bg-purple-500/[0.10]", dot: "bg-purple-500", icon: "💧", desc: "Liquidity V2 Sweep M15" },
-  goldv2: { on: "border-amber-500/40 bg-amber-500/[0.10]", dot: "bg-amber-500", icon: "🥇", desc: "Or Breakout Session" },
+  default: {
+    on: "border-violet-500/40 bg-violet-500/[0.10]",
+    dot: "bg-violet-500",
+    icon: "🌐",
+    desc: "Forex, or, crypto, indices",
+  },
+  boom: {
+    on: "border-orange-500/40 bg-orange-500/[0.10]",
+    dot: "bg-orange-500",
+    icon: "🚀",
+    desc: "Boom 1000 / 500 / 900",
+  },
+  crash: {
+    on: "border-yellow-500/40 bg-yellow-500/[0.10]",
+    dot: "bg-yellow-500",
+    icon: "📉",
+    desc: "Crash 1000 / 500 / 600 / 900",
+  },
+  scalping: {
+    on: "border-cyan-500/40 bg-cyan-500/[0.10]",
+    dot: "bg-cyan-500",
+    icon: "⏱️",
+    desc: "Boom 500 · M1/M5 · démo",
+  },
+  liquidity: {
+    on: "border-fuchsia-500/40 bg-fuchsia-500/[0.10]",
+    dot: "bg-fuchsia-500",
+    icon: "↩",
+    desc: "Or · Nasdaq · M15 · démo",
+  },
 };
-
-const MOBILE_CARD_TINTS = [
-  "from-cyan-500/[0.06]",
-  "from-indigo-500/[0.06]",
-  "from-violet-500/[0.06]",
-  "from-emerald-500/[0.06]",
-  "from-amber-500/[0.06]",
-  "from-rose-500/[0.06]",
-  "from-sky-500/[0.06]",
-  "from-teal-500/[0.06]",
-];
-
-function mobileCardTint(userId: number) {
-  return MOBILE_CARD_TINTS[userId % MOBILE_CARD_TINTS.length];
-}
 
 function AdminPage() {
   const navigate = useNavigate();
-  const routerState = useRouterState();
   const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const { confirmState, confirm } = useConfirm();
@@ -301,7 +269,6 @@ function AdminPage() {
   const [botStatus, setBotStatus] = useState<Record<string, BotStatus>>({});
   const [botBusyId, setBotBusyId] = useState<number | null>(null);
   const [presetBusy, setPresetBusy] = useState<number | null>(null);
-  const [strategyBusy, setStrategyBusy] = useState<number | null>(null);
   const [backtestBusyId, setBacktestBusyId] = useState<number | null>(null);
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(true);
@@ -424,9 +391,7 @@ function AdminPage() {
     // status and the trading recap are the two that actually change minute
     // to minute; users/invites barely move, so they stay on the manual
     // "Actualiser" button instead of adding load for no benefit.
-    // Poll bot status + recap in parallel (was sequential — two round trips
-    // stacked into one 20s tick). Promise.all halves the latency per tick.
-    const id = setInterval(() => { void Promise.all([loadBotStatus(), loadRecap()]); }, 20_000);
+    const id = setInterval(() => { loadBotStatus(); loadRecap(); }, 20_000);
     return () => clearInterval(id);
   }, [user?.is_admin, load, loadRecap, loadBotStatus, loadInvites]);
 
@@ -525,8 +490,14 @@ function AdminPage() {
     }
   }
 
-  function openProfile(u: AdminUser) {
-    navigate({ to: "/admin/users/$userId", params: { userId: String(u.id) } });
+  async function openProfile(u: AdminUser) {
+    setProfileUser(u);
+    setEditingUsername(false);
+    setNoteDraft(u.admin_note ?? "");
+    setNoteSavedAt(null);
+    setInsightsMode("demo");
+    setProfilePreset("default");
+    await loadProfileConfig(u.id, "default");
   }
 
   async function applyRecommendation(rec: Recommendation) {
@@ -535,7 +506,7 @@ function AdminPage() {
     try {
       const patch: { userId: number; preset: PresetKey; symbols?: string[]; minConfidence?: number } = { userId: profileUser.id, preset: profilePreset };
       if (rec.type === "disable-symbol" && rec.symbol) {
-        patch.symbols = (journalConfig?.symbols ?? []).filter((s) => s !== rec.symbol);
+        patch.symbols = journalConfig.symbols.filter((s) => s !== rec.symbol);
       } else if (rec.type === "raise-confidence" && rec.suggestedMinConfidence !== undefined) {
         patch.minConfidence = rec.suggestedMinConfidence;
       } else {
@@ -843,12 +814,8 @@ function AdminPage() {
   const boomTotalTrades = boomRecaps.reduce((sum, r) => sum + r.trades, 0);
   const boomBreakdownTotal = boomBreakdown.reduce((acc, b) => ({ trades: acc.trades + b.trades, wins: acc.wins + b.wins, losses: acc.losses + b.losses, netPnl: acc.netPnl + b.netPnl }), { trades: 0, wins: 0, losses: 0, netPnl: 0 });
 
-  // If we're on a child route (/admin/users/:id), render only the Outlet
-  // so the user profile page replaces the admin content entirely.
-  if (routerState.location.pathname.startsWith("/admin/users/")) return <Outlet />;
-
   return (
-    <div className="mx-auto max-w-screen-2xl px-2 sm:px-4 md:px-16 lg:px-24 py-6 space-y-6">
+    <div className="mx-auto max-w-screen-2xl px-4 md:px-16 lg:px-24 py-6 space-y-6">
       
       {/* ── HEADER ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -861,7 +828,7 @@ function AdminPage() {
             <p className="text-xs text-muted-foreground mt-1">Gérez les terminaux, approuvez les comptes et suivez la télémétrie.</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -1080,9 +1047,6 @@ function AdminPage() {
         )}
       </CollapsibleBlock>
 
-      {/* ── POST R4/E2 PERFORMANCE MATRIX ── */}
-      <R4E2PerformanceDashboard />
-
       {/* ── USER MANAGEMENT SECTION ── */}
       <CollapsibleBlock
         className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
@@ -1193,6 +1157,7 @@ function AdminPage() {
                           <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
                           <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
                           <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                          <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-semibold">
@@ -1214,11 +1179,11 @@ function AdminPage() {
           </table>
         </div>
 
-        {/* Mobile View Cards - High-End User-Friendly Design */}
+        {/* Mobile View Cards */}
         <div className="md:hidden space-y-3">
           {loading ? (
             <div className="text-center py-8">
-              <Loader2 className="mx-auto h-6 w-6 animate-spin text-orange-500" />
+              <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground font-semibold">
@@ -1228,97 +1193,55 @@ function AdminPage() {
             filteredUsers.map((u) => {
               const initials = u.username.slice(0, 2).toUpperCase();
               const isAdmin = u.is_admin === 1;
-              const registrationDate = new Date(u.created_at * 1000).toLocaleDateString("fr-FR", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              });
-
               return (
                 <div
                   key={u.id}
                   onClick={() => openProfile(u)}
-                  className={cn("group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b to-black/40 p-4 space-y-3.5 shadow-lg active:scale-[0.985] transition-all duration-200 cursor-pointer", mobileCardTint(u.id))}
+                  className="border border-white/[0.06] rounded-xl p-4 bg-white/[0.01] space-y-3 cursor-pointer active:bg-white/[0.03] transition-colors"
                 >
-                  {/* Top Bar: Avatar + Username + Role Badges + Status */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Avatar Badge */}
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500/25 via-indigo-500/20 to-purple-500/25 text-cyan-300 font-mono text-sm font-black border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-[10px] font-bold border border-cyan-500/20">
                         {initials}
                       </div>
-
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-black text-foreground text-base truncate">{u.username}</span>
-                          {isAdmin ? (
-                            <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[9px] font-black uppercase text-cyan-300 tracking-wider shadow-sm">
-                              ADMIN
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-white/[0.06] border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase text-muted-foreground tracking-wider">
-                              TRADER
-                            </span>
-                          )}
-                          {boomUserIds.has(u.id) && (
-                            <span className="rounded-full bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 text-[9px] font-black uppercase text-orange-400 tracking-wider">
-                              🚀 BOOM
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground/80 font-mono truncate">{u.email}</div>
-                      </div>
-                    </div>
-
-                    {/* Status Pill Badge */}
-                    <div className="shrink-0">
-                      <StatusBadge status={u.status} />
-                    </div>
-                  </div>
-
-                  {/* Middle Info Bar: Registration date & Verification Status */}
-                  <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-2.5 text-xs text-muted-foreground font-semibold">
-                    <div className="flex items-center gap-1">
-                      <span>Inscrit le</span>
-                      <span className="font-mono text-foreground/90 font-bold">{registrationDate}</span>
-                    </div>
-                    <div>
-                      {u.email_verified ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          Email vérifié
+                      <span className="font-bold text-foreground text-sm">{u.username}</span>
+                      {isAdmin && (
+                        <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 text-[8px] text-cyan-400 font-bold uppercase tracking-wider">
+                          admin
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/80 font-bold">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                          Email non vérifié
+                      )}
+                      {boomUserIds.has(u.id) && (
+                        <span className="rounded-full bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 text-[8px] text-orange-400 font-bold uppercase tracking-wider">
+                          🚀
                         </span>
                       )}
                     </div>
+                    <StatusBadge status={u.status} />
                   </div>
-
-                  {/* Inset Box: Connected Brokers */}
-                  <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-xs">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Brokers connectés
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
-                      <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
-                      <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                  <div className="space-y-1 text-xs border-t border-white/[0.04] pt-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="text-foreground font-mono truncate max-w-[170px]">{u.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Inscrit</span>
+                      <span className="text-foreground font-semibold">{new Date(u.created_at * 1000).toLocaleDateString("fr-FR")}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Brokers</span>
+                      <div className="flex items-center gap-1.5">
+                        <BrokerDot label="D" active={u.has_deriv === 1} color="red" />
+                        <BrokerDot label="K" active={u.has_kraken === 1} color="violet" />
+                        <BrokerDot label="B" active={u.has_binance === 1} color="yellow" />
+                        <BrokerDot label="O" active={u.has_oanda === 1} color="emerald" />
+                      </div>
                     </div>
                   </div>
-
-                  {/* Full-width CTA Button */}
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openProfile(u);
-                    }}
-                    className="w-full h-10 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] text-xs font-black text-foreground hover:bg-white/[0.08] active:scale-[0.98] transition-all shadow-sm"
+                    onClick={(e) => { e.stopPropagation(); openProfile(u); }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] py-2 text-xs font-bold text-foreground"
                   >
-                    <span>Gérer le profil utilisateur</span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    Voir le profil
                   </button>
                 </div>
               );
@@ -1444,21 +1367,16 @@ function AdminPage() {
         </div>
       </CollapsibleBlock>
 
-      {/* ── TRADING RECAP BY USER ── desktop only ── */}
+      {/* ── TRADING RECAP BY USER ── */}
       <CollapsibleBlock
-        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
+        className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
         header={
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-bold text-foreground">Récapitulatif de Trading</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
-              </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">Récapitulatif de Trading</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Suivi des performances individuelles en temps réel.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04] shrink-0">
+            <Button variant="outline" size="sm" onClick={loadRecap} disabled={recapLoading} className="h-9 border-white/5 hover:bg-white/[0.04]">
               <RefreshCw className={cn("h-4 w-4 mr-1.5", recapLoading && "animate-spin")} />
               Actualiser
             </Button>
@@ -1467,8 +1385,8 @@ function AdminPage() {
       >
         {/* Preset scope — compare accounts on one engine at a time instead of
             only the all-presets-combined total. */}
-        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-full sm:w-fit">
-          {(["all", "default", "boom", "crash", "scalping", "liquidity", "gold", "crash900"] as const).map((p) => (
+        <div className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/[0.02] p-1 w-fit">
+          {(["all", "default", "boom", "crash", "scalping", "liquidity"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setRecapPreset(p)}
@@ -1598,18 +1516,18 @@ function AdminPage() {
         </div>
       </CollapsibleBlock>
 
-      {/* ── BOOM SYMBOL BREAKDOWN ── desktop only ── */}
+      {/* ── BOOM SYMBOL BREAKDOWN ── */}
       {boomBreakdown.some((b) => b.trades > 0) && (
         <CollapsibleBlock
-          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
+          className="glass-panel border-orange-500/10 bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
           header={
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
-                <Dices className="h-4 w-4" />
+              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.15)]">
+                <Dices className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-base font-bold text-foreground">Performance par Index Boom</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom — démo uniquement, jamais mélangé au réel.</p>
+                <h2 className="text-base font-bold text-foreground">🚀 Performance par Index Boom</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Win rate, trades et P&L pour chaque symbole Boom (BOOM1000/500/600/900) — démo uniquement, jamais mélangé au réel.</p>
               </div>
             </div>
           }
@@ -1676,19 +1594,14 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── BACKTEST vs REAL GAUGE ── desktop only ── */}
+      {/* ── BACKTEST vs REAL GAUGE ── */}
       {backtestVsReal && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
           header={
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
-                <Activity className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
-              </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">Évaluation Backtest vs Réel</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Mesure de la précision prédictive du robot face aux marchés en direct.</p>
             </div>
           }
         >
@@ -1735,21 +1648,16 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── CONFIDENCE CALIBRATION ── desktop only ── */}
+      {/* ── CONFIDENCE CALIBRATION ── */}
       {calibration.length > 0 && (
         <CollapsibleBlock
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
           header={
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
-                <Award className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-bold text-foreground">Calibration de la Confiance</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
-                </p>
-              </div>
+            <div>
+              <h2 className="text-base font-bold text-foreground">Calibration de la Confiance</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Le taux de victoire doit augmenter avec la confiance affichée — sinon le score n'est pas fiable.
+              </p>
             </div>
           }
         >
@@ -1791,18 +1699,18 @@ function AdminPage() {
         </CollapsibleBlock>
       )}
 
-      {/* ── SHARED BRAIN METER ── desktop only ── */}
+      {/* ── SHARED BRAIN METER ── */}
       {componentBreakdown.length > 0 && (
         <CollapsibleBlock
           alwaysCollapsible
-          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-4 sm:p-5 space-y-4 hidden md:block"
+          className="glass-panel border-white/[0.06] bg-[#0A0A0A]/50 backdrop-blur-xl rounded-2xl p-5 space-y-4"
           header={
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 shrink-0 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
-                <BrainCircuit className="h-4 w-4" />
+              <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.15)]">
+                <BrainCircuit className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
+                <h2 className="text-base font-bold text-foreground">Intelligence Partagée (Indicateurs Recalibrés)</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">Formule adaptative du cerveau de trading partagé entre tous les utilisateurs.</p>
               </div>
             </div>
@@ -2040,6 +1948,335 @@ function AdminPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── USER PROFILE DIALOG ── */}
+      <Dialog
+        open={!!profileUser}
+        onOpenChange={(open) => {
+          if (open) return;
+          setProfileUser(null);
+          setJournalConfig(null);
+          setJournalInsights(null);
+          setEditingUsername(false);
+        }}
+      >
+        <DialogContent
+          onPointerDownOutside={(e) => {
+            // Safety net: if a confirm dialog is open and the user clicks
+            // outside both dialogs, prevent this profile modal from closing
+            // underneath the confirm (Radix nested dialogs handle clicks
+            // inside the confirm correctly, but the overlay click still
+            // bubbles to this dialog's onPointerDownOutside).
+            if (confirmState) e.preventDefault();
+          }}
+          className="!bg-[#060e0c] border-emerald-500/30 backdrop-blur-2xl sm:rounded-2xl shadow-[0_4px_24px_-6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] max-w-2xl max-h-[88vh] overflow-y-auto gap-5 p-6 ring-1 ring-emerald-500/[0.12]"
+        >
+          {profileUser && (() => {
+            const isAdmin = profileUser.is_admin === 1;
+            const r = recap.find((x) => x.userId === profileUser.id);
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 text-cyan-400 text-lg font-bold border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]">
+                      {profileUser.username.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <DialogTitle className="text-lg font-bold uppercase tracking-wide text-foreground flex items-center gap-2.5">
+                        {profileUser.username}
+                        {isAdmin ? (
+                          <span className="rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
+                            admin
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={startEditUsername}
+                            title="Modifier le nom d'utilisateur"
+                            className="text-muted-foreground/50 hover:text-cyan-400 transition-colors cursor-pointer"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                      </DialogTitle>
+                      <DialogDescription className="text-sm text-neutral-300 mt-1.5 normal-case tracking-normal flex items-center gap-2.5 flex-wrap">
+                        {profileUser.email} · Inscrit le {new Date(profileUser.created_at * 1000).toLocaleDateString("fr-FR")}
+                        <StatusBadge status={profileUser.status} />
+                      </DialogDescription>
+                    </div>
+                  </div>
+                  {editingUsername && (
+                    <form onSubmit={submitRename} className="flex items-center gap-2 mt-3">
+                      <Input
+                        value={usernameDraft}
+                        onChange={(e) => setUsernameDraft(e.target.value)}
+                        autoFocus
+                        maxLength={32}
+                        className="h-9 text-sm"
+                      />
+                      <Button type="submit" size="sm" disabled={renameBusy || !usernameDraft.trim()} className="h-9 px-3 shrink-0">
+                        {renameBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setEditingUsername(false)} disabled={renameBusy} className="h-9 px-3 shrink-0">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </form>
+                  )}
+                </DialogHeader>
+
+                {!isAdmin && (
+                  <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-5">
+                    {profileUser.status !== "approved" && (
+                      <button
+                        onClick={() => act(profileUser.id, "approve")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bull)]/30 bg-[color:var(--bull)]/[0.08] px-3.5 py-2 text-sm text-[color:var(--bull)] font-bold hover:bg-[color:var(--bull)]/15 transition-colors disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" /> Approuver
+                      </button>
+                    )}
+                    {profileUser.status === "pending" && (
+                      <button
+                        onClick={() => act(profileUser.id, "reject")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-2 rounded-lg border border-[color:var(--bear)]/30 bg-[color:var(--bear)]/[0.08] px-3.5 py-2 text-sm text-[color:var(--bear)] font-bold hover:bg-[color:var(--bear)]/15 transition-colors disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" /> Rejeter
+                      </button>
+                    )}
+                    {profileUser.status === "approved" && (
+                      <button
+                        onClick={() => act(profileUser.id, "revoke")}
+                        disabled={busyId === profileUser.id}
+                        className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3.5 py-2 text-sm text-amber-400 font-bold hover:bg-amber-500/15 transition-colors disabled:opacity-50"
+                      >
+                        <ShieldOff className="h-4 w-4" /> Révoquer
+                      </button>
+                    )}
+                    <button
+                      onClick={() => act(profileUser.id, "reset-password")}
+                      disabled={busyId === profileUser.id}
+                      className="flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/[0.08] px-3.5 py-2 text-sm text-indigo-300 font-bold hover:bg-indigo-500/15 transition-colors disabled:opacity-50"
+                    >
+                      <KeyRound className="h-4 w-4" /> Réinitialiser le mot de passe
+                    </button>
+                    <button
+                      onClick={() => act(profileUser.id, "delete")}
+                      disabled={busyId === profileUser.id}
+                      className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" /> Supprimer le compte
+                    </button>
+                  </div>
+                )}
+
+                {!isAdmin && (() => {
+                  return (
+                  <div className="border-t border-white/[0.08] pt-5 space-y-3">
+                    <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Auto-Trader — {presetLabels[profilePreset]}</span>
+                      <BotStatusCell
+                        status={botStatus[`${profileUser.id}:${profilePreset}`]}
+                        busy={botBusyId === profileUser.id}
+                        onToggle={(action) => toggleBot(profileUser.id, profilePreset, action)}
+                      />
+                    </div>
+                    {/* ── Preset tabs: which of the three independent engines this
+                        panel is viewing/editing — switching tabs never starts,
+                        stops, or resets anything by itself (2026-08-01: all three
+                        can run at once, so this is a view selector, not a switch). ── */}
+                    <div className="flex flex-col gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Preset consulté</span>
+                      <div className="flex w-full shrink-0 flex-wrap items-center rounded-lg border border-white/5 bg-white/[0.02] p-0.5 gap-0.5 sm:w-auto">
+                        {(["default", "boom", "crash", "scalping", "liquidity"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => { setProfilePreset(p); loadProfileConfig(profileUser.id, p); }}
+                            className={cn(
+                              "flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-all sm:flex-none sm:py-1",
+                              profilePreset === p
+                                ? p === "boom" ? "bg-orange-500/15 text-orange-400" : p === "crash" ? "bg-yellow-500/15 text-yellow-400" : p === "liquidity" ? "bg-violet-500/15 text-violet-300" : "bg-cyan-500/15 text-cyan-400"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {p === "boom" ? "🚀 Boom" : p === "crash" ? "📉 Crash" : p === "scalping" ? "⏱️ Scalping" : p === "liquidity" ? "◌ Liquidité" : "Multi"}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        disabled={presetBusy === profileUser.id}
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: `Réinitialiser ${presetLabels[profilePreset]} pour ${profileUser.username} ?`,
+                            description: "Remet TP/SL, confiance et symboles aux valeurs par défaut du preset. Mise, plafond de perte, mode démo/live, exclusions de symboles et seuils de confiance ajustés restent inchangés.",
+                            confirmLabel: "Réinitialiser",
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          setPresetBusy(profileUser.id);
+                          try {
+                            const res = await api.patch<{ config: UserBotConfig }>("/api/admin/user-config", { userId: profileUser.id, preset: profilePreset, resetToCanonical: true });
+                            setJournalConfig(res.config);
+                            toast.success(`${presetLabels[profilePreset]} réinitialisé ✓`);
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Erreur");
+                          } finally {
+                            setPresetBusy(null);
+                          }
+                        }}
+                        className="shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                      >
+                        Réinitialiser
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">Deriv</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_deriv ? "bg-red-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Kraken</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_kraken ? "bg-violet-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-yellow-500/30 bg-yellow-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400">Binance</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_binance ? "bg-yellow-500" : "bg-white/10")} />
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">OANDA</span>
+                        <span className={cn("h-2.5 w-2.5 rounded-full", profileUser.has_oanda ? "bg-emerald-500" : "bg-white/10")} />
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })()}
+
+                {r && (
+                  <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-5 text-xs">
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
+                      Solde{" "}
+                      <span className="text-orange-400 font-bold">
+                        {r.balance !== null && r.balance !== undefined
+                          ? `${r.currency} ${r.balance.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "—"}
+                      </span>
+                    </span>
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
+                      {r.trades} trade{r.trades > 1 ? "s" : ""} <span className="text-foreground font-semibold">{r.trades ? `${r.winRate}%` : "—"}</span>
+                    </span>
+                    <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-neutral-300">
+                      P&amp;L{" "}
+                      <span className={cn("font-bold", r.netPnl > 0 ? "text-[color:var(--bull)]" : r.netPnl < 0 ? "text-[color:var(--bear)]" : "text-neutral-400")}>
+                        {r.netPnl > 0 ? "+" : ""}{r.netPnl.toFixed(2)} $
+                      </span>
+                    </span>
+                  </div>
+                )}
+
+                <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="admin-note" className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-300">
+                      <StickyNote className="h-3.5 w-3.5" /> Note interne (admin uniquement)
+                    </label>
+                    {noteSaving ? (
+                      <span className="text-xs text-muted-foreground/50 flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Enregistrement...
+                      </span>
+                    ) : noteSavedAt ? (
+                      <span className="text-xs text-[color:var(--bull)] font-semibold">Enregistré ✓</span>
+                    ) : null}
+                  </div>
+                  <Textarea
+                    id="admin-note"
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    onBlur={saveNote}
+                    placeholder="Ex : a tapé son prénom avec une faute, client VIP, à recontacter..."
+                    rows={2}
+                    className="text-sm resize-none"
+                  />
+                </div>
+
+                {!journalLoading && journalInsights && (
+                  <UserInsightsPanel
+                    insights={journalInsights}
+                    config={journalConfig}
+                    mode={insightsMode}
+                    onModeChange={setInsightsMode}
+                    onApply={applyRecommendation}
+                    applyingRec={applyingRec}
+                  />
+                )}
+
+                {journalConfig && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                        <RefreshCcw className="h-3.5 w-3.5 text-amber-400" />
+                        Rollback automatique
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Si un changement de config est suivi d'une dégradation confirmée (PF &lt; 1, échantillon ≥20 des deux côtés), revient automatiquement aux anciennes valeurs. Désactivé par défaut.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={Boolean(journalConfig.autoRollbackEnabled)}
+                      disabled={autoRollbackBusy}
+                      onCheckedChange={toggleAutoRollback}
+                    />
+                  </div>
+                )}
+
+                <ConfigChangesPanel changes={configChanges} loading={configChangesLoading} />
+
+                {(() => {
+                  const MINI_JOURNAL_LIMIT = 24;
+                  const outcomeTrades = journalTrades.filter((t) => t.status === "won" || t.status === "lost" || t.status === "open");
+                  const shown = outcomeTrades.slice(0, MINI_JOURNAL_LIMIT);
+                  const hiddenCount = outcomeTrades.length - shown.length;
+                  return (
+                    <div className="border-t border-white/[0.08] pt-5 space-y-2.5">
+                      <div className="text-xs font-bold uppercase tracking-wider text-neutral-300">Mini journal</div>
+                      {journalLoading ? (
+                        <div className="py-6 text-center">
+                          <Loader2 className="mx-auto h-5 w-5 animate-spin text-orange-500" />
+                        </div>
+                      ) : shown.length === 0 ? (
+                        <p className="text-sm text-muted-foreground font-semibold">
+                          Aucun trade enregistré pour cet utilisateur.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {shown.map((t) => (
+                            <span
+                              key={t.id}
+                              title={`${t.symbol} · ${t.direction} · ${new Date(t.time).toLocaleString("fr-FR")} · Confiance ${t.confidence}%${t.note ? ` · ${t.note}` : ""}`}
+                              className={cn(
+                                "rounded-lg px-2.5 py-1.5 text-xs font-bold font-mono cursor-default",
+                                t.status === "won"
+                                  ? "bg-[color:var(--bull)]/10 text-[color:var(--bull)]"
+                                  : t.status === "lost"
+                                    ? "bg-[color:var(--bear)]/10 text-[color:var(--bear)]"
+                                    : "bg-amber-500/10 text-amber-500"
+                              )}
+                            >
+                              {t.status === "open" ? "…" : t.profit > 0 ? "+" : ""}{t.status === "open" ? "" : t.profit.toFixed(2)}
+                            </span>
+                          ))}
+                          {hiddenCount > 0 && (
+                            <span className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-muted-foreground/50 bg-white/[0.02]">
+                              +{hiddenCount} autres
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog state={confirmState} />
     </div>
@@ -2203,7 +2440,7 @@ function ChatStatusCell({
 }
 
 function BreakdownTable({ rows, title }: { rows: BreakdownRow[]; title: string }) {
-  if (!rows || rows.length === 0) return null;
+  if (rows.length === 0) return null;
   return (
     <div>
       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">{title}</div>
@@ -2386,13 +2623,13 @@ function UserInsightsPanel({
             Confiance min <span className="text-foreground font-semibold">{config.minConfidence}%</span>
           </span>
           <span className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-muted-foreground/70">
-            {config.symbols?.length ?? 0} symbole{(config.symbols?.length ?? 0) > 1 ? "s" : ""}
+            {config.symbols.length} symbole{config.symbols.length > 1 ? "s" : ""}
           </span>
         </div>
       )}
 
       <div className="space-y-2">
-        {(current.recommendations ?? []).map((rec) => (
+        {current.recommendations.map((rec) => (
           <div
             key={rec.message}
             className={cn(

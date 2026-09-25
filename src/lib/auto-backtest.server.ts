@@ -8,14 +8,7 @@ import { backtestLiquidityReversalServer, backtestMultiTfServer } from "./backte
 import { DEFAULT_CONFIG } from "./signal-core";
 import { LIQUIDITY_PRESET } from "./autotrader";
 import { mapWithConcurrency } from "./utils";
-import {
-  ACTIVE_PRESETS,
-  hasOpenPositions,
-  isBotRunning,
-  loadBotConfig,
-  startBotForUser,
-  stopBotForUser,
-} from "./bot-engine.server";
+import { hasOpenPositions, isBotRunning, loadBotConfig, startBotForUser, stopBotForUser } from "./bot-engine.server";
 
 const BACKTEST_INTERVAL_MS = 6 * 60 * 60 * 1000; // recompute the global verdict every 6h
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;         // apply the cached verdict to opted-in users every 15min
@@ -173,11 +166,7 @@ async function sweepUsers(verdict: AutoBacktestVerdict): Promise<void> {
         // demo; a live bot the user stopped (or that this sweep stopped
         // below) waits for them to restart it themselves.
         if (isLive) continue;
-        // The verdict validates the same Multi strategy, but must never erase
-        // an account's saved watchlist, confidence band, TF agreement, or risk
-        // limits when it starts the demo engine. `loadBotConfig` already
-        // supplies DEFAULT_CONFIG fallbacks for older partial configs.
-        const config = { ...(existing ?? DEFAULT_CONFIG), mode: "demo" as const };
+        const config = { ...DEFAULT_CONFIG, stakeUsd: existing?.stakeUsd ?? DEFAULT_CONFIG.stakeUsd, mode: "demo" as const };
         await startBotForUser(user_id, PRESET, config);
         console.log(`[auto-backtest] bot démarré pour user ${user_id} (verdict favorable)`);
       } else if (!verdict.favorable && running) {
@@ -239,19 +228,12 @@ async function tick(): Promise<void> {
   }
   if (verdict) await sweepUsers(verdict);
 
-  // liquidity is retired (archive/oanda-gold-2026-08-14) — it can never
-  // start (ACTIVE_PRESETS gate), so replaying its backtest and sweeping
-  // users onto it would just be wasted candle fetches and a startBotForUser
-  // failure logged every 15min for anyone with auto_backtest_enabled. This
-  // check is the only thing to flip if the preset is ever reinstated.
-  if (ACTIVE_PRESETS.includes("liquidity")) {
-    let liquidityVerdict = loadLiquidityVerdict();
-    if (!liquidityVerdict || Date.now() - liquidityVerdict.checkedAt >= BACKTEST_INTERVAL_MS) {
-      await recomputeLiquidityVerdict();
-      liquidityVerdict = loadLiquidityVerdict();
-    }
-    if (liquidityVerdict) await sweepLiquidityUsers(liquidityVerdict);
+  let liquidityVerdict = loadLiquidityVerdict();
+  if (!liquidityVerdict || Date.now() - liquidityVerdict.checkedAt >= BACKTEST_INTERVAL_MS) {
+    await recomputeLiquidityVerdict();
+    liquidityVerdict = loadLiquidityVerdict();
   }
+  if (liquidityVerdict) await sweepLiquidityUsers(liquidityVerdict);
 }
 
 export function startAutoBacktestScheduler(): void {

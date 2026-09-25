@@ -8,10 +8,10 @@
 // v3 bumps the cache name so returning visitors — whose v2 cache still holds
 // the pre-rebrand icons — get evicted and re-fetch the current Pluriel assets
 // instead of being stuck with stale icons forever (cache-first never expires).
-// v5: cache-name bump to force-evict every installed client's stale cache
-// after the admin user profile page deploy — guarantees phones/browsers
-// that keep reporting the old modal behavior aren't simply running an old bundle.
-const CACHE_NAME = 'lio23-v5';
+// v4: cache-name bump to force-evict every installed client's stale cache
+// while debugging the iOS keyboard-viewport fixes — guarantees phones that
+// keep reporting the old behavior aren't simply running an old bundle.
+const CACHE_NAME = 'lio23-v4';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/logo.png',
@@ -99,21 +99,5 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const rawTarget = typeof event.notification.data === 'string'
-    ? event.notification.data
-    : (event.notification.data && event.notification.data.url) || '/notifications';
-  let target = new URL('/notifications', self.location.origin).href;
-  try {
-    const candidate = new URL(rawTarget, self.location.origin);
-    if (candidate.origin === self.location.origin && candidate.pathname.startsWith('//') === false) {
-      target = candidate.href;
-    }
-  } catch (_) {}
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-      const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
-      if (existing) return existing.navigate(target).then(() => existing.focus()).catch(() => clients.openWindow(target));
-      return clients.openWindow(target);
-    })
-  );
+  event.waitUntil(clients.openWindow(event.notification.data));
 });

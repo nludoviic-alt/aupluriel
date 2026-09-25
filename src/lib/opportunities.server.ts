@@ -1,23 +1,11 @@
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "./autotrader";
+import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
-import { ACTIVE_PRESETS, getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
+import { loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
 import { SYMBOLS } from "./deriv";
-import { fetchCandlesServer, fetchRecentTicksServer } from "./deriv.server";
+import { fetchCandlesServer } from "./deriv.server";
 import { generateScalpingSignal, MIN_M1_CANDLES } from "./scalping-signal.server";
 import { generateLiquidityReversalSignal, MIN_LIQUIDITY_CANDLES } from "./liquidity-reversal-signal.server";
-import {
-  generateGoldTrendPullbackSignal,
-  MIN_GOLD_PULLBACK_H1_CANDLES,
-  MIN_GOLD_PULLBACK_M15_CANDLES,
-  MIN_GOLD_PULLBACK_M5_CANDLES,
-  MIN_GOLD_PULLBACK_M1_CANDLES,
-} from "./gold-trend-signal.server";
-import { generateGoldSessionBreakoutSignal, MIN_GOLD_SESSION_CANDLES } from "./gold-session-breakout-signal.server";
-import { generateSpikeHunterSignal } from "./spike-hunter-signal.server";
-import { generateCrash500Signals } from "./crash500-signal.server";
-import { generateBoom500Signals } from "./boom500-signal.server";
-import { generateVol75Signal } from "./vol75-signal.server";
 import {
   analyzeSymbolCore,
   classifyOpportunity,
@@ -44,8 +32,6 @@ export interface OpportunityItem {
   id: string;
   preset: Preset;
   presetLabel: string;
-  /** Whether this user's server auto-trader currently has this preset enabled. Added after analysis assembly. */
-  active?: boolean;
   symbol: string;
   label: string;
   market: string;
@@ -93,54 +79,21 @@ export interface OpportunitiesResponse {
   };
 }
 
-// "boom" deliberately excluded from opportunity scanning (2026-08-07,
-// strategy-tournament audit): production data shows Boom losing overall
-// Boom réintégré 2026-08-09 : le preset a été corrigé (minTfAgreement 2→4,
-// TP/SL inversé 15/10, multiplierLevel 100x) et réactivé en démo. Les anciens
-// résultats (PF 0.85, -$198) étaient avec TF=2 et TP/SL inversé — la config
-// actuelle est structurellement différente.
-// liquidity/gold/goldv2 dropped 2026-08-14 (archive/oanda-gold-2026-08-14) —
-// they're retired (ACTIVE_PRESETS gate) and can never start, so scanning
-// them would surface an opportunity card the user can never act on.
-const PRESETS: Preset[] = (
-  ["boom", "vol75", "rb100", "crash", "crash500", "default", "liquidity", "gold", "goldv2"] as const
-).filter((p) => ACTIVE_PRESETS.includes(p));
+const PRESETS: Preset[] = ["boom", "crash", "default", "scalping", "liquidity"];
 const PRESET_LABEL: Record<Preset, string> = {
   default: "Multi",
-  boom: "Boom500",
-  boom900: "Boom900",
-  vol75: "Volatility 75 (1s)",
-  rb100: "Range Break 100",
-  vol50: "Volatility 50 (1s)",
-  crash: "Crash900",
-  crash500: "Crash500",
+  boom: "Boom",
+  crash: "Crash",
   scalping: "Scalping",
   liquidity: "Reversal liquidité",
-  gold: "Or Trend",
-  crash900: "Crash900 V2",
-  boomv2: "Boom V2 — contrôlé",
-  scalpingv2: "Scalping V2 — Spike Hunter",
-  liquidityv2: "Liquidity V2 — XAU sweep",
-  goldv2: "Gold V2 — session pullback",
 };
 
 const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   default: DEFAULT_CONFIG,
   boom: BOOM_PRESET,
-  boom900: BOOM900_PRESET,
-  vol75: VOL75_PRESET,
-  rb100: RB100_PRESET,
-  vol50: VOL50_PRESET,
   crash: CRASH_PRESET,
-  crash500: CRASH500_PRESET,
   scalping: SCALPING_PRESET,
   liquidity: LIQUIDITY_PRESET,
-  gold: GOLD_PRESET,
-  crash900: CRASH900_V2_PRESET,
-  boomv2: BOOM_V2_PRESET,
-  scalpingv2: SCALPING_V2_PRESET,
-  liquidityv2: LIQUIDITY_V2_PRESET,
-  goldv2: GOLD_V2_PRESET,
 };
 
 const SYMBOL_LABELS = new Map(SYMBOLS.map((s) => [s.deriv, s]));
@@ -206,115 +159,6 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
   const instrument = getInstrumentForSymbol(symbol, config);
   const now = Date.now();
 
-  if (preset === "boom") {
-    const [m15, m5, m1, ticks] = await Promise.all([
-      fetchCandlesServer(symbol, 900, 70), fetchCandlesServer(symbol, 300, 70),
-      fetchCandlesServer(symbol, 60, 55), fetchRecentTicksServer(symbol, 120).catch(() => []),
-    ]);
-    const candidates = generateBoom500Signals(m15, m5, m1, ticks);
-    const signal = candidates.find((candidate) => candidate.strategy === "BOOM500_SPIKE_HUNTER_BUY") ?? candidates[0];
-    const analysis: SymbolAnalysis = signal ? {
-      direction: signal.direction, confidence: signal.confidence, agreement: 4,
-      premiumCount: signal.confidence >= 95 ? 1 : 0, volatilityPct: signal.volatilityPct,
-      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1", suggestedDuration: 0,
-      trendAlignmentScore: 4, patternBonus: signal.confidence >= 95 ? 10 : 0,
-    } : {
-      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas de setup Boom500 Spike BUY ou Drift SELL confirmé"],
-      dominantTf: "M15/M5/M1", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
-    };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return {
-      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
-      label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision,
-      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
-      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
-      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
-      takeProfitUsd: null, stopLossUsd: null,
-      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : explainOpportunity(decision, analysis, thresholds, stats),
-      blockers: analysis.blockers, stats, updatedAt: now,
-    };
-  }
-
-  if (preset === "vol75") {
-    const [m15, m5, m1, ticks] = await Promise.all([
-      fetchCandlesServer(symbol, 900, 230), fetchCandlesServer(symbol, 300, 230),
-      fetchCandlesServer(symbol, 60, 80), fetchRecentTicksServer(symbol, 180).catch(() => []),
-    ]);
-    const verdict = generateVol75Signal(m15, m5, m1, ticks);
-    const signal = verdict.signal;
-    const analysis: SymbolAnalysis = signal ? {
-      direction: signal.direction, confidence: signal.confidence, agreement: 4,
-      premiumCount: signal.confidence >= 92 ? 1 : 0, volatilityPct: signal.volatilityPct,
-      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1/ticks", suggestedDuration: 0,
-      trendAlignmentScore: 4, patternBonus: signal.confidence >= 92 ? 10 : 0,
-    } : {
-      direction: null, confidence: verdict.rejection?.score ?? 0, agreement: 0, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: [verdict.rejection?.reason ?? "NO_TRADE"],
-      dominantTf: "M15/M5/M1/ticks", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
-    };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return {
-      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
-      label: meta?.label ?? symbol, market: meta?.market ?? "synthetic", decision,
-      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
-      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
-      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
-      takeProfitUsd: null, stopLossUsd: null,
-      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : [`Signal refusé : ${verdict.rejection?.reason ?? "NO_TRADE"}`],
-      blockers: analysis.blockers, stats, updatedAt: now,
-    };
-  }
-
-  if (preset === "crash500") {
-    const [m15, m5, m1, ticks] = await Promise.all([
-      fetchCandlesServer(symbol, 900, 70), fetchCandlesServer(symbol, 300, 70),
-      fetchCandlesServer(symbol, 60, 55), fetchRecentTicksServer(symbol, 120).catch(() => []),
-    ]);
-    const candidates = generateCrash500Signals(m15, m5, m1, ticks);
-    const signal = candidates.find((candidate) => candidate.strategy === "CRASH500_SPIKE_HUNTER_SELL" && candidate.confidence >= 95)
-      ?? candidates.sort((a, b) => b.confidence - a.confidence)[0];
-    const analysis: SymbolAnalysis = signal ? {
-      direction: signal.direction, confidence: signal.confidence, agreement: 4,
-      premiumCount: signal.confidence >= 95 ? 1 : 0, volatilityPct: signal.volatilityPct,
-      volatilityRatio: 1, blockers: [], dominantTf: "M15/M5/M1", suggestedDuration: 0,
-      trendAlignmentScore: 4, patternBonus: signal.confidence >= 95 ? 10 : 0,
-    } : {
-      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas de setup Crash500 Spike SELL ou Drift BUY confirmé"],
-      dominantTf: "M15/M5/M1", suggestedDuration: 0, trendAlignmentScore: 0, patternBonus: 0,
-    };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return {
-      id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol,
-      label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision,
-      direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument),
-      confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats),
-      mode: decision === "take" ? "demo" : "manual", instrument, durationMinutes: 0,
-      takeProfitUsd: null, stopLossUsd: null,
-      reasons: signal ? [`${signal.strategy} · ${signal.reason}`] : explainOpportunity(decision, analysis, thresholds, stats),
-      blockers: analysis.blockers, stats, updatedAt: now,
-    };
-  }
-
-  if (preset === "scalpingv2") {
-    const [m1, m5] = await Promise.all([fetchCandlesServer(symbol, 60, 60), fetchCandlesServer(symbol, 300, 30)]);
-    const signal = generateSpikeHunterSignal(symbol, m1, m5);
-    const analysis: SymbolAnalysis = signal ? {
-      direction: signal.direction, confidence: signal.confidence, agreement: 4, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: [], dominantTf: "M1/M5", suggestedDuration: config.durationMinutes, trendAlignmentScore: 4, patternBonus: 0,
-    } : {
-      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas d'accumulation/distribution Spike Hunter M1/M5"], dominantTf: "M1/M5", suggestedDuration: config.durationMinutes, trendAlignmentScore: 0, patternBonus: 0,
-    };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return { id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol, label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision, direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument), confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats), mode: "manual", instrument, durationMinutes: config.durationMinutes, takeProfitUsd: config.stakeUsd * ((config.takeProfitPctOfStake ?? 0) / 100) || null, stopLossUsd: config.stakeUsd * ((config.stopLossPctOfStake ?? 0) / 100) || null, reasons: signal ? [signal.reason] : ["Aucun setup Spike Hunter confirmé."], blockers: analysis.blockers, stats, updatedAt: now };
-  }
-
   if (preset === "scalping") {
     const m1 = await fetchCandlesServer(symbol, 60, MIN_M1_CANDLES + 5);
     const signal = generateScalpingSignal(m1);
@@ -373,7 +217,7 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
     };
   }
 
-  if (preset === "liquidity" || preset === "liquidityv2") {
+  if (preset === "liquidity") {
     const m15 = await fetchCandlesServer(symbol, 900, MIN_LIQUIDITY_CANDLES + 5);
     const signal = generateLiquidityReversalSignal(m15);
     const analysis: SymbolAnalysis = signal
@@ -420,87 +264,10 @@ async function analyzePresetSymbol(preset: Preset, symbol: string, config: AutoT
       risk: riskLevelFor(analysis, stats),
       mode: "manual",
       instrument,
-      durationMinutes: config.durationMinutes,
+      durationMinutes: 15,
       takeProfitUsd: null,
       stopLossUsd: null,
       reasons: signal ? [signal.reason] : ["Aucun setup de reversal de liquidité confirmé."],
-      blockers: analysis.blockers,
-      stats,
-      updatedAt: now,
-    };
-  }
-
-  if (preset === "goldv2") {
-    const m15 = await fetchCandlesServer(symbol, 900, MIN_GOLD_SESSION_CANDLES + 5);
-    const signal = generateGoldSessionBreakoutSignal(m15);
-    const analysis: SymbolAnalysis = signal ? {
-      direction: signal.direction, confidence: signal.confidence, agreement: 4, premiumCount: 0,
-      volatilityPct: signal.volatilityPct, volatilityRatio: 1, blockers: [], dominantTf: "15m", suggestedDuration: config.durationMinutes, trendAlignmentScore: 4, patternBonus: 0,
-    } : {
-      direction: null, confidence: 0, agreement: 0, premiumCount: 0,
-      volatilityPct: 0, volatilityRatio: 1, blockers: ["Pas de cassure de session suivie d'un pullback validé"], dominantTf: "15m", suggestedDuration: config.durationMinutes, trendAlignmentScore: 0, patternBonus: 0,
-    };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return { id: `${preset}:${symbol}`, preset, presetLabel: PRESET_LABEL[preset], symbol, label: meta?.label ?? symbol, market: meta?.market ?? "unknown", decision, direction: analysis.direction, directionLabel: directionLabel(analysis.direction, instrument), confidence: analysis.confidence, agreement: analysis.agreement, risk: riskLevelFor(analysis, stats), mode: "manual", instrument, durationMinutes: config.durationMinutes, takeProfitUsd: null, stopLossUsd: null, reasons: signal ? [signal.reason] : ["Aucun setup breakout/pullback de session confirmé sur l'or."], blockers: analysis.blockers, stats, updatedAt: now };
-  }
-
-  if (preset === "gold") {
-    const [h1, m15, m5, m1] = await Promise.all([
-      fetchCandlesServer(symbol, 3600, MIN_GOLD_PULLBACK_H1_CANDLES + 5),
-      fetchCandlesServer(symbol, 900, MIN_GOLD_PULLBACK_M15_CANDLES + 5),
-      fetchCandlesServer(symbol, 300, MIN_GOLD_PULLBACK_M5_CANDLES + 5),
-      fetchCandlesServer(symbol, 60, MIN_GOLD_PULLBACK_M1_CANDLES + 5),
-    ]);
-    const signal = generateGoldTrendPullbackSignal(h1, m15, m5, m1);
-    const analysis: SymbolAnalysis = signal
-      ? {
-          direction: signal.direction,
-          confidence: signal.confidence,
-          agreement: 4,
-          premiumCount: 0,
-          volatilityPct: signal.volatilityPct,
-          volatilityRatio: 1,
-          blockers: [],
-          dominantTf: "1m",
-          suggestedDuration: 0,
-          trendAlignmentScore: 4,
-          patternBonus: 0,
-        }
-      : {
-          direction: null,
-          confidence: 0,
-          agreement: 0,
-          premiumCount: 0,
-          volatilityPct: 0,
-          volatilityRatio: 1,
-          blockers: ["Pas de séquence Trend Pullback H1→M15→M5→M1 complète"],
-          dominantTf: "1m",
-          suggestedDuration: 0,
-          trendAlignmentScore: 0,
-          patternBonus: 0,
-        };
-    const thresholds = thresholdsFor(symbol, instrument, config);
-    const { decision } = classifyOpportunity(analysis, thresholds, isBadStats(stats));
-    return {
-      id: `${preset}:${symbol}`,
-      preset,
-      presetLabel: PRESET_LABEL[preset],
-      symbol,
-      label: meta?.label ?? symbol,
-      market: meta?.market ?? "unknown",
-      decision,
-      direction: analysis.direction,
-      directionLabel: directionLabel(analysis.direction, instrument),
-      confidence: analysis.confidence,
-      agreement: analysis.agreement,
-      risk: riskLevelFor(analysis, stats),
-      mode: "manual",
-      instrument,
-      durationMinutes: 30,
-      takeProfitUsd: null,
-      stopLossUsd: null,
-      reasons: signal ? [signal.reason] : ["Aucun setup trend-following confirmé sur l'or."],
       blockers: analysis.blockers,
       stats,
       updatedAt: now,
@@ -560,21 +327,9 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
   pendingBuildPromise = (async () => {
     try {
       const configs = new Map(PRESETS.map((preset) => [preset, mergeConfig(userId, preset)]));
-      const activeBotPresets = new Set(
-        (getDb()
-          .prepare("SELECT preset FROM bot_state WHERE user_id = ? AND enabled = 1")
-          .all(userId) as Array<{ preset: Preset }>)
-          .map((row) => row.preset),
-      );
-      const activePresets = activeBotPresets.size > 0
-        ? activeBotPresets
-        : new Set(getVisiblePresets(userId));
-      const targetPresets = PRESETS.filter((preset) => activePresets.has(preset));
-
-      const jobs = targetPresets.flatMap((preset) => {
+      const jobs = PRESETS.flatMap((preset) => {
         const config = configs.get(preset)!;
-        const symbols = Array.isArray(config.symbols) ? config.symbols : [];
-        return symbols.map((symbol) => ({ preset, symbol, config }));
+        return (config.symbols ?? []).map((symbol) => ({ preset, symbol, config }));
       });
 
       const opportunities = (await mapWithConcurrency(jobs, 8, ({ preset, symbol, config }) =>
@@ -605,11 +360,9 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
             updatedAt: Date.now(),
           };
         }),
-      ))
-        .map((opportunity) => ({ ...opportunity, active: activePresets.has(opportunity.preset) }))
-        .sort(sortOpportunities);
+      )).sort(sortOpportunities);
 
-      const avoidList: AvoidItem[] = targetPresets.flatMap((preset) => {
+      const avoidList: AvoidItem[] = PRESETS.flatMap((preset) => {
         const config = configs.get(preset)!;
         return (config.excludedSymbols ?? []).map((symbol) => {
           const meta = SYMBOL_LABELS.get(symbol);
@@ -633,7 +386,7 @@ export async function buildOpportunities(userId: number): Promise<OpportunitiesR
           take: opportunities.filter((o) => o.decision === "take").length,
           wait: opportunities.filter((o) => o.decision === "wait").length,
           avoid: opportunities.filter((o) => o.decision === "avoid").length + avoidList.length,
-          presets: targetPresets.length,
+          presets: PRESETS.length,
         },
       };
 

@@ -49,7 +49,6 @@ export const Route = createFileRoute("/api/settings")({
           enableKraken?: boolean;
           enableBinance?: boolean;
           enableOanda?: boolean;
-          maxDailyLossUsd?: number;
         };
 
         const db = getDb();
@@ -109,31 +108,28 @@ export const Route = createFileRoute("/api/settings")({
           enableOanda: body.enableOanda,
         };
         const hasToggle = Object.values(brokerToggles).some((v) => v !== undefined);
-        const hasMaxDailyLoss = body.maxDailyLossUsd !== undefined && !isNaN(body.maxDailyLossUsd);
-        if (hasToggle || hasMaxDailyLoss) {
+        if (hasToggle) {
           // Broker on/off is account-level, not per-preset — a toggle here
           // applies to EVERY preset row this user has (up to three since
           // 2026-08-01), so Default/Boom/Crash never disagree about which
           // brokers are enabled.
-          const presetsList: ("default" | "boom" | "boom900" | "crash" | "scalping" | "liquidity" | "gold" | "crash900")[] = ["default", "boom", "boom900", "crash", "scalping", "liquidity", "gold", "crash900"];
+          const rows = db.prepare("SELECT preset, config FROM bot_state WHERE user_id = ?").all(auth.userId) as { preset: string; config: string }[];
           const { updateConfigForUser } = await import("@/lib/bot-engine.server");
-          for (const p of presetsList) {
-            const row = db.prepare("SELECT config FROM bot_state WHERE user_id = ? AND preset = ?").get(auth.userId, p) as { config?: string } | undefined;
-            let config: Record<string, unknown> = {};
-            try { config = row?.config ? (JSON.parse(row.config) as Record<string, unknown>) : {}; } catch { config = {}; }
+          type Preset = "default" | "boom" | "crash" | "scalping";
+          for (const botState of rows) {
+            // Un JSON illisible faisait repartir de {} — et le UPDATE plus bas
+            // écrasait alors TOUTE la stratégie (preset, symboles, TP/SL) par
+            // un objet vide, juste pour basculer un interrupteur de broker.
+            // On ne touche à la config que si on a réussi à la relire.
+            let config: Record<string, unknown> | null = null;
+            try { config = botState.config ? (JSON.parse(botState.config) as Record<string, unknown>) : {}; } catch { config = null; }
+            if (config === null) continue; // skip this one row rather than fail the whole toggle
             if (brokerToggles.enableDeriv !== undefined) config.enableDeriv = brokerToggles.enableDeriv;
             if (brokerToggles.enableKraken !== undefined) config.enableKraken = brokerToggles.enableKraken;
             if (brokerToggles.enableBinance !== undefined) config.enableBinance = brokerToggles.enableBinance;
             if (brokerToggles.enableOanda !== undefined) config.enableOanda = brokerToggles.enableOanda;
-            if (hasMaxDailyLoss) config.maxDailyLossUsd = Math.min(500, Math.max(1, body.maxDailyLossUsd!));
-
-            db.prepare(`
-              INSERT INTO bot_state (user_id, preset, enabled, config, updated_at)
-              VALUES (?, ?, 0, ?, unixepoch())
-              ON CONFLICT(user_id, preset) DO UPDATE SET config = excluded.config, updated_at = unixepoch()
-            `).run(auth.userId, p, JSON.stringify(config));
-
-            updateConfigForUser(auth.userId, p, config as any);
+            // Hot-swaps if that preset's bot is running.
+            updateConfigForUser(auth.userId, botState.preset as Preset, config as any);
           }
         }
 

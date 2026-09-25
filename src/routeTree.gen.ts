@@ -18,9 +18,7 @@ import { Route as SignalsRouteImport } from './routes/signals'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
-import { Route as PisteRouteImport } from './routes/piste'
 import { Route as OpportunitiesRouteImport } from './routes/opportunities'
-import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MessengerRouteImport } from './routes/messenger'
 import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as ManualTraderRouteImport } from './routes/manual-trader'
@@ -35,22 +33,18 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
 import { Route as ApiTradesRouteImport } from './routes/api/trades'
-import { Route as ApiTelegramRouteImport } from './routes/api/telegram'
 import { Route as ApiStrategiesRouteImport } from './routes/api/strategies'
 import { Route as ApiStatsRouteImport } from './routes/api/stats'
 import { Route as ApiSignalHistoryRouteImport } from './routes/api/signal-history'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiPushRouteImport } from './routes/api/push'
 import { Route as ApiPresenceRouteImport } from './routes/api/presence'
-import { Route as ApiOptimizeRouteImport } from './routes/api/optimize'
 import { Route as ApiOpportunitiesRouteImport } from './routes/api/opportunities'
 import { Route as ApiNotifyMeRouteImport } from './routes/api/notify-me'
-import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiNotesRouteImport } from './routes/api/notes'
 import { Route as ApiLearningRouteImport } from './routes/api/learning'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDerivSessionRouteImport } from './routes/api/deriv-session'
-import { Route as ApiDailyRiskSimulationRouteImport } from './routes/api/daily-risk-simulation'
 import { Route as ApiCustomPresetsRouteImport } from './routes/api/custom-presets'
 import { Route as ApiBotTradesRouteImport } from './routes/api/bot-trades'
 import { Route as ApiBotRouteImport } from './routes/api/bot'
@@ -74,19 +68,11 @@ import { Route as ApiAdminVisiblePresetsRouteImport } from './routes/api/admin/v
 import { Route as ApiAdminUsersRouteImport } from './routes/api/admin/users'
 import { Route as ApiAdminUserConfigRouteImport } from './routes/api/admin/user-config'
 import { Route as ApiAdminStatsRouteImport } from './routes/api/admin/stats'
-import { Route as ApiAdminRunSkillRouteImport } from './routes/api/admin/run-skill'
-import { Route as ApiAdminReviewReportsRouteImport } from './routes/api/admin/review-reports'
-import { Route as ApiAdminReplayRouteImport } from './routes/api/admin/replay'
-import { Route as ApiAdminR4E2AuditRouteImport } from './routes/api/admin/r4-e2-audit'
 import { Route as ApiAdminInvitesRouteImport } from './routes/api/admin/invites'
 import { Route as ApiAdminHealthRouteImport } from './routes/api/admin/health'
-import { Route as ApiAdminForceTradeRouteImport } from './routes/api/admin/force-trade'
-import { Route as ApiAdminConfigRegistryRouteImport } from './routes/api/admin/config-registry'
 import { Route as ApiAdminConfigChangesRouteImport } from './routes/api/admin/config-changes'
 import { Route as ApiAdminChangelogRouteImport } from './routes/api/admin/changelog'
-import { Route as ApiAdminChangeImpactRouteImport } from './routes/api/admin/change-impact'
 import { Route as ApiAdminBotRouteImport } from './routes/api/admin/bot'
-import { Route as AdminUsersUserIdRouteImport } from './routes/admin.users.$userId'
 import { Route as ApiChatGroupsMembersRouteImport } from './routes/api/chat/groups/members'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
@@ -134,19 +120,9 @@ const PortfolioRoute = PortfolioRouteImport.update({
   path: '/portfolio',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PisteRoute = PisteRouteImport.update({
-  id: '/piste',
-  path: '/piste',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OpportunitiesRoute = OpportunitiesRouteImport.update({
   id: '/opportunities',
   path: '/opportunities',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NotificationsRoute = NotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessengerRoute = MessengerRouteImport.update({
@@ -219,11 +195,6 @@ const ApiTradesRoute = ApiTradesRouteImport.update({
   path: '/api/trades',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTelegramRoute = ApiTelegramRouteImport.update({
-  id: '/api/telegram',
-  path: '/api/telegram',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiStrategiesRoute = ApiStrategiesRouteImport.update({
   id: '/api/strategies',
   path: '/api/strategies',
@@ -254,11 +225,6 @@ const ApiPresenceRoute = ApiPresenceRouteImport.update({
   path: '/api/presence',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiOptimizeRoute = ApiOptimizeRouteImport.update({
-  id: '/api/optimize',
-  path: '/api/optimize',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiOpportunitiesRoute = ApiOpportunitiesRouteImport.update({
   id: '/api/opportunities',
   path: '/api/opportunities',
@@ -267,11 +233,6 @@ const ApiOpportunitiesRoute = ApiOpportunitiesRouteImport.update({
 const ApiNotifyMeRoute = ApiNotifyMeRouteImport.update({
   id: '/api/notify-me',
   path: '/api/notify-me',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
-  id: '/api/notifications',
-  path: '/api/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNotesRoute = ApiNotesRouteImport.update({
@@ -292,11 +253,6 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
 const ApiDerivSessionRoute = ApiDerivSessionRouteImport.update({
   id: '/api/deriv-session',
   path: '/api/deriv-session',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiDailyRiskSimulationRoute = ApiDailyRiskSimulationRouteImport.update({
-  id: '/api/daily-risk-simulation',
-  path: '/api/daily-risk-simulation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCustomPresetsRoute = ApiCustomPresetsRouteImport.update({
@@ -415,26 +371,6 @@ const ApiAdminStatsRoute = ApiAdminStatsRouteImport.update({
   path: '/api/admin/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAdminRunSkillRoute = ApiAdminRunSkillRouteImport.update({
-  id: '/api/admin/run-skill',
-  path: '/api/admin/run-skill',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminReviewReportsRoute = ApiAdminReviewReportsRouteImport.update({
-  id: '/api/admin/review-reports',
-  path: '/api/admin/review-reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminReplayRoute = ApiAdminReplayRouteImport.update({
-  id: '/api/admin/replay',
-  path: '/api/admin/replay',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminR4E2AuditRoute = ApiAdminR4E2AuditRouteImport.update({
-  id: '/api/admin/r4-e2-audit',
-  path: '/api/admin/r4-e2-audit',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAdminInvitesRoute = ApiAdminInvitesRouteImport.update({
   id: '/api/admin/invites',
   path: '/api/admin/invites',
@@ -443,16 +379,6 @@ const ApiAdminInvitesRoute = ApiAdminInvitesRouteImport.update({
 const ApiAdminHealthRoute = ApiAdminHealthRouteImport.update({
   id: '/api/admin/health',
   path: '/api/admin/health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminForceTradeRoute = ApiAdminForceTradeRouteImport.update({
-  id: '/api/admin/force-trade',
-  path: '/api/admin/force-trade',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminConfigRegistryRoute = ApiAdminConfigRegistryRouteImport.update({
-  id: '/api/admin/config-registry',
-  path: '/api/admin/config-registry',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminConfigChangesRoute = ApiAdminConfigChangesRouteImport.update({
@@ -465,20 +391,10 @@ const ApiAdminChangelogRoute = ApiAdminChangelogRouteImport.update({
   path: '/api/admin/changelog',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAdminChangeImpactRoute = ApiAdminChangeImpactRouteImport.update({
-  id: '/api/admin/change-impact',
-  path: '/api/admin/change-impact',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAdminBotRoute = ApiAdminBotRouteImport.update({
   id: '/api/admin/bot',
   path: '/api/admin/bot',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersUserIdRoute = AdminUsersUserIdRouteImport.update({
-  id: '/users/$userId',
-  path: '/users/$userId',
-  getParentRoute: () => AdminRoute,
 } as any)
 const ApiChatGroupsMembersRoute = ApiChatGroupsMembersRouteImport.update({
   id: '/members',
@@ -488,7 +404,7 @@ const ApiChatGroupsMembersRoute = ApiChatGroupsMembersRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteWithChildren
+  '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -499,9 +415,7 @@ export interface FileRoutesByFullPath {
   '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -516,37 +430,25 @@ export interface FileRoutesByFullPath {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
-  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
-  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
-  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
-  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
-  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
-  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
-  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
-  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
-  '/api/admin/r4-e2-audit': typeof ApiAdminR4E2AuditRoute
-  '/api/admin/replay': typeof ApiAdminReplayRoute
-  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
-  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -569,7 +471,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteWithChildren
+  '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -580,9 +482,7 @@ export interface FileRoutesByTo {
   '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -597,37 +497,25 @@ export interface FileRoutesByTo {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
-  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
-  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
-  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
-  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
-  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
-  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
-  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
-  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
-  '/api/admin/r4-e2-audit': typeof ApiAdminR4E2AuditRoute
-  '/api/admin/replay': typeof ApiAdminReplayRoute
-  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
-  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -651,7 +539,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteWithChildren
+  '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
   '/autotrader': typeof AutotraderRoute
   '/backtest': typeof BacktestRoute
@@ -662,9 +550,7 @@ export interface FileRoutesById {
   '/manual-trader': typeof ManualTraderRoute
   '/markets': typeof MarketsRoute
   '/messenger': typeof MessengerRoute
-  '/notifications': typeof NotificationsRoute
   '/opportunities': typeof OpportunitiesRoute
-  '/piste': typeof PisteRoute
   '/portfolio': typeof PortfolioRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -679,37 +565,25 @@ export interface FileRoutesById {
   '/api/bot': typeof ApiBotRoute
   '/api/bot-trades': typeof ApiBotTradesRoute
   '/api/custom-presets': typeof ApiCustomPresetsRoute
-  '/api/daily-risk-simulation': typeof ApiDailyRiskSimulationRoute
   '/api/deriv-session': typeof ApiDerivSessionRoute
   '/api/health': typeof ApiHealthRoute
   '/api/learning': typeof ApiLearningRoute
   '/api/notes': typeof ApiNotesRoute
-  '/api/notifications': typeof ApiNotificationsRoute
   '/api/notify-me': typeof ApiNotifyMeRoute
   '/api/opportunities': typeof ApiOpportunitiesRoute
-  '/api/optimize': typeof ApiOptimizeRoute
   '/api/presence': typeof ApiPresenceRoute
   '/api/push': typeof ApiPushRoute
   '/api/settings': typeof ApiSettingsRoute
   '/api/signal-history': typeof ApiSignalHistoryRoute
   '/api/stats': typeof ApiStatsRoute
   '/api/strategies': typeof ApiStrategiesRoute
-  '/api/telegram': typeof ApiTelegramRoute
   '/api/trades': typeof ApiTradesRoute
   '/api/transcribe': typeof ApiTranscribeRoute
-  '/admin/users/$userId': typeof AdminUsersUserIdRoute
   '/api/admin/bot': typeof ApiAdminBotRoute
-  '/api/admin/change-impact': typeof ApiAdminChangeImpactRoute
   '/api/admin/changelog': typeof ApiAdminChangelogRoute
   '/api/admin/config-changes': typeof ApiAdminConfigChangesRoute
-  '/api/admin/config-registry': typeof ApiAdminConfigRegistryRoute
-  '/api/admin/force-trade': typeof ApiAdminForceTradeRoute
   '/api/admin/health': typeof ApiAdminHealthRoute
   '/api/admin/invites': typeof ApiAdminInvitesRoute
-  '/api/admin/r4-e2-audit': typeof ApiAdminR4E2AuditRoute
-  '/api/admin/replay': typeof ApiAdminReplayRoute
-  '/api/admin/review-reports': typeof ApiAdminReviewReportsRoute
-  '/api/admin/run-skill': typeof ApiAdminRunSkillRoute
   '/api/admin/stats': typeof ApiAdminStatsRoute
   '/api/admin/user-config': typeof ApiAdminUserConfigRoute
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -745,9 +619,7 @@ export interface FileRouteTypes {
     | '/manual-trader'
     | '/markets'
     | '/messenger'
-    | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -762,37 +634,25 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
-    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
-    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
-    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
-    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
-    | '/admin/users/$userId'
     | '/api/admin/bot'
-    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
-    | '/api/admin/config-registry'
-    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
-    | '/api/admin/r4-e2-audit'
-    | '/api/admin/replay'
-    | '/api/admin/review-reports'
-    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -826,9 +686,7 @@ export interface FileRouteTypes {
     | '/manual-trader'
     | '/markets'
     | '/messenger'
-    | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -843,37 +701,25 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
-    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
-    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
-    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
-    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
-    | '/admin/users/$userId'
     | '/api/admin/bot'
-    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
-    | '/api/admin/config-registry'
-    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
-    | '/api/admin/r4-e2-audit'
-    | '/api/admin/replay'
-    | '/api/admin/review-reports'
-    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -907,9 +753,7 @@ export interface FileRouteTypes {
     | '/manual-trader'
     | '/markets'
     | '/messenger'
-    | '/notifications'
     | '/opportunities'
-    | '/piste'
     | '/portfolio'
     | '/reset-password'
     | '/settings'
@@ -924,37 +768,25 @@ export interface FileRouteTypes {
     | '/api/bot'
     | '/api/bot-trades'
     | '/api/custom-presets'
-    | '/api/daily-risk-simulation'
     | '/api/deriv-session'
     | '/api/health'
     | '/api/learning'
     | '/api/notes'
-    | '/api/notifications'
     | '/api/notify-me'
     | '/api/opportunities'
-    | '/api/optimize'
     | '/api/presence'
     | '/api/push'
     | '/api/settings'
     | '/api/signal-history'
     | '/api/stats'
     | '/api/strategies'
-    | '/api/telegram'
     | '/api/trades'
     | '/api/transcribe'
-    | '/admin/users/$userId'
     | '/api/admin/bot'
-    | '/api/admin/change-impact'
     | '/api/admin/changelog'
     | '/api/admin/config-changes'
-    | '/api/admin/config-registry'
-    | '/api/admin/force-trade'
     | '/api/admin/health'
     | '/api/admin/invites'
-    | '/api/admin/r4-e2-audit'
-    | '/api/admin/replay'
-    | '/api/admin/review-reports'
-    | '/api/admin/run-skill'
     | '/api/admin/stats'
     | '/api/admin/user-config'
     | '/api/admin/users'
@@ -978,7 +810,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRouteWithChildren
+  AdminRoute: typeof AdminRoute
   AlertsRoute: typeof AlertsRoute
   AutotraderRoute: typeof AutotraderRoute
   BacktestRoute: typeof BacktestRoute
@@ -989,9 +821,7 @@ export interface RootRouteChildren {
   ManualTraderRoute: typeof ManualTraderRoute
   MarketsRoute: typeof MarketsRoute
   MessengerRoute: typeof MessengerRoute
-  NotificationsRoute: typeof NotificationsRoute
   OpportunitiesRoute: typeof OpportunitiesRoute
-  PisteRoute: typeof PisteRoute
   PortfolioRoute: typeof PortfolioRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -1006,36 +836,25 @@ export interface RootRouteChildren {
   ApiBotRoute: typeof ApiBotRoute
   ApiBotTradesRoute: typeof ApiBotTradesRoute
   ApiCustomPresetsRoute: typeof ApiCustomPresetsRoute
-  ApiDailyRiskSimulationRoute: typeof ApiDailyRiskSimulationRoute
   ApiDerivSessionRoute: typeof ApiDerivSessionRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLearningRoute: typeof ApiLearningRoute
   ApiNotesRoute: typeof ApiNotesRoute
-  ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiNotifyMeRoute: typeof ApiNotifyMeRoute
   ApiOpportunitiesRoute: typeof ApiOpportunitiesRoute
-  ApiOptimizeRoute: typeof ApiOptimizeRoute
   ApiPresenceRoute: typeof ApiPresenceRoute
   ApiPushRoute: typeof ApiPushRoute
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiSignalHistoryRoute: typeof ApiSignalHistoryRoute
   ApiStatsRoute: typeof ApiStatsRoute
   ApiStrategiesRoute: typeof ApiStrategiesRoute
-  ApiTelegramRoute: typeof ApiTelegramRoute
   ApiTradesRoute: typeof ApiTradesRoute
   ApiTranscribeRoute: typeof ApiTranscribeRoute
   ApiAdminBotRoute: typeof ApiAdminBotRoute
-  ApiAdminChangeImpactRoute: typeof ApiAdminChangeImpactRoute
   ApiAdminChangelogRoute: typeof ApiAdminChangelogRoute
   ApiAdminConfigChangesRoute: typeof ApiAdminConfigChangesRoute
-  ApiAdminConfigRegistryRoute: typeof ApiAdminConfigRegistryRoute
-  ApiAdminForceTradeRoute: typeof ApiAdminForceTradeRoute
   ApiAdminHealthRoute: typeof ApiAdminHealthRoute
   ApiAdminInvitesRoute: typeof ApiAdminInvitesRoute
-  ApiAdminR4E2AuditRoute: typeof ApiAdminR4E2AuditRoute
-  ApiAdminReplayRoute: typeof ApiAdminReplayRoute
-  ApiAdminReviewReportsRoute: typeof ApiAdminReviewReportsRoute
-  ApiAdminRunSkillRoute: typeof ApiAdminRunSkillRoute
   ApiAdminStatsRoute: typeof ApiAdminStatsRoute
   ApiAdminUserConfigRoute: typeof ApiAdminUserConfigRoute
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
@@ -1121,25 +940,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortfolioRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/piste': {
-      id: '/piste'
-      path: '/piste'
-      fullPath: '/piste'
-      preLoaderRoute: typeof PisteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/opportunities': {
       id: '/opportunities'
       path: '/opportunities'
       fullPath: '/opportunities'
       preLoaderRoute: typeof OpportunitiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/notifications': {
-      id: '/notifications'
-      path: '/notifications'
-      fullPath: '/notifications'
-      preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messenger': {
@@ -1240,13 +1045,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTradesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/telegram': {
-      id: '/api/telegram'
-      path: '/api/telegram'
-      fullPath: '/api/telegram'
-      preLoaderRoute: typeof ApiTelegramRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/strategies': {
       id: '/api/strategies'
       path: '/api/strategies'
@@ -1289,13 +1087,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPresenceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/optimize': {
-      id: '/api/optimize'
-      path: '/api/optimize'
-      fullPath: '/api/optimize'
-      preLoaderRoute: typeof ApiOptimizeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/opportunities': {
       id: '/api/opportunities'
       path: '/api/opportunities'
@@ -1308,13 +1099,6 @@ declare module '@tanstack/react-router' {
       path: '/api/notify-me'
       fullPath: '/api/notify-me'
       preLoaderRoute: typeof ApiNotifyMeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/notifications': {
-      id: '/api/notifications'
-      path: '/api/notifications'
-      fullPath: '/api/notifications'
-      preLoaderRoute: typeof ApiNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/notes': {
@@ -1343,13 +1127,6 @@ declare module '@tanstack/react-router' {
       path: '/api/deriv-session'
       fullPath: '/api/deriv-session'
       preLoaderRoute: typeof ApiDerivSessionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/daily-risk-simulation': {
-      id: '/api/daily-risk-simulation'
-      path: '/api/daily-risk-simulation'
-      fullPath: '/api/daily-risk-simulation'
-      preLoaderRoute: typeof ApiDailyRiskSimulationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/custom-presets': {
@@ -1513,34 +1290,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/run-skill': {
-      id: '/api/admin/run-skill'
-      path: '/api/admin/run-skill'
-      fullPath: '/api/admin/run-skill'
-      preLoaderRoute: typeof ApiAdminRunSkillRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/review-reports': {
-      id: '/api/admin/review-reports'
-      path: '/api/admin/review-reports'
-      fullPath: '/api/admin/review-reports'
-      preLoaderRoute: typeof ApiAdminReviewReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/replay': {
-      id: '/api/admin/replay'
-      path: '/api/admin/replay'
-      fullPath: '/api/admin/replay'
-      preLoaderRoute: typeof ApiAdminReplayRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/r4-e2-audit': {
-      id: '/api/admin/r4-e2-audit'
-      path: '/api/admin/r4-e2-audit'
-      fullPath: '/api/admin/r4-e2-audit'
-      preLoaderRoute: typeof ApiAdminR4E2AuditRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/admin/invites': {
       id: '/api/admin/invites'
       path: '/api/admin/invites'
@@ -1553,20 +1302,6 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/health'
       fullPath: '/api/admin/health'
       preLoaderRoute: typeof ApiAdminHealthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/force-trade': {
-      id: '/api/admin/force-trade'
-      path: '/api/admin/force-trade'
-      fullPath: '/api/admin/force-trade'
-      preLoaderRoute: typeof ApiAdminForceTradeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/config-registry': {
-      id: '/api/admin/config-registry'
-      path: '/api/admin/config-registry'
-      fullPath: '/api/admin/config-registry'
-      preLoaderRoute: typeof ApiAdminConfigRegistryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/config-changes': {
@@ -1583,26 +1318,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminChangelogRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/change-impact': {
-      id: '/api/admin/change-impact'
-      path: '/api/admin/change-impact'
-      fullPath: '/api/admin/change-impact'
-      preLoaderRoute: typeof ApiAdminChangeImpactRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/admin/bot': {
       id: '/api/admin/bot'
       path: '/api/admin/bot'
       fullPath: '/api/admin/bot'
       preLoaderRoute: typeof ApiAdminBotRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/admin/users/$userId': {
-      id: '/admin/users/$userId'
-      path: '/users/$userId'
-      fullPath: '/admin/users/$userId'
-      preLoaderRoute: typeof AdminUsersUserIdRouteImport
-      parentRoute: typeof AdminRoute
     }
     '/api/chat/groups/members': {
       id: '/api/chat/groups/members'
@@ -1613,16 +1334,6 @@ declare module '@tanstack/react-router' {
     }
   }
 }
-
-interface AdminRouteChildren {
-  AdminUsersUserIdRoute: typeof AdminUsersUserIdRoute
-}
-
-const AdminRouteChildren: AdminRouteChildren = {
-  AdminUsersUserIdRoute: AdminUsersUserIdRoute,
-}
-
-const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ApiChatGroupsRouteChildren {
   ApiChatGroupsMembersRoute: typeof ApiChatGroupsMembersRoute
@@ -1638,7 +1349,7 @@ const ApiChatGroupsRouteWithChildren = ApiChatGroupsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRouteWithChildren,
+  AdminRoute: AdminRoute,
   AlertsRoute: AlertsRoute,
   AutotraderRoute: AutotraderRoute,
   BacktestRoute: BacktestRoute,
@@ -1649,9 +1360,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManualTraderRoute: ManualTraderRoute,
   MarketsRoute: MarketsRoute,
   MessengerRoute: MessengerRoute,
-  NotificationsRoute: NotificationsRoute,
   OpportunitiesRoute: OpportunitiesRoute,
-  PisteRoute: PisteRoute,
   PortfolioRoute: PortfolioRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
@@ -1666,36 +1375,25 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBotRoute: ApiBotRoute,
   ApiBotTradesRoute: ApiBotTradesRoute,
   ApiCustomPresetsRoute: ApiCustomPresetsRoute,
-  ApiDailyRiskSimulationRoute: ApiDailyRiskSimulationRoute,
   ApiDerivSessionRoute: ApiDerivSessionRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLearningRoute: ApiLearningRoute,
   ApiNotesRoute: ApiNotesRoute,
-  ApiNotificationsRoute: ApiNotificationsRoute,
   ApiNotifyMeRoute: ApiNotifyMeRoute,
   ApiOpportunitiesRoute: ApiOpportunitiesRoute,
-  ApiOptimizeRoute: ApiOptimizeRoute,
   ApiPresenceRoute: ApiPresenceRoute,
   ApiPushRoute: ApiPushRoute,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiSignalHistoryRoute: ApiSignalHistoryRoute,
   ApiStatsRoute: ApiStatsRoute,
   ApiStrategiesRoute: ApiStrategiesRoute,
-  ApiTelegramRoute: ApiTelegramRoute,
   ApiTradesRoute: ApiTradesRoute,
   ApiTranscribeRoute: ApiTranscribeRoute,
   ApiAdminBotRoute: ApiAdminBotRoute,
-  ApiAdminChangeImpactRoute: ApiAdminChangeImpactRoute,
   ApiAdminChangelogRoute: ApiAdminChangelogRoute,
   ApiAdminConfigChangesRoute: ApiAdminConfigChangesRoute,
-  ApiAdminConfigRegistryRoute: ApiAdminConfigRegistryRoute,
-  ApiAdminForceTradeRoute: ApiAdminForceTradeRoute,
   ApiAdminHealthRoute: ApiAdminHealthRoute,
   ApiAdminInvitesRoute: ApiAdminInvitesRoute,
-  ApiAdminR4E2AuditRoute: ApiAdminR4E2AuditRoute,
-  ApiAdminReplayRoute: ApiAdminReplayRoute,
-  ApiAdminReviewReportsRoute: ApiAdminReviewReportsRoute,
-  ApiAdminRunSkillRoute: ApiAdminRunSkillRoute,
   ApiAdminStatsRoute: ApiAdminStatsRoute,
   ApiAdminUserConfigRoute: ApiAdminUserConfigRoute,
   ApiAdminUsersRoute: ApiAdminUsersRoute,

@@ -26,13 +26,7 @@ let anyOverlap = false;
 for (const row of rows) {
   let config;
   try { config = JSON.parse(row.config); } catch { continue; }
-  // Defensive read-only normalization: malformed legacy data must be reported
-  // rather than crashing the integrity audit before it can inspect other rows.
-  const symbols = Array.isArray(config.symbols)
-    ? config.symbols
-    : typeof config.symbols === "string" && config.symbols.startsWith("[") && config.symbols.endsWith("]")
-      ? config.symbols.slice(1, -1).split(",").map((s) => s.trim()).filter(Boolean)
-      : [];
+  const symbols = config.symbols ?? [];
   const excluded = new Set(config.excludedSymbols ?? []);
   const overlap = symbols.filter((s) => excluded.has(s));
   if (overlap.length > 0) {

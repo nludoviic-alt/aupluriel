@@ -10,14 +10,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getFullUserFromRequest } from "@/lib/auth.server";
 import { getDb } from "@/lib/db.server";
-import { getPresetRiskMetrics } from "@/lib/risk-manager.server";
-import { getFunnelStats } from "@/lib/signal-funnel.server";
-import { getFeatureFlags } from "@/lib/feature-flags.server";
-import { getHourlyPerformanceHeatmap } from "@/lib/hourly-performance.server";
-import { getDailyRiskSimulation } from "@/lib/daily-risk-simulation.server";
-import { getAllStrategyHealthMetrics } from "@/lib/strategy-health.server";
-import { executionMonitor } from "@/lib/execution-quality-monitor.server";
-import { circuitBreaker } from "@/lib/global-circuit-breaker.server";
 import {
   getAllTimeStats,
   getBotRuntime,
@@ -31,75 +23,22 @@ import {
   stopBotForUser,
   updateConfigForUser,
   getVisiblePresets,
-  revalidateBoom900ContractForUser,
-  ACTIVE_PRESETS,
   type Preset,
 } from "@/lib/bot-engine.server";
-import {
-  activateStakeScalingTier,
-  getStakeScalingEvidence,
-  STAKE_SCALING_TIERS,
-} from "@/lib/stake-scaling.server";
 import { DEFAULT_CONFIG, type AutoTraderConfig } from "@/lib/signal-core";
-import {
-  BOOM_PRESET,
-  BOOM900_PRESET,
-  BOOM_V2_PRESET,
-  CRASH_PRESET,
-  CRASH500_PRESET,
-  CRASH900_V2_PRESET,
-  GOLD_PRESET,
-  GOLD_V2_PRESET,
-  LIQUIDITY_PRESET,
-  LIQUIDITY_V2_PRESET,
-  SCALPING_PRESET,
-  SCALPING_V2_PRESET,
-  VOL75_PRESET,
-  RB100_PRESET,
-  VOL50_PRESET,
-} from "@/lib/autotrader";
+import { BOOM_PRESET, CRASH_PRESET, LIQUIDITY_PRESET, SCALPING_PRESET } from "@/lib/autotrader";
 
-const PRESETS: Preset[] = [...ACTIVE_PRESETS];
-const REPLACED_V1: Partial<Record<Preset, Preset>> = {
-  boomv2: "boom",
-  scalpingv2: "scalping",
-  liquidityv2: "liquidity",
-  goldv2: "gold",
-};
-
-function isGoldPreset(preset: Preset): boolean {
-  return (
-    preset === "gold" || preset === "goldv2" || preset === "liquidity" || preset === "liquidityv2"
-  );
-}
+const PRESETS: Preset[] = ["default", "boom", "crash", "scalping", "liquidity"];
 
 function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "boom") return BOOM_PRESET;
-  if (preset === "boom900") return BOOM900_PRESET;
-  if (preset === "vol75") return VOL75_PRESET;
-  if (preset === "rb100") return RB100_PRESET;
-  if (preset === "vol50") return VOL50_PRESET;
   if (preset === "crash") return CRASH_PRESET;
-  if (preset === "crash500") return CRASH500_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
   if (preset === "liquidity") return LIQUIDITY_PRESET;
-  if (preset === "gold") return GOLD_PRESET;
-  if (preset === "crash900") return CRASH900_V2_PRESET;
-  if (preset === "boomv2") return BOOM_V2_PRESET;
-  if (preset === "scalpingv2") return SCALPING_V2_PRESET;
-  if (preset === "liquidityv2") return LIQUIDITY_V2_PRESET;
-  if (preset === "goldv2") return GOLD_V2_PRESET;
   return DEFAULT_CONFIG;
 }
 
-type SharedStatusData = {
-  featureFlags: ReturnType<typeof getFeatureFlags>;
-  strategyHealth: ReturnType<typeof getAllStrategyHealthMetrics>;
-  executionMetrics: ReturnType<typeof executionMonitor.getMetrics>;
-  circuitBreaker: ReturnType<typeof circuitBreaker.getState>;
-};
-
-function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatusData) {
+function loadStatusForPreset(userId: number, preset: Preset) {
   const state = getDb()
     .prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?")
     .get(userId, preset) as { enabled: number; config: string } | undefined;
@@ -113,89 +52,6 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
   // All-time record — shown before a live-mode start so that decision is
   // informed by this preset's actual track record, not a guess.
   const allTime = getAllTimeStats(userId, preset, mode);
-  const now = Date.now();
-  const lastBlock = getDb()
-    .prepare(
-      `
-    SELECT status, note, time FROM bot_trades
-    WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error')
-    ORDER BY time DESC LIMIT 1
-  `,
-    )
-    .get(userId, preset) as { status: string; note: string | null; time: number } | undefined;
-  const blockedSignals = (
-    getDb()
-      .prepare(
-        `
-    SELECT COUNT(*) AS count FROM signal_rejections
-    WHERE user_id = ? AND preset = ? AND time >= ?
-  `,
-      )
-      .get(userId, preset, now - 24 * 60 * 60_000) as { count: number }
-  ).count;
-  const autoShadow = getDb()
-    .prepare(
-      `
-    SELECT 1 FROM strategy_performance_drift
-    WHERE risk_state = 'SHADOW' AND strategy LIKE ? LIMIT 1
-  `,
-    )
-    .get(`${preset.toUpperCase()}%`);
-  const shadowMetrics = getDb()
-    .prepare(
-      `
-    SELECT COUNT(*) AS trades,
-      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN 1 ELSE 0 END), 0) AS closedOutcomes,
-      COALESCE(SUM(CASE WHEN status = 'won' THEN virtual_pnl ELSE 0 END), 0) AS grossWin,
-      COALESCE(SUM(CASE WHEN status = 'lost' THEN ABS(virtual_pnl) ELSE 0 END), 0) AS grossLoss,
-      COALESCE(AVG(CASE WHEN status IN ('won', 'lost') THEN r_multiple END), 0) AS expectancyR,
-      COALESCE(SUM(CASE WHEN status IN ('won', 'lost') THEN virtual_pnl ELSE 0 END), 0) AS hypotheticalPnl,
-      COALESCE(AVG(shadow_mae), 0) AS mae,
-      COALESCE(AVG(shadow_mfe), 0) AS mfe
-    FROM shadow_trades
-    WHERE user_id = ? AND preset = ?
-      AND block_reason IN ('RISK_LOSS_STREAK', 'RISK_DAILY_DD', 'STRATEGY_AUTO_SHADOW')
-  `,
-    )
-    .get(userId, preset) as {
-    trades: number;
-    closedOutcomes: number;
-    grossWin: number;
-    grossLoss: number;
-    expectancyR: number;
-    hypotheticalPnl: number;
-    mae: number;
-    mfe: number;
-  };
-  // Funnel counters pre-date per-user attribution. They describe the preset
-  // engine's production activity, while rejects/shadow/trades above remain
-  // strictly scoped to this user.
-  const funnelToday = getFunnelStats(preset).reduce(
-    (total, row) => ({
-      scans: total.scans + row.scans,
-      setups: total.setups + row.setups,
-      validSignals: total.validSignals + row.validSignals,
-      riskApproved: total.riskApproved + row.riskApproved,
-      executedTrades: total.executedTrades + row.executedTrades,
-    }),
-    { scans: 0, setups: 0, validSignals: 0, riskApproved: 0, executedTrades: 0 },
-  );
-  const phase2Cohort = getDailyRiskSimulation(userId, preset).reduce(
-    (best, cohort) => (cohort.outcomes > best.outcomes ? cohort : best),
-    { outcomes: 0, eligible: false },
-  );
-  const brokerRequired = preset === "liquidity" && !!state?.enabled && !runtime.running;
-  const operationalStatus = !state?.enabled
-    ? "DISABLED"
-    : brokerRequired
-      ? "BROKER_CONFIGURATION_REQUIRED"
-      : autoShadow
-        ? "AUTO_SHADOW"
-        : runtime.pausedUntil && runtime.pausedUntil > now
-          ? "PAUSED"
-          : lastBlock?.status === "cooldown"
-            ? "COOLDOWN"
-            : "ACTIVE";
 
   return {
     enabled: !!state?.enabled,
@@ -216,43 +72,6 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
     trades,
     openTrades: getOpenBotTrades(userId, preset),
     allTimeStats: allTime,
-    riskMetrics: getPresetRiskMetrics(userId, preset),
-    funnelStats: getFunnelStats(preset),
-    featureFlags: shared.featureFlags,
-    hourlyPerformance: getHourlyPerformanceHeatmap(preset),
-    strategyHealth: shared.strategyHealth,
-    executionMetrics: shared.executionMetrics,
-    circuitBreaker: shared.circuitBreaker,
-    operationalStatus,
-    blockReason:
-      runtime.lastError ??
-      (brokerRequired
-        ? "OANDA_NOT_CONFIGURED"
-        : autoShadow
-          ? "STRATEGY_AUTO_SHADOW"
-          : (lastBlock?.note ?? null)),
-    blockedSince: lastBlock?.time ?? null,
-    expectedReleaseAt:
-      runtime.pausedUntil && runtime.pausedUntil > now ? runtime.pausedUntil : null,
-    signalsBlockedCount: blockedSignals,
-    funnelToday,
-    shadowMetrics: {
-      trades: shadowMetrics.trades,
-      closedOutcomes: shadowMetrics.closedOutcomes,
-      phase2CohortOutcomes: phase2Cohort.outcomes,
-      phase2Eligible: phase2Cohort.eligible,
-      phase2Remaining: Math.max(0, 20 - phase2Cohort.outcomes),
-      hypotheticalPnl: shadowMetrics.hypotheticalPnl,
-      profitFactor:
-        shadowMetrics.grossLoss > 0
-          ? shadowMetrics.grossWin / shadowMetrics.grossLoss
-          : shadowMetrics.grossWin > 0
-            ? null
-            : 0,
-      expectancyR: shadowMetrics.expectancyR,
-      mae: shadowMetrics.mae,
-      mfe: shadowMetrics.mfe,
-    },
   };
 }
 
@@ -264,15 +83,7 @@ export const Route = createFileRoute("/api/bot")({
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
 
-        const shared: SharedStatusData = {
-          featureFlags: getFeatureFlags(),
-          strategyHealth: getAllStrategyHealthMetrics(),
-          executionMetrics: executionMonitor.getMetrics(),
-          circuitBreaker: circuitBreaker.getState(),
-        };
-        const presets = Object.fromEntries(
-          PRESETS.map((p) => [p, loadStatusForPreset(user.id, p, shared)]),
-        );
+        const presets = Object.fromEntries(PRESETS.map((p) => [p, loadStatusForPreset(user.id, p)]));
         const brokerBalances = await getBrokerBalances(user.id);
 
         // Every preset's status is still returned in full above, whatever
@@ -287,62 +98,15 @@ export const Route = createFileRoute("/api/bot")({
         if (!user) return json({ error: "Non authentifié" }, 401);
 
         const body = (await request.json().catch(() => ({}))) as {
-          action?:
-            | "start"
-            | "stop"
-            | "reset"
-            | "update"
-            | "revalidate-contract"
-            | "approve-stake-tier";
+          action?: "start" | "stop" | "reset" | "update";
           preset?: Preset;
           config?: Partial<AutoTraderConfig>;
-          tier?: number;
         };
 
-        if (!PRESETS.includes(body.preset as Preset)) {
-          return json({ error: "Preset inconnu." }, 400);
+        if (body.preset !== "boom" && body.preset !== "crash" && body.preset !== "default" && body.preset !== "scalping" && body.preset !== "liquidity") {
+          return json({ error: "preset doit être 'boom', 'crash', 'default', 'scalping' ou 'liquidity'." }, 400);
         }
-        const preset = body.preset as Preset;
-
-        if (body.action === "revalidate-contract") {
-          if (preset !== "boom900") return json({ error: "Revalidation réservée à Boom900." }, 400);
-          try {
-            return json({
-              ok: true,
-              preset,
-              validation: await revalidateBoom900ContractForUser(user.id),
-            });
-          } catch (e) {
-            return json({ error: (e as Error).message }, 400);
-          }
-        }
-
-        if (body.action === "approve-stake-tier") {
-          const tier = body.tier;
-          if (!STAKE_SCALING_TIERS.includes(tier as (typeof STAKE_SCALING_TIERS)[number])) {
-            return json({ error: "Palier invalide.", code: "INVALID_STAKE_TIER" }, 400);
-          }
-          const config = loadBotConfig(user.id, preset) ?? {
-            ...DEFAULT_CONFIG,
-            ...presetFieldsFor(preset),
-          };
-          try {
-            const evidence = getStakeScalingEvidence(user.id, preset);
-            const approval = activateStakeScalingTier({
-              userId: user.id,
-              preset,
-              tier: tier as (typeof STAKE_SCALING_TIERS)[number],
-              config,
-              evidence,
-            });
-            return json({ ok: true, preset, approval, evidence });
-          } catch (error) {
-            return json(
-              { error: (error as Error).message, code: "STAKE_SCALING_NOT_APPROVED" },
-              409,
-            );
-          }
-        }
+        const preset = body.preset;
 
         if (body.action === "start") {
           // Config: on reprend la config sauvegardée en DB pour CE preset (via
@@ -351,14 +115,8 @@ export const Route = createFileRoute("/api/bot")({
           // mode). Un preset jamais démarré repart des valeurs canoniques du
           // preset (BOOM_PRESET/CRASH_PRESET/DEFAULT_CONFIG).
           const requested = body.config ?? {};
-          const stakeUsd =
-            preset === "boom900"
-              ? clamp(Number(requested.stakeUsd) || 0.9, 0.1, 0.9)
-              : clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 1000);
-          const savedConfig = loadBotConfig(user.id, preset) ?? {
-            ...DEFAULT_CONFIG,
-            ...presetFieldsFor(preset),
-          };
+          const stakeUsd = clamp(Number(requested.stakeUsd) || DEFAULT_CONFIG.stakeUsd, 1, 100);
+          const savedConfig = loadBotConfig(user.id, preset) ?? { ...DEFAULT_CONFIG, ...presetFieldsFor(preset) };
           // Plancher : une mise relevée sans relever maxDailyLossUsd en même
           // temps piège le bot après ~1 perte (constaté en prod : mise $18 vs
           // plafond $15, pause jusqu'à minuit après une seule perte normale —
@@ -366,13 +124,9 @@ export const Route = createFileRoute("/api/bot")({
           // voir le commentaire sur BOOM_PRESET.trailingStopMinPeakUsd). Le
           // plafond doit couvrir au moins maxConsecutiveLosses pertes à mise
           // pleine, sinon une série normale — pas une dérive — tue la journée.
-          const lossFloor =
-            stakeUsd * (savedConfig.maxConsecutiveLosses || DEFAULT_CONFIG.maxConsecutiveLosses);
+          const lossFloor = stakeUsd * (savedConfig.maxConsecutiveLosses || DEFAULT_CONFIG.maxConsecutiveLosses);
           const maxDailyLossUsd = clamp(
-            Math.max(
-              Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd,
-              lossFloor,
-            ),
+            Math.max(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, lossFloor),
             1,
             500,
           );
@@ -380,58 +134,21 @@ export const Route = createFileRoute("/api/bot")({
           // (see SCALPING_PRESET's header comment), forced back to demo
           // server-side regardless of what's requested, not just defaulted
           // client-side where a stale draft could slip through.
-          const mode =
-            preset === "boom" ||
-            preset === "boom900" ||
-            preset === "vol75" ||
-            preset === "rb100" ||
-            preset === "vol50" ||
-            preset === "crash500" ||
-            preset === "scalping" ||
-            preset === "liquidity" ||
-            preset === "gold" ||
-            preset === "crash900" ||
-            preset.endsWith("v2")
-              ? "demo"
-              : requested.mode === "live"
-                ? "live"
-                : "demo";
+          const mode = preset === "scalping" || preset === "liquidity" ? "demo" : requested.mode === "live" ? "live" : "demo";
           const config: AutoTraderConfig = {
             ...savedConfig,
             stakeUsd,
             maxDailyLossUsd,
             mode,
-            ...(isGoldPreset(preset)
-              ? {
-                  newsFilter: true,
-                  broker: "oanda",
-                  enableOanda: true,
-                  enableDeriv: false,
-                  instrumentType: "multiplier",
-                }
-              : {}),
           };
           try {
             await startBotForUser(user.id, preset, config);
-            // A V2 is a separate hypothesis, not an extra source of exposure.
-            // Stop its predecessor's scan only after V2 successfully starts.
-            // stopBotForUser deliberately keeps a currently open position
-            // subscribed until closure, so no position is orphaned.
-            const predecessor = REPLACED_V1[preset];
-            if (predecessor)
-              stopBotForUser(user.id, predecessor, `Remplacé par ${preset} pour validation isolée`);
           } catch (e) {
             return json({ error: (e as Error).message }, 400);
           }
           return json({
-            ok: true,
-            running: true,
-            preset,
-            mode,
-            maxDailyLossUsd,
-            adjustedLossCap:
-              maxDailyLossUsd !==
-              clamp(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, 1, 500),
+            ok: true, running: true, preset, mode, maxDailyLossUsd,
+            adjustedLossCap: maxDailyLossUsd !== clamp(Number(requested.maxDailyLossUsd) || DEFAULT_CONFIG.maxDailyLossUsd, 1, 500),
           });
         }
 
@@ -450,55 +167,25 @@ export const Route = createFileRoute("/api/bot")({
           // client could still send "simulation" even though TradingMode no
           // longer allows it at compile time.
           if ((next.mode as string) === "simulation") next.mode = "demo";
-          if (
-            preset === "boom" ||
-            preset === "boom900" ||
-            preset === "vol75" ||
-            preset === "rb100" ||
-            preset === "vol50" ||
-            preset === "crash500" ||
-            preset === "scalping" ||
-            preset === "liquidity" ||
-            preset === "gold" ||
-            preset === "crash900" ||
-            preset.endsWith("v2")
-          )
-            next.mode = "demo"; // experimental presets never use real money
-          if (isGoldPreset(preset)) {
-            next.newsFilter = true;
-            next.broker = "oanda";
-            next.enableOanda = true;
-            next.enableDeriv = false;
-            next.instrumentType = "multiplier";
-          }
+          if (preset === "scalping" || preset === "liquidity") next.mode = "demo"; // experimental presets never use real money
           const increasesFrequency =
-            Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0) ||
-            Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
+            Number(next.maxOpenPositions ?? 0) > Number(current.maxOpenPositions ?? 0)
+            || Number(next.maxSimultaneousTrades ?? 0) > Number(current.maxSimultaneousTrades ?? 0);
           if (increasesFrequency) {
             const recent = getRecentPerformance(user.id, preset, 100);
             if (recent.trades === 100 && recent.profitFactor < 1) {
-              return json(
-                {
-                  error: `Augmentation refusée : les 100 derniers trades ${preset} ont un profit factor de ${recent.profitFactor.toFixed(2)} et une espérance de ${recent.expectancy >= 0 ? "+" : ""}$${recent.expectancy.toFixed(2)}.`,
-                  code: "NEGATIVE_RECENT_EDGE",
-                  recent,
-                },
-                409,
-              );
+              return json({
+                error: `Augmentation refusée : les 100 derniers trades ${preset} ont un profit factor de ${recent.profitFactor.toFixed(2)} et une espérance de ${recent.expectancy >= 0 ? "+" : ""}$${recent.expectancy.toFixed(2)}.`,
+                code: "NEGATIVE_RECENT_EDGE",
+                recent,
+              }, 409);
             }
           }
-          getDb()
-            .prepare(
-              `
+          getDb().prepare(`
             INSERT INTO bot_state (user_id, preset, enabled, config, updated_at)
             VALUES (?, ?, 0, ?, unixepoch())
             ON CONFLICT(user_id, preset) DO NOTHING
-          // Seed with the pre-change configuration so updateConfigForUser can
-          // detect and reject an unapproved stake-tier increase even on a
-          // preset that has never been persisted before.
-          `,
-            )
-            .run(user.id, preset, JSON.stringify(current));
+          `).run(user.id, preset, JSON.stringify(next));
           updateConfigForUser(user.id, preset, next);
           return json({ ok: true, preset, config: next });
         }
@@ -532,23 +219,10 @@ export const Route = createFileRoute("/api/bot")({
             ...presetFieldsFor(preset),
             stakeUsd,
             maxDailyLossUsd,
-            // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET/GOLD_PRESET; the "start" and
+            // never real money — see SCALPING_PRESET/LIQUIDITY_PRESET; the "start" and
             // "update" actions and /api/admin/user-config's resetToCanonical all gate
-            // these presets the same way, this one had only checked scalping.
-            mode:
-              preset === "boom" ||
-              preset === "boom900" ||
-              preset === "vol75" ||
-              preset === "rb100" ||
-              preset === "vol50" ||
-              preset === "crash500" ||
-              preset === "scalping" ||
-              preset === "liquidity" ||
-              preset === "gold" ||
-              preset === "crash900" ||
-              preset.endsWith("v2")
-                ? "demo"
-                : mode,
+            // both presets the same way, this one had only checked scalping.
+            mode: preset === "scalping" || preset === "liquidity" ? "demo" : mode,
             symbolMode,
             symbols,
             excludedSymbols,
@@ -557,27 +231,14 @@ export const Route = createFileRoute("/api/bot")({
             minTfAgreement,
             maxSimultaneousTrades,
             maxOpenPositions,
-            ...(isGoldPreset(preset)
-              ? {
-                  newsFilter: true,
-                  broker: "oanda",
-                  enableOanda: true,
-                  enableDeriv: false,
-                  instrumentType: "multiplier",
-                }
-              : {}),
           };
 
           // updateConfigForUser only UPDATEs — a preset never started has no
           // bot_state row yet, so the reset would silently no-op.
-          getDb()
-            .prepare(
-              `
+          getDb().prepare(`
             INSERT INTO bot_state (user_id, preset, enabled, config, updated_at) VALUES (?, ?, 0, ?, unixepoch())
             ON CONFLICT(user_id, preset) DO NOTHING
-          `,
-            )
-            .run(user.id, preset, JSON.stringify(next));
+          `).run(user.id, preset, JSON.stringify(next));
           updateConfigForUser(user.id, preset, next);
 
           return json({ ok: true, preset, config: next });

@@ -14,7 +14,6 @@ import {
   Cpu,
   Wrench,
   Target,
-  NotebookPen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -32,26 +31,23 @@ import {
 } from "@/components/ui/sidebar";
 import { Link as RouterLink } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import { NotificationCenterSidebarItem } from "@/components/notification-center";
 
 const tradingItems = [
   { title: "Dashboard",        url: "/",                icon: LayoutDashboard, color: "text-violet-400",  glow: "shadow-violet-500/30" },
   { title: "Portfolio",        url: "/portfolio",       icon: BriefcaseBusiness, color: "text-cyan-400",  glow: "shadow-cyan-500/30" },
   { title: "Opportunités",     url: "/opportunities",   icon: Target,          color: "text-emerald-400", glow: "shadow-emerald-500/30" },
   { title: "Auto-Trader",      url: "/autotrader",      icon: Zap,              color: "text-amber-400",  glow: "shadow-amber-500/30" },
-  { title: "Stratégies",       url: "/strategies",      icon: Cpu,              color: "text-teal-400",   glow: "shadow-teal-500/30" },
 ];
 
 const analysisItems = [
   { title: "Backtest",         url: "/backtest",        icon: FlaskConical,     color: "text-fuchsia-400", glow: "shadow-fuchsia-500/30" },
-  { title: "Piste",            url: "/piste",           icon: FlaskConical,     color: "text-amber-400",   glow: "shadow-amber-500/30" },
   { title: "Statistiques",     url: "/stats",           icon: PieChart,         color: "text-cyan-400",    glow: "shadow-cyan-500/30" },
   { title: "Journal",          url: "/journal",         icon: BarChart3,        color: "text-orange-400",  glow: "shadow-orange-500/30" },
   { title: "Skills",           url: "/skills",          icon: Wrench,           color: "text-sky-400",    glow: "shadow-sky-500/30" },
 ];
 
 const toolItems = [
-  { title: "Notes",            url: "/carnet-de-notes", icon: NotebookPen,      color: "text-rose-400",   glow: "shadow-rose-500/30" },
+  { title: "Marchés",          url: "/markets",         icon: CandlestickChart, color: "text-blue-400",   glow: "shadow-blue-500/30" },
   { title: "Paramètres",       url: "/settings",        icon: Settings,         color: "text-slate-400",   glow: "shadow-slate-500/30" },
 ];
 
@@ -221,9 +217,7 @@ export function AppSidebar() {
   const showBacktest = !!user?.is_admin || user?.chat_enabled !== 1;
 
   const filteredAnalysisItems = analysisItems.filter(
-    (item) => (item.url !== "/backtest" || showBacktest)
-      && (item.url !== "/skills" || !!user?.is_admin)
-      && (item.url !== "/piste" || !!user?.is_admin)
+    (item) => (item.url !== "/backtest" || showBacktest) && (item.url !== "/skills" || !!user?.is_admin)
   );
 
   const filteredToolItems = toolItems;
@@ -324,9 +318,6 @@ export function AppSidebar() {
               {filteredToolItems.map((item) => (
                 <NavItem key={item.url} item={item} isActive={isActive(item.url)} onClick={handleNavClick} />
               ))}
-              <SidebarMenuItem className="relative">
-                <NotificationCenterSidebarItem onClick={handleNavClick} />
-              </SidebarMenuItem>
               {user?.is_admin && (() => {
                 const active = isActive("/admin");
                 return (

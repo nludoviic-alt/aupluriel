@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { currentActiveSessions, SESSION_HOURS, type TradingSession } from "@/lib/trading-sessions";
+import { currentActiveSessions, SESSION_HOURS, type TradingSession } from "@/lib/autotrader";
 
 const CHECK_INTERVAL_MS = 30_000; // cheap local check — no network calls
 const NOTIFIED_KEY = "lio23.market_open_notified";
