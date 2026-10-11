@@ -15,6 +15,8 @@ import { CRASH_PRESET, VOL75_PRESET, type AutoTraderConfig } from "@/lib/autotra
 interface ScanItem {
   symbol: string;
   action: string;
+  confidence?: number;
+  agreement?: number;
   note?: string;
 }
 
@@ -113,6 +115,31 @@ function describeStatus(state: PresetState | undefined): {
   }
 }
 
+/** Plain-language verdict of the last scan (engine notes carry internal codes). */
+function describeScan(
+  result: ScanItem | undefined,
+  state: PresetState,
+  neverStarted: boolean,
+  idleNote: string,
+): string {
+  if (!state.running) return neverStarted ? "Jamais lancée" : "Arrêtée";
+  if (!result) return idleNote;
+  switch (result.action) {
+    case "no-signal":
+      return "Pas de signal";
+    case "low-confidence":
+      return result.confidence != null
+        ? `Confiance ${result.confidence}% — sous le seuil`
+        : "Confiance sous le seuil";
+    case "low-agreement":
+      return result.agreement != null
+        ? `Accord ${result.agreement}/4 — insuffisant`
+        : "Accord insuffisant";
+    default:
+      return result.note?.replace(/^[A-Z0-9_]+:\s*/, "") || idleNote;
+  }
+}
+
 function describeConfig(cfg: Partial<AutoTraderConfig>) {
   const percentStake = cfg.stakeMode === "percent";
   const stakeUsd = cfg.stakeUsd ?? 0;
@@ -199,8 +226,8 @@ export function LiveScannerRadarCockpit({
       {/* ── Cartes stratégie ── */}
       <div
         className={cn(
-          "grid grid-cols-1 gap-4 p-4 lg:gap-6 lg:p-6",
-          presets.length > 1 && "sm:grid-cols-2",
+          "mx-auto grid w-full grid-cols-1 gap-4 p-4 lg:gap-6 lg:p-6",
+          presets.length > 1 ? "sm:grid-cols-2 lg:max-w-[93%]" : "max-w-xl",
         )}
       >
         {presets.map((preset) => {
@@ -211,11 +238,18 @@ export function LiveScannerRadarCockpit({
           const usesDefaults = !!state && !state.savedConfig;
           const { stake, filters } = describeConfig(state?.savedConfig ?? preset.defaults);
           const pnl = state?.todayPnl ?? 0;
-          // Engine notes are prefixed with an internal code ("DATA_QUALITY_BLOCK: …").
-          const scanNote = !state
-            ? "…"
-            : result?.note?.replace(/^[A-Z0-9_]+:\s*/, "") ||
-              (state.running ? preset.idleNote : "Arrêtée");
+          // One status line per card, same slot whatever the state, so cards
+          // stay the same height: blocked > traded > last scan verdict.
+          const line: { text: string; tone: "block" | "ok" | "neutral" } = !state
+            ? { text: "…", tone: "neutral" }
+            : state.blockReason
+              ? { text: state.blockReason, tone: "block" }
+              : result?.action === "traded"
+                ? { text: "Position ouverte", tone: "ok" }
+                : {
+                    text: describeScan(result, state, usesDefaults, preset.idleNote),
+                    tone: "neutral",
+                  };
 
           return (
             <button
@@ -248,7 +282,7 @@ export function LiveScannerRadarCockpit({
                       </h3>
                     </div>
                     <p className="mt-0.5 font-mono text-sm text-muted-foreground">
-                      {preset.symbol} · {stake} · {state?.mode === "live" ? "Réel" : "Démo"}
+                      {stake} · {state?.mode === "live" ? "Réel" : "Démo"}
                     </p>
                   </div>
                 </div>
@@ -261,23 +295,29 @@ export function LiveScannerRadarCockpit({
                 </div>
               </div>
 
-              <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
-                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-                  <preset.ScanIcon className={cn("h-4 w-4", preset.text)} />
-                  Scan
-                </span>
-                {result?.action === "traded" ? (
-                  <span className="flex items-center gap-1.5 font-bold text-emerald-400">
-                    <CheckCircle2 className="h-4 w-4" /> Position ouverte
-                  </span>
-                ) : (
-                  <span className="min-w-0 truncate font-semibold text-foreground" title={scanNote}>
-                    {scanNote}
-                  </span>
+              <div
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-sm",
+                  line.tone === "block"
+                    ? "border-rose-500/20 bg-rose-500/10 text-rose-300"
+                    : line.tone === "ok"
+                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                      : "border-white/10 bg-white/[0.03] text-foreground",
                 )}
+              >
+                {line.tone === "ok" ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <preset.ScanIcon
+                    className={cn("h-4 w-4 shrink-0", line.tone === "neutral" && preset.text)}
+                  />
+                )}
+                <span className="min-w-0 truncate font-semibold" title={line.text}>
+                  {line.text}
+                </span>
               </div>
 
-              <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="grid w-full grid-cols-2 gap-3">
                 {filters.map((f) => (
                   <div
                     key={f.label}
@@ -298,18 +338,7 @@ export function LiveScannerRadarCockpit({
                 ))}
               </div>
 
-              {state?.blockReason && (
-                <p className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-                  {state.blockReason}
-                </p>
-              )}
-              {usesDefaults && (
-                <p className="w-full text-sm text-muted-foreground">
-                  Valeurs par défaut — jamais lancée.
-                </p>
-              )}
-
-              <div className="flex w-full items-center justify-between border-t border-border/40 pt-3 text-sm text-muted-foreground">
+              <div className="mt-auto flex w-full items-center justify-between border-t border-border/40 pt-3 text-sm text-muted-foreground">
                 <span>
                   <strong className="whitespace-nowrap font-mono font-bold tabular-nums text-foreground">
                     {state?.todayCount ?? 0} trades

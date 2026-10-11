@@ -40,7 +40,14 @@ function formatMins(totalMins: number): string {
   return `${h}h${m < 10 ? "0" : ""}${m}`;
 }
 
-export function MarketSessionsBar({ className }: { className?: string }) {
+export function MarketSessionsBar({
+  className,
+  hideTitle = false,
+}: {
+  className?: string;
+  /** Drop the title on wide screens when the bar shares its row with another panel. */
+  hideTitle?: boolean;
+}) {
   const [utcMins, setUtcMins] = useState<number>(0);
 
   useEffect(() => {
@@ -61,9 +68,9 @@ export function MarketSessionsBar({ className }: { className?: string }) {
   const isLondonNyOverlap = sessionStatuses.find((s) => s.session === "london")?.isActive && sessionStatuses.find((s) => s.session === "newyork")?.isActive;
 
   return (
-    <div className={cn("glass-panel rounded-xl border border-white/10 bg-card/40 p-2.5 sm:p-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between shadow-lg", className)}>
+    <div className={cn("glass-panel rounded-2xl border border-white/10 bg-card/40 p-2.5 sm:px-4 sm:py-3.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between shadow-lg", className)}>
       {/* Left: Compact Title & Overlap Alert */}
-      <div className="flex items-center gap-2.5">
+      <div className={cn("flex items-center gap-2.5", hideTitle && "min-[1700px]:hidden")}>
         <Globe className="h-4 w-4 text-primary animate-pulse shrink-0" />
         <span className="text-xs font-black uppercase tracking-wider text-foreground">Sessions de Marché</span>
         {isLondonNyOverlap && (

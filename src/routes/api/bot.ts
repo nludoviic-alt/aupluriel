@@ -111,8 +111,18 @@ function getPreparedStatements() {
   if (!stmtBotState) {
     const db = getDb();
     stmtBotState = db.prepare("SELECT enabled, config FROM bot_state WHERE user_id = ? AND preset = ?");
+    // A block is only current while no real trade has been taken since: once
+    // the preset opens a position again, an older cooldown/risk-stop row is
+    // history, not the preset's state (it kept showing "Pause sécurité" on a
+    // preset that was actively trading).
     stmtLastBlock = db.prepare(
-      `SELECT status, note, time FROM bot_trades WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error') ORDER BY time DESC LIMIT 1`
+      `SELECT status, note, time FROM bot_trades
+        WHERE user_id = ? AND preset = ? AND status IN ('risk-stop', 'cooldown', 'error')
+          AND time > COALESCE((
+            SELECT MAX(time) FROM bot_trades
+             WHERE user_id = ? AND preset = ? AND status IN ('pending', 'open', 'won', 'lost', 'closed')
+          ), 0)
+        ORDER BY time DESC LIMIT 1`
     );
     stmtBlockedSignals = db.prepare(
       `SELECT COUNT(*) AS count FROM signal_rejections WHERE user_id = ? AND preset = ? AND time >= ?`
@@ -149,7 +159,7 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
   const allTime = getAllTimeStats(userId, preset, mode);
   const now = Date.now();
 
-  const lastBlock = stmts.stmtLastBlock!.get(userId, preset) as { status: string; note: string | null; time: number } | undefined;
+  const lastBlock = stmts.stmtLastBlock!.get(userId, preset, userId, preset) as { status: string; note: string | null; time: number } | undefined;
   const blockedSignals = (
     stmts.stmtBlockedSignals!.get(userId, preset, now - 24 * 60 * 60_000) as { count: number }
   ).count;

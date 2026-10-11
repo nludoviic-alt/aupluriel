@@ -1089,6 +1089,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     ? computeAdaptiveStake(config.stakeUsd, journalTrades)
     : config.stakeUsd;
 
+  const hasOpenPositions = liveDerivPositions.length > 0 || openTradeList.length > 0;
+
   const combinedAutoOpenTrades = useMemo(() => {
     const list: TradeLog[] = [];
     for (const pos of liveDerivPositions) {
@@ -1109,8 +1111,13 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         ...(direction === "CALL" || direction === "PUT" ? { expiry: pos.dateExpiry * 1000 } : {}),
       } as unknown as TradeLog);
     }
+    // The server journal row and the live Deriv position are the same
+    // contract under two different ids ("srv_…" vs "deriv-<contractId>"), so
+    // match on the contract id — the live row wins (it carries the live P&L).
+    const liveContractIds = new Set(liveDerivPositions.map((pos) => String(pos.contractId)));
     for (const t of openTradeList) {
-      if (!list.some((item) => item.id === t.id)) {
+      const sameContract = t.contractId != null && liveContractIds.has(String(t.contractId));
+      if (!sameContract && !list.some((item) => item.id === t.id)) {
         list.push(t);
       }
     }
@@ -1565,8 +1572,16 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       </div>
 
       {/* ── ALERTE VISUELLE EN DIRECT : POSITIONS EN COURS D'EXÉCUTION ── */}
-      {(liveDerivPositions.length > 0 || openTradeList.length > 0) && (
-        <div className="relative overflow-hidden rounded-xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/30 via-neutral-950 to-emerald-950/20 p-3 shadow-[0_0_20px_rgba(16,185,129,0.12)] animate-in fade-in duration-300">
+      {/* One row on wide screens: positions banner (when any) + market sessions. */}
+      <div
+        className={cn(
+          "flex-col gap-4 min-[1700px]:flex-row min-[1700px]:items-stretch",
+          // Sessions are desktop-only: with no position there is nothing to show on mobile.
+          hasOpenPositions ? "flex" : "hidden md:flex",
+        )}
+      >
+      {hasOpenPositions && (
+        <div className="relative flex items-center overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/30 via-neutral-950 to-emerald-950/20 px-4 py-4 shadow-[0_0_20px_rgba(16,185,129,0.12)] animate-in fade-in duration-300 min-[1700px]:min-w-0 min-[1700px]:flex-1">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-2.5 shrink-0">
               <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -1638,8 +1653,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       )}
 
       {/* ── Visual Market Sessions Tracker & 24h Timeline ── */}
-      <div className="hidden md:block">
-        <MarketSessionsBar />
+      <div
+        className={cn(
+          "hidden md:block",
+          hasOpenPositions ? "min-[1700px]:shrink-0" : "min-[1700px]:flex-1",
+        )}
+      >
+        <MarketSessionsBar
+          className="h-full"
+          hideTitle={hasOpenPositions}
+        />
+      </div>
       </div>
 
       <AutoTraderStatusBar
