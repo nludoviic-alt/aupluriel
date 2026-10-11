@@ -15,27 +15,9 @@ export function LivePositionsPanel({
 }) {
   if (!openTrades.length) {
     return (
-      <div className="glass-panel overflow-hidden rounded-2xl border border-emerald-500/30 bg-[#070B14]/90 p-3 lg:p-4 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xl">
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-3 w-3 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
-          </span>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold uppercase tracking-wider text-foreground">Robot en surveillance active</span>
-              <span className="rounded bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 text-[9px] font-black text-emerald-300 uppercase">
-                En Ligne
-              </span>
-            </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground/80 hidden lg:block">
-              Aucune position ouverte actuellement. Le robot scanne le marché 24h/24 et exécutera automatiquement le prochain signal validé (75%+).
-            </p>
-          </div>
-        </div>
-        <span className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-mono font-bold text-muted-foreground self-start sm:self-auto shrink-0">
-          0 position active
-        </span>
+      <div className="glass-panel flex items-center gap-2.5 rounded-2xl px-4 py-3 text-sm text-muted-foreground lg:px-6">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-white/25" />
+        Aucune position ouverte
       </div>
     );
   }
@@ -64,19 +46,23 @@ export function LivePositionsPanel({
             <div
               key={t.id || idx}
               className="flex items-center justify-between gap-2 rounded-lg lg:rounded-xl border border-white/10 bg-black/60 px-3 py-2.5 lg:px-4 lg:py-3 shadow-inner"
-            >              {/* Left: direction + symbol */}
+            >
+              {" "}
+              {/* Left: direction + symbol */}
               <div className="flex items-center gap-2 lg:gap-3 min-w-0">
                 <span
                   className={cn(
                     "rounded px-2 py-0.5 lg:px-2.5 lg:py-1 text-[10px] lg:text-xs font-black uppercase tracking-wider shrink-0",
                     isBuy
                       ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-red-500/20 text-red-400 border border-red-500/30"
+                      : "bg-red-500/20 text-red-400 border border-red-500/30",
                   )}
                 >
                   {isBuy ? "BUY" : "SELL"}
                 </span>
-                <span className="font-bold text-foreground text-xs lg:text-sm truncate">{symbolLabel}</span>
+                <span className="font-bold text-foreground text-xs lg:text-sm truncate">
+                  {symbolLabel}
+                </span>
                 {t.entryPrice ? (
                   <span className="hidden lg:inline font-mono text-xs text-muted-foreground shrink-0">
                     @ {t.entryPrice.toFixed(2)}
@@ -88,16 +74,16 @@ export function LivePositionsPanel({
                   </span>
                 ) : null}
               </div>
-
               {/* Right: profit + stake */}
               <div className="flex items-center gap-2 lg:gap-4 shrink-0">
                 <span
                   className={cn(
                     "font-mono text-xs lg:text-sm font-black tracking-wider",
-                    profit >= 0 ? "text-emerald-400" : "text-red-400"
+                    profit >= 0 ? "text-emerald-400" : "text-red-400",
                   )}
                 >
-                  ${profit >= 0 ? "+" : ""}{profit.toFixed(4)}
+                  ${profit >= 0 ? "+" : ""}
+                  {profit.toFixed(4)}
                 </span>
                 <span className="hidden lg:inline font-mono text-xs text-muted-foreground/80 bg-white/[0.04] px-2 py-0.5 rounded border border-white/5">
                   Mise ${t.stake.toFixed(2)}

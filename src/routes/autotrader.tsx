@@ -1417,7 +1417,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         : `$${(config.initialCapital + cumulativePnl - stakeAtRisk).toFixed(2)}`;
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden space-y-3 px-2 py-3 sm:px-6 sm:py-4 lg:px-8 lg:space-y-5">
+    <div className="w-full max-w-full overflow-x-hidden space-y-4 px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:space-y-6">
       {/* ── Header & Navigation ── */}
       {/* Mobile: clean modern header */}
       <div className="md:hidden space-y-4">
@@ -1502,11 +1502,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 Au Pluriel
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {tradingTab === "manual"
-                ? "Valider une position manuelle sous ton entière responsabilité."
-                : "Scanner, conseiller et exécuter les signaux 24/7 sur ton autorisation."}
-            </p>
+            {tradingTab === "manual" && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Valider une position manuelle sous ton entière responsabilité.
+              </p>
+            )}
           </div>
         </div>
 
@@ -1664,27 +1664,28 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       {/* ── Live Scanner Radar & Telemetry Cockpit ── */}
       <LiveScannerRadarCockpit
         cloudPresets={cloud?.presets}
+        visiblePresets={shownPresets}
         selectedPreset={selectedPreset}
-        onSelectPreset={(p) => selectPresetView(p as PresetKey)}
-        cloudBusy={cloudBusy}
+        onSelectPreset={selectPresetView}
       />
 
+      {shownPresets.some((p) => p !== "crash" && p !== "vol75") && (
       <section
         aria-label="Choisir une stratégie"
         className="scroll-mt-[220px] space-y-2.5 lg:scroll-mt-[90px]"
       >
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">
+            <p className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
               Moteur & Stratégie active
             </p>
-            <p className="hidden mt-0.5 text-xs text-muted-foreground sm:block">
+            <p className="hidden mt-0.5 text-sm text-muted-foreground sm:block">
               {tradingTab === "manual"
                 ? "Choisis le preset à analyser : tu gardes ensuite la main sur l'ordre et la mise."
                 : "Sélectionne le profil de marché à consulter. Chaque stratégie tourne indépendamment."}
             </p>
           </div>
-          <span className="hidden text-xs font-bold text-muted-foreground sm:block font-mono">
+          <span className="hidden text-sm font-bold text-muted-foreground sm:block font-mono">
             P&L du jour
           </span>
         </div>
@@ -1692,9 +1693,10 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         {/* Mobile & Desktop Preset Cards - Portfolio 1:1 Design */}
         <div
           className={cn(
-            "grid gap-5 sm:gap-6 grid-cols-2",
+            "grid gap-3 lg:gap-4",
+            shownPresets.length === 1 ? "grid-cols-1" : "grid-cols-2",
             shownPresets.length <= 2
-              ? "max-w-5xl mx-auto w-full lg:grid-cols-2"
+              ? ""
               : shownPresets.length === 3
                 ? "lg:grid-cols-3"
                 : "lg:grid-cols-4",
@@ -1729,23 +1731,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 key={p}
                 onClick={() => selectPresetView(p)}
                 className={cn(
-                  "rounded-3xl border p-5 sm:p-7 flex flex-col justify-between gap-4 transition-all duration-300 text-left bg-gradient-to-b from-white/[0.04] to-black/50 backdrop-blur-xl cursor-pointer min-w-0 overflow-hidden shadow-xl",
-                  shownPresets.length <= 2 && "aspect-square min-h-[340px] sm:min-h-[420px]",
-                  meta.borderColor,
+                  "glass-panel rounded-2xl p-3.5 lg:p-4 flex flex-col justify-between gap-3 transition-colors text-left cursor-pointer min-w-0 overflow-hidden",
                   isSelected
-                    ? cn(
-                        "ring-2 shadow-[0_0_30px_rgba(255,255,255,0.22)] scale-[1.01]",
-                        meta.borderColor,
-                        meta.bgTone,
-                      )
-                    : "hover:bg-white/[0.06] hover:border-white/25 opacity-90 hover:opacity-100",
+                    ? cn(meta.borderColor, meta.bgTone)
+                    : "hover:border-white/20 hover:bg-white/[0.04]",
                 )}
               >
                 {/* Mobile: Header Row */}
                 <div className="flex items-center justify-between gap-2 w-full min-w-0 sm:hidden">
                   <span
                     className={cn(
-                      "text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full border shadow-sm shrink-0",
+                      "text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border min-w-0 truncate",
                       meta.borderColor,
                       meta.bgTone,
                       meta.color,
@@ -1760,9 +1756,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </span>
                   <span
                     className={cn(
-                      "h-3 w-3 rounded-full shrink-0",
+                      "h-2 w-2 rounded-full shrink-0",
                       isOnline
-                        ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse"
+                        ? "bg-emerald-400 animate-pulse"
                         : "bg-white/20",
                     )}
                     title={isOnline ? "Bot actif" : "Bot inactif"}
@@ -1773,7 +1769,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 <div className="hidden sm:flex items-start justify-between gap-2 w-full min-w-0">
                   <span
                     className={cn(
-                      "text-sm sm:text-base font-black uppercase tracking-wider px-4 py-1.5 rounded-full border shadow-sm shrink min-w-0 truncate",
+                      "text-sm font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border shrink min-w-0 truncate",
                       meta.borderColor,
                       meta.bgTone,
                       meta.color,
@@ -1784,14 +1780,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                     <span
                       className={cn(
-                        "h-2.5 w-2.5 rounded-full shrink-0",
+                        "h-2 w-2 rounded-full shrink-0",
                         isOnline
-                          ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse"
+                          ? "bg-emerald-400 animate-pulse"
                           : "bg-white/20",
                       )}
                       title={isOnline ? "Bot actif" : "Bot inactif"}
                     />
-                    <span className="text-xs sm:text-sm font-mono text-muted-foreground font-bold whitespace-nowrap">
+                    <span className="text-sm font-mono text-muted-foreground whitespace-nowrap">
                       {st?.todayCount ?? 0} trades
                     </span>
                   </div>
@@ -1805,7 +1801,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                     </span>
                     <div
                       className={cn(
-                        "text-2xl sm:text-3xl font-black font-mono",
+                        "text-2xl font-bold font-mono tabular-nums",
                         pnlVal >= 0 ? "text-emerald-400" : "text-rose-400",
                       )}
                     >
@@ -1821,7 +1817,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </div>
                   <div
                     className={cn(
-                      "text-3xl sm:text-4xl font-black font-mono mt-1 truncate",
+                      "text-3xl font-bold font-mono tabular-nums mt-1 truncate",
                       pnlVal >= 0 ? "text-emerald-400" : "text-rose-400",
                     )}
                   >
@@ -1830,63 +1826,63 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </div>
 
                 {/* Mobile: Stats Row */}
-                <div className="sm:hidden flex items-center justify-between gap-3 py-2 border-t border-white/10">
+                <div className="sm:hidden flex items-center justify-between gap-2 pt-2.5 border-t border-border/40">
                   <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                    <span className="text-xs uppercase font-bold text-muted-foreground">
                       Gagné
                     </span>
-                    <span className="text-sm font-black font-mono text-emerald-400">
+                    <span className="text-sm font-bold font-mono tabular-nums text-emerald-400">
                       +${todayWon.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                    <span className="text-xs uppercase font-bold text-muted-foreground">
                       WR
                     </span>
-                    <span className="text-sm font-black font-mono text-foreground">
+                    <span className="text-sm font-bold font-mono tabular-nums text-foreground">
                       {winRate.toFixed(0)}%
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                    <span className="text-xs uppercase font-bold text-muted-foreground">
                       Trades
                     </span>
-                    <span className="text-sm font-black font-mono text-muted-foreground">
+                    <span className="text-sm font-bold font-mono tabular-nums text-muted-foreground">
                       {st?.todayCount ?? 0}
                     </span>
                   </div>
                 </div>
 
                 {/* Desktop: Stats Agrandies */}
-                <div className="hidden sm:pt-3 sm:border-t sm:border-white/10 sm:grid sm:grid-cols-2 sm:gap-3 text-xs sm:text-sm font-mono min-w-0">
+                <div className="hidden sm:pt-3 sm:border-t sm:border-border/40 sm:grid sm:grid-cols-2 sm:gap-3 text-sm font-mono min-w-0">
                   <div className="min-w-0 truncate">
-                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold">
+                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold tracking-wider">
                       Gagné :{" "}
                     </span>
-                    <span className="text-emerald-400 font-black text-sm sm:text-base">+${todayWon.toFixed(2)}</span>
+                    <span className="text-emerald-400 font-bold text-base">+${todayWon.toFixed(2)}</span>
                   </div>
                   <div className="min-w-0 truncate text-right sm:text-left">
-                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold">
+                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold tracking-wider">
                       WR :{" "}
                     </span>
-                    <span className="text-foreground font-black text-sm sm:text-base">{winRate.toFixed(0)}%</span>
+                    <span className="text-foreground font-bold text-base">{winRate.toFixed(0)}%</span>
                   </div>
                 </div>
 
                 {/* Desktop: Footer Agrandi */}
-                <div className="hidden sm:pt-2.5 sm:border-t sm:border-white/10 sm:flex sm:items-center sm:justify-between sm:gap-2 sm:text-xs sm:font-mono sm:min-w-0">
+                <div className="hidden sm:pt-2.5 sm:border-t sm:border-border/40 sm:flex sm:items-center sm:justify-between sm:gap-2 sm:text-xs sm:min-w-0">
                   <span
-                    className="font-bold text-muted-foreground truncate min-w-0 text-xs sm:text-sm"
+                    className="font-mono text-muted-foreground truncate min-w-0 text-sm"
                     title={configuredMarkets}
                   >
                     {configuredMarkets}
                   </span>
                   <span
                     className={cn(
-                      "font-black uppercase tracking-wider px-3 py-1 rounded-full text-xs shrink-0 shadow-sm",
+                      "font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-xs shrink-0",
                       isOnline
-                        ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
-                        : "bg-white/10 text-muted-foreground border border-white/15",
+                        ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                        : "bg-white/[0.03] text-muted-foreground border border-white/10",
                     )}
                   >
                     {isOnline ? "Actif" : "Prêt"}
@@ -1897,6 +1893,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           })}
         </div>
       </section>
+      )}
 
       {/* Manual tab already has its own live-position view further down
           (Suivi des Contrats & Positions, with a close-at-market action) —
@@ -6122,7 +6119,7 @@ function OpportunityCommandCenter({
   const showDetails = !isMobile || detailsOpen;
 
   return (
-    <section className="glass-panel overflow-hidden rounded-xl border border-border/60">
+    <section className="glass-panel overflow-hidden rounded-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -6209,11 +6206,6 @@ function OpportunityCommandCenter({
                 )}
               </div>
             )}
-            <p className="mt-2 text-sm text-muted-foreground">
-              {opportunity
-                ? "Lecture du signal : vérifie les mesures et seuils avant toute exécution."
-                : "Au Pluriel continue de scanner. Dans le doute, le bon trade est souvent celui qu'on ne prend pas."}
-            </p>
 
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <DecisionMetric
@@ -6274,9 +6266,6 @@ function OpportunityCommandCenter({
               <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-foreground">
                 <Power className="h-4 w-4 text-primary" /> Exécuter
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                L’auto ne prend que les signaux conformes aux seuils affichés.
-              </p>
               <div className="mt-5 grid grid-cols-3 gap-2">
                 <MiniDecision label="Prendre" value={takeCount} className="text-up" />
                 <MiniDecision label="Attendre" value={waitCount} className="text-amber-300" />
