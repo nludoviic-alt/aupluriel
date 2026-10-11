@@ -312,11 +312,11 @@ export type QuickPreset = "default" | "boom" | "crash" | "scalping";
 export const BOOM_SYMBOLS = ["BOOM900"];
 
 /** Crash indices retained after data-backed audit (lio23.db) :
- * CRASH1000 : +$2.14 sur 176 trades, WR 72.2%, PF 1.02 — symbole Crash stable.
- * CRASH500 exclu (-$59.27 sur 74 trades, PF 0.51).
- * CRASH900 exclu (-$43.63 sur 59 trades, PF 0.49).
- * CRASH600 exclu (-$14.83 sur 106 trades, PF 0.85). */
-export const CRASH_SYMBOLS = ["CRASH1000"];
+ * CRASH900 : +$145.78 sur 443 trades, WR 48.8%, PF 1.34 — meilleur actif historique.
+ * CRASH1000 exclu (-$34.62 sur 298 trades, PF 0.92).
+ * CRASH500 exclu (-$20.22 sur 82 trades, PF 0.56).
+ * CRASH600 exclu (-$3.28 sur 35 trades, PF 0.77). */
+export const CRASH_SYMBOLS = ["CRASH900"];
 
 
 
@@ -527,12 +527,13 @@ export const BOOM900_PRESET: Partial<AutoTraderConfig> = {
 export const VOL75_PRESET: Partial<AutoTraderConfig> = {
   ...BOOM_PRESET,
   symbolMode: "watchlist", symbols: ["1HZ75V"], mode: "demo",
-  minConfidence: 80, maxConfidence: 89, minTfAgreement: 4,
+  minConfidence: 80, maxConfidence: 100, minTfAgreement: 4,
   instrumentType: "multiplier", multiplierLevel: 50,
-  stakeMode: "fixed", stakeUsd: 25,
+  stakeMode: "fixed", stakeUsd: 1,
+  takeProfitPctOfStake: 100, stopLossPctOfStake: 50,
   atrStopMode: true, atrStopMultiple: 1.1, riskRewardRatio: 1.8,
-  maxDailyLossUsd: 75, maxTradesPerDay: 8, maxConsecutiveLosses: 2,
-  cooldownMinutes: 45, maxSimultaneousTrades: 1, maxOpenPositions: 1,
+  maxDailyLossUsd: 5, maxTradesPerDay: 8, maxConsecutiveLosses: 2,
+  cooldownMinutes: 30, maxSimultaneousTrades: 1, maxOpenPositions: 1,
   newsFilter: false, adxFilterMode: "block", adxBlockThreshold: 15,
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
@@ -625,19 +626,16 @@ export const CRASH_PRESET: Partial<AutoTraderConfig> = {
   symbolMode: "watchlist",
   symbols: CRASH_SYMBOLS,
   stakeMode: "fixed",
-  stakeUsd: 25,
-  maxDailyLossUsd: 75,
-  maxConsecutiveLosses: 3,
-  takeProfitPctOfStake: 5,
-  stopLossPctOfStake: 10,
-  minConfidence: 82,
-  maxConfidence: 89,
-  // 2026-09-15 : audit VPS des trades réels (842 clôturés) montre TF=2 à
-  // -$13.51 (88 trades) et TF=4 à -$7.87 (242 trades), alors que TF=3 est le
-  // seul segment vraiment rentable : +$155.49 sur 420 trades. Relevé de 2 à 3
-  // pour couper le segment TF=2 déficitaire tout en gardant le driver TF=3.
+  stakeUsd: 1,
+  maxDailyLossUsd: 5,
+  maxConsecutiveLosses: 2,
+  takeProfitPctOfStake: 100,
+  stopLossPctOfStake: 50,
+  minConfidence: 78,
+  maxConfidence: 100,
   minTfAgreement: 4,
   multiplierLevel: 100,
+  cooldownMinutes: 30,
 };
 
 /** Crash500 is deliberately isolated from Crash900.  It is demo-only while

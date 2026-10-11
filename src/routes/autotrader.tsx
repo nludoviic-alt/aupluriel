@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MarketSessionsBar } from "@/components/market-sessions-bar";
 import { HealthPanel } from "@/components/health-panel";
+import { LiveScannerRadarCockpit } from "@/components/live-scanner-radar-cockpit";
 import { BacktestVisualizer } from "@/components/backtest-visualizer";
 import {
   SYMBOLS,
@@ -145,7 +146,7 @@ const presetLabels: Record<PresetKey, string> = {
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
-  crash: "Crash1000",
+  crash: "Crash 900",
   crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
   gold: "Or (Exclu)",
@@ -185,7 +186,7 @@ const PRESET_PRESENTATION: Record<
     description: "Démo · Trend Pullback & Retest",
     experimental: true,
   },
-  crash: { market: "CRASH1000 uniquement", description: "Crash1000 (PF 1.02) · CRASH900 Exclu", experimental: true },
+  crash: { market: "CRASH900 uniquement", description: "Crash 900 (PF 1.34, +$145.78) · Meilleur actif", experimental: false },
   crash500: {
     market: "Désactivé",
     description: "Désactivé suite à audit (-59.27$)",
@@ -241,8 +242,8 @@ const PRESET_META_MAP: Record<
     bgTone: "bg-emerald-500/10",
   },
   crash: {
-    label: "Crash1000",
-    badge: "📉 Crash1000",
+    label: "Crash 900",
+    badge: "📉 Crash 900",
     color: "text-purple-400",
     borderColor: "border-purple-500/30",
     bgTone: "bg-purple-500/10",
@@ -330,10 +331,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
 const PRESET_ORDER = [
-  "default",
-  "boom",
   "crash",
-  "scalping",
   "vol75",
 ] as const;
 
@@ -509,9 +507,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     const preset = new URLSearchParams(window.location.search).get("preset")?.replace(/"/g, "") as
       | PresetKey
       | undefined;
-    return preset && preset in presetLabels ? preset : null;
+    return preset && (PRESET_ORDER as readonly string[]).includes(preset) ? preset : null;
   })();
-  const deepLinkPreset = deepLinkedPreset ?? "default";
+  const deepLinkPreset = deepLinkedPreset ?? "crash";
   const [config, setConfig] = useState<AutoTraderConfig>(() => loadConfig(deepLinkPreset));
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
@@ -1663,6 +1661,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         blockReason={cloudSelected?.blockReason}
       />
 
+      {/* ── Live Scanner Radar & Telemetry Cockpit ── */}
+      <LiveScannerRadarCockpit
+        cloudPresets={cloud?.presets}
+        selectedPreset={selectedPreset}
+        onSelectPreset={(p) => selectPresetView(p as PresetKey)}
+        cloudBusy={cloudBusy}
+      />
+
       <section
         aria-label="Choisir une stratégie"
         className="scroll-mt-[220px] space-y-2.5 lg:scroll-mt-[90px]"
@@ -1686,8 +1692,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         {/* Mobile & Desktop Preset Cards - Portfolio 1:1 Design */}
         <div
           className={cn(
-            "grid gap-3 grid-cols-2",
-            shownPresets.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4",
+            "grid gap-5 sm:gap-6 grid-cols-2",
+            shownPresets.length <= 2
+              ? "max-w-5xl mx-auto w-full lg:grid-cols-2"
+              : shownPresets.length === 3
+                ? "lg:grid-cols-3"
+                : "lg:grid-cols-4",
           )}
         >
           {shownPresets.map((p) => {
@@ -1719,22 +1729,23 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 key={p}
                 onClick={() => selectPresetView(p)}
                 className={cn(
-                  "rounded-xl border p-3 sm:p-4 flex flex-col justify-between gap-3 sm:gap-3 transition-all duration-200 text-left bg-black/30 backdrop-blur-md cursor-pointer min-w-0 overflow-hidden",
+                  "rounded-3xl border p-5 sm:p-7 flex flex-col justify-between gap-4 transition-all duration-300 text-left bg-gradient-to-b from-white/[0.04] to-black/50 backdrop-blur-xl cursor-pointer min-w-0 overflow-hidden shadow-xl",
+                  shownPresets.length <= 2 && "aspect-square min-h-[340px] sm:min-h-[420px]",
                   meta.borderColor,
                   isSelected
                     ? cn(
-                        "ring-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]",
+                        "ring-2 shadow-[0_0_30px_rgba(255,255,255,0.22)] scale-[1.01]",
                         meta.borderColor,
                         meta.bgTone,
                       )
-                    : "hover:bg-white/[0.04] hover:border-white/20 opacity-85 hover:opacity-100",
+                    : "hover:bg-white/[0.06] hover:border-white/25 opacity-90 hover:opacity-100",
                 )}
               >
-                {/* Mobile: Compact Header Row */}
+                {/* Mobile: Header Row */}
                 <div className="flex items-center justify-between gap-2 w-full min-w-0 sm:hidden">
                   <span
                     className={cn(
-                      "text-[12px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border shadow-sm shrink-0",
+                      "text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full border shadow-sm shrink-0",
                       meta.borderColor,
                       meta.bgTone,
                       meta.color,
@@ -1749,7 +1760,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </span>
                   <span
                     className={cn(
-                      "h-2.5 w-2.5 rounded-full shrink-0",
+                      "h-3 w-3 rounded-full shrink-0",
                       isOnline
                         ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse"
                         : "bg-white/20",
@@ -1758,11 +1769,11 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   />
                 </div>
 
-                {/* Desktop: Original Header */}
-                <div className="hidden sm:flex items-start justify-between gap-1.5 w-full min-w-0">
+                {/* Desktop: Header Agrandie */}
+                <div className="hidden sm:flex items-start justify-between gap-2 w-full min-w-0">
                   <span
                     className={cn(
-                      "text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shadow-sm shrink min-w-0 truncate",
+                      "text-sm sm:text-base font-black uppercase tracking-wider px-4 py-1.5 rounded-full border shadow-sm shrink min-w-0 truncate",
                       meta.borderColor,
                       meta.bgTone,
                       meta.color,
@@ -1770,17 +1781,17 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   >
                     {meta.badge}
                   </span>
-                  <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                  <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                     <span
                       className={cn(
-                        "h-2 w-2 rounded-full shrink-0",
+                        "h-2.5 w-2.5 rounded-full shrink-0",
                         isOnline
-                          ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"
+                          ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse"
                           : "bg-white/20",
                       )}
                       title={isOnline ? "Bot actif" : "Bot inactif"}
                     />
-                    <span className="text-[10px] font-mono text-muted-foreground font-bold whitespace-nowrap">
+                    <span className="text-xs sm:text-sm font-mono text-muted-foreground font-bold whitespace-nowrap">
                       {st?.todayCount ?? 0} trades
                     </span>
                   </div>
@@ -1789,12 +1800,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 {/* Mobile: Large P&L Display */}
                 <div className="sm:hidden min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                    <span className="text-xs uppercase font-bold tracking-wider text-muted-foreground">
                       P&L
                     </span>
                     <div
                       className={cn(
-                        "text-2xl font-black font-mono",
+                        "text-2xl sm:text-3xl font-black font-mono",
                         pnlVal >= 0 ? "text-emerald-400" : "text-rose-400",
                       )}
                     >
@@ -1803,14 +1814,14 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                   </div>
                 </div>
 
-                {/* Desktop: Original P&L */}
+                {/* Desktop: P&L Agrandie */}
                 <div className="hidden sm:block min-w-0">
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground truncate">
+                  <div className="text-xs uppercase font-bold tracking-wider text-muted-foreground truncate">
                     P&L du Jour
                   </div>
                   <div
                     className={cn(
-                      "text-xl font-black font-mono mt-0.5 truncate",
+                      "text-3xl sm:text-4xl font-black font-mono mt-1 truncate",
                       pnlVal >= 0 ? "text-emerald-400" : "text-rose-400",
                     )}
                   >
@@ -1819,63 +1830,63 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
                 </div>
 
                 {/* Mobile: Stats Row */}
-                <div className="sm:hidden flex items-center justify-between gap-3 py-2 border-t border-white/5">
+                <div className="sm:hidden flex items-center justify-between gap-3 py-2 border-t border-white/10">
                   <div className="flex flex-col">
-                    <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
                       Gagné
                     </span>
-                    <span className="text-[13px] font-bold font-mono text-emerald-400">
+                    <span className="text-sm font-black font-mono text-emerald-400">
                       +${todayWon.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
                       WR
                     </span>
-                    <span className="text-[13px] font-bold font-mono text-foreground">
+                    <span className="text-sm font-black font-mono text-foreground">
                       {winRate.toFixed(0)}%
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
                       Trades
                     </span>
-                    <span className="text-[13px] font-bold font-mono text-muted-foreground">
+                    <span className="text-sm font-black font-mono text-muted-foreground">
                       {st?.todayCount ?? 0}
                     </span>
                   </div>
                 </div>
 
-                {/* Desktop: Original Stats */}
-                <div className="hidden sm:pt-2 sm:border-t sm:border-white/5 sm:grid sm:grid-cols-2 sm:gap-2 text-[10px] font-mono min-w-0">
+                {/* Desktop: Stats Agrandies */}
+                <div className="hidden sm:pt-3 sm:border-t sm:border-white/10 sm:grid sm:grid-cols-2 sm:gap-3 text-xs sm:text-sm font-mono min-w-0">
                   <div className="min-w-0 truncate">
-                    <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">
+                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold">
                       Gagné :{" "}
                     </span>
-                    <span className="text-emerald-400 font-bold">+${todayWon.toFixed(2)}</span>
+                    <span className="text-emerald-400 font-black text-sm sm:text-base">+${todayWon.toFixed(2)}</span>
                   </div>
                   <div className="min-w-0 truncate text-right sm:text-left">
-                    <span className="text-muted-foreground font-sans text-[9px] uppercase font-semibold">
+                    <span className="text-muted-foreground font-sans text-xs uppercase font-bold">
                       WR :{" "}
                     </span>
-                    <span className="text-foreground font-bold">{winRate.toFixed(0)}%</span>
+                    <span className="text-foreground font-black text-sm sm:text-base">{winRate.toFixed(0)}%</span>
                   </div>
                 </div>
 
-                {/* Desktop: Original Footer */}
-                <div className="hidden sm:pt-1.5 sm:border-t sm:border-white/5 sm:flex sm:items-center sm:justify-between sm:gap-1.5 sm:text-[10px] sm:font-mono sm:min-w-0">
+                {/* Desktop: Footer Agrandi */}
+                <div className="hidden sm:pt-2.5 sm:border-t sm:border-white/10 sm:flex sm:items-center sm:justify-between sm:gap-2 sm:text-xs sm:font-mono sm:min-w-0">
                   <span
-                    className="font-semibold text-muted-foreground truncate min-w-0"
+                    className="font-bold text-muted-foreground truncate min-w-0 text-xs sm:text-sm"
                     title={configuredMarkets}
                   >
                     {configuredMarkets}
                   </span>
                   <span
                     className={cn(
-                      "font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-[9px] shrink-0",
+                      "font-black uppercase tracking-wider px-3 py-1 rounded-full text-xs shrink-0 shadow-sm",
                       isOnline
-                        ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-                        : "bg-white/5 text-muted-foreground border border-white/10",
+                        ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
+                        : "bg-white/10 text-muted-foreground border border-white/15",
                     )}
                   >
                     {isOnline ? "Actif" : "Prêt"}
@@ -5995,17 +6006,12 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         </div>
       </div>
 
-      {/* ── Live server scanner — below the trade journal for better visibility ── */}
-      <div
-        className={cn(
-          advancedVisible && (mobileTab === "journal" || mobileTab === "data") ? "block" : "hidden",
-          advancedVisible ? "md:block" : "md:hidden",
-        )}
-      >
-        {cloudSelected?.enabled && cloudSelected.lastScan && (
+      {/* ── Live server scanner — always visible when bot is active ── */}
+      {cloudSelected?.enabled && cloudSelected.lastScan && (
+        <div className="mt-4">
           <CloudScanPanel lastScan={cloudSelected.lastScan} />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Save preset modal ── */}
       {showSavePreset && (

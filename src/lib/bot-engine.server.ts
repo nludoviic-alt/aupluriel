@@ -267,14 +267,10 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** Presets available for activation. Crash900 is reopened for demo validation
- * only; the September audit does not establish a robust profitable baseline.
- * Archived presets remain readable through ALL_PRESETS. */
+/** Presets available for activation. Crash 900 and Volatility 75 (1s) are the
+ * active production presets. Unused presets remain readable through ALL_PRESETS. */
 export const ACTIVE_PRESETS: readonly Preset[] = [
-  "default",
-  "boom",
   "crash",
-  "scalping",
   "vol75",
 ];
 
@@ -286,7 +282,7 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
   vol75: ["1HZ75V"],
   rb100: ["RB100"],
   vol50: ["1HZ50V"],
-  crash: ["CRASH1000"],
+  crash: ["CRASH900"],
   crash500: ["CRASH500"],
   liquidity: ["frxEURGBP"],
   gold: ["frxEURGBP"],
@@ -311,7 +307,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   vol75: "Volatility 75 (1s) — démo",
   rb100: "Range Break 100 — démo",
   vol50: "Volatility 50 (1s) — démo",
-  crash: "Crash1000",
+  crash: "Crash900 — démo",
   crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
   liquidity: "GOLD (EXCLU)",
