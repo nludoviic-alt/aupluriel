@@ -311,10 +311,10 @@ let publicSocket: DerivSocket | null = null;
 // All server engines share one public Deriv socket. A per-engine concurrency
 // cap is not enough: several users/presets can otherwise burst dozens of
 // ticks_history requests together. Serialize, coalesce, and briefly cache.
-const PUBLIC_HISTORY_SPACING_MS = 300;
-const PUBLIC_HISTORY_CACHE_MS = 8_000;
-const PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS = 5_000;
-const PUBLIC_HISTORY_MAX_ATTEMPTS = 3;
+const PUBLIC_HISTORY_SPACING_MS = 350;
+const PUBLIC_HISTORY_CACHE_MS = 15_000;
+const PUBLIC_HISTORY_RATE_LIMIT_COOLDOWN_MS = 6_000;
+const PUBLIC_HISTORY_MAX_ATTEMPTS = 4;
 let publicHistoryQueue: Promise<void> = Promise.resolve();
 let nextPublicHistoryAt = 0;
 const publicHistoryCache = new Map<string, { expiresAt: number; value: unknown }>();
