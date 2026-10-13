@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Activity, CheckCircle2 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Activity, CheckCircle2, ExternalLink } from "lucide-react";
 import { SYMBOLS, normalizeContractDirection, type OpenPosition } from "@/lib/deriv";
 import { cn } from "@/lib/utils";
 import type { TradeLog } from "@/lib/autotrader";
@@ -31,7 +32,7 @@ export function TradeJournalSection({
   setEngineLogs: (logs: TradeLog[] | ((prev: TradeLog[]) => TradeLog[])) => void;
   durationMinutes?: number;
 }) {
-  const [timeWindow, setTimeWindow] = useState<"5m" | "15m" | "1h" | "24h" | "all">("15m");
+  const [timeWindow, setTimeWindow] = useState<"5m" | "15m" | "1h" | "24h" | "all">("all");
   const [filterSmall, setFilterSmall] = useState<boolean>(false);
   const [pageSize, setPageSize] = useState<number>(50);
 
@@ -116,7 +117,16 @@ export function TradeJournalSection({
               <Activity className="h-4 w-4 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-xs font-black uppercase tracking-[0.15em] text-foreground">Suivi Journal</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-black uppercase tracking-[0.15em] text-foreground">Journal des Trades</h3>
+                <Link
+                  to="/journal"
+                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition-all"
+                >
+                  <span>Grand Journal</span>
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
+              </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase">{allCombinedTrades.length} positions</span>
                 {cloudActive && (
@@ -208,7 +218,7 @@ export function TradeJournalSection({
           <div className="grid h-7 w-7 place-items-center rounded-lg border border-primary/30 bg-primary/10 text-primary">
             <Activity className="h-4 w-4 animate-pulse" />
           </div>
-          <span className="text-xs font-black uppercase tracking-wider text-foreground">Suivi des Contrats & Positions</span>
+          <span className="text-xs font-black uppercase tracking-wider text-foreground">Journal des Trades & Positions</span>
           <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground">
             {allCombinedTrades.length} au total
           </span>
@@ -217,6 +227,13 @@ export function TradeJournalSection({
               {presetLabels[selectedPreset]}
             </span>
           )}
+          <Link
+            to="/journal"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary hover:bg-primary/20 transition-all ml-1"
+          >
+            <span>Grand Journal</span>
+            <ExternalLink className="h-3 w-3" />
+          </Link>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

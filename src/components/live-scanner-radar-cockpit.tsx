@@ -7,6 +7,7 @@ import {
   TrendingDown,
   TrendingUp,
   ArrowRight,
+  Coins,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,10 @@ interface PresetState {
   mode: "demo" | "live";
   todayPnl: number;
   todayCount: number;
+  todayWins?: number;
+  todayLosses?: number;
+  todayTotalWon?: number;
+  todayTotalLost?: number;
   operationalStatus?: string;
   blockReason?: string | null;
   lastScan?: {
@@ -34,6 +39,7 @@ interface PresetState {
   } | null;
   /** Configuration réellement chargée par le moteur serveur pour ce preset. */
   savedConfig?: Partial<AutoTraderConfig> | null;
+  trades?: any[];
 }
 
 type CockpitPresetKey = "crash" | "vol75";
@@ -60,18 +66,6 @@ const COCKPIT_PRESETS: {
   selected: string;
 }[] = [
   {
-    key: "crash",
-    name: "Crash 900",
-    symbol: "CRASH900",
-    Icon: TrendingDown,
-    ScanIcon: Crosshair,
-    idleNote: "Surveillance bougies M1 / M5",
-    defaults: CRASH_PRESET,
-    text: "text-purple-400",
-    chip: "border-purple-500/30 bg-purple-500/10",
-    selected: "border-purple-500/50 bg-purple-500/[0.06]",
-  },
-  {
     key: "vol75",
     name: "Volatility 75",
     symbol: "1HZ75V",
@@ -82,6 +76,18 @@ const COCKPIT_PRESETS: {
     text: "text-lime-300",
     chip: "border-lime-500/30 bg-lime-500/10",
     selected: "border-lime-500/50 bg-lime-500/[0.06]",
+  },
+  {
+    key: "crash",
+    name: "Crash 900",
+    symbol: "CRASH900",
+    Icon: TrendingDown,
+    ScanIcon: Crosshair,
+    idleNote: "Surveillance bougies M1 / M5",
+    defaults: CRASH_PRESET,
+    text: "text-purple-400",
+    chip: "border-purple-500/30 bg-purple-500/10",
+    selected: "border-purple-500/50 bg-purple-500/[0.06]",
   },
 ];
 
@@ -198,6 +204,39 @@ export function LiveScannerRadarCockpit({
   const secsAgo = mostRecentScanTime > 0 ? Math.floor((now - mostRecentScanTime) / 1000) : 0;
   const countdownSecs = mostRecentScanTime > 0 ? Math.max(0, 60 - (secsAgo % 60)) : 60;
 
+  // Calcul agrégé des gains & pertes du jour (tous presets confondus)
+  const todayStats = Object.values(cloudPresets ?? {}).reduce(
+    (acc, p) => {
+      acc.pnl += p.todayPnl ?? 0;
+      acc.won += p.todayTotalWon ?? 0;
+      acc.lost += p.todayTotalLost ?? 0;
+      acc.wins += p.todayWins ?? 0;
+      acc.losses += p.todayLosses ?? 0;
+      acc.count += p.todayCount ?? 0;
+      return acc;
+    },
+    { pnl: 0, won: 0, lost: 0, wins: 0, losses: 0, count: 0 },
+  );
+
+  // Sécurité de secours : calcul via les trades si todayTotalWon/Lost pas encore agrégés
+  if (todayStats.won === 0 && todayStats.lost === 0) {
+    const isToday = (ms: number) => new Date(ms).toDateString() === new Date().toDateString();
+    for (const p of Object.values(cloudPresets ?? {})) {
+      for (const t of p.trades ?? []) {
+        if ((t.status === "won" || t.status === "lost") && isToday(t.time ?? t.timestamp ?? 0)) {
+          if (t.profit > 0) todayStats.won += t.profit;
+          else if (t.profit < 0) todayStats.lost += Math.abs(t.profit);
+        }
+      }
+    }
+  }
+
+  const netPnl = todayStats.pnl;
+  const winRate =
+    todayStats.wins + todayStats.losses > 0
+      ? Math.round((todayStats.wins / (todayStats.wins + todayStats.losses)) * 100)
+      : null;
+
   return (
     <div className="glass-panel overflow-hidden rounded-2xl">
       {/* ── Header ── */}
@@ -223,13 +262,114 @@ export function LiveScannerRadarCockpit({
         </div>
       </div>
 
-      {/* ── Cartes stratégie ── */}
-      <div
-        className={cn(
-          "mx-auto grid w-full grid-cols-1 gap-4 p-4 lg:gap-6 lg:p-6",
-          presets.length > 1 ? "sm:grid-cols-2 lg:max-w-[93%]" : "max-w-xl",
-        )}
-      >
+      {/* ── Cartes stratégie & Bilan Gains / Pertes (100% Responsive) ── */}
+      <div className="mx-auto grid w-full grid-cols-1 gap-4 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3 lg:gap-6 lg:p-6 max-w-[1440px]">
+        {/* ── 1ère Carte : Visuel Direct Gains & Pertes (Priorité Visuelle - Avant les bots) ── */}
+        <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/[0.12] p-4 lg:p-5 shadow-lg shadow-black/25 hover:border-emerald-500/40 transition-colors backdrop-blur-md">
+          {/* En-tête */}
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-sm">
+                <Coins className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-lg font-black uppercase tracking-wider text-foreground">
+                  Gains & Pertes
+                </h3>
+                <p className="mt-0.5 font-mono text-sm font-semibold text-muted-foreground">
+                  Bilan du jour · En direct
+                </p>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 pt-0.5">
+              <span className="h-2.5 w-2.5 rounded-full animate-pulse bg-emerald-400" />
+              <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-emerald-300">
+                Aujourd'hui
+              </span>
+            </div>
+          </div>
+
+          {/* Ligne Résultat Net Central (P&L) */}
+          <div
+            className={cn(
+              "flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm",
+              netPnl > 0
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : netPnl < 0
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                  : "border-white/10 bg-white/[0.04] text-foreground",
+            )}
+          >
+            <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-muted-foreground">
+              P&L Net
+            </span>
+            <span
+              className={cn(
+                "font-mono text-lg sm:text-xl font-black tracking-tight tabular-nums",
+                netPnl >= 0 ? "text-emerald-400" : "text-rose-400",
+              )}
+            >
+              {netPnl >= 0 ? `+${usd(netPnl)}` : `-${usd(Math.abs(netPnl))}`}
+            </span>
+          </div>
+
+          {/* Grille Visuelle Directe : 2 Blocs Gains vs Pertes */}
+          <div className="grid w-full grid-cols-2 gap-2.5 sm:gap-3">
+            {/* Bloc GAINS */}
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3 sm:p-3.5 text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-emerald-400">
+                  Gains ▲
+                </span>
+                <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 font-mono text-xs font-black text-emerald-300">
+                  {todayStats.wins} win{todayStats.wins > 1 ? "s" : ""}
+                </span>
+              </div>
+              <span className="mt-2 block font-mono text-xl sm:text-2xl lg:text-3xl font-black text-emerald-300 tabular-nums truncate">
+                +${todayStats.won.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Bloc PERTES */}
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3 sm:p-3.5 text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-rose-400">
+                  Pertes ▼
+                </span>
+                <span className="rounded-md bg-rose-500/20 px-2 py-0.5 font-mono text-xs font-black text-rose-300">
+                  {todayStats.losses} loss
+                </span>
+              </div>
+              <span className="mt-2 block font-mono text-xl sm:text-2xl lg:text-3xl font-black text-rose-400 tabular-nums truncate">
+                -${todayStats.lost.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {/* Pied de carte aligné */}
+          <div className="mt-auto flex w-full items-center justify-between border-t border-border/40 pt-3 text-sm text-muted-foreground">
+            <span>
+              <strong className="font-mono text-sm sm:text-base font-black tabular-nums text-foreground">
+                {todayStats.count} trade{todayStats.count > 1 ? "s" : ""}
+              </strong>
+            </span>
+            <span
+              className={cn(
+                "font-mono font-black uppercase tracking-wider text-xs sm:text-sm",
+                winRate != null && winRate >= 50
+                  ? "text-emerald-400"
+                  : winRate != null
+                    ? "text-rose-400"
+                    : "text-muted-foreground",
+              )}
+            >
+              {winRate != null ? `${winRate}% Win Rate` : "0% Win Rate"}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Cartes Bots (Volatility 75 puis Crash 900) ── */}
         {presets.map((preset) => {
           const state = cloudPresets?.[preset.key];
           const result = state?.lastScan?.results?.[0];
@@ -268,28 +408,28 @@ export function LiveScannerRadarCockpit({
                 <div className="flex min-w-0 items-center gap-3">
                   <span
                     className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm",
                       preset.chip,
                       preset.text,
                     )}
                   >
-                    <preset.Icon className="h-4 w-4" />
+                    <preset.Icon className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-bold uppercase tracking-wider text-foreground">
+                      <h3 className="text-lg font-black uppercase tracking-wider text-foreground">
                         {preset.name}
                       </h3>
                     </div>
-                    <p className="mt-0.5 font-mono text-sm text-muted-foreground">
+                    <p className="mt-0.5 font-mono text-sm font-semibold text-muted-foreground">
                       {stake} · {state?.mode === "live" ? "Réel" : "Démo"}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1.5 pt-1">
+                <div className="flex shrink-0 items-center gap-2 pt-0.5">
                   <span className={cn("h-2.5 w-2.5 rounded-full", status.dot)} />
-                  <span className={cn("text-xs font-bold uppercase tracking-wider", status.text)}>
+                  <span className={cn("text-xs sm:text-sm font-black uppercase tracking-wider", status.text)}>
                     {status.label}
                   </span>
                 </div>
@@ -297,12 +437,12 @@ export function LiveScannerRadarCockpit({
 
               <div
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-sm",
+                  "flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-semibold",
                   line.tone === "block"
-                    ? "border-rose-500/20 bg-rose-500/10 text-rose-300"
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
                     : line.tone === "ok"
-                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                      : "border-white/10 bg-white/[0.03] text-foreground",
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      : "border-white/10 bg-white/[0.04] text-foreground",
                 )}
               >
                 {line.tone === "ok" ? (
@@ -312,7 +452,7 @@ export function LiveScannerRadarCockpit({
                     className={cn("h-4 w-4 shrink-0", line.tone === "neutral" && preset.text)}
                   />
                 )}
-                <span className="min-w-0 truncate font-semibold" title={line.text}>
+                <span className="min-w-0 truncate font-bold" title={line.text}>
                   {line.text}
                 </span>
               </div>
@@ -321,14 +461,14 @@ export function LiveScannerRadarCockpit({
                 {filters.map((f) => (
                   <div
                     key={f.label}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
+                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5"
                   >
-                    <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="block text-xs font-black uppercase tracking-wider text-muted-foreground/80">
                       {f.label}
                     </span>
                     <span
                       className={cn(
-                        "font-mono text-sm font-bold tabular-nums",
+                        "font-mono text-base font-black tabular-nums",
                         f.tone ?? "text-foreground",
                       )}
                     >
@@ -340,12 +480,12 @@ export function LiveScannerRadarCockpit({
 
               <div className="mt-auto flex w-full items-center justify-between border-t border-border/40 pt-3 text-sm text-muted-foreground">
                 <span>
-                  <strong className="whitespace-nowrap font-mono font-bold tabular-nums text-foreground">
+                  <strong className="whitespace-nowrap font-mono text-sm sm:text-base font-black tabular-nums text-foreground">
                     {state?.todayCount ?? 0} trades
                   </strong>
                   <strong
                     className={cn(
-                      "ml-2 font-mono font-bold tabular-nums",
+                      "ml-2.5 font-mono text-base sm:text-lg font-black tabular-nums",
                       pnl >= 0 ? "text-emerald-400" : "text-rose-400",
                     )}
                   >
@@ -354,7 +494,7 @@ export function LiveScannerRadarCockpit({
                 </span>
                 <span
                   className={cn(
-                    "flex items-center gap-1 text-sm font-bold uppercase tracking-wider",
+                    "flex items-center gap-1 text-xs sm:text-sm font-black uppercase tracking-wider",
                     preset.text,
                   )}
                 >

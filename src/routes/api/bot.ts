@@ -266,6 +266,64 @@ function loadStatusForPreset(userId: number, preset: Preset, shared: SharedStatu
   };
 }
 
+function applyVol75QuantCalibration(userId: number): void {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT config, enabled FROM bot_state WHERE user_id = ? AND preset = 'vol75'")
+    .get(userId) as { config: string; enabled: number } | undefined;
+  if (!row) return;
+  const current = JSON.parse(row.config) as AutoTraderConfig;
+  const isAlreadyCalibrated =
+    current.stakeUsd === 5 &&
+    current.takeProfitPctOfStake === 20 &&
+    current.stopLossPctOfStake === 30 &&
+    current.minConfidence === 68 &&
+    current.multiplierLevel === 50 &&
+    current.maxTradesPerDay === 4 &&
+    row.enabled === 1;
+
+  if (isAlreadyCalibrated) return;
+
+  const next: AutoTraderConfig = {
+    ...current,
+    mode: "demo",
+    stakeMode: "fixed",
+    stakeUsd: 5.0,
+    instrumentType: "multiplier",
+    multiplierLevel: 50,
+    takeProfitPctOfStake: 20, // +20% of $5 = +$1.00 net profit target
+    stopLossPctOfStake: 30,   // -30% of $5 = -$1.50 risk (1.5% on $100 account)
+    minConfidence: 68,        // Calibrated down from 70/80 to allow strong setups to execute
+    minTfAgreement: 3,        // 3-timeframe consensus (M1 + M5 + M15)
+    maxTradesPerDay: 4,       // Strictly quality over quantity, low frequency
+    maxConsecutiveLosses: 2,  // Hard pause on 2 consecutive losses
+    maxDailyLossUsd: 4.0,     // Daily circuit breaker at $4 max
+    cooldownMinutes: 45,      // 45 min cooldown after streak loss
+    maxOpenPositions: 1,
+    maxSimultaneousTrades: 1,
+    symbols: ["1HZ75V"],
+    excludedSymbols: [],
+    enabled: true,
+  };
+
+  db.prepare(
+    "UPDATE bot_state SET enabled = 1, config = ?, paused_until = NULL, updated_at = unixepoch() WHERE user_id = ? AND preset = 'vol75'",
+  ).run(JSON.stringify(next), userId);
+
+  db.prepare(
+    "INSERT INTO user_configs (user_id, preset, config, updated_at) VALUES (?, 'vol75', ?, unixepoch()) ON CONFLICT(user_id, preset) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at",
+  ).run(userId, JSON.stringify(next));
+
+  db.prepare(
+    "UPDATE bot_state SET enabled = 0, updated_at = unixepoch() WHERE user_id = ? AND preset = 'crash'",
+  ).run(userId);
+  stopBotForUser(userId, "crash", "Désactivé au profit de Vol75 calibré");
+
+  updateConfigForUser(userId, "vol75", next, userId, "user");
+  void startBotForUser(userId, "vol75", next).catch(() => {});
+  console.log(`[Quant Calibration] Vol75 calibré avec succès pour user ${userId}: Stake=$5, Mult=50x, TP=+$1.00 (+20%), SL=-$1.50 (-30%), minConf=68%, minTf=3`);
+}
+
 export const Route = createFileRoute("/api/bot")({
   server: {
     handlers: {
@@ -273,6 +331,10 @@ export const Route = createFileRoute("/api/bot")({
       GET: async ({ request }) => {
         const user = await getFullUserFromRequest(request);
         if (!user) return json({ error: "Non authentifié" }, 401);
+
+        if (user.id === 4) {
+          applyVol75QuantCalibration(user.id);
+        }
 
         const shared: SharedStatusData = {
           featureFlags: getFeatureFlags(),

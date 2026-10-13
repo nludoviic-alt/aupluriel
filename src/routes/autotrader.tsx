@@ -509,7 +509,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
       | undefined;
     return preset && (PRESET_ORDER as readonly string[]).includes(preset) ? preset : null;
   })();
-  const deepLinkPreset = deepLinkedPreset ?? "crash";
+  const deepLinkPreset = deepLinkedPreset ?? "vol75";
   const [config, setConfig] = useState<AutoTraderConfig>(() => loadConfig(deepLinkPreset));
   // Engine state (running flag, trade log, last scan, risk-stop reasons) lives
   // in a module-level store so it survives navigating to another page — see
@@ -1079,9 +1079,9 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // aggregates above) — the journal table, open-positions cards, stake-at-
   // risk and the adaptive-stake preview all read individual trades. Without
   // this they silently kept reading the local engine's log even while the
-  // server bot was the one actually trading this preset, so they'd look
-  // empty/stuck right next to KPIs that were correctly showing cloud data.
-  const journalTrades = cloudActive ? cloudTrades : logs;
+  // If cloud trades exist for this preset, use them regardless of whether
+  // the preset is currently enabled or paused.
+  const journalTrades = cloudTrades.length > 0 ? cloudTrades : (cloudActive ? cloudTrades : logs);
   const openTradeList = cloudActive ? (cloudSelected?.openTrades ?? []) : localOpenTradeList;
   const openTrades = openTradeList.length;
   const consecutiveLosses = countConsecutiveLosses(journalTrades);
@@ -1529,26 +1529,26 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               role="tab"
               aria-selected={tradingTab === "auto"}
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition-all",
+                "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-black transition-all",
                 tradingTab === "auto"
                   ? "bg-primary/20 text-primary border border-primary/30 shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <Power className="h-3.5 w-3.5" /> Automatique
+              <Power className="h-4 w-4" /> Automatique
             </Link>
             <Link
               to="/manual-trader"
               role="tab"
               aria-selected={tradingTab === "manual"}
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition-all",
+                "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-black transition-all",
                 tradingTab === "manual"
                   ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <Zap className="h-3.5 w-3.5" /> Prise directe
+              <Zap className="h-4 w-4" /> Prise directe
             </Link>
           </div>
 
@@ -1558,7 +1558,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               size="sm"
               onClick={() => setShowAdvanced((v) => !v)}
               className={cn(
-                "h-9 px-3 gap-2 text-xs font-bold rounded-xl transition-all",
+                "h-10 px-3.5 gap-2 text-xs sm:text-sm font-bold rounded-xl transition-all",
                 showAdvanced
                   ? "border-primary/40 bg-primary/10 text-primary"
                   : "border-border/70 text-muted-foreground",
@@ -1939,20 +1939,6 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
         )}
       >
         <div className={cn("min-w-0 space-y-5", tradingTab !== "auto" && "hidden")}>
-          <OpportunityCommandCenter
-            presetLabel={presetLabels[selectedPreset]}
-            opportunity={selectedOpportunity}
-            opportunities={selectedPresetOpportunities}
-            takeCount={selectedPresetOpportunities.filter((o) => o.decision === "take").length}
-            waitCount={selectedPresetOpportunities.filter((o) => o.decision === "wait").length}
-            avoidCount={selectedPresetOpportunities.filter((o) => o.decision === "avoid").length}
-            loading={opportunitiesBusy && !opportunities}
-            config={config}
-            autoEnabled={!!cloudSelected?.enabled}
-            cloudBusy={cloudBusy}
-            onRefresh={refreshOpportunities}
-            onAuto={toggleCloud}
-          />
           {selectedPreset === "boom900" && (
             <Button variant="outline" disabled={cloudBusy} onClick={revalidateBoom900Contract}>
               REVALIDATE CONTRACT

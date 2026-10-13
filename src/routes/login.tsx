@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { api, setToken, TOKEN_KEY } from "@/lib/api";
@@ -26,8 +26,13 @@ function LoginPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // Only check auth once on mount, not continuously
+  // Check auth or auto-bypass on mount
   useEffect(() => {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    if (params && (params.get("bypass") === "1" || params.get("bypass") === "true")) {
+      handleBypass();
+      return;
+    }
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       // Verify token is valid with a single check
@@ -39,6 +44,24 @@ function LoginPage() {
       });
     }
   }, [navigate]);
+
+  async function handleBypass() {
+    setLoading(true);
+    try {
+      const data = await api.post<AuthResponse>("/api/auth/login", {
+        bypass: true,
+      });
+      if (data.token && data.user) {
+        setToken(data.token);
+        toast.success(`Accès Direct accordé : Bienvenue, ${data.user.username} !`);
+        navigate({ to: "/" });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur de connexion directe");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -146,6 +169,18 @@ function LoginPage() {
                   >
                     {loading ? "Connexion..." : "Ouvrir le Terminal"}
                   </Button>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleBypass}
+                      disabled={loading}
+                      className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                    >
+                      <Zap className="h-4 w-4" />
+                      ⚡ Accès Direct Local (Ludovic)
+                    </button>
+                  </div>
                 </form>
             </div>
           </div>

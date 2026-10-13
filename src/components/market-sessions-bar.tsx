@@ -68,52 +68,53 @@ export function MarketSessionsBar({
   const isLondonNyOverlap = sessionStatuses.find((s) => s.session === "london")?.isActive && sessionStatuses.find((s) => s.session === "newyork")?.isActive;
 
   return (
-    <div className={cn("glass-panel rounded-2xl border border-white/10 bg-card/40 p-2.5 sm:px-4 sm:py-3.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between shadow-lg", className)}>
-      {/* Left: Compact Title & Overlap Alert */}
-      <div className={cn("flex items-center gap-2.5", hideTitle && "min-[1700px]:hidden")}>
-        <Globe className="h-4 w-4 text-primary animate-pulse shrink-0" />
-        <span className="text-xs font-black uppercase tracking-wider text-foreground">Sessions de Marché</span>
+    <div
+      className={cn(
+        "rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md",
+        className,
+      )}
+    >
+      {/* Left: Prominent Title & Overlap Alert */}
+      <div className={cn("flex items-center gap-2.5 shrink-0", hideTitle && "min-[1700px]:hidden")}>
+        <Globe className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-foreground">
+          Sessions Forex
+        </span>
         {isLondonNyOverlap && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/15 px-2 py-0.2 text-[9px] font-black uppercase text-amber-300 animate-pulse">
-            <Flame className="h-3 w-3 text-amber-400" /> Volatilité Max (Londres + NY)
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-400/15 px-2.5 py-0.5 text-xs font-black uppercase text-amber-300">
+            <Flame className="h-3.5 w-3.5 text-amber-400 animate-pulse" /> Volatilité Forte (Londres + NY)
           </span>
         )}
       </div>
 
-      {/* Right: 4 Compact Simple Pills (VERT = OUVERT, ROUGE = FERMÉ) */}
-      <div className="grid grid-cols-2 gap-1.5 sm:flex sm:items-center sm:gap-2">
-        {sessionStatuses.map(({ session, meta, hours, isActive, minsToOpen, minsToClose }) => (
+      {/* Right: 4 Clear Readable Pills */}
+      <div className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto scrollbar-none">
+        {sessionStatuses.map(({ session, meta, isActive, minsToOpen, minsToClose }) => (
           <div
             key={session}
             className={cn(
-              "flex flex-col justify-center gap-0.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all",
+              "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all shrink-0 shadow-sm",
               isActive
-                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-                : "border-rose-500/40 bg-rose-500/10 text-rose-300/80"
+                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.18)]"
+                : "border-white/10 bg-black/40 text-muted-foreground",
             )}
+            title={`${meta.name} · ${isActive ? `Ouvert (ferme dans ${formatMins(minsToClose)})` : `Fermé (ouvre dans ${formatMins(minsToOpen)})`}`}
           >
-            <div className="flex items-center justify-between gap-2.5">
-              <div className="flex items-center gap-1.5">
-                <span>{meta.flag}</span>
-                <span className="font-extrabold">{meta.name}</span>
-              </div>
-
-              <div className="flex items-center gap-1 font-mono text-[10px]">
-                {isActive ? (
-                  <span className="inline-flex items-center gap-1 font-black text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    OUVERT ({formatMins(minsToClose)})
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-rose-400 font-medium">
-                    FERMÉ ({formatMins(minsToOpen)})
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="font-mono text-[9px] font-medium opacity-60">
-              {utcHourToMontreal(hours.open)}–{utcHourToMontreal(hours.close)} (Montréal)
-            </div>
+            <span className="text-sm">{meta.flag}</span>
+            <span className="font-black text-xs sm:text-sm text-foreground">{meta.name}</span>
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                isActive ? "bg-emerald-400 animate-pulse" : "bg-rose-500/60",
+              )}
+            />
+            <span className="font-mono text-xs font-bold">
+              {isActive ? (
+                <span className="text-emerald-300 font-extrabold">OUVERT ({formatMins(minsToClose)})</span>
+              ) : (
+                <span className="text-muted-foreground/75">Fermé ({formatMins(minsToOpen)})</span>
+              )}
+            </span>
           </div>
         ))}
       </div>
