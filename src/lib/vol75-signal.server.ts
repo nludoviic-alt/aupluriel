@@ -93,18 +93,18 @@ export function generateVol75Signal(m15: ServerCandle[], m5: ServerCandle[], m1:
   if (atrRatio < 0.50) return { rejection: { reason: "LOW_VOLATILITY", score: 20, diagnostics } };
   if (atrRatio > 1.80) return { rejection: { reason: "EXTREME_VOLATILITY", score: 25, diagnostics } };
 
-  // HARD GUARD 4: Extension max 1.5 ATR from EMA20
+  // HARD GUARD 4: Extension max 2.2 ATR from EMA20
   const distanceEma20 = Math.abs(current.close - n(last(e1[0]))) / Math.max(atrNow, Number.EPSILON);
-  if (distanceEma20 > 1.5) return { rejection: { reason: "OVEREXTENDED", score: 35, diagnostics: { ...diagnostics, distanceEma20Atr: +distanceEma20.toFixed(2) } } };
+  if (distanceEma20 > 2.2) return { rejection: { reason: "OVEREXTENDED", score: 35, diagnostics: { ...diagnostics, distanceEma20Atr: +distanceEma20.toFixed(2) } } };
 
-  // HARD GUARD 5: Pullback distance <= 0.35 ATR
+  // HARD GUARD 5: Pullback distance <= 0.65 ATR
   const distEma20 = direction === "CALL" ? (current.low - n(last(e1[0]))) / atrNow : (n(last(e1[0])) - current.high) / atrNow;
   const distEma50 = direction === "CALL" ? (current.low - n(last(e1[1]))) / atrNow : (n(last(e1[1])) - current.high) / atrNow;
   const pullbackDistanceAtr = Math.min(Math.abs(distEma20), Math.abs(distEma50));
-  if (pullbackDistanceAtr > 0.35) return { rejection: { reason: "NO_PULLBACK", score: 40, diagnostics: { ...diagnostics, pullbackDistanceAtr: +pullbackDistanceAtr.toFixed(2) } } };
+  if (pullbackDistanceAtr > 0.65) return { rejection: { reason: "NO_PULLBACK", score: 40, diagnostics: { ...diagnostics, pullbackDistanceAtr: +pullbackDistanceAtr.toFixed(2) } } };
 
   // HARD GUARD 6: Opposing tick momentum
-  if ((direction === "CALL" && tickMove < -atrNow * 0.1) || (direction === "PUT" && tickMove > atrNow * 0.1)) {
+  if ((direction === "CALL" && tickMove < -atrNow * 0.25) || (direction === "PUT" && tickMove > atrNow * 0.25)) {
     return { rejection: { reason: "OPPOSING_TICK_MOMENTUM", score: 45, diagnostics: { ...diagnostics, tickMove: +tickMove.toFixed(5) } } };
   }
 
@@ -121,9 +121,9 @@ export function generateVol75Signal(m15: ServerCandle[], m5: ServerCandle[], m1:
   else if (adx5 >= 18) m5Score = 12;
 
   // Component 3: M1 Pullback Quality (Max 20)
-  let pullbackScore = 10; // <= 0.35 ATR
-  if (pullbackDistanceAtr <= 0.15) pullbackScore = 20;
-  else if (pullbackDistanceAtr <= 0.25) pullbackScore = 15;
+  let pullbackScore = 10; // <= 0.65 ATR
+  if (pullbackDistanceAtr <= 0.25) pullbackScore = 20;
+  else if (pullbackDistanceAtr <= 0.45) pullbackScore = 15;
 
   // Component 4: M1 Confirmation Wicks (Max 15)
   const wickPct = direction === "CALL" ? lowerWickPct : upperWickPct;

@@ -4054,9 +4054,11 @@ class ServerBotEngine {
           : {
               stopLossUsd:
                 Math.round(
-                  stakeForTrade *
-                    ((multiplierOverride?.stopLossPctOfStake ?? config.stopLossPctOfStake) / 100) *
-                    100,
+                  Math.min(
+                    stakeForTrade * 0.85,
+                    stakeForTrade *
+                      ((multiplierOverride?.stopLossPctOfStake ?? config.stopLossPctOfStake) / 100),
+                  ) * 100,
                 ) / 100,
               takeProfitUsd:
                 Math.round(

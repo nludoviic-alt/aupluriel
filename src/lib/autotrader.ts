@@ -454,7 +454,7 @@ export const BOOM_PRESET: Partial<AutoTraderConfig> = {
   riskRewardRatio: 1.8,
   partialTakeProfitPct: 50,
   moveSlToBreakeven: true,
-  maxHoldMinutes: 8,
+  maxHoldMinutes: 30,
   // ── Pas de filtres inutiles sur synthétique 24/7 ──
   newsFilter: false,
   blockCorrelated: false,

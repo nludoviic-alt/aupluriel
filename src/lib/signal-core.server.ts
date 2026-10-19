@@ -391,7 +391,9 @@ export function computeAtrStopUsd(
 ): { stopLossUsd: number; takeProfitUsd: number } {
   const stopDistancePct = Math.max(0.01, volatilityPct) * atrMultiple; // price % move that hits the stop
   const rawStop = stakeUsd * (multiplierLevel * stopDistancePct) / 100;
-  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, rawStop)) * 100) / 100;
+  // Deriv caps multiplier stop_loss strictly below 90% of stake; 85% leaves a safe buffer.
+  const maxAllowedSl = Math.max(0.5, Math.floor(stakeUsd * 0.85 * 100) / 100);
+  const stopLossUsd = Math.round(Math.min(maxAllowedSl, Math.max(0.5, rawStop)) * 100) / 100;
   const takeProfitUsd = Math.round(stopLossUsd * riskRewardRatio * 100) / 100;
   return { stopLossUsd, takeProfitUsd };
 }
@@ -414,7 +416,8 @@ export function computeStructuralStopUsd(
   if (entryPrice <= 0) return { stopLossUsd: Math.max(0.5, stakeUsd * 0.1), takeProfitUsd: Math.max(0.75, stakeUsd * 0.15) };
   const stopDistancePct = (riskAbs / entryPrice) * 100;
   const rewardDistancePct = (rewardAbs / entryPrice) * 100;
-  const stopLossUsd = Math.round(Math.min(stakeUsd, Math.max(0.5, stakeUsd * (multiplierLevel * stopDistancePct) / 100)) * 100) / 100;
+  const maxAllowedSl = Math.max(0.5, Math.floor(stakeUsd * 0.85 * 100) / 100);
+  const stopLossUsd = Math.round(Math.min(maxAllowedSl, Math.max(0.5, stakeUsd * (multiplierLevel * stopDistancePct) / 100)) * 100) / 100;
   const takeProfitUsd = Math.round(Math.max(0.5, stakeUsd * (multiplierLevel * rewardDistancePct) / 100) * 100) / 100;
   return { stopLossUsd, takeProfitUsd };
 }

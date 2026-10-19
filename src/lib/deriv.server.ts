@@ -872,7 +872,10 @@ export class DerivTradingConnection {
           underlying_symbol: params.symbol,
           multiplier: currentMultiplier,
           limit_order: {
-            stop_loss: roundToCurrency(params.stopLossUsd, this.currency),
+            stop_loss: roundToCurrency(
+              Math.min(Math.floor(params.amount * 0.85 * 100) / 100, params.stopLossUsd),
+              this.currency,
+            ),
             take_profit: roundToCurrency(params.takeProfitUsd, this.currency),
           },
         });
