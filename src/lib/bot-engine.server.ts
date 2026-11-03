@@ -276,6 +276,12 @@ export const ACTIVE_PRESETS: readonly Preset[] = [
   "vol75",
 ];
 
+/** Preset shown in the user-facing AutoTrader and Portfolio surfaces.
+ * This is deliberately separate from ACTIVE_PRESETS: historical data and
+ * existing engine state remain available to risk/admin tooling, while the
+ * product UI presents only the strategy currently under evaluation. */
+export const USER_VISIBLE_PRESETS: readonly Preset[] = ["scalping"];
+
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
 const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
@@ -360,7 +366,7 @@ const LEGACY_STAKE_PCT_BASELINE: Partial<Record<Preset, number>> = {
 export const MAX_VISIBLE_PRESETS = ACTIVE_PRESETS.length;
 
 /** All 5 official production presets enabled and visible across mobile and desktop. */
-export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = [...ACTIVE_PRESETS];
+export const VISIBLE_PRESETS_DEFAULT: readonly Preset[] = [...USER_VISIBLE_PRESETS];
 
 /**
  * The user's mobile preset whitelist. Purely a DISPLAY filter — it never
@@ -381,7 +387,7 @@ export function getVisiblePresets(userId: number): Preset[] {
     const parsed: unknown = JSON.parse(row.visible_presets);
     if (!Array.isArray(parsed)) return [...VISIBLE_PRESETS_DEFAULT];
     const clean = [
-      ...new Set(parsed.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset))),
+      ...new Set(parsed.filter((p): p is Preset => USER_VISIBLE_PRESETS.includes(p as Preset))),
     ];
     return clean.length ? clean.slice(0, MAX_VISIBLE_PRESETS) : [...VISIBLE_PRESETS_DEFAULT];
   } catch {
@@ -394,7 +400,7 @@ export function getVisiblePresets(userId: number): Preset[] {
  * was actually stored. */
 export function setVisiblePresets(userId: number, presets: readonly string[]): Preset[] {
   const clean = [
-    ...new Set(presets.filter((p): p is Preset => ACTIVE_PRESETS.includes(p as Preset))),
+    ...new Set(presets.filter((p): p is Preset => USER_VISIBLE_PRESETS.includes(p as Preset))),
   ].slice(0, MAX_VISIBLE_PRESETS);
   const final = clean.length ? clean : [...VISIBLE_PRESETS_DEFAULT];
   getDb()
