@@ -267,9 +267,11 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** Presets available for activation. Crash 900 and Volatility 75 (1s) are the
- * active production presets. Unused presets remain readable through ALL_PRESETS. */
+/** Presets available for activation. Multi, Crash900 and Volatility 75 (1s)
+ * are the active production presets. Unused presets remain readable through
+ * ALL_PRESETS. */
 export const ACTIVE_PRESETS: readonly Preset[] = [
+  "default",
   "crash",
   "vol75",
 ];

@@ -164,7 +164,7 @@ const PRESET_PRESENTATION: Record<
   PresetKey,
   { market: string; description: string; experimental?: boolean }
 > = {
-  default: { market: "EUR/GBP · USD/CAD · Nasdaq", description: "Symboles vérifiés (TF=4)" },
+  default: { market: "EUR/GBP · USD/CAD", description: "Multi démo · confiance 70 · TF=4" },
   boom: { market: "BOOM900 uniquement", description: "Boom900 (PF 1.31) · BOOM500/1000 Exclus" },
   boom900: {
     market: "BOOM900 uniquement",
@@ -331,6 +331,7 @@ function formatConfiguredMarkets(symbols: string[] | undefined, fallback: string
  * list rather than used directly, so tabs always appear in the same order
  * regardless of the order they were enabled in /admin. */
 const PRESET_ORDER = [
+  "default",
   "crash",
   "vol75",
 ] as const;

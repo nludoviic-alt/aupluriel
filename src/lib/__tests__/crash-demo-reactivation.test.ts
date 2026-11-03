@@ -3,12 +3,12 @@ import test from "node:test";
 import { ACTIVE_PRESETS, lockPresetSymbols, startBotForUser } from "../bot-engine.server";
 import { DEFAULT_CONFIG } from "../signal-core";
 
-test("historical Crash and Vol75 are active while unused presets remain deactivated", () => {
+test("Multi, Crash and Vol75 are active while unused presets remain deactivated", () => {
   assert.ok(ACTIVE_PRESETS.includes("crash"));
   assert.ok(ACTIVE_PRESETS.includes("vol75"));
   assert.ok(!ACTIVE_PRESETS.includes("scalping"));
   assert.ok(!ACTIVE_PRESETS.includes("boom"));
-  assert.ok(!ACTIVE_PRESETS.includes("default"));
+  assert.ok(ACTIVE_PRESETS.includes("default"));
   assert.ok(!ACTIVE_PRESETS.includes("crash900"));
 });
 
