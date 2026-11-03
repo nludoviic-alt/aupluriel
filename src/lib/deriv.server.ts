@@ -52,6 +52,17 @@ function roundToCurrency(num: number, currency = "USD"): number {
  * (was silently 2x off for crypto — 20 assumed vs 10 actually applied).
  */
 export function effectiveMultiplier(symbol: string, requestedMultiplier: number): number {
+  // Deriv exposes a different discrete ladder for Volatility 50 (1s). The
+  // historical Scalping preset used 100, which is valid on some symbols but
+  // rejected by this broker instrument (80/200/400/600/800 only). Normalize
+  // to the nearest accepted level so sizing and the order agree.
+  if (symbol === "1HZ50V") {
+    if (requestedMultiplier <= 140) return 80;
+    if (requestedMultiplier <= 300) return 200;
+    if (requestedMultiplier <= 500) return 400;
+    if (requestedMultiplier <= 700) return 600;
+    return 800;
+  }
   return symbol.startsWith("cry") ? Math.min(requestedMultiplier, 10) : requestedMultiplier;
 }
 
