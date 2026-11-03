@@ -47,7 +47,7 @@ const DEFAULT_POLICY: Readonly<StakeScalingPolicy> = Object.freeze({
 const POLICIES: Record<Preset, StakeScalingPolicy> = {
   default: DEFAULT_POLICY,
   boom: DEFAULT_POLICY,
-  crash: DEFAULT_POLICY,
+  crash: { ...DEFAULT_POLICY, brokerMaxStakeUsd: 2.0 },
   crash500: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
   vol75: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
   vol50: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
@@ -62,7 +62,7 @@ const POLICIES: Record<Preset, StakeScalingPolicy> = {
   scalping: DEFAULT_POLICY,
   liquidity: DEFAULT_POLICY,
   gold: DEFAULT_POLICY,
-  crash900: DEFAULT_POLICY,
+  crash900: { ...DEFAULT_POLICY, brokerMaxStakeUsd: 2.0 },
   boomv2: DEFAULT_POLICY,
   scalpingv2: DEFAULT_POLICY,
   liquidityv2: DEFAULT_POLICY,

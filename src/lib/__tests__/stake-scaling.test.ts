@@ -40,6 +40,8 @@ test("risk or broker can reduce a high manual request but never increase it", ()
 test("each preset retains an explicit non-activating scaling policy", () => {
   assert.equal(getStakeScalingPolicy("rb100").maxDailyLossUsd, 2);
   assert.equal(getStakeScalingPolicy("boom900").brokerMaxStakeUsd, 0.9);
+  assert.equal(getStakeScalingPolicy("crash").brokerMaxStakeUsd, 2.0);
+  assert.equal(getStakeScalingPolicy("crash900").brokerMaxStakeUsd, 2.0);
   assert.equal(getStakeScalingPolicy("vol75").maxStakeUsd, 500);
 });
 

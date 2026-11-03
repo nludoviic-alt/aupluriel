@@ -130,6 +130,17 @@ async function proposeAndBuyMultiplier(params: {
         }
       }
 
+      // Auto-heal broker stake ceilings (e.g. "Enter an amount equal to or lower than 2.25")
+      const lowerThanMatch = errMsg.match(/lower than\s+(\d+(?:\.\d+)?)/i);
+      if (lowerThanMatch && attempt < maxAttempts) {
+        const maxAllowed = parseFloat(lowerThanMatch[1]);
+        if (maxAllowed > 0 && maxAllowed < params.amount) {
+          params.amount = Math.min(params.amount, maxAllowed);
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+      }
+
       if (/price|amount|stake|decimal|invalid|not available|not offered/i.test(errMsg)) break;
       if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 700 * attempt));
     }

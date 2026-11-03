@@ -3673,6 +3673,7 @@ class ServerBotEngine {
       // amount at $0.90. Keep this isolated: other presets retain their
       // ordinary stake floor and cannot inherit this broker-specific cap.
       if (this.preset === "boom900") stakeForTrade = Math.min(0.9, stakeForTrade);
+      if (symbol === "CRASH900" && isMultiplier) stakeForTrade = Math.min(2.0, stakeForTrade);
       if (config.stakeMode === "kelly") {
         const kellyStake = computeKellyStakeServer(
           this.userId,
@@ -3790,8 +3791,12 @@ class ServerBotEngine {
       // The scaling policy is dormant until a separately persisted approval.
       // This preserves every existing stake exactly as-is. BOOM900's already
       // verified Deriv cap is the only concrete broker ceiling at present.
-      const brokerCapKnown = scalingPolicy.brokerMaxStakeUsd !== null;
-      const derivMaxAllowed = scalingPolicy.brokerMaxStakeUsd ?? Infinity;
+      const isCrash900Multiplier = symbol === "CRASH900" && isMultiplier;
+      const brokerCapKnown =
+        scalingPolicy.brokerMaxStakeUsd !== null || isCrash900Multiplier;
+      const derivMaxAllowed = isCrash900Multiplier
+        ? Math.min(scalingPolicy.brokerMaxStakeUsd ?? Infinity, 2.0)
+        : (scalingPolicy.brokerMaxStakeUsd ?? Infinity);
       const approvedScalingTier = getEffectiveApprovedStakeScalingTier(
         this.userId,
         this.preset,
