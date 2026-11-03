@@ -831,7 +831,7 @@ function migrate(db: Database.Database) {
   if (safetyAlertsFk.length > 0) {
     db.transaction(() => {
       db.exec(`
-        CREATE TABLE safety_alerts_new (
+        CREATE TABLE IF NOT EXISTS safety_alerts_new (
           id TEXT PRIMARY KEY,
           time INTEGER NOT NULL,
           alert_type TEXT NOT NULL,
@@ -841,7 +841,7 @@ function migrate(db: Database.Database) {
           details TEXT NOT NULL,
           created_at INTEGER NOT NULL DEFAULT (unixepoch())
         );
-        INSERT INTO safety_alerts_new SELECT id, time, alert_type, user_id, preset, symbol, details, created_at FROM safety_alerts;
+        INSERT OR REPLACE INTO safety_alerts_new SELECT id, time, alert_type, user_id, preset, symbol, details, created_at FROM safety_alerts;
         DROP TABLE safety_alerts;
         ALTER TABLE safety_alerts_new RENAME TO safety_alerts;
         CREATE INDEX IF NOT EXISTS idx_safety_alerts_lookup ON safety_alerts(time DESC, alert_type);
@@ -1039,7 +1039,7 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE bot_trades ADD COLUMN mode TEXT");
   }
   if (!botTradeCols.has("preset")) {
-    // Explicit preset attribution (see bot_trades CREATE TABLE comment above)
+    // Explicit preset attribution (see the bot_trades schema comment above)
     // — added 2026-08-02 when Scalping was introduced trading BOOM500
     // alongside Boom itself, which broke the old symbol→preset inference
     // (two presets, one symbol). One-time backfill below classifies every
