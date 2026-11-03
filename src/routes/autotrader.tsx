@@ -263,11 +263,11 @@ const PRESET_META_MAP: Record<
     bgTone: "bg-amber-500/10",
   },
   scalping: {
-    label: "Preset Scalping",
-    badge: "🎯 Scalping",
-    color: "text-cyan-400",
-    borderColor: "border-cyan-500/30",
-    bgTone: "bg-cyan-500/10",
+    label: "Scalping",
+    badge: "📈 Scalping",
+    color: "text-lime-300",
+    borderColor: "border-lime-500/30",
+    bgTone: "bg-lime-500/10",
   },
   gold: {
     label: "Or (Exclu)",
@@ -685,15 +685,15 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   // cached list on the first paint (before /api/bot answers) so hidden preset
   // cards never flash; only a first-ever visit with no cache shows them all.
   const visibleWhitelist = cloud?.visiblePresets ?? cachedVisiblePresets;
-  const shownPresets: PresetKey[] = visibleWhitelist
-    ? // A valid incoming opportunity must never be silently redirected to
-      // Default just because its preset is hidden in the compact mobile strip.
-      // It is displayed temporarily so the order can be prepared with the
-      // matching configuration; this never changes the user's visibility list.
-      PRESET_ORDER.filter(
-        (preset) => visibleWhitelist.includes(preset) || preset === deepLinkedPreset,
-      )
-    : [...PRESET_ORDER];
+  const shownPresets: PresetKey[] = useMemo(
+    () =>
+      visibleWhitelist
+        ? PRESET_ORDER.filter(
+            (preset) => visibleWhitelist.includes(preset) || preset === deepLinkedPreset,
+          )
+        : [...PRESET_ORDER],
+    [visibleWhitelist, deepLinkedPreset],
+  );
 
   const cloudSelected: PresetStatus | undefined = cloud?.presets?.[selectedPreset];
   // True the moment ANY of the three presets is enabled — used for guards
@@ -797,7 +797,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
   useEffect(() => {
     const id = setInterval(() => {
       refreshCloud();
-    }, 10_000);
+    }, 15_000);
     return () => clearInterval(id);
   }, [refreshCloud]);
 
