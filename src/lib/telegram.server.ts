@@ -1,4 +1,5 @@
 import { getDb } from "./db.server";
+import { isScalpingTradeResult } from "./push.server";
 
 export interface TelegramConfig {
   botToken: string;
@@ -98,6 +99,7 @@ export async function sendTelegramToUser(
   htmlMessage: string,
   category: "tradeOpen" | "tradeClose" | "risk" | "signal",
 ): Promise<void> {
+  if (category !== "tradeClose" || !isScalpingTradeResult(htmlMessage, "trade")) return;
   const cfg = getUserTelegramConfig(userId);
   if (!cfg || cfg.enabled === false || !cfg.botToken || !cfg.chatId) return;
   if (category === "tradeOpen" && cfg.notifyOnTradeOpen === false) return;

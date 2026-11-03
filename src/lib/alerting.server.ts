@@ -59,23 +59,9 @@ export class AlertingEngine {
       console.error("[ALERTING] safety_alerts insert error:", err);
     }
 
-    // 2. Only CRITICAL alerts reach the user's Notification Center / phone —
-    //    WARNING/INFO are operational diagnostics for the admin dashboard.
-    if (severity === "CRITICAL") {
-      try {
-        const { recordNotification } = await import("./push.server");
-        recordNotification(userId, `🚨 ${title}`, message, "/autotrader", "system");
-      } catch (err) {
-        console.error("[ALERTING] notification-center record error:", err);
-      }
-    }
-
-    // 3. Dispatch to Telegram if configured
-    try {
-      await this.sendTelegramNotification(userId, severity, title, message);
-    } catch (err) {
-      console.error("[ALERTING] Telegram dispatch error:", err);
-    }
+    // User-facing notifications are intentionally restricted to closed
+    // Scalping trade results. Keep this operational alert in safety_alerts and
+    // logs, but do not send it to the user's device or Telegram.
   }
 
   private static async sendTelegramNotification(
