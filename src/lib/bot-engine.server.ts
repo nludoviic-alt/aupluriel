@@ -267,13 +267,15 @@ export const ALL_PRESETS: readonly Preset[] = [
   "liquidityv2",
   "goldv2",
 ];
-/** Presets available for activation. Multi, Crash900 and Volatility 75 (1s)
- * are the active production presets. Unused presets remain readable through
+/** Presets available for activation. Scalping is the current user-facing
+ * evaluation preset; the historical production presets remain available for
+ * compatibility and admin recovery. Unused presets remain readable through
  * ALL_PRESETS. */
 export const ACTIVE_PRESETS: readonly Preset[] = [
   "default",
   "crash",
   "vol75",
+  "scalping",
 ];
 
 /** Preset shown in the user-facing AutoTrader and Portfolio surfaces.
