@@ -57,26 +57,6 @@ async function refresh(attempt = 0): Promise<void> {
     _refreshInFlight = true;
   }
   if (!getToken()) {
-    if (
-      typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") &&
-      !sessionStorage.getItem("logged_out")
-    ) {
-      try {
-        const res = await fetch("/api/auth/login?bypass=1");
-        if (res.ok) {
-          const data = (await res.json()) as { token?: string; user?: User };
-          if (data.token && data.user) {
-            setToken(data.token);
-            dispatch({ user: data.user, loading: false });
-            _refreshInFlight = false;
-            return;
-          }
-        }
-      } catch {
-        // fallback
-      }
-    }
     dispatch({ user: null, loading: false });
     _refreshInFlight = false;
     return;
