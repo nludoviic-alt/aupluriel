@@ -15,6 +15,7 @@
 // - Trades are persisted to bot_trades; risk pauses to bot_state.paused_until,
 //   so a Railway restart resumes exactly where it left off.
 
+import { AccountLimitStreak } from "./account-limit-alert";
 import { getDb } from "./db.server";
 import { ConfigRegistry, hashConfig } from "./config-registry.server";
 import {
@@ -1070,6 +1071,8 @@ class ServerBotEngine {
   // supervised re-entry — not every 60s tick.
   private autoAdaptivePauseAlerted = false;
   private autoAdaptiveRecoveryAlerted = false;
+  // Blind-bot latch: balance/equity unavailable → every signal rejected.
+  private accountLimitStreak = new AccountLimitStreak();
   private conn: DerivTradingConnection;
   private krakenConn: KrakenTradingConnection | null;
   private binanceConn: BinanceTradingConnection | null;
@@ -3516,6 +3519,18 @@ class ServerBotEngine {
         currentBalance: currentBalance ?? NaN,
         mode: this.config.mode === "live" ? "live" : "demo",
       });
+
+      if (riskCheck.decision === "REJECTED" && riskCheck.reason === "RISK_ACCOUNT_LIMIT") {
+        if (this.accountLimitStreak.recordRejection()) {
+          this.notifyRiskState(
+            "system",
+            `Bot ${this.preset} bloqué : solde Deriv indisponible`,
+            "Plus de 20 signaux consécutifs rejetés (RISK_ACCOUNT_LIMIT) : solde/equity illisible. Vérifie le jeton Deriv du compte.",
+          );
+        }
+      } else if (riskCheck.decision !== "REJECTED") {
+        this.accountLimitStreak.reset();
+      }
 
       if (FEATURE_FLAGS.RISK_MANAGER_V2_ENABLED && riskCheck.decision === "REJECTED") {
         // Keep observing only the user-approved safety blocks. The rejected
