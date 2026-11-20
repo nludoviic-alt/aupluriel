@@ -32,8 +32,20 @@ export interface Flux24Decision {
   rejection?: { reason: Flux24RejectReason; score: number; diagnostics: Record<string, number | string> };
 }
 
-/** Base score of an accepted setup. Must stay >= FLUX24_PRESET.minConfidence. */
+/** Base score of an accepted setup. Must stay >= FLUX24_PRESET.minConfidence.
+ * The score is GRADED (80..95) by trend strength, not constant: the Risk
+ * Manager raises the confidence threshold by +2 (CAUTION) / +5 (RESTRICTED)
+ * when recent results are poor. A constant score would turn that soft filter
+ * into a hard kill switch — observed 2026-11-20 07:48 UTC, when win rate
+ * 6/15 < 45 % raised the bar to 82 and no constant-80 signal could pass. */
 export const FLUX24_BASE_SCORE = 80;
+export const FLUX24_MAX_SCORE = 95;
+
+/** 80 for a marginal trend, up to 95 when EMA9 is >= 1.5 ATR away from EMA21. */
+export function flux24Score(emaGapInAtr: number): number {
+  const strength = Math.min(1, Math.max(0, emaGapInAtr) / 1.5);
+  return Math.round(FLUX24_BASE_SCORE + strength * (FLUX24_MAX_SCORE - FLUX24_BASE_SCORE));
+}
 export const FLUX24_MIN_CANDLES = 40;
 
 /** `candles` is the raw Deriv response: its LAST element is the still-forming
@@ -62,6 +74,7 @@ export function generateFlux24Signal(candles: ServerCandle[]): Flux24Decision {
     ema21: +e21n.toFixed(5),
     atr: +an.toFixed(5),
     close: cur.close,
+    emaGapAtr: +(Math.abs(e9n - e21n) / an).toFixed(2),
   };
   if (volatilityPct <= 0) return { rejection: { reason: "LOW_VOLATILITY", score: 0, diagnostics } };
 
@@ -80,7 +93,7 @@ export function generateFlux24Signal(candles: ServerCandle[]): Flux24Decision {
     signal: {
       strategy: "FLUX24_M1_MICRO_PULLBACK",
       direction,
-      confidence: FLUX24_BASE_SCORE,
+      confidence: flux24Score(Math.abs(e9n - e21n) / an),
       volatilityPct,
       reason: `Micro-pullback M1 sur EMA9 (${direction === "CALL" ? "haussier" : "baissier"})`,
       diagnostics,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FLUX24_BASE_SCORE, FLUX24_MIN_CANDLES, generateFlux24Signal } from "../flux24-signal.server";
+import { FLUX24_BASE_SCORE, FLUX24_MAX_SCORE, FLUX24_MIN_CANDLES, flux24Score, generateFlux24Signal } from "../flux24-signal.server";
 import { FLUX24_PRESET } from "../autotrader";
 process.env.DB_PATH = ":memory:"; // engine import must never touch the local lio23.db
 const { ACTIVE_PRESETS, lockPresetSymbols } = await import("../bot-engine.server");
@@ -31,7 +31,7 @@ test("rejects when there is not enough history", () => {
 test("emits a CALL on an uptrend micro-pullback", () => {
   const d = generateFlux24Signal(uptrendWithPullback());
   assert.equal(d.signal?.direction, "CALL");
-  assert.equal(d.signal?.confidence, FLUX24_BASE_SCORE);
+  assert.ok((d.signal?.confidence ?? 0) >= FLUX24_BASE_SCORE && (d.signal?.confidence ?? 0) <= FLUX24_MAX_SCORE);
 });
 
 test("emits a PUT on a mirrored downtrend micro-pullback", () => {
@@ -75,4 +75,15 @@ test("a setup that exists only on the forming candle is ignored", () => {
   const closed = uptrendWithPullback().slice(0, -2); // no pullback candle left
   closed.push(candle(60, closed[closed.length - 1].close)); // forming candle
   assert.equal(generateFlux24Signal(closed).signal, undefined);
+});
+
+test("score is graded so the Risk Manager's +2/+5 threshold raise filters, not kills", () => {
+  assert.equal(flux24Score(0), FLUX24_BASE_SCORE);
+  assert.ok(flux24Score(0.75) > flux24Score(0.1));
+  assert.equal(flux24Score(10), FLUX24_MAX_SCORE);
+  // A strong trend still clears the CAUTION (+2) and RESTRICTED (+5) bars.
+  const min = FLUX24_PRESET.minConfidence ?? 80;
+  assert.ok(flux24Score(1.5) >= min + 5);
+  // A marginal one does not clear them — graded, not constant.
+  assert.ok(flux24Score(0.05) < min + 5);
 });
