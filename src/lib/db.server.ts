@@ -716,6 +716,13 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE bot_trades ADD COLUMN worst_unrealized_loss REAL");
   if (!botTradeCols.has("profit_given_back"))
     db.exec("ALTER TABLE bot_trades ADD COLUMN profit_given_back REAL");
+  // Execution-cost measurement: profit on the first post-buy tick and ~60 s in.
+  if (!botTradeCols.has("first_tick_profit"))
+    db.exec("ALTER TABLE bot_trades ADD COLUMN first_tick_profit REAL");
+  if (!botTradeCols.has("first_tick_delay_ms"))
+    db.exec("ALTER TABLE bot_trades ADD COLUMN first_tick_delay_ms INTEGER");
+  if (!botTradeCols.has("profit_at_1m"))
+    db.exec("ALTER TABLE bot_trades ADD COLUMN profit_at_1m REAL");
 
   // MAX_HOLD_TIMEOUT-specific
   if (!botTradeCols.has("profit_at_timeout"))

@@ -598,6 +598,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       estimated_max_loss, risk_pct_of_equity, stake_scaling_tier, stake_scaling_reason,
       exit_reason, entry_time, exit_time, hold_duration_seconds, configured_max_hold_seconds,
       mfe_usd, mfe_r, mae_usd, mae_r, peak_unrealized_profit, worst_unrealized_loss, profit_given_back,
+      first_tick_profit, first_tick_delay_ms, profit_at_1m,
       profit_at_timeout, r_at_timeout, mfe_before_timeout, mae_before_timeout, distance_to_tp_at_exit, distance_to_sl_at_exit,
       time_to_tp_seconds, mfe_before_tp, mae_before_tp, max_progress_toward_tp_pct,
       time_to_sl_seconds, mfe_before_sl, mae_before_sl, was_profitable_before_sl, max_profit_before_sl,
@@ -614,6 +615,7 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       @estimated_max_loss, @risk_pct_of_equity, @stake_scaling_tier, @stake_scaling_reason,
       @exit_reason, @entry_time, @exit_time, @hold_duration_seconds, @configured_max_hold_seconds,
       @mfe_usd, @mfe_r, @mae_usd, @mae_r, @peak_unrealized_profit, @worst_unrealized_loss, @profit_given_back,
+      @first_tick_profit, @first_tick_delay_ms, @profit_at_1m,
       @profit_at_timeout, @r_at_timeout, @mfe_before_timeout, @mae_before_timeout, @distance_to_tp_at_exit, @distance_to_sl_at_exit,
       @time_to_tp_seconds, @mfe_before_tp, @mae_before_tp, @max_progress_toward_tp_pct,
       @time_to_sl_seconds, @mfe_before_sl, @mae_before_sl, @was_profitable_before_sl, @max_profit_before_sl,
@@ -657,6 +659,9 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       peak_unrealized_profit = COALESCE(excluded.peak_unrealized_profit, bot_trades.peak_unrealized_profit),
       worst_unrealized_loss = COALESCE(excluded.worst_unrealized_loss, bot_trades.worst_unrealized_loss),
       profit_given_back = COALESCE(excluded.profit_given_back, bot_trades.profit_given_back),
+      first_tick_profit = COALESCE(excluded.first_tick_profit, bot_trades.first_tick_profit),
+      first_tick_delay_ms = COALESCE(excluded.first_tick_delay_ms, bot_trades.first_tick_delay_ms),
+      profit_at_1m = COALESCE(excluded.profit_at_1m, bot_trades.profit_at_1m),
       profit_at_timeout = COALESCE(excluded.profit_at_timeout, bot_trades.profit_at_timeout),
       r_at_timeout = COALESCE(excluded.r_at_timeout, bot_trades.r_at_timeout),
       mfe_before_timeout = COALESCE(excluded.mfe_before_timeout, bot_trades.mfe_before_timeout),
@@ -735,6 +740,9 @@ function upsertTrade(userId: number, preset: Preset, log: TradeLog, mode: "demo"
       peak_unrealized_profit: log.peakUnrealizedProfit ?? null,
       worst_unrealized_loss: log.worstUnrealizedLoss ?? null,
       profit_given_back: log.profitGivenBack ?? null,
+      first_tick_profit: log.firstTickProfit ?? null,
+      first_tick_delay_ms: log.firstTickDelayMs ?? null,
+      profit_at_1m: log.profitAt1m ?? null,
       profit_at_timeout: log.profitAtTimeout ?? null,
       r_at_timeout: log.rAtTimeout ?? null,
       mfe_before_timeout: log.mfeBeforeTimeout ?? null,
@@ -1591,6 +1599,11 @@ class ServerBotEngine {
 
     let peakUnrealizedProfit = 0;
     let worstUnrealizedLoss = 0;
+    // Execution-cost probes. Only recorded while the position is young, so a
+    // tracker re-created after a restart never mislabels a late tick as entry cost.
+    let firstTickProfit: number | undefined;
+    let firstTickDelayMs: number | undefined;
+    let profitAt1m: number | undefined;
     let timeoutTriggered = false;
     const stopLossUsd = openLog.stopLossUsd;
     const takeProfitUsd = openLog.takeProfitUsd;
@@ -1643,6 +1656,9 @@ class ServerBotEngine {
         peakUnrealizedProfit,
         worstUnrealizedLoss,
         profitGivenBack,
+        firstTickProfit,
+        firstTickDelayMs,
+        profitAt1m,
         partialTpConfigured,
         partialTpMechanismActive: false,
         breakevenConfigured,
@@ -1698,6 +1714,12 @@ class ServerBotEngine {
         this.emit({ ...openLog, status: "open", profit: u.profit });
         if (u.profit > peakUnrealizedProfit) peakUnrealizedProfit = u.profit;
         if (u.profit < worstUnrealizedLoss) worstUnrealizedLoss = u.profit;
+        const ageMs = Date.now() - openLog.time;
+        if (firstTickProfit === undefined && ageMs <= 20_000) {
+          firstTickProfit = u.profit;
+          firstTickDelayMs = ageMs;
+        }
+        if (profitAt1m === undefined && ageMs >= 60_000 && ageMs <= 120_000) profitAt1m = u.profit;
 
         // ── Partial profit taking ──
         // When floating profit reaches 50% of the take-profit target, we

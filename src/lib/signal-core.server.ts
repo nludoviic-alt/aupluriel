@@ -792,6 +792,11 @@ export interface TradeLog {
   peakUnrealizedProfit?: number;
   worstUnrealizedLoss?: number;
   profitGivenBack?: number; // peakUnrealizedProfit - finalProfit
+  // Execution-cost measurement (added 2026-11-20): unrealized profit on the
+  // first tick after the buy (≈ -spread/commission) and ~60 s later.
+  firstTickProfit?: number;
+  firstTickDelayMs?: number;
+  profitAt1m?: number;
 
   // MAX_HOLD_TIMEOUT-specific
   profitAtTimeout?: number;
