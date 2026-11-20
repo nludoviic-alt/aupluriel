@@ -287,7 +287,7 @@ export const ACTIVE_PRESETS: readonly Preset[] = [
  * This is deliberately separate from ACTIVE_PRESETS: historical data and
  * existing engine state remain available to risk/admin tooling, while the
  * product UI presents only the strategy currently under evaluation. */
-export const USER_VISIBLE_PRESETS: readonly Preset[] = ["scalping"];
+export const USER_VISIBLE_PRESETS: readonly Preset[] = ["vol75", "flux24", "crash", "scalping"];
 
 // These strategies are intentionally single-market. Persisted configurations
 // from before their separation must never be able to merge them back together.
