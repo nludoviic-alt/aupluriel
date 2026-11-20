@@ -66,6 +66,7 @@ import {
   VOL75_PRESET,
   RB100_PRESET,
   VOL50_PRESET,
+  FLUX24_PRESET,
   type QuickPreset,
   SCAN_INTERVAL_MS,
   saveCurrentAsPreset,
@@ -128,6 +129,7 @@ type PresetKey =
   | "vol75"
   | "rb100"
   | "vol50"
+  | "flux24"
   | "crash"
   | "crash500"
   | "scalping"
@@ -146,6 +148,7 @@ const presetLabels: Record<PresetKey, string> = {
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
+  flux24: "Flux24 — mesure démo",
   crash: "Crash 900",
   crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
@@ -184,6 +187,11 @@ const PRESET_PRESENTATION: Record<
   vol50: {
     market: "VOLATILITY 50 (1s) uniquement",
     description: "Démo · Trend Pullback & Retest",
+    experimental: true,
+  },
+  flux24: {
+    market: "VOLATILITY 50/75/100 (1s) · 24/7",
+    description: "Démo · haute fréquence · mesure des coûts réels",
     experimental: true,
   },
   crash: { market: "CRASH900 uniquement", description: "Crash 900 (PF 1.34, +$145.78) · Meilleur actif", experimental: false },
@@ -240,6 +248,13 @@ const PRESET_META_MAP: Record<
     color: "text-emerald-300",
     borderColor: "border-emerald-500/30",
     bgTone: "bg-emerald-500/10",
+  },
+  flux24: {
+    label: "Flux24",
+    badge: "⚡ Flux24 (mesure)",
+    color: "text-cyan-300",
+    borderColor: "border-cyan-500/30",
+    bgTone: "bg-cyan-500/10",
   },
   crash: {
     label: "Crash 900",
@@ -669,6 +684,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
     vol75: false,
     rb100: false,
     vol50: false,
+    flux24: false,
     crash: false,
     crash500: false,
     scalping: false,
@@ -1292,6 +1308,8 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
               ? RB100_PRESET
               : target === "vol50"
                 ? VOL50_PRESET
+                : target === "flux24"
+                  ? FLUX24_PRESET
                 : target === "boomv2"
                   ? BOOM_V2_PRESET
                   : target === "crash"
@@ -1315,6 +1333,7 @@ export function AutoTraderPage({ defaultTab = "auto" }: { defaultTab?: "auto" | 
           target === "vol75" ||
           target === "rb100" ||
           target === "vol50" ||
+          target === "flux24" ||
           target === "crash500" ||
           target === "scalping" ||
           target.endsWith("v2")

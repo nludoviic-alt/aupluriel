@@ -41,7 +41,7 @@ export const Route = createFileRoute("/portfolio")({
   component: PortfolioPage,
 });
 
-type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
+type PresetCategoryKey = "default" | "boom" | "boom900" | "vol75" | "rb100" | "vol50" | "flux24" | "crash" | "crash500" | "scalping" | "liquidity" | "gold" | "crash900" | "boomv2" | "scalpingv2" | "liquidityv2" | "goldv2" | "manual";
 const PORTFOLIO_PRESETS = ["scalping"] as const;
 
 interface PresetMeta {
@@ -87,6 +87,13 @@ const PRESET_META_MAP: Record<PresetCategoryKey, PresetMeta> = {
     color: "text-emerald-300",
     borderColor: "border-emerald-500/30",
     bgTone: "bg-emerald-500/10",
+  },
+  flux24: {
+    label: "Flux24",
+    badge: "⚡ Flux24 (mesure)",
+    color: "text-cyan-300",
+    borderColor: "border-cyan-500/30",
+    bgTone: "bg-cyan-500/10",
   },
   crash: {
     label: "Crash1000",

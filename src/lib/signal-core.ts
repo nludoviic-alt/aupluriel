@@ -841,6 +841,7 @@ export interface TradeLog {
     | "vol75"
     | "rb100"
     | "vol50"
+    | "flux24"
     | "crash"
     | "crash500"
     | "scalping"

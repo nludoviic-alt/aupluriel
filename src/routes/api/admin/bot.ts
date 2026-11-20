@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db.server";
 import { requireAdmin } from "@/lib/auth.server";
 import { ACTIVE_PRESETS, getBotRuntime, loadBotConfig, startBotForUser, stopBotForUser, type Preset } from "@/lib/bot-engine.server";
 import { DEFAULT_CONFIG } from "@/lib/signal-core";
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "@/lib/autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET, FLUX24_PRESET } from "@/lib/autotrader";
 
 function canonicalConfig(preset: Preset) {
   if (preset === "boom") return { ...DEFAULT_CONFIG, ...BOOM_PRESET };
@@ -15,6 +15,7 @@ function canonicalConfig(preset: Preset) {
   if (preset === "vol75") return { ...DEFAULT_CONFIG, ...VOL75_PRESET, mode: "demo" as const };
   if (preset === "rb100") return { ...DEFAULT_CONFIG, ...RB100_PRESET, mode: "demo" as const };
   if (preset === "vol50") return { ...DEFAULT_CONFIG, ...VOL50_PRESET, mode: "demo" as const };
+  if (preset === "flux24") return { ...DEFAULT_CONFIG, ...FLUX24_PRESET, mode: "demo" as const };
   if (preset === "crash") return { ...DEFAULT_CONFIG, ...CRASH_PRESET };
   if (preset === "crash500") return { ...DEFAULT_CONFIG, ...CRASH500_PRESET, mode: "demo" as const };
   if (preset === "scalping") return { ...DEFAULT_CONFIG, ...SCALPING_PRESET, mode: "demo" as const };
@@ -110,7 +111,7 @@ export const Route = createFileRoute("/api/admin/bot")({
           // jamais activer du live sans que l'utilisateur l'ait lui-même
           // déjà choisi une fois.
           const saved = loadBotConfig(userId, preset);
-          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "vol50" || preset === "crash" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
+          const config = { ...canonicalConfig(preset), ...saved, mode: preset === "boom900" || preset === "vol75" || preset === "rb100" || preset === "vol50" || preset === "flux24" || preset === "crash" || preset === "crash500" || preset === "scalping" || preset === "liquidity" || preset === "gold" || preset === "crash900" || preset.endsWith("v2") ? "demo" as const : saved?.mode ?? canonicalConfig(preset).mode };
           try {
             await startBotForUser(userId, preset, config);
           } catch (e) {

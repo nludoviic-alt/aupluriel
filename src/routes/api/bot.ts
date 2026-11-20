@@ -58,6 +58,7 @@ import {
   VOL75_PRESET,
   RB100_PRESET,
   VOL50_PRESET,
+  FLUX24_PRESET,
 } from "@/lib/autotrader";
 
 const PRESETS: Preset[] = [...ACTIVE_PRESETS];
@@ -80,6 +81,7 @@ function presetFieldsFor(preset: Preset): Partial<AutoTraderConfig> {
   if (preset === "vol75") return VOL75_PRESET;
   if (preset === "rb100") return RB100_PRESET;
   if (preset === "vol50") return VOL50_PRESET;
+  if (preset === "flux24") return FLUX24_PRESET;
   if (preset === "crash") return CRASH_PRESET;
   if (preset === "crash500") return CRASH500_PRESET;
   if (preset === "scalping") return SCALPING_PRESET;
@@ -458,6 +460,7 @@ export const Route = createFileRoute("/api/bot")({
             preset === "vol75" ||
             preset === "rb100" ||
             preset === "vol50" ||
+            preset === "flux24" ||
             preset === "crash" || preset === "crash500" ||
             preset === "scalping" ||
             preset === "liquidity" ||
@@ -528,6 +531,7 @@ export const Route = createFileRoute("/api/bot")({
             preset === "vol75" ||
             preset === "rb100" ||
             preset === "vol50" ||
+            preset === "flux24" ||
             preset === "crash" || preset === "crash500" ||
             preset === "scalping" ||
             preset === "liquidity" ||
@@ -613,6 +617,7 @@ export const Route = createFileRoute("/api/bot")({
               preset === "vol75" ||
               preset === "rb100" ||
               preset === "vol50" ||
+            preset === "flux24" ||
               preset === "crash" || preset === "crash500" ||
               preset === "scalping" ||
               preset === "liquidity" ||

@@ -83,6 +83,7 @@ import {
   RB100_CONFIG_HASH,
 } from "./rb100-signal.server";
 import { generateVol50Signal } from "./vol50-signal.server";
+import { generateFlux24Signal } from "./flux24-signal.server";
 import { getPresetRiskMetrics, evaluateRiskCheck } from "./risk-manager.server";
 import { evaluateTimeFilter } from "./time-filter.server";
 import {
@@ -193,6 +194,7 @@ export type Preset =
   | "vol75"
   | "rb100"
   | "vol50"
+  | "flux24"
   | "crash"
   | "crash500"
   | "scalping"
@@ -257,6 +259,7 @@ export const ALL_PRESETS: readonly Preset[] = [
   "vol75",
   "rb100",
   "vol50",
+  "flux24",
   "crash",
   "crash500",
   "scalping",
@@ -276,6 +279,7 @@ export const ACTIVE_PRESETS: readonly Preset[] = [
   "default",
   "crash",
   "vol75",
+  "flux24",
   "scalping",
 ];
 
@@ -293,6 +297,7 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
   vol75: ["1HZ75V"],
   rb100: ["RB100"],
   vol50: ["1HZ50V"],
+  flux24: ["1HZ50V", "1HZ75V", "1HZ100V"],
   crash: ["CRASH900"],
   crash500: ["CRASH500"],
   liquidity: ["frxEURGBP"],
@@ -301,7 +306,7 @@ const LOCKED_PRESET_SYMBOLS: Partial<Record<Preset, readonly string[]>> = {
 };
 
 export function lockPresetSymbols(preset: Preset, config: AutoTraderConfig): AutoTraderConfig {
-  if (preset === "crash") config = { ...config, mode: "demo" };
+  if (preset === "crash" || preset === "flux24") config = { ...config, mode: "demo" };
   const symbols = LOCKED_PRESET_SYMBOLS[preset];
   return symbols
     ? { ...config, symbolMode: "watchlist", symbols: [...symbols], excludedSymbols: [] }
@@ -318,6 +323,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   vol75: "Volatility 75 (1s) — démo",
   rb100: "Range Break 100 — démo",
   vol50: "Volatility 50 (1s) — démo",
+  flux24: "Flux24 — mesure haute fréquence (démo)",
   crash: "Crash900 — démo",
   crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
@@ -348,6 +354,7 @@ const LEGACY_STAKE_PCT_BASELINE: Partial<Record<Preset, number>> = {
   boom900: 0.25,
   vol75: 0.25,
   vol50: 0.25,
+  flux24: 0.25,
   crash: 0.25,
   crash500: 0.25,
   scalping: 0.25,
@@ -2952,6 +2959,44 @@ class ServerBotEngine {
               };
               return { symbol, analysis };
             })
+          : this.preset === "flux24"
+            ? await mapWithConcurrency(toAnalyze, 2, async (symbol) => {
+                const m1 = await candleFetcher(symbol, 60, 80);
+                const decision = generateFlux24Signal(m1);
+                const sig = decision.signal;
+                if (decision.rejection && decision.rejection.reason !== "NO_PULLBACK") {
+                  // NO_PULLBACK is the normal state of ~95 % of scans: journaling
+                  // it would add ~7k rows/day per symbol for no diagnostic value.
+                  getDb()
+                    .prepare(
+                      `INSERT INTO signal_rejections (id,user_id,preset,symbol,time,score,reason,diagnostics) VALUES (?,?,?,?,?,?,?,?)`,
+                    )
+                    .run(
+                      `flux24_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                      this.userId,
+                      "flux24",
+                      symbol,
+                      Date.now(),
+                      Math.round(decision.rejection.score),
+                      decision.rejection.reason,
+                      JSON.stringify(decision.rejection.diagnostics),
+                    );
+                }
+                const analysis: SymbolAnalysis = {
+                  direction: sig?.direction ?? null,
+                  confidence: sig?.confidence ?? decision.rejection?.score ?? 0,
+                  agreement: sig ? 4 : 0,
+                  premiumCount: 0,
+                  volatilityPct: sig?.volatilityPct ?? 0,
+                  volatilityRatio: 1,
+                  blockers: sig ? [] : [decision.rejection?.reason ?? "NO_TRADE"],
+                  dominantTf: "1m",
+                  suggestedDuration: 0,
+                  trendAlignmentScore: sig ? 4 : 0,
+                  patternBonus: 0,
+                };
+                return { symbol, analysis };
+              })
           : this.preset === "vol50"
             ? await mapWithConcurrency(toAnalyze, 1, async (symbol) => {
                 const [m15, m5, m1, ticks] = await Promise.all([

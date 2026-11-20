@@ -1,4 +1,4 @@
-import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET } from "./autotrader";
+import { BOOM_PRESET, BOOM900_PRESET, BOOM_V2_PRESET, CRASH_PRESET, CRASH500_PRESET, CRASH900_V2_PRESET, GOLD_PRESET, GOLD_V2_PRESET, LIQUIDITY_PRESET, LIQUIDITY_V2_PRESET, SCALPING_PRESET, SCALPING_V2_PRESET, VOL75_PRESET, RB100_PRESET, VOL50_PRESET, FLUX24_PRESET } from "./autotrader";
 import { buildAnalyzeOptsServer } from "./analyze-opts.server";
 import { ACTIVE_PRESETS, getVisiblePresets, loadBotConfig, type Preset } from "./bot-engine.server";
 import { getDb } from "./db.server";
@@ -112,6 +112,7 @@ const PRESET_LABEL: Record<Preset, string> = {
   vol75: "Volatility 75 (1s)",
   rb100: "Range Break 100",
   vol50: "Volatility 50 (1s)",
+  flux24: "Flux24 (mesure démo)",
   crash: "Crash1000",
   crash500: "Crash500 (Désactivé)",
   scalping: "Scalping",
@@ -131,6 +132,7 @@ const CANONICAL_PRESET: Record<Preset, Partial<AutoTraderConfig>> = {
   vol75: VOL75_PRESET,
   rb100: RB100_PRESET,
   vol50: VOL50_PRESET,
+  flux24: FLUX24_PRESET,
   crash: CRASH_PRESET,
   crash500: CRASH500_PRESET,
   scalping: SCALPING_PRESET,

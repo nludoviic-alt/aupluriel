@@ -587,6 +587,31 @@ export const VOL50_PRESET: Partial<AutoTraderConfig> = {
   maxVolatilityPct: 100, progressiveStakeReduction: true,
 };
 
+/**
+ * FLUX24 — DEMO-only, high-frequency measurement preset on the 24/7 1s
+ * synthetic indices. Not expected to be profitable (the indices are a random
+ * walk — see flux24-signal.server.ts); it exists to measure real execution
+ * cost. Stop = 1×ATR, target = 0.8R (atrStopMode), fixed small stake.
+ * Kill criterion: stop if PF < 1.0 after 100 closed trades.
+ */
+export const FLUX24_PRESET: Partial<AutoTraderConfig> = {
+  ...VOL75_PRESET,
+  symbolMode: "watchlist",
+  symbols: ["1HZ50V", "1HZ75V", "1HZ100V"],
+  mode: "demo",
+  minConfidence: 80, maxConfidence: 100, minTfAgreement: 1,
+  instrumentType: "multiplier", multiplierLevel: 50,
+  stakeMode: "fixed", stakeUsd: 2,
+  atrStopMode: true, atrStopMultiple: 1.0, riskRewardRatio: 0.8,
+  maxHoldMinutes: 30,
+  maxDailyLossUsd: 5, maxDailyProfitUsd: 50, maxTradesPerDay: 40,
+  maxConsecutiveLosses: 6, cooldownMinutes: 3,
+  maxSimultaneousTrades: 2, maxOpenPositions: 2,
+  tradingSessions: ["asia", "london", "newyork"],
+  newsFilter: false, adxFilterMode: "off", hourlyEdgeFilter: false,
+  maxVolatilityPct: 100, progressiveStakeReduction: false, blockCorrelated: false,
+};
+
 export function isBoomPresetActive(config: AutoTraderConfig): boolean {
   return config.symbolMode === "watchlist"
     && config.symbols.length === BOOM_SYMBOLS.length

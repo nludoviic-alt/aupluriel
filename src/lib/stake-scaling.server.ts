@@ -51,6 +51,8 @@ const POLICIES: Record<Preset, StakeScalingPolicy> = {
   crash500: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
   vol75: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
   vol50: { ...DEFAULT_POLICY, maxStakeUsd: 500, maxExposureUsd: 500 },
+  // Demo measurement preset: hard-cap tiny stakes so a config slip cannot scale it.
+  flux24: { ...DEFAULT_POLICY, maxStakeUsd: 25, maxExposureUsd: 50 },
   rb100: {
     ...DEFAULT_POLICY,
     maxStakeUsd: 100,

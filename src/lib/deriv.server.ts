@@ -63,8 +63,23 @@ export function effectiveMultiplier(symbol: string, requestedMultiplier: number)
     if (requestedMultiplier <= 700) return 600;
     return 800;
   }
+  const ladder = SYMBOL_MULTIPLIER_LADDERS[symbol];
+  if (ladder) {
+    // Nearest accepted level (contracts_for, verified 2026-11-19).
+    return ladder.reduce((best, lvl) =>
+      Math.abs(lvl - requestedMultiplier) < Math.abs(best - requestedMultiplier) ? lvl : best,
+    );
+  }
   return symbol.startsWith("cry") ? Math.min(requestedMultiplier, 10) : requestedMultiplier;
 }
+
+/** Accepted multiplier levels for 1s indices whose ladder differs from the
+ * generic one. 1HZ75V / 1HZ50V are handled elsewhere and left unchanged. */
+const SYMBOL_MULTIPLIER_LADDERS: Record<string, readonly number[]> = {
+  "1HZ10V": [400, 1000, 2000, 3000, 4000],
+  "1HZ25V": [160, 400, 800, 1200, 1600],
+  "1HZ100V": [40, 100, 200, 300, 400],
+};
 
 export type DerivPortfolioResult =
   | {
