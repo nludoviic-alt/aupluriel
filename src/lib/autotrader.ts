@@ -606,7 +606,11 @@ export const FLUX24_PRESET: Partial<AutoTraderConfig> = {
   maxHoldMinutes: 30,
   maxDailyLossUsd: 5, maxDailyProfitUsd: 50, maxTradesPerDay: 40,
   maxConsecutiveLosses: 6, cooldownMinutes: 3,
-  maxSimultaneousTrades: 2, maxOpenPositions: 2,
+  // 1, not 2: the Risk Manager hard-caps open positions per strategy at
+  // MAX_ACTIVE_PER_STRATEGY = 1, so a higher value here only makes the engine
+  // pass signals that the Risk Manager then rejects (RISK_MAX_POSITIONS) on
+  // every scan. Keep this in sync with risk-manager.server.ts.
+  maxSimultaneousTrades: 1, maxOpenPositions: 1,
   tradingSessions: ["asia", "london", "newyork"],
   newsFilter: false, adxFilterMode: "off", hourlyEdgeFilter: false,
   maxVolatilityPct: 100, progressiveStakeReduction: false, blockCorrelated: false,

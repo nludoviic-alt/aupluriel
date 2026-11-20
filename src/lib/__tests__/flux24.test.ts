@@ -51,7 +51,9 @@ test("preset invariants: demo-only, score gate reachable, tiny fixed stake, capp
   assert.equal(FLUX24_PRESET.stakeMode, "fixed");
   assert.ok((FLUX24_PRESET.stakeUsd ?? 99) <= 5);
   assert.ok((FLUX24_PRESET.maxDailyLossUsd ?? 99) <= 5);
-  assert.ok((FLUX24_PRESET.maxOpenPositions ?? 99) <= 2);
+  // Must not exceed the Risk Manager per-strategy cap, or every extra signal is rejected.
+  assert.equal(FLUX24_PRESET.maxOpenPositions, 1);
+  assert.equal(FLUX24_PRESET.maxSimultaneousTrades, 1);
   assert.equal(FLUX24_PRESET.atrStopMode, true);
 });
 
