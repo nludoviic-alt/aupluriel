@@ -34,11 +34,13 @@ interface SubscriptionRow {
 
 export type NotificationCategory = "trade" | "risk" | "system" | "signal" | "market" | "chat";
 
-/** User notification policy: only closed Scalping results are actionable for
- * the current product flow. Operational alerts remain in server logs and
- * safety_alerts, but never reach the user's inbox, push device, or Telegram. */
-export function isScalpingTradeResult(title: string, category: NotificationCategory): boolean {
-  return category === "trade" && title.includes("Scalping") && /Trade fermé (gagnant|perdant)/i.test(title);
+/** User notification policy: every CLOSED trade result (win or loss, any
+ * preset) is actionable. Opens, risk/system alerts and signals stay in server
+ * logs and safety_alerts and never reach the user's inbox, push device, or
+ * Telegram. (Widened from Scalping-only on 2026-11-20 at the account owner's
+ * request, when Flux24 and Volatility 75 started trading in demo.) */
+export function isClosedTradeResult(title: string, category: NotificationCategory): boolean {
+  return category === "trade" && /Trade fermé (gagnant|perdant)/i.test(title);
 }
 
 // All core notification categories enabled for push & in-app center
@@ -58,7 +60,7 @@ export function recordNotification(
   url?: string,
   category: NotificationCategory = "system",
 ): number | null {
-  if (!isScalpingTradeResult(title, category)) return null;
+  if (!isClosedTradeResult(title, category)) return null;
   try {
     const result = getDb()
       .prepare(
@@ -82,7 +84,7 @@ export async function sendPushToUser(
   userId: number,
   payload: PushPayload & { category?: NotificationCategory },
 ): Promise<void> {
-  if (!isScalpingTradeResult(payload.title, payload.category ?? "system")) return;
+  if (!isClosedTradeResult(payload.title, payload.category ?? "system")) return;
   if (!ENABLED_CATEGORIES.has(payload.category ?? "system")) return;
 
   // Always record in in-app Notification Center so the user never loses a message
