@@ -2349,7 +2349,23 @@ class ServerBotEngine {
               profit: c.profit,
             }));
 
-            reconcileUserPositions(this.userId, this.preset, dbOpenTrades, derivPositions);
+            const liveIds = new Set(derivPositions.map((c) => c.contract_id));
+            const hasOrphans = dbOpenTrades.some(
+              (t) => t.derivContractId && !liveIds.has(String(t.derivContractId)),
+            );
+            const realProfits = new Map<string, number>();
+            if (hasOrphans) {
+              for (const r of await this.conn.getProfitTable(60)) {
+                realProfits.set(String(r.contractId), r.profit);
+              }
+            }
+            reconcileUserPositions(
+              this.userId,
+              this.preset,
+              dbOpenTrades,
+              derivPositions,
+              realProfits,
+            );
 
             // reconcileUserPositions may have flipped orphaned trades to
             // 'closed'. activeSymbols is not DB-backed, so a reservation for a

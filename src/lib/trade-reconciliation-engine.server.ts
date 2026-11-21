@@ -24,7 +24,10 @@ export function reconcileUserPositions(
   userId: number,
   preset: string,
   localOpenTrades: { id: string; symbol: string; derivContractId?: string; openPrice: number }[],
-  liveDerivPositions: { contract_id: string; symbol: string; buy_price: number; profit: number }[]
+  liveDerivPositions: { contract_id: string; symbol: string; buy_price: number; profit: number }[],
+  /** Real realised P&L per contract id (Deriv profit_table). When a trade
+   * closed at the broker we record this instead of a fake 0. */
+  realProfits: ReadonlyMap<string, number> = new Map(),
 ): ReconciliationReport {
   const db = getDb();
   const details: string[] = [];
@@ -50,11 +53,19 @@ export function reconcileUserPositions(
       details.push(`Trade orphelin réconcilié : ${localTrade.symbol} (Contrat ID ${localTrade.derivContractId})`);
 
       try {
+        const real = realProfits.get(String(localTrade.derivContractId));
+        // Real P&L known -> keep it. Unknown -> still close the slot, but tag
+        // the row so stats can exclude it instead of counting a fake 0.
         db.prepare(`
           UPDATE bot_trades
-          SET status = 'closed', profit = 0.0, exit_reason = 'RECONCILED_CLOSED_BY_BROKER'
+          SET status = 'closed', profit = ?, exit_reason = ?
           WHERE id = ? AND user_id = ?
-        `).run(localTrade.id, userId);
+        `).run(
+          real ?? 0.0,
+          real === undefined ? "RECONCILED_PROFIT_UNKNOWN" : "RECONCILED_CLOSED_BY_BROKER",
+          localTrade.id,
+          userId,
+        );
       } catch (e) {
         console.error(`[reconciliation] Erreur MAJ DB pour trade ${localTrade.id}:`, (e as Error).message);
       }
